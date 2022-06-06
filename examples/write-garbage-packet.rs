@@ -8,6 +8,11 @@ use std::path::PathBuf;
 
 const ETHERCAT_ETHERTYPE: u16 = 0x88A4;
 
+#[cfg(target_os = "windows")]
+const IFACE_NAME: &str = "Ethernet";
+#[cfg(target_os = "macos")]
+const IFACE_NAME: &str = "en0";
+
 fn main() {
     let data = vec![0x12u8, 0x34, 0x56];
 
@@ -20,7 +25,7 @@ fn main() {
 
     let beckhoff_mac = EthernetAddress::from_bytes(&[0x01, 0x01, 0x05, 0x01, 0x00, 0x00]);
 
-    let my_mac = mac_address_by_name("Ethernet")
+    let my_mac = mac_address_by_name(IFACE_NAME)
         .expect("Failed to read MAC")
         .expect("No mac found");
 
