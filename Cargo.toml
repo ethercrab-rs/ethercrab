@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytemuck = { version = "1.9.1", features = ["derive"] }
 chrono = "0.4.19"
 libc = "0.2.126"
 mac_address = "1.1.3"
