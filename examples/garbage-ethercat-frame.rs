@@ -1,7 +1,7 @@
 //! Write an Ethernet packet with garbage data in it to a Wireshark capture file.
 
 use chrono::Utc;
-use ethercrab::{Aprd, EthercatPduFrame, Fprd, Pdu};
+use ethercrab::{EthercatPduFrame, Fprd, Pdu};
 use mac_address::mac_address_by_name;
 use pcap::{Capture, Linktype, Packet, PacketHeader};
 use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol, PrettyPrinter};
@@ -18,18 +18,23 @@ fn main() {
     let mut frame = EthercatPduFrame::new();
 
     // Values hard coded to match Wireshark capture
-    frame.push_pdu(Pdu::Fprd(Fprd::new(Vec::new(), 6, 0x03e9, 0x0130)));
+    frame.push_pdu(Pdu::Fprd(Fprd::new(Vec::new(), 8, 0x03e9, 0x0111)));
+    frame.push_pdu(Pdu::Fprd(Fprd::new(Vec::new(), 8, 0x03e9, 0x0130)));
 
     let data = frame.as_bytes();
 
     dbg!(data.len());
 
+    println!("{:#?}", frame);
+
     let buf_len = EthernetFrame::<&[u8]>::buffer_len(data.len());
 
-    let mut buf = Vec::with_capacity(buf_len);
-    buf.resize(buf_len, 0x00u8);
+    dbg!(buf_len);
 
-    let mut frame = EthernetFrame::new_checked(buf).expect("Frame");
+    let mut frame_buf = Vec::with_capacity(buf_len);
+    frame_buf.resize(frame_buf.len(), 0x00u8);
+
+    let mut frame = EthernetFrame::new_checked(frame_buf).expect("Frame");
 
     let beckhoff_mac = EthernetAddress::from_bytes(&[0x01, 0x01, 0x05, 0x01, 0x00, 0x00]);
 
