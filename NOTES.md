@@ -25,3 +25,22 @@ Double click device and go to `EtherCAT` tab in main view
 ## TwinCAT - see ports
 
 Go to `Online` tab of any device
+
+# SOEM on Windows
+
+- Install VSCode `CMake Tools` extension
+- Install `nmake` through `Build Tools for Visual Studio 2022` from
+  [here](https://visualstudio.microsoft.com/downloads/)
+  - I think it's the "C++ development tools" package or something
+- Do this to the top level so the Windows `slaveinfo` builds:
+
+```diff
+  if(BUILD_TESTS)
+    add_subdirectory(test/simple_ng)
++   # add_subdirectory(test/linux/slaveinfo)
+-   add_subdirectory(test/linux/slaveinfo)
+    add_subdirectory(test/linux/eepromtool)
+    add_subdirectory(test/linux/simple_test)
++   add_subdirectory(test/win32/slaveinfo)
+  endif()
+```
