@@ -5,7 +5,7 @@ use ethercrab::{EthercatPduFrame, Fprd, Pdu};
 use mac_address::mac_address_by_name;
 use pcap::{Capture, Linktype, Packet, PacketHeader};
 use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol, PrettyPrinter};
-use std::{mem, path::PathBuf};
+use std::path::PathBuf;
 
 const ETHERCAT_ETHERTYPE: u16 = 0x88A4;
 
@@ -18,12 +18,12 @@ fn main() {
     let mut frame = EthercatPduFrame::new();
 
     // Values hard coded to match Wireshark capture
-    frame.push_pdu(Pdu::Fprd(Fprd::new(Vec::new(), 8, 0x03e9, 0x0111)));
-    frame.push_pdu(Pdu::Fprd(Fprd::new(Vec::new(), 8, 0x03e9, 0x0130)));
+    frame.push_pdu(Pdu::Fprd(Fprd::new(8, 0x03e9, 0x0111)));
+    frame.push_pdu(Pdu::Fprd(Fprd::new(8, 0x03e9, 0x0130)));
 
-    let data = frame.as_bytes();
+    let mut data = Vec::new();
 
-    dbg!(data.len());
+    frame.as_bytes(&mut data).unwrap();
 
     println!("{:#?}", frame);
 
