@@ -1,12 +1,14 @@
 //! Listen to frames coming through a raw socket.
 
-use smoltcp::{
-    phy::{Device, RxToken},
-    wire::{EthernetFrame, PrettyPrinter},
-};
 use std::{io, time::Instant};
 
+#[cfg(not(target_os = "windows"))]
 fn main() -> io::Result<()> {
+    use smoltcp::{
+        phy::{Device, RxToken},
+        wire::{EthernetFrame, PrettyPrinter},
+    };
+
     smol::block_on(async {
         let medium = smoltcp::phy::Medium::Ethernet;
         let sock = smoltcp::phy::RawSocket::new("lo", medium).unwrap();
@@ -37,6 +39,58 @@ fn main() -> io::Result<()> {
 
         Ok(())
     })
+}
+
+#[cfg(target_os = "windows")]
+fn main() -> io::Result<()> {
+    use pnet::{
+        datalink,
+        packet::{ethernet::EthernetPacket, Packet},
+    };
+    use smoltcp::wire::PrettyPrinter;
+
+    dbg!(datalink::interfaces());
+
+    let interface_name = "\\Device\\NPF_{9E7C587C-8D88-4C37-BCEB-7ED21FC86607}";
+
+    let interfaces = datalink::interfaces();
+    let interface = interfaces
+        .into_iter()
+        .find(|interface| interface.name == interface_name)
+        .unwrap();
+
+    let (mut tx, mut rx) = match datalink::channel(&interface, Default::default()) {
+        Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
+        Ok(_) => panic!("Unhandled channel type"),
+        Err(e) => panic!(
+            "An error occurred when creating the datalink channel: {}",
+            e
+        ),
+    };
+
+    loop {
+        match rx.next() {
+            Ok(packet) => {
+                let packet = EthernetPacket::new(packet).unwrap();
+
+                if packet.get_ethertype() == pnet::packet::ethernet::EtherType::new(0x88a4) {
+                    let buffer = packet.packet();
+
+                    let frame =
+                        PrettyPrinter::<smoltcp::wire::EthernetFrame<&[u8]>>::new("", &buffer)
+                            .to_string();
+
+                    println!("{frame}");
+                }
+            }
+            Err(e) => {
+                // If an error occurs, we can handle it here
+                panic!("An error occurred while reading: {}", e);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn smoltcp_to_io(e: smoltcp::Error) -> std::io::ErrorKind {
