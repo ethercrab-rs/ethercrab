@@ -1,3 +1,5 @@
+use std::io::{self, Write};
+
 use smoltcp::wire::EthernetFrame;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
@@ -27,7 +29,7 @@ impl EthercatPduFrame {
         self.pdus.push(pdu);
     }
 
-    pub fn as_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self, mut buf: &mut [u8]) -> io::Result<()> {
         let packed = {
             let len = self.len & LEN_MASK;
 
@@ -39,15 +41,13 @@ impl EthercatPduFrame {
             len | protocol_type
         };
 
-        let mut buf = Vec::new();
-        buf.extend_from_slice(&packed.to_le_bytes());
+        buf.write_all(&packed.to_le_bytes())?;
 
         for pdu in &self.pdus {
-            dbg!(pdu.byte_len());
-            buf.extend_from_slice(&pdu.as_bytes());
+            pdu.as_bytes(buf)?;
         }
 
-        buf
+        Ok(())
     }
 }
 
@@ -63,9 +63,9 @@ impl Pdu {
         }
     }
 
-    pub fn as_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self, buf: &mut [u8]) -> io::Result<()> {
         match self {
-            Self::Fprd(c) => c.as_bytes(),
+            Self::Fprd(c) => c.as_bytes(buf),
         }
     }
 
@@ -95,7 +95,7 @@ pub struct Fprd {
 }
 
 impl Fprd {
-    pub fn new(data: Vec<u8>, len: u16, slave_addr: u16, memory_address: u16) -> Self {
+    pub fn new(len: u16, slave_addr: u16, memory_address: u16) -> Self {
         // Other fields are all zero for now
         let packed = len & LEN_MASK;
 
@@ -106,8 +106,7 @@ impl Fprd {
             ado: memory_address,
             packed,
             irq: 0,
-            // TODO: This is a read, so this ends up being a buffer, right?
-            data,
+            data: Vec::with_capacity(len.into()),
             working_counter: 0,
             data_len: len,
         }
@@ -120,22 +119,18 @@ impl Fprd {
         static_len + u16::try_from(self.data_len).expect("Too long")
     }
 
-    pub fn as_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::new();
+    pub fn as_bytes(&self, mut buf: &mut [u8]) -> io::Result<()> {
+        buf.write_all(&[self.command])?;
+        buf.write_all(&[self.idx])?;
+        buf.write_all(&self.adp.to_le_bytes())?;
+        buf.write_all(&self.ado.to_le_bytes())?;
+        buf.write_all(&self.packed.to_le_bytes())?;
+        buf.write_all(&self.irq.to_le_bytes())?;
+        // Populate data payload with zeroes. The slave will write data into this section.
+        buf.write_all(&[0x00].repeat(self.data_len.into()))?;
+        buf.write_all(&self.working_counter.to_le_bytes())?;
 
-        // TODO: Pass buf in and use `write_all` - Joshua said it's faster
-
-        buf.push(self.command);
-        buf.push(self.idx);
-        buf.extend_from_slice(&self.adp.to_le_bytes());
-        buf.extend_from_slice(&self.ado.to_le_bytes());
-        buf.extend_from_slice(&self.packed.to_le_bytes());
-        buf.extend_from_slice(&self.irq.to_le_bytes());
-        // TODO: Hmmm
-        buf.extend_from_slice(&[0x00].repeat(self.data_len.into()));
-        buf.extend_from_slice(&self.working_counter.to_le_bytes());
-
-        buf
+        Ok(())
     }
 
     fn set_has_next(&mut self, has_next: bool) {
