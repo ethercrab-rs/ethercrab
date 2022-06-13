@@ -15,6 +15,7 @@ pcap = "0.9.2"
 # TODO: No default features
 smoltcp = "0.8.1"
 pnet = { version = "0.31.0", features = ["pnet_datalink", "std"] }
+nom = "7.1.1"
 
 [dev-dependencies]
 async-io = "1.6.0"
