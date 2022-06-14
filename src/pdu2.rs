@@ -1,5 +1,12 @@
 use crate::LEN_MASK;
-use packed_struct::{prelude::*, types::bits::Bits};
+use cookie_factory::{
+    bytes::{le_i16, le_u16, le_u32, le_u8},
+    combinator::slice,
+    gen_simple, GenError,
+};
+use core::mem;
+use packed_struct::{prelude::*, types::bits::Bits, PackedStructInfo};
+use smoltcp::wire::EthernetFrame;
 
 // TODO: Logical PDU with 32 bit address
 // TODO: Auto increment PDU with i16 address
@@ -9,8 +16,8 @@ pub struct Pdu<const N: usize> {
     register_address: u16,
     flags: PduFlags,
     irq: u16,
-    working_counter: u16,
     data: [u8; N],
+    working_counter: u16,
 }
 
 impl<const N: usize> Pdu<N> {
@@ -28,39 +35,44 @@ impl<const N: usize> Pdu<N> {
         }
     }
 
-    pub const fn as_bytes(&self, buf: &mut [u8]) {
-        // Best option
+    fn as_bytes<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
+        // Order is VITAL here
+        let buf = gen_simple(le_u8(self.command.code() as u8), buf)?;
+        let buf = gen_simple(le_u8(self.index), buf)?;
+        // Autoincrement address, always zero when sending
+        let buf = gen_simple(le_u16(0), buf)?;
+        let buf = gen_simple(le_u16(self.register_address), buf)?;
+        let buf = gen_simple(le_u16(u16::from_le_bytes(self.flags.pack().unwrap())), buf)?;
+        let buf = gen_simple(le_u16(self.irq), buf)?;
+        let buf = gen_simple(slice(self.data), buf)?;
+        // Working counter is always zero when sending
+        let buf = gen_simple(le_u16(0u16), buf)?;
 
-        //         #![no_std]
+        Ok(buf)
+    }
 
-        // pub fn stuff(input: &mut [u8], lil_bit: &[u8]) -> Result<(), ()> {
-        //     input.get_mut(0..lil_bit.len()).ok_or_else(|| ())?.copy_from_slice(lil_bit);
+    fn buf_len(&self) -> usize {
+        // TODO: Add unit test to stop regressions
+        N + 12
+    }
 
-        //     Ok(())
-        // }
+    pub fn frame_buf_len(&self) -> usize {
+        let size = self.buf_len() + mem::size_of::<FrameHeader>();
 
-        // Jonathan:
+        // TODO: Move to unit test
+        assert_eq!(size, N + 14);
 
-        // pub fn stuff(buf: &mut [u8], some_data: &[u8]) -> Result<(), ()> {
-        //     buf.get_mut(0..some_data.len())
-        //         .and_then(|b| b.copy_from_slice(some_data))
-        //         .ok_or_else(|| ())
-        // }
+        size
+    }
 
-        // Best: https://godbolt.org/z/rdefsbb1s
+    /// Write an EtherCAT PDU frame into the given buffer.
+    pub fn as_ethercat_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
+        let header = FrameHeader::pdu(self.buf_len());
 
-        // Optimises panic out of ARM asm as well - note this when writing the real code
+        let buf = gen_simple(le_u16(header.0), buf)?;
+        let buf = self.as_bytes(buf)?;
 
-        // pub fn stuff(buf: &mut [u8], some_data: &[u8]) -> Result<(), ()> {
-        //     if buf.len() >= some_data.len() {
-        //         buf[..some_data.len()].copy_from_slice(some_data);
-        //         Ok(())
-        //     } else {
-        //         Err(())
-        //     }
-        // }
-
-        // Tbh, just go with copy_from_slice. It's good enough.
+        Ok(buf)
     }
 }
 
@@ -81,7 +93,7 @@ enum Command {
 }
 
 impl Command {
-    fn code(&self) -> CommandCode {
+    const fn code(&self) -> CommandCode {
         match self {
             Self::Aprd { .. } => CommandCode::Aprd,
             Self::Fprd { .. } => CommandCode::Fprd,
@@ -89,10 +101,23 @@ impl Command {
             Self::Lrd { .. } => CommandCode::Lrd,
         }
     }
+
+    fn as_bytes<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
+        let buf = gen_simple(le_u8(self.code() as u8), buf)?;
+
+        let buf = match self {
+            Command::Aprd { address } => gen_simple(le_i16(*address), buf)?,
+            Command::Fprd { address } => gen_simple(le_u16(*address), buf)?,
+            Command::Lrd { address } => gen_simple(le_u32(*address), buf)?,
+            Command::Brd => buf,
+        };
+
+        Ok(buf)
+    }
 }
 
 /// Broadcast or configured station addressing.
-// TODO: Packed struct derive
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CommandCode {
     Aprd = 0x01,
     Fprd = 0x04,
@@ -131,25 +156,54 @@ impl PduFlags {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[repr(transparent)]
+struct FrameHeader(u16);
+
+impl FrameHeader {
+    fn pdu(len: usize) -> Self {
+        // debug_assert!(len <= LEN_MASK.into());
+
+        let len = (len as u16) & LEN_MASK;
+
+        // TOOD: Const for PDU
+        let protocol_type = 0x01 << 12;
+
+        Self(len | protocol_type)
+    }
+
+    fn len(&self) -> u16 {
+        self.0 & LEN_MASK
+    }
+
+    // TODO: Return an enum
+    fn protocol_type(&self) -> u8 {
+        (self.0 >> 12) as u8 & 0b1111
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    fn pdu_header() {
+        let header = FrameHeader::pdu(0x28);
+
+        let packed = header.0;
+
+        let expected = 0b0001_0000_0010_1000;
+
+        assert_eq!(packed, expected, "{packed:016b} == {expected:016b}");
+    }
+
+    #[test]
     fn decode_pdu_len() {
-        let raw = 0b1100_0000_0000_0001u16;
+        let raw = 0b0001_0000_0010_1000;
 
-        // TODO: Fix endianness
-        let pdu_len = PduFlags::unpack_from_slice(&raw.to_be_bytes()).unwrap();
+        let header = FrameHeader(raw);
 
-        assert_eq!(
-            pdu_len,
-            PduFlags {
-                length: 1,
-                _reserved: 0,
-                circulated: true,
-                is_not_last: true
-            }
-        );
+        assert_eq!(header.len(), 0x28);
+        assert_eq!(header.protocol_type(), 0x01);
     }
 }
