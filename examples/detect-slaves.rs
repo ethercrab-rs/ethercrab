@@ -1,16 +1,15 @@
 //! Detect slaves by reading the working counter value in the returned packet
 
-use ethercrab::{
-    pdu::{Brd, Pdu},
-    EthercatPduFrame,
-};
+use chrono::Utc;
+use ethercrab::pdu2::Pdu;
 use mac_address::{get_mac_address, MacAddress};
+use pcap::PacketHeader;
 use pnet::{
     datalink::{self, DataLinkReceiver, DataLinkSender},
     packet::{ethernet::EthernetPacket, Packet},
 };
-use smoltcp::wire::{EthernetFrame, PrettyPrinter};
-use std::io;
+use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol, PrettyPrinter};
+use std::{io, path::PathBuf};
 
 #[cfg(target_os = "windows")]
 const INTERFACE: &str = "\\Device\\NPF_{0D792EC2-0E89-4AB6-BE39-3F41EC42AEA3}";
@@ -19,6 +18,9 @@ const INTERFACE: &str = "eth0";
 
 fn get_tx_rx() -> (Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>) {
     let interfaces = datalink::interfaces();
+
+    dbg!(&interfaces);
+
     let interface = interfaces
         .into_iter()
         .find(|interface| dbg!(&interface.name) == INTERFACE)
@@ -39,18 +41,58 @@ fn get_tx_rx() -> (Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>) {
 fn main() -> io::Result<()> {
     let (mut tx, mut rx) = get_tx_rx();
 
-    let mut frame = EthercatPduFrame::new();
+    // TODO: Register address enum ETG1000.4 Table 31
+    let pdu = Pdu::<1>::brd(0x0000);
 
-    // Values hard coded to match Wireshark capture
-    frame.push_pdu(Pdu::Brd(Brd::new(1, 0x0111)));
+    // let mut frame = EthercatPduFrame::new();
 
-    let read = broadcast_read(&frame);
-    tx.send_to(&read, None).unwrap().expect("Send");
+    // // Values hard coded to match Wireshark capture
+    // frame.push_pdu(Pdu::Brd(Brd::new(1, 0x0111)));
+
+    let ethernet_frame = pdu_to_ethernet(&pdu);
+
+    // ---
+
+    {
+        let buffer = ethernet_frame.clone().into_inner();
+
+        let packet = pcap::Packet {
+            header: &PacketHeader {
+                ts: libc::timeval {
+                    tv_sec: Utc::now().timestamp().try_into().expect("Time overflow"),
+                    tv_usec: 0,
+                },
+                // 64 bytes minimum frame size, minus 2x MAC address and 1x optional tag
+                caplen: (buffer.len() as u32).max(46),
+                len: buffer.len() as u32,
+            },
+            data: &buffer,
+        };
+
+        let cap = pcap::Capture::dead(pcap::Linktype::ETHERNET).expect("Open capture");
+
+        let name = std::file!().replace(".rs", ".pcapng");
+
+        let path = PathBuf::from(&name);
+
+        let mut save = cap.savefile(&path).expect("Open save file");
+
+        save.write(&packet);
+        drop(save);
+    }
+
+    // ---
+
+    // let read = broadcast_read(&frame);
+    tx.send_to(&ethernet_frame.as_ref(), None)
+        .unwrap()
+        .expect("Send");
 
     // TODO: Response packet timeout
     loop {
         match rx.next() {
             Ok(packet) => {
+                // TODO: Use smoltcp
                 let packet = EthernetPacket::new(packet).unwrap();
 
                 if packet.get_ethertype() == pnet::packet::ethernet::EtherType::new(0x88a4) {
@@ -59,24 +101,26 @@ fn main() -> io::Result<()> {
                     //     continue;
                     // }
 
-                    let buffer = packet.packet();
+                    println!("Response");
 
-                    // TODO: Decode packet, check if it's a BRD with an `idx` of 0
+                    // let buffer = packet.packet();
 
-                    let brd_response = frame.parse_response(packet.payload());
+                    // // TODO: Decode packet, check if it's a BRD with an `idx` of 0
 
-                    match brd_response {
-                        Ok(response) => {
-                            println!("Response! {:x?}", response);
-                        }
-                        Err(e) => println!("Error: {e:x?}"),
-                    }
+                    // let brd_response = pdu.parse_response(packet.payload());
 
-                    let frame =
-                        PrettyPrinter::<smoltcp::wire::EthernetFrame<&[u8]>>::new("", &buffer)
-                            .to_string();
+                    // match brd_response {
+                    //     Ok(response) => {
+                    //         println!("Response! {:x?}", response);
+                    //     }
+                    //     Err(e) => println!("Error: {e:x?}"),
+                    // }
 
-                    println!("{frame}");
+                    // let frame =
+                    //     PrettyPrinter::<smoltcp::wire::EthernetFrame<&[u8]>>::new("", &buffer)
+                    //         .to_string();
+
+                    // println!("{frame}");
                 }
             }
             Err(e) => {
@@ -89,7 +133,8 @@ fn main() -> io::Result<()> {
     // Ok(())
 }
 
-fn broadcast_read(frame: &EthercatPduFrame) -> Vec<u8> {
+// TODO: Move into crate, pass buffer in instead of returning a vec
+fn pdu_to_ethernet<const N: usize>(pdu: &Pdu<N>) -> EthernetFrame<Vec<u8>> {
     let src = get_mac_address()
         .expect("Failed to read MAC")
         .expect("No mac found");
@@ -97,16 +142,25 @@ fn broadcast_read(frame: &EthercatPduFrame) -> Vec<u8> {
     // Broadcast
     let dest = MacAddress::default();
 
-    let mut buffer = frame.create_ethernet_buffer();
+    let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(pdu.frame_buf_len());
 
-    frame.as_ethernet_frame(src, dest, &mut buffer).unwrap();
+    let mut buffer = Vec::new();
+    buffer.resize(ethernet_len, 0x00u8);
+
+    let mut frame = EthernetFrame::new_checked(buffer).unwrap();
+
+    pdu.as_ethercat_frame(&mut frame.payload_mut()).unwrap();
+    frame.set_src_addr(EthernetAddress::from_bytes(&src.bytes()));
+    frame.set_dst_addr(EthernetAddress::from_bytes(&dest.bytes()));
+    // TODO: Const
+    frame.set_ethertype(EthernetProtocol::Unknown(0x88a4));
 
     println!(
-        "{}",
-        PrettyPrinter::<EthernetFrame<&'static [u8]>>::new("", &buffer)
+        "Send {}",
+        PrettyPrinter::<EthernetFrame<&'static [u8]>>::new("", &frame)
     );
 
-    buffer
+    frame
 }
 
 fn smoltcp_to_io(e: smoltcp::Error) -> std::io::ErrorKind {

@@ -3,6 +3,7 @@ pub mod pdu2;
 
 use mac_address::MacAddress;
 use nom::{bytes::complete::take, multi::many1, number::complete::le_u16};
+use pdu2::Pdu;
 // use pdu::{Pdu, PduParseError};
 use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol};
 use std::io::{self, Write};
