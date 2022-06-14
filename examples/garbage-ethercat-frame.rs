@@ -1,18 +1,16 @@
 //! Write an Ethernet packet with garbage data in it to a Wireshark capture file.
 
 use chrono::Utc;
-use ethercrab::{EthercatPduFrame, Fprd, Pdu};
-use mac_address::mac_address_by_name;
+use ethercrab::{pdu::Fprd, pdu::Pdu, EthercatPduFrame};
+use mac_address::{get_mac_address, MacAddress};
 use pcap::{Capture, Linktype, Packet, PacketHeader};
-use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol, PrettyPrinter};
+use smoltcp::wire::{EthernetFrame, PrettyPrinter};
 use std::path::PathBuf;
 
-const ETHERCAT_ETHERTYPE: u16 = 0x88A4;
-
-#[cfg(target_os = "windows")]
-const IFACE_NAME: &str = "Ethernet";
-#[cfg(target_os = "macos")]
-const IFACE_NAME: &str = "en0";
+// #[cfg(target_os = "windows")]
+// const IFACE_NAME: &str = "Ethernet";
+// #[cfg(target_os = "macos")]
+// const IFACE_NAME: &str = "en0";
 
 fn main() {
     let mut frame = EthercatPduFrame::new();
@@ -21,33 +19,17 @@ fn main() {
     frame.push_pdu(Pdu::Fprd(Fprd::new(8, 0x03e9, 0x0111)));
     frame.push_pdu(Pdu::Fprd(Fprd::new(8, 0x03e9, 0x0130)));
 
-    let mut data = Vec::new();
+    let beckhoff_mac = MacAddress::new([0x01, 0x01, 0x05, 0x01, 0x00, 0x00]);
 
-    frame.as_bytes(&mut data).unwrap();
-
-    println!("{:#?}", frame);
-
-    let buf_len = EthernetFrame::<&[u8]>::buffer_len(data.len());
-
-    dbg!(buf_len);
-
-    let mut frame_buf = Vec::with_capacity(buf_len);
-    frame_buf.resize(frame_buf.len(), 0x00u8);
-
-    let mut frame = EthernetFrame::new_checked(frame_buf).expect("Frame");
-
-    let beckhoff_mac = EthernetAddress::from_bytes(&[0x01, 0x01, 0x05, 0x01, 0x00, 0x00]);
-
-    let my_mac = mac_address_by_name(IFACE_NAME)
+    let my_mac = get_mac_address()
         .expect("Failed to read MAC")
         .expect("No mac found");
 
-    frame.payload_mut().copy_from_slice(&data);
-    frame.set_ethertype(EthernetProtocol::Unknown(ETHERCAT_ETHERTYPE));
-    frame.set_dst_addr(beckhoff_mac);
-    frame.set_src_addr(EthernetAddress::from_bytes(&my_mac.bytes()));
+    let mut buffer = frame.create_ethernet_buffer();
 
-    let buffer = frame.into_inner();
+    frame
+        .as_ethernet_frame(my_mac, beckhoff_mac, &mut buffer)
+        .unwrap();
 
     println!(
         "{}",
