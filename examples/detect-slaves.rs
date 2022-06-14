@@ -5,70 +5,26 @@ use ethercrab::{
     EthercatPduFrame,
 };
 use mac_address::{get_mac_address, MacAddress};
+use pnet::{
+    datalink::{self, DataLinkReceiver, DataLinkSender},
+    packet::{ethernet::EthernetPacket, Packet},
+};
 use smoltcp::wire::{EthernetFrame, PrettyPrinter};
-use std::{io, time::Instant};
-
-#[cfg(not(target_os = "windows"))]
-fn main() -> io::Result<()> {
-    use smoltcp::{
-        phy::{Device, RxToken},
-        wire::{EthernetFrame, PrettyPrinter},
-    };
-
-    smol::block_on(async {
-        let medium = smoltcp::phy::Medium::Ethernet;
-        let sock = smoltcp::phy::RawSocket::new("lo", medium).unwrap();
-
-        let mut listener = async_io::Async::<smoltcp::phy::RawSocket>::new(sock).unwrap();
-
-        while let Ok(frame) = listener
-            .read_with_mut(|raw_socket| {
-                let (rx, _tx) = raw_socket
-                    .receive()
-                    .ok_or_else(|| io::ErrorKind::WouldBlock)?;
-
-                let frame = rx
-                    .consume(Instant::now().into(), |buffer| {
-                        let frame =
-                            PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer).to_string();
-
-                        Ok(frame)
-                    })
-                    .map_err(smoltcp_to_io)?;
-
-                Ok(frame)
-            })
-            .await
-        {
-            println!("Recv {}", frame);
-        }
-
-        Ok(())
-    })
-}
+use std::io;
 
 #[cfg(target_os = "windows")]
-fn main() -> io::Result<()> {
-    use pnet::{
-        datalink,
-        packet::{ethernet::EthernetPacket, Packet},
-    };
+const INTERFACE: &str = "\\Device\\NPF_{0D792EC2-0E89-4AB6-BE39-3F41EC42AEA3}";
+#[cfg(not(target_os = "windows"))]
+const INTERFACE: &str = "eth0";
 
-    dbg!(datalink::interfaces());
-
-    let src = get_mac_address()
-        .expect("Failed to read MAC")
-        .expect("No mac found");
-
-    let interface_name = "\\Device\\NPF_{0D792EC2-0E89-4AB6-BE39-3F41EC42AEA3}";
-
+fn get_tx_rx() -> (Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>) {
     let interfaces = datalink::interfaces();
     let interface = interfaces
         .into_iter()
-        .find(|interface| interface.name == interface_name)
+        .find(|interface| dbg!(&interface.name) == INTERFACE)
         .unwrap();
 
-    let (mut tx, mut rx) = match datalink::channel(&interface, Default::default()) {
+    let (tx, rx) = match datalink::channel(&interface, Default::default()) {
         Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("Unhandled channel type"),
         Err(e) => panic!(
@@ -77,9 +33,18 @@ fn main() -> io::Result<()> {
         ),
     };
 
-    let brd = Brd::new(1, 0x0111);
+    (tx, rx)
+}
 
-    let read = broadcast_read(&brd);
+fn main() -> io::Result<()> {
+    let (mut tx, mut rx) = get_tx_rx();
+
+    let mut frame = EthercatPduFrame::new();
+
+    // Values hard coded to match Wireshark capture
+    frame.push_pdu(Pdu::Brd(Brd::new(1, 0x0111)));
+
+    let read = broadcast_read(&frame);
     tx.send_to(&read, None).unwrap().expect("Send");
 
     // TODO: Response packet timeout
@@ -98,13 +63,13 @@ fn main() -> io::Result<()> {
 
                     // TODO: Decode packet, check if it's a BRD with an `idx` of 0
 
-                    let brd_response = brd.parse_response(packet.payload());
+                    let brd_response = frame.parse_response(packet.payload());
 
                     match brd_response {
                         Ok(response) => {
-                            println!("Response! {:?}", response);
+                            println!("Response! {:x?}", response);
                         }
-                        Err(e) => println!("Error: {e:?}"),
+                        Err(e) => println!("Error: {e:x?}"),
                     }
 
                     let frame =
@@ -121,15 +86,10 @@ fn main() -> io::Result<()> {
         }
     }
 
-    Ok(())
+    // Ok(())
 }
 
-fn broadcast_read(brd: &Brd) -> Vec<u8> {
-    let mut frame = EthercatPduFrame::new();
-
-    // Values hard coded to match Wireshark capture
-    frame.push_pdu(Pdu::Brd(brd.clone()));
-
+fn broadcast_read(frame: &EthercatPduFrame) -> Vec<u8> {
     let src = get_mac_address()
         .expect("Failed to read MAC")
         .expect("No mac found");

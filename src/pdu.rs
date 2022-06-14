@@ -2,7 +2,7 @@ use super::LEN_MASK;
 use nom::{
     bytes::complete::{tag, take},
     combinator::{map_res, verify},
-    error::context,
+    error::{context, FromExternalError, ParseError},
     number::complete::{self, le_u16},
     IResult,
 };
@@ -33,6 +33,13 @@ impl Pdu {
         match self {
             Self::Fprd(c) => c.set_has_next(has_next),
             Self::Brd(c) => c.set_has_next(has_next),
+        }
+    }
+
+    pub fn parse_response<'a, 'b>(&'a self, i: &'b [u8]) -> IResult<&'b [u8], Self, PduParseError> {
+        match self {
+            Self::Fprd(_) => todo!(),
+            Self::Brd(brd) => brd.parse_response(i).map(|(i, brd)| (i, Self::Brd(brd))),
         }
     }
 }
@@ -166,26 +173,23 @@ impl Brd {
         self.packed |= flag;
     }
 
-    pub fn parse_response<'a, 'b>(&'a self, i: &'b [u8]) -> Result<Self, PduParseError> {
-        let (i, command) = context(
-            "command",
-            map_res(complete::u8, |b| {
-                if b == (Command::Brd as u8) {
-                    Ok(b)
-                } else {
-                    dbg!(b, Command::Brd as u8);
-                    Err(PduParseError::Command {
-                        received: b
-                            .try_into()
-                            .map_err(|unknown| PduParseError::InvalidCommand(unknown))?,
-                        expected: self
-                            .command
-                            .try_into()
-                            .map_err(|unknown| PduParseError::InvalidCommand(unknown))?,
-                    })
-                }
-            }),
-        )(i)?;
+    pub fn parse_response<'a, 'b>(&'a self, i: &'b [u8]) -> IResult<&'b [u8], Self, PduParseError> {
+        let (i, command) = map_res(complete::u8, |b| {
+            if b == (Command::Brd as u8) {
+                Ok(b)
+            } else {
+                dbg!(b, Command::Brd as u8);
+                Err(PduParseError::Command {
+                    received: b
+                        .try_into()
+                        .map_err(|unknown| PduParseError::InvalidCommand(unknown))?,
+                    expected: self
+                        .command
+                        .try_into()
+                        .map_err(|unknown| PduParseError::InvalidCommand(unknown))?,
+                })
+            }
+        })(i)?;
         let (i, idx) = map_res(complete::u8, |idx| {
             if idx == self.idx {
                 Ok(idx)
@@ -206,21 +210,24 @@ impl Brd {
         let (i, data) = take(data_len)(i)?;
         let (i, working_counter) = le_u16(i)?;
 
-        if !i.is_empty() {
-            return Err(PduParseError::Incomplete);
-        }
+        // if !i.is_empty() {
+        //     return Err(PduParseError::Incomplete);
+        // }
 
-        Ok(Self {
-            command,
-            idx,
-            adp,
-            ado,
-            packed,
-            irq,
-            data: data.to_vec(),
-            working_counter,
-            data_len,
-        })
+        Ok((
+            i,
+            Self {
+                command,
+                idx,
+                adp,
+                ado,
+                packed,
+                irq,
+                data: data.to_vec(),
+                working_counter,
+                data_len,
+            },
+        ))
     }
 
     /// Check if the given packet is in response to self.
@@ -245,17 +252,46 @@ pub enum PduParseError {
         expected: u8,
     },
     Parse(String),
-    Incomplete,
+    // Incomplete,
     InvalidCommand(u8),
+}
+
+// TODO: This is garbage
+impl ParseError<&[u8]> for PduParseError {
+    fn from_error_kind(_input: &[u8], kind: nom::error::ErrorKind) -> Self {
+        Self::Parse(format!("{:?}", kind))
+    }
+
+    fn append(_input: &[u8], kind: nom::error::ErrorKind, other: Self) -> Self {
+        Self::Parse(format!("{:?}: {:?}", other, kind))
+    }
+}
+
+// TODO: This is garbage
+impl FromExternalError<&[u8], PduParseError> for PduParseError {
+    fn from_external_error(_input: &[u8], _kind: nom::error::ErrorKind, e: PduParseError) -> Self {
+        e
+    }
 }
 
 impl From<nom::Err<nom::error::VerboseError<&[u8]>>> for PduParseError {
     fn from(e: nom::Err<nom::error::VerboseError<&[u8]>>) -> Self {
-        PduParseError::Parse(e.to_string())
+        match e.clone() {
+            nom::Err::Incomplete(_) => todo!(),
+            nom::Err::Error(e) => {
+                for (slice, error) in e.errors {
+                    println!("Failed to parse: {error:?}\n{slice:02x?}");
+                }
+            }
+            nom::Err::Failure(_) => todo!(),
+        }
+
+        Self::Parse(e.to_string())
     }
 }
 
 #[derive(Debug)]
+// TODO: Derive packed_struct::PrimitiveEnum_u8
 pub enum Command {
     Fprd = 0x04,
     Brd = 0x07,
