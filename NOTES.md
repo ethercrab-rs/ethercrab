@@ -46,3 +46,13 @@ Go to `Online` tab of any device
   ```
 
 - `nmake` only works in the "Visual Studio Powershell" or whatever, not vanilla powershell.
+
+# Windows and L2 sockets
+
+<https://github.com/rustasync/team/issues/15>
+
+Windows doesn't support L2 networking out of the box - a driver is required, e.g. libpcap or WinPcap
+
+Because libpnet isn't really conducive to async, we pretty much can't do async on Windows at all.
+
+Let's just use async stuff with an "in flight packets" queue for now
