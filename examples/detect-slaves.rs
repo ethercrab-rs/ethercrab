@@ -103,11 +103,9 @@ fn main() -> io::Result<()> {
 
                     println!("Response");
 
-                    // let buffer = packet.packet();
+                    let brd_response = pdu.from_ethercat_frame(packet.payload());
 
-                    // // TODO: Decode packet, check if it's a BRD with an `idx` of 0
-
-                    // let brd_response = pdu.parse_response(packet.payload());
+                    dbg!(brd_response.unwrap().1);
 
                     // match brd_response {
                     //     Ok(response) => {
