@@ -18,6 +18,7 @@ pnet = { version = "0.31.0", features = ["pnet_datalink", "std"] }
 nom = "7.1.1"
 packed_struct = { version = "0.10.0", default-features = false }
 cookie-factory = { version = "0.3.2", default-features = false }
+heapless = "0.7.14"
 
 [dev-dependencies]
 async-io = "1.6.0"

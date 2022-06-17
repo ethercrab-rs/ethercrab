@@ -86,9 +86,6 @@ impl<const N: usize> Pdu<N> {
     pub fn from_ethercat_frame<'a>(&self, i: &'a [u8]) -> IResult<&'a [u8], Option<Self>> {
         let (i, _header) = FrameHeader::parse_pdu(i)?;
 
-        dbg!(_header.len());
-        dbg!(_header.protocol_type());
-
         let (i, command_code) = map_res(nom::number::complete::u8, CommandCode::try_from)(i)?;
 
         let (i, index) = nom::number::complete::u8(i)?;
@@ -233,6 +230,7 @@ impl TryFrom<u8> for CommandCode {
 // TODO: Fix endianness
 #[packed_struct(size_bytes = "2", bit_numbering = "msb0", endian = "lsb")]
 pub struct PduFlags {
+    /// Data length of this PDU.
     #[packed_field(bits = "0..=10")]
     length: u16,
     #[packed_field(bits = "11..=13")]
@@ -250,7 +248,7 @@ pub struct PduFlags {
 }
 
 impl PduFlags {
-    const fn with_len(len: u16) -> Self {
+    pub const fn with_len(len: u16) -> Self {
         Self {
             length: len,
             _reserved: 0,
