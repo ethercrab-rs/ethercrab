@@ -19,3 +19,24 @@ TODO: Send a `BRD` with various devices and check WKC.
 
 Master sets `idx` to a locally unique value and waits for a returned PDU with that same index or
 until a timeout occurrs.
+
+# CoE
+
+CoE uses mailbox PDUs with address offset (ADO) of 0x1000-0x1FFF. ETG 1000.6 Table 62 describes this
+data section.
+
+Wireshark magically parses a PDU as CoE if the address is in that range, otherwise it parses it as a
+garbage raw data read.
+
+Frame structure for CoE goes
+
+- `Ethernet II`
+- EtherCAT frame
+- Array of ethercat datagrams
+  - Datagram header is common
+  - Datagram data can be a register read or mailbox (CoE, etc) or PDU, the latter two I think chosen
+    using the SyncManager addresses - need to confirm
+
+# Magic register values
+
+ETG 1000.4 has tables holding a bunch of magic addresses that do certain things (SII, DC, etc)

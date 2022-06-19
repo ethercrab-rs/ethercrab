@@ -40,13 +40,13 @@ struct Datagram {
     address: u16,
     packed: u16,
     irq: u16,
-    data: Vec<u8>,
+    // data: Vec<u8>,
     working_counter: u16,
 }
 
 impl Datagram {
     fn size_bytes(&self) -> u16 {
-        self.data.len() as u16 + 12
+        (self.packed & 0b0000_0111_1111_1111) + 12
     }
 }
 
@@ -67,7 +67,7 @@ fn make_register_datagram() -> Result<Vec<u8>, GenError> {
             len
         },
         irq: 0,
-        data,
+        // data,
         // Always zero when sending from master
         working_counter: 0,
     };
@@ -96,7 +96,8 @@ fn make_register_datagram() -> Result<Vec<u8>, GenError> {
     let working = gen_simple(le_u16(datagram.address), working)?;
     let working = gen_simple(le_u16(datagram.packed), working)?;
     let working = gen_simple(le_u16(datagram.irq), working)?;
-    let working = gen_simple(skip(datagram.data.len()), working)?;
+    // let working = gen_simple(skip(datagram.data.len()), working)?;
+    let working = gen_simple(skip(data.len()), working)?;
     let working = gen_simple(le_u16(datagram.working_counter), working)?;
 
     dbg!(&buf);
@@ -123,8 +124,9 @@ fn make_mailbox_datagram() -> Result<Vec<u8>, GenError> {
     let data = [0x12, 0x34];
 
     let mailbox = Mailbox {
-        data_length: data.len() as u16,
-        station_address: 0x1001,
+        // data_length: data.len() as u16,
+        data_length: 64,
+        station_address: 0x0000,
         priority: 0x02 << 6,
         packed: {
             // CoE
@@ -135,30 +137,24 @@ fn make_mailbox_datagram() -> Result<Vec<u8>, GenError> {
         data: data.to_vec(),
     };
 
-    let mut mailbox_buf = Vec::new();
-    mailbox_buf.resize(dbg!(mailbox.size_bytes() as usize), 0x00u8);
-
-    let working = gen_simple(le_u16(mailbox.data_length), mailbox_buf.as_mut_slice())?;
-    let working = gen_simple(le_u16(mailbox.station_address), working)?;
-    let working = gen_simple(le_u8(mailbox.priority), working)?;
-    let working = gen_simple(le_u8(mailbox.packed), working)?;
-    let working = gen_simple(slice(mailbox.data), working)?;
-
     // ---
 
     let datagram = Datagram {
-        command: CommandCode::Fprd as u8,
+        command: CommandCode::Fpwr as u8,
         index: 0,
         // Zero when sending BRD, incremented by all slaves
-        auto_inc: 0,
-        address: 0x1001,
+        // ADP
+        auto_inc: 0x1001,
+        // ADO
+        // 0x1000 or above writes into mailbox and magically makes Wireshark parse as mailbox PDU
+        address: 0x1000,
         packed: {
-            let len = mailbox_buf.len() as u16;
+            let len = mailbox.size_bytes();
             // No next frame; everything is zeros apart from length
             len
         },
         irq: 0,
-        data: mailbox_buf,
+        // data: mailbox_buf,
         // Always zero when sending from master
         working_counter: 0,
     };
@@ -171,7 +167,7 @@ fn make_mailbox_datagram() -> Result<Vec<u8>, GenError> {
 
     let frame_len = datagram.size_bytes();
 
-    let frame_header = EthercatFrameHeader::mailbox(frame_len);
+    let frame_header = EthercatFrameHeader::pdu(frame_len);
 
     println!("{:016b}", frame_header.0);
 
@@ -185,7 +181,14 @@ fn make_mailbox_datagram() -> Result<Vec<u8>, GenError> {
     let working = gen_simple(le_u16(datagram.address), working)?;
     let working = gen_simple(le_u16(datagram.packed), working)?;
     let working = gen_simple(le_u16(datagram.irq), working)?;
-    let working = gen_simple(skip(datagram.data.len()), working)?;
+
+    // Mailbox body
+    let working = gen_simple(le_u16(mailbox.data_length), working)?;
+    let working = gen_simple(le_u16(mailbox.station_address), working)?;
+    let working = gen_simple(le_u8(mailbox.priority), working)?;
+    let working = gen_simple(le_u8(mailbox.packed), working)?;
+    let working = gen_simple(skip(data.len()), working)?;
+
     let working = gen_simple(le_u16(datagram.working_counter), working)?;
 
     dbg!(&buf);
@@ -194,7 +197,8 @@ fn make_mailbox_datagram() -> Result<Vec<u8>, GenError> {
 }
 
 fn write_frame(save: &mut pcap::Savefile, data: Vec<u8>) {
-    let beckhoff_mac = MacAddress::new([0x01, 0x01, 0x05, 0x01, 0x00, 0x00]);
+    // let beckhoff_mac = MacAddress::new([0x01, 0x01, 0x05, 0x01, 0x00, 0x00]);
+    let beckhoff_mac = MacAddress::new([0xff; 6]);
 
     let my_mac = get_mac_address()
         .expect("Failed to read MAC")

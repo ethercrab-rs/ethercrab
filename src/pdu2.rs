@@ -146,6 +146,11 @@ enum Command {
         /// Logical address.
         address: u32,
     },
+
+    Fpwr {
+        /// Configured station address.
+        address: u16,
+    },
 }
 
 impl Command {
@@ -155,6 +160,8 @@ impl Command {
             Self::Fprd { .. } => CommandCode::Fprd,
             Self::Brd { .. } => CommandCode::Brd,
             Self::Lrd { .. } => CommandCode::Lrd,
+
+            Self::Fpwr { .. } => CommandCode::Fpwr,
         }
     }
 
@@ -163,7 +170,7 @@ impl Command {
 
         let buf = match self {
             Command::Aprd { address } => gen_simple(le_i16(*address), buf)?,
-            Command::Fprd { address } | Command::Brd { address } => {
+            Command::Fprd { address } | Command::Fpwr { address } | Command::Brd { address } => {
                 gen_simple(le_u16(*address), buf)?
             }
             Command::Lrd { address } => gen_simple(le_u32(*address), buf)?,
@@ -177,7 +184,7 @@ impl Command {
             // Ignore addresses for autoincrement services; the master sends zero and any slave
             // response is non-zero.
             Command::Aprd { .. } | Command::Brd { .. } => self.code() == other.code(),
-            Command::Fprd { .. } => self == other,
+            Command::Fprd { .. } | Command::Fpwr { .. } => self == other,
             Command::Lrd { .. } => self == other,
         }
     }
@@ -190,6 +197,8 @@ pub enum CommandCode {
     Fprd = 0x04,
     Brd = 0x07,
     Lrd = 0x0A,
+
+    Fpwr = 0x05,
 }
 
 impl CommandCode {
@@ -208,6 +217,10 @@ impl CommandCode {
             Self::Lrd => map(nom::number::complete::le_u32, |address| Command::Lrd {
                 address,
             })(i),
+
+            Self::Fpwr => map(nom::number::complete::le_u16, |address| Command::Fpwr {
+                address,
+            })(i),
         }
     }
 }
@@ -221,6 +234,8 @@ impl TryFrom<u8> for CommandCode {
             0x04 => Ok(Self::Fprd),
             0x07 => Ok(Self::Brd),
             0x0A => Ok(Self::Lrd),
+
+            0x05 => Ok(Self::Fpwr),
             _ => Err(()),
         }
     }
