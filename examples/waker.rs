@@ -9,7 +9,7 @@ fn main() {
     let local_ex = LocalExecutor::new();
 
     futures_lite::future::block_on(local_ex.run(async {
-        let mut client = Client::default();
+        let client = Client::default();
 
         let mut client2 = client.clone();
 
@@ -27,17 +27,9 @@ fn main() {
     }));
 }
 
-struct Pdu {
-    // TODO
-}
-
 #[derive(Clone)]
 struct Client {
-    // wakers: heapless::FnvIndexMap<u8, Waker, 16>,
-    // pdus: heapless::FnvIndexMap<u8, Pdu, 16>,
     waker: Rc<Cell<Option<Waker>>>,
-
-    // TODO: lmao
     frame: Rc<Cell<Option<u8>>>,
 }
 
@@ -52,15 +44,6 @@ impl Default for Client {
 
 impl Client {
     pub async fn brd<T>(&self, address: u16) -> () {
-        // Create PDU
-
-        // Push PDU into output queue
-
-        // Wait for response (TODO: timeout)
-
-        // self.wait_for_response(0).await;
-
-        println!("Before");
         futures_lite::future::poll_fn(|ctx| {
             println!("poll_fn");
 
@@ -76,32 +59,10 @@ impl Client {
             }
         })
         .await;
-        println!("After");
-
-        // todo!()
     }
-
-    // pub fn next_frame(&mut self) -> Option<&[u8]> {
-    //     // Check if we have any ethercat frames to send
-
-    //     // If we do, grab first one in list and return it
-
-    //     // TODO: Use bbqueue
-    // }
 
     pub fn parse_response_ethernet_frame(&mut self, ethernet_frame_payload: &[u8]) {
         println!("Got ethernet frame");
-
-        // Parse frame
-
-        // If we got a frame, see if there's a waker in the map
-
-        // If there's a waker, wake it
-
-        // Send frame to whatever waited for it
-
-        // dbg!(&self.waker);
-        dbg!(&self.frame);
 
         // Frame is ready; tell everyone about it
         if let Some(waker) = self.waker.take() {
@@ -110,8 +71,4 @@ impl Client {
             waker.wake()
         }
     }
-
-    // fn wait_for_response<'a>(&'a mut self, idx: u8) -> ReplyFutureThingy<'a> {
-    //     ReplyFutureThingy { idx, client: self }
-    // }
 }
