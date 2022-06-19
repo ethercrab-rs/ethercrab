@@ -3,7 +3,7 @@
 use chrono::Utc;
 use cookie_factory::{
     bytes::{le_u16, le_u8},
-    combinator::skip,
+    combinator::{skip, slice},
     gen_simple, GenError, GenResult,
 };
 use ethercrab::pdu2::CommandCode;
@@ -104,19 +104,96 @@ fn make_register_datagram() -> Result<Vec<u8>, GenError> {
     Ok(buf)
 }
 
-fn make_mailbox_datagram() {
-    //
+#[derive(Debug)]
+struct Mailbox {
+    data_length: u16,
+    station_address: u16,
+    priority: u8,
+    packed: u8,
+    data: Vec<u8>,
 }
 
-fn main() {
-    // let mut frame = EthercatPduFrame::new();
+impl Mailbox {
+    fn size_bytes(&self) -> u16 {
+        6 + self.data_length
+    }
+}
 
-    // // Values hard coded to match Wireshark capture
-    // frame.push_pdu(Pdu::Fprd(Fprd::new(8, 0x03e9, 0x0111)));
-    // frame.push_pdu(Pdu::Fprd(Fprd::new(8, 0x03e9, 0x0130)));
+fn make_mailbox_datagram() -> Result<Vec<u8>, GenError> {
+    let data = [0x12, 0x34];
 
-    let data = make_register_datagram().unwrap();
+    let mailbox = Mailbox {
+        data_length: data.len() as u16,
+        station_address: 0x1001,
+        priority: 0x02 << 6,
+        packed: {
+            // CoE
+            let ty = 0x03;
+            let cnt = 0;
+            ty & 0x0f
+        },
+        data: data.to_vec(),
+    };
 
+    let mut mailbox_buf = Vec::new();
+    mailbox_buf.resize(dbg!(mailbox.size_bytes() as usize), 0x00u8);
+
+    let working = gen_simple(le_u16(mailbox.data_length), mailbox_buf.as_mut_slice())?;
+    let working = gen_simple(le_u16(mailbox.station_address), working)?;
+    let working = gen_simple(le_u8(mailbox.priority), working)?;
+    let working = gen_simple(le_u8(mailbox.packed), working)?;
+    let working = gen_simple(slice(mailbox.data), working)?;
+
+    // ---
+
+    let datagram = Datagram {
+        command: CommandCode::Fprd as u8,
+        index: 0,
+        // Zero when sending BRD, incremented by all slaves
+        auto_inc: 0,
+        address: 0x1001,
+        packed: {
+            let len = mailbox_buf.len() as u16;
+            // No next frame; everything is zeros apart from length
+            len
+        },
+        irq: 0,
+        data: mailbox_buf,
+        // Always zero when sending from master
+        working_counter: 0,
+    };
+
+    let mut buf = Vec::new();
+    // +2 for frame header
+    buf.resize(dbg!(datagram.size_bytes() as usize + 2), 0x00u8);
+
+    // ---
+
+    let frame_len = datagram.size_bytes();
+
+    let frame_header = EthercatFrameHeader::mailbox(frame_len);
+
+    println!("{:016b}", frame_header.0);
+
+    let working = gen_simple(le_u16(frame_header.0), buf.as_mut_slice())?;
+
+    // ---
+
+    let working = gen_simple(le_u8(datagram.command), working)?;
+    let working = gen_simple(le_u8(datagram.index), working)?;
+    let working = gen_simple(le_u16(datagram.auto_inc), working)?;
+    let working = gen_simple(le_u16(datagram.address), working)?;
+    let working = gen_simple(le_u16(datagram.packed), working)?;
+    let working = gen_simple(le_u16(datagram.irq), working)?;
+    let working = gen_simple(skip(datagram.data.len()), working)?;
+    let working = gen_simple(le_u16(datagram.working_counter), working)?;
+
+    dbg!(&buf);
+
+    Ok(buf)
+}
+
+fn write_frame(save: &mut pcap::Savefile, data: Vec<u8>) {
     let beckhoff_mac = MacAddress::new([0x01, 0x01, 0x05, 0x01, 0x00, 0x00]);
 
     let my_mac = get_mac_address()
@@ -128,10 +205,6 @@ fn main() {
     buf.resize(buf_len, 0x00u8);
 
     dbg!(data.len());
-
-    // frame
-    //     .as_ethernet_frame(my_mac, beckhoff_mac, &mut buf)
-    //     .unwrap();
 
     let mut frame = EthernetFrame::new_checked(buf).expect("Frame");
     frame.payload_mut().copy_from_slice(&data);
@@ -161,6 +234,10 @@ fn main() {
         data: &buf,
     };
 
+    save.write(&packet);
+}
+
+fn main() {
     let cap = Capture::dead(Linktype::ETHERNET).expect("Open capture");
 
     let name = std::file!().replace(".rs", ".pcapng");
@@ -169,15 +246,19 @@ fn main() {
 
     let mut save = cap.savefile(&path).expect("Open save file");
 
-    save.write(&packet);
+    let register_data = make_register_datagram().unwrap();
+    write_frame(&mut save, register_data);
+    let mailbox_data = make_mailbox_datagram().unwrap();
+    write_frame(&mut save, mailbox_data);
+
     drop(save);
 
-    // ---
+    // // ---
 
-    let mut cap = Capture::from_file(&path).unwrap();
+    // let mut cap = Capture::from_file(&path).unwrap();
 
-    let _packet = cap.next();
+    // let _packet = cap.next();
 
-    // dbg!(&packet);
-    // println!("{:x?}", packet.unwrap().data);
+    // // dbg!(&packet);
+    // // println!("{:x?}", packet.unwrap().data);
 }
