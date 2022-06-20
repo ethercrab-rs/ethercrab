@@ -22,6 +22,13 @@ An EtherCAT master written in pure Rust.
   Current test hardware consists of a Kollmorgen AKD servo drive and three Leadshine EL7 servo
   drives
 
+## Future goals
+
+These may change at any time.
+
+- [ ] Integration with LinuxCNC as a HAL component.
+- [ ] A multiplatform configuration/debugging/management GUI
+
 ## Sponsors
 
 Thank you to everyone who has donated test equipment, time or money to the EtherCrab project! To
