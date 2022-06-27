@@ -156,11 +156,13 @@ enum Command {
 impl Command {
     const fn code(&self) -> CommandCode {
         match self {
+            // Reads
             Self::Aprd { .. } => CommandCode::Aprd,
             Self::Fprd { .. } => CommandCode::Fprd,
             Self::Brd { .. } => CommandCode::Brd,
             Self::Lrd { .. } => CommandCode::Lrd,
 
+            // Writes
             Self::Fpwr { .. } => CommandCode::Fpwr,
         }
     }
@@ -184,8 +186,7 @@ impl Command {
             // Ignore addresses for autoincrement services; the master sends zero and any slave
             // response is non-zero.
             Command::Aprd { .. } | Command::Brd { .. } => self.code() == other.code(),
-            Command::Fprd { .. } | Command::Fpwr { .. } => self == other,
-            Command::Lrd { .. } => self == other,
+            _ => self == other,
         }
     }
 }
@@ -193,11 +194,13 @@ impl Command {
 /// Broadcast or configured station addressing.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CommandCode {
+    // Reads
     Aprd = 0x01,
     Fprd = 0x04,
     Brd = 0x07,
     Lrd = 0x0A,
 
+    // Writes
     Fpwr = 0x05,
 }
 
@@ -309,7 +312,8 @@ impl FrameHeader {
         }
     }
 
-    fn len(&self) -> u16 {
+    /// The length of the payload contained in this frame
+    fn payload_len(&self) -> u16 {
         self.0 & LEN_MASK
     }
 
@@ -340,7 +344,7 @@ mod tests {
 
         let header = FrameHeader(raw);
 
-        assert_eq!(header.len(), 0x28);
+        assert_eq!(header.payload_len(), 0x28);
         assert_eq!(header.protocol_type(), 0x01);
     }
 }
