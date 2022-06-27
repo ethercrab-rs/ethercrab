@@ -92,10 +92,9 @@ fn main() -> io::Result<()> {
     loop {
         match rx.next() {
             Ok(packet) => {
-                // TODO: Use smoltcp
-                let packet = EthernetPacket::new(packet).unwrap();
+                let packet = EthernetFrame::new_unchecked(packet);
 
-                if packet.get_ethertype() == pnet::packet::ethernet::EtherType::new(0x88a4) {
+                if packet.ethertype() == EthernetProtocol::Unknown(0x88a4) {
                     // if packet.get_destination() != src.bytes() {
                     //     println!("Packet is not for us");
                     //     continue;

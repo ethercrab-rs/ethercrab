@@ -167,6 +167,7 @@ impl Command {
         }
     }
 
+    /// Write command and address into buffer, returning the remaining buffer.
     fn as_bytes<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
         let buf = gen_simple(le_u8(self.code() as u8), buf)?;
 
