@@ -8,7 +8,7 @@ use core::mem;
 use nom::{
     bytes::complete::take,
     combinator::{map, map_res, verify},
-    error::ErrorKind,
+    error::{context, ErrorKind},
     IResult,
 };
 use packed_struct::{prelude::*, types::bits::Bits, PackedStructInfo};
@@ -19,12 +19,12 @@ use smoltcp::wire::EthernetFrame;
 #[derive(Debug)]
 pub struct Pdu<const N: usize> {
     command: Command,
-    index: u8,
-    register_address: u16,
+    pub index: u8,
+    pub register_address: u16,
     flags: PduFlags,
     irq: u16,
-    data: [u8; N],
-    working_counter: u16,
+    pub data: heapless::Vec<u8, N>,
+    pub working_counter: u16,
 }
 
 impl<const N: usize> Pdu<N> {
@@ -38,7 +38,7 @@ impl<const N: usize> Pdu<N> {
             register_address,
             flags: PduFlags::with_len(N as u16),
             irq: 0,
-            data: [0u8; N],
+            data: heapless::Vec::new(),
             working_counter: 0,
         }
     }
@@ -52,7 +52,7 @@ impl<const N: usize> Pdu<N> {
         let buf = gen_simple(le_u16(self.register_address), buf)?;
         let buf = gen_simple(le_u16(u16::from_le_bytes(self.flags.pack().unwrap())), buf)?;
         let buf = gen_simple(le_u16(self.irq), buf)?;
-        let buf = gen_simple(slice(self.data), buf)?;
+        let buf = gen_simple(slice(&self.data), buf)?;
         // Working counter is always zero when sending
         let buf = gen_simple(le_u16(0u16), buf)?;
 
@@ -124,6 +124,37 @@ impl<const N: usize> Pdu<N> {
                 data,
                 working_counter,
             }),
+        ))
+    }
+
+    // Don't validate index, type, etc, against self
+    pub fn from_ethercat_frame_unchecked(i: &[u8]) -> IResult<&[u8], Self> {
+        // TODO: Split out frame header parsing when we want to support multiple PDUs. This should
+        // also let us do better with the const generics.
+        let (i, _header) = FrameHeader::parse_pdu(i)?;
+
+        let (i, command_code) = map_res(nom::number::complete::u8, CommandCode::try_from)(i)?;
+
+        let (i, index) = nom::number::complete::u8(i)?;
+
+        let (i, command) = command_code.parse_address(i)?;
+        let (i, register_address) = nom::number::complete::le_u16(i)?;
+        let (i, flags) = map_res(take(2usize), PduFlags::unpack_from_slice)(i)?;
+        let (i, irq) = nom::number::complete::le_u16(i)?;
+        let (i, data) = map_res(take(flags.length), |slice: &[u8]| slice.try_into())(i)?;
+        let (i, working_counter) = nom::number::complete::le_u16(i)?;
+
+        Ok((
+            i,
+            Self {
+                command,
+                index,
+                register_address,
+                flags,
+                irq,
+                data,
+                working_counter,
+            },
         ))
     }
 }
