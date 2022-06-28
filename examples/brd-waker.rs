@@ -24,7 +24,10 @@ use std::thread;
 use std::{io, path::PathBuf};
 
 #[cfg(target_os = "windows")]
-const INTERFACE: &str = "\\Device\\NPF_{0D792EC2-0E89-4AB6-BE39-3F41EC42AEA3}";
+// ASRock NIC
+// const INTERFACE: &str = "\\Device\\NPF_{0D792EC2-0E89-4AB6-BE39-3F41EC42AEA3}";
+// USB NIC
+const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
 #[cfg(not(target_os = "windows"))]
 const INTERFACE: &str = "eth0";
 
@@ -37,6 +40,8 @@ fn get_tx_rx() -> (Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>) {
         .into_iter()
         .find(|interface| dbg!(&interface.name) == INTERFACE)
         .unwrap();
+
+    dbg!(interface.mac);
 
     let (tx, rx) = match datalink::channel(&interface, Default::default()) {
         Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
@@ -54,6 +59,14 @@ fn main() {
     let local_ex = LocalExecutor::new();
 
     let (mut tx, mut rx) = get_tx_rx();
+
+    // TODO: Hard code to some value. EtherCAT doesn't care about MAC if broadcast is always used
+    let my_mac_addr = EthernetAddress::from_bytes(
+        &get_mac_address()
+            .expect("Failed to read MAC")
+            .expect("No mac found")
+            .bytes(),
+    );
 
     futures_lite::future::block_on(local_ex.run(async {
         let client = Arc::new(Client::<16, 16>::default());
@@ -74,11 +87,18 @@ fn main() {
                         let packet = EthernetFrame::new_unchecked(packet);
 
                         if packet.ethertype() == EthernetProtocol::Unknown(0x88a4) {
-                            println!("EtherCAT packet received");
+                            println!(
+                                "Received EtherCAT packet. Source MAC {}, dest MAC {}",
+                                packet.src_addr(),
+                                packet.dst_addr()
+                            );
 
-                            {
-                                client2.parse_response_ethernet_frame(packet.payload());
+                            // Ignore broadcast packets sent from self
+                            if packet.src_addr() == my_mac_addr {
+                                continue;
                             }
+
+                            client2.parse_response_ethernet_frame(packet.payload());
                         }
                     }
                     Err(e) => {
@@ -105,19 +125,8 @@ struct Client<const N: usize, const D: usize> {
     idx: AtomicU8,
 }
 
-// FIXME: This causes interleaved debug output among other things. Not cool.
-//
-//
-//
-//
-// INCREDIBLY BROKEN. STOP USING.
-//
-//
-//
-//
-//
-// unsafe impl<const N: usize, const D: usize> Send for Client<D, N> {}
-// unsafe impl<const N: usize, const D: usize> Sync for Client<D, N> {}
+// TODO: Make sure this is ok
+unsafe impl<const N: usize, const D: usize> Sync for Client<D, N> {}
 
 impl<const N: usize, const D: usize> Default for Client<N, D> {
     fn default() -> Self {
@@ -171,7 +180,9 @@ impl<const N: usize, const D: usize> Client<N, D> {
         })
         .await;
 
-        dbg!(res.data.as_slice()).try_into().map_err(|e| {
+        println!("Raw data {:?}", res.data.as_slice());
+
+        res.data.as_slice().try_into().map_err(|e| {
             println!("{:?}", e);
             ()
         })
@@ -232,7 +243,7 @@ fn pdu_to_ethernet<const N: usize>(pdu: &Pdu<N>) -> EthernetFrame<Vec<u8>> {
         .expect("No mac found");
 
     // Broadcast
-    let dest = MacAddress::default();
+    let dest = EthernetAddress::BROADCAST;
 
     let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(pdu.frame_buf_len());
 
@@ -243,7 +254,7 @@ fn pdu_to_ethernet<const N: usize>(pdu: &Pdu<N>) -> EthernetFrame<Vec<u8>> {
 
     pdu.as_ethercat_frame(&mut frame.payload_mut()).unwrap();
     frame.set_src_addr(EthernetAddress::from_bytes(&src.bytes()));
-    frame.set_dst_addr(EthernetAddress::from_bytes(&dest.bytes()));
+    frame.set_dst_addr(dest);
     // TODO: Const
     frame.set_ethertype(EthernetProtocol::Unknown(0x88a4));
 
