@@ -40,3 +40,11 @@ Frame structure for CoE goes
 # Magic register values
 
 ETG 1000.4 has tables holding a bunch of magic addresses that do certain things (SII, DC, etc)
+
+# MAC addressing
+
+- EtherCAT doesn't really care about MAC address.
+- Master MAC can be anything as long as we use broadcast everywhere
+- The first slave connected seems to increment the first MAC octet by 2. Observed both from SOEM and
+  TwinCAT. I can't find anything in the spec about this behaviour, but we can use it to filter out
+  self-received packets.
