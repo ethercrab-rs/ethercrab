@@ -1,5 +1,6 @@
 // pub mod pdu;
 pub mod pdu2;
+pub mod register;
 
 use mac_address::MacAddress;
 use nom::{bytes::complete::take, multi::many1, number::complete::le_u16};
