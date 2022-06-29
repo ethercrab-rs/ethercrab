@@ -80,6 +80,7 @@ fn main() {
         //     })
         //     .detach();
 
+        // MSRV: Use scoped threads in 1.63
         let handle = thread::spawn(move || {
             loop {
                 match rx.next() {
@@ -120,8 +121,8 @@ fn main() {
 
 // #[derive(Clone)]
 struct Client<const N: usize, const D: usize> {
-    wakers: RefCell<FnvIndexMap<u8, Waker, N>>,
-    frames: RefCell<FnvIndexMap<u8, Pdu<D>, N>>,
+    wakers: RefCell<[Option<Waker>; N]>,
+    frames: RefCell<[Option<Pdu<D>>; N]>,
     idx: AtomicU8,
 }
 
@@ -131,8 +132,8 @@ unsafe impl<const N: usize, const D: usize> Sync for Client<D, N> {}
 impl<const N: usize, const D: usize> Default for Client<N, D> {
     fn default() -> Self {
         Self {
-            wakers: RefCell::new(FnvIndexMap::new()),
-            frames: RefCell::new(FnvIndexMap::new()),
+            wakers: RefCell::new([(); N].map(|_| None)),
+            frames: RefCell::new([(); N].map(|_| None)),
             idx: AtomicU8::new(0),
         }
     }
@@ -160,20 +161,17 @@ impl<const N: usize, const D: usize> Client<N, D> {
             .expect("Send");
 
         let res = futures_lite::future::poll_fn(|ctx| {
-            let removed = { self.frames.borrow_mut().remove(&idx) };
+            let removed = self.frames.borrow_mut()[idx as usize].take();
 
-            println!("poll_fn idx {} {}", idx, removed.is_some());
+            println!("poll_fn idx {} has data {:?}", idx, removed);
 
             if let Some(frame) = removed {
                 println!("poll_fn -> Ready, data {:?}", frame.data);
                 Poll::Ready(frame)
             } else {
-                self.wakers
-                    .borrow_mut()
-                    .insert(idx, ctx.waker().clone())
-                    .expect("Failed to insert waker");
+                self.wakers.borrow_mut()[idx as usize].replace(ctx.waker().clone());
 
-                println!("poll_fn -> Pending");
+                println!("poll_fn -> Pending, waker #{idx}");
 
                 Poll::Pending
             }
@@ -188,11 +186,8 @@ impl<const N: usize, const D: usize> Client<N, D> {
         })
     }
 
+    // TODO: Return a result if index is out of bounds, or we don't have a waiting packet
     pub fn parse_response_ethernet_frame(&self, ethernet_frame_payload: &[u8]) {
-        // let idx = ethernet_frame_payload[0];
-
-        println!("Parse response {:?}", ethernet_frame_payload);
-
         let (rest, pdu) =
             Pdu::<D>::from_ethercat_frame_unchecked(&ethernet_frame_payload).expect("Packet parse");
 
@@ -201,38 +196,21 @@ impl<const N: usize, const D: usize> Client<N, D> {
             println!("{} remaining bytes! (maybe just padding)", rest.len());
         }
 
-        println!("Received PDU {:#?}", pdu);
         let idx = pdu.index;
 
-        // println!("Got ethernet frame {idx}");
-
-        let waker = { self.wakers.borrow_mut().remove(&idx) };
+        let waker = self.wakers.borrow_mut()[idx as usize].take();
 
         println!("Looking for waker #{idx}: {:?}", waker);
 
         // Frame is ready; tell everyone about it
         if let Some(waker) = waker {
-            println!("I have a waker {}, data {:?}", idx, pdu.data);
-
             // TODO: Validate PDU against the one stored with the waker.
 
-            self.frames
-                .borrow_mut()
-                .insert(idx, pdu)
-                // .get_mut(&idx)
-                // .map(|old| {
-                //     old.data = pdu.data;
-                //     old.register_address = pdu.register_address;
-                //     old.working_counter = pdu.working_counter;
-                // })
-                .expect("Failed to insert");
+            println!("Waker #{idx} found. Insert PDU {:?}", pdu);
+
+            self.frames.borrow_mut()[idx as usize].replace(pdu);
             waker.wake()
         }
-    }
-
-    // DELETEME
-    pub fn current_idx(&self) -> u8 {
-        self.idx.load(Ordering::Relaxed).saturating_sub(1)
     }
 }
 
