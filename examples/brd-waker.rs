@@ -1,27 +1,16 @@
 //! Similar to waker-list, it keeps a list of wakers, but this time will send a `BRD` service and
 //! listen for its response by parsing the frame.
 
-use chrono::Utc;
-use core::cell::{Cell, RefCell};
-use core::mem;
-use core::sync::atomic::{AtomicU8, Ordering};
+use core::cell::RefCell;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use core::task::Poll;
 use core::task::Waker;
-use core::time::Duration;
 use ethercrab::pdu2::Pdu;
-use heapless::FnvIndexMap;
-use mac_address::{get_mac_address, MacAddress};
-use pcap::PacketHeader;
-use pnet::{
-    datalink::{self, DataLinkReceiver, DataLinkSender},
-    packet::{ethernet::EthernetPacket, Packet},
-};
+use mac_address::get_mac_address;
+use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smol::LocalExecutor;
 use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol, PrettyPrinter};
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::{io, path::PathBuf};
+use std::sync::Arc;
 
 #[cfg(target_os = "windows")]
 // ASRock NIC
@@ -71,7 +60,7 @@ fn main() {
     futures_lite::future::block_on(local_ex.run(async {
         let client = Arc::new(Client::<16, 16>::default());
 
-        let mut client2 = client.clone();
+        let client2 = client.clone();
         // let mut client3 = client.clone();
 
         // local_ex
@@ -81,7 +70,7 @@ fn main() {
         //     .detach();
 
         // MSRV: Use scoped threads in 1.63
-        let handle = thread::spawn(move || {
+        smol::spawn(smol::unblock(move || {
             loop {
                 match rx.next() {
                     Ok(packet) => {
@@ -108,14 +97,11 @@ fn main() {
                     }
                 }
             }
-        });
+        }))
+        .detach();
 
-        async_io::Timer::after(Duration::from_millis(1000)).await;
         let res = client.brd::<[u8; 1]>(0x0000, &mut tx).await.unwrap();
         println!("RESULT: {:?}", res);
-        async_io::Timer::after(Duration::from_millis(1000)).await;
-
-        handle.join().unwrap();
     }));
 }
 
@@ -123,7 +109,7 @@ fn main() {
 struct Client<const N: usize, const D: usize> {
     wakers: RefCell<[Option<Waker>; N]>,
     frames: RefCell<[Option<Pdu<D>>; N]>,
-    idx: AtomicU8,
+    idx: AtomicUsize,
 }
 
 // TODO: Make sure this is ok
@@ -134,7 +120,7 @@ impl<const N: usize, const D: usize> Default for Client<N, D> {
         Self {
             wakers: RefCell::new([(); N].map(|_| None)),
             frames: RefCell::new([(); N].map(|_| None)),
-            idx: AtomicU8::new(0),
+            idx: AtomicUsize::new(0),
         }
     }
 }
@@ -147,8 +133,14 @@ impl<const N: usize, const D: usize> Client<N, D> {
         for<'a> T: TryFrom<&'a [u8]>,
         for<'a> <T as TryFrom<&'a [u8]>>::Error: core::fmt::Debug,
     {
-        // TODO: Wrapping/saturating add for `N`
-        let idx = self.idx.fetch_add(1, Ordering::Release);
+        let idx = self.idx.fetch_add(1, Ordering::Release) % N;
+
+        // We're receiving too fast or the receive buffer isn't long enough
+        if self.frames.borrow()[idx].is_some() {
+            println!("Index {idx} is already in use");
+
+            return Err(());
+        }
 
         println!("BRD {idx}");
 
