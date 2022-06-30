@@ -17,26 +17,27 @@ use smoltcp::wire::EthernetFrame;
 // TODO: Logical PDU with 32 bit address
 // TODO: Auto increment PDU with i16 address
 #[derive(Debug)]
-pub struct Pdu<const N: usize> {
+pub struct Pdu<const MAX_DATA: usize> {
     command: Command,
     pub index: u8,
     pub register_address: u16,
     flags: PduFlags,
     irq: u16,
-    pub data: heapless::Vec<u8, N>,
+    pub data: heapless::Vec<u8, MAX_DATA>,
     pub working_counter: u16,
 }
 
-impl<const N: usize> Pdu<N> {
-    pub const fn brd(register_address: u16) -> Self {
-        debug_assert!(N < LEN_MASK as usize);
+impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
+    pub const fn brd(register_address: u16, data_length: u16, index: u8) -> Self {
+        debug_assert!(MAX_DATA <= LEN_MASK as usize);
+        debug_assert!(data_length as usize <= MAX_DATA);
 
         Self {
             // Start at master address 0
             command: Command::Brd { address: 0 },
-            index: 0,
+            index,
             register_address,
-            flags: PduFlags::with_len(N as u16),
+            flags: PduFlags::with_len(data_length),
             irq: 0,
             data: heapless::Vec::new(),
             working_counter: 0,
@@ -61,14 +62,14 @@ impl<const N: usize> Pdu<N> {
 
     fn buf_len(&self) -> usize {
         // TODO: Add unit test to stop regressions
-        N + 12
+        MAX_DATA + 12
     }
 
     pub fn frame_buf_len(&self) -> usize {
         let size = self.buf_len() + mem::size_of::<FrameHeader>();
 
         // TODO: Move to unit test
-        assert_eq!(size, N + 14);
+        assert_eq!(size, MAX_DATA + 14);
 
         size
     }
@@ -110,7 +111,7 @@ impl<const N: usize> Pdu<N> {
         let (i, register_address) = nom::number::complete::le_u16(i)?;
         let (i, flags) = map_res(take(2usize), PduFlags::unpack_from_slice)(i)?;
         let (i, irq) = nom::number::complete::le_u16(i)?;
-        let (i, data) = map_res(take(N), |slice: &[u8]| slice.try_into())(i)?;
+        let (i, data) = map_res(take(flags.length), |slice: &[u8]| slice.try_into())(i)?;
         let (i, working_counter) = nom::number::complete::le_u16(i)?;
 
         Ok((
@@ -141,7 +142,10 @@ impl<const N: usize> Pdu<N> {
         let (i, register_address) = nom::number::complete::le_u16(i)?;
         let (i, flags) = map_res(take(2usize), PduFlags::unpack_from_slice)(i)?;
         let (i, irq) = nom::number::complete::le_u16(i)?;
-        let (i, data) = map_res(take(flags.length), |slice: &[u8]| slice.try_into())(i)?;
+        let (i, data) = map_res(take(flags.length), |slice: &[u8]| {
+            dbg!(flags.length);
+            slice.try_into()
+        })(i)?;
         let (i, working_counter) = nom::number::complete::le_u16(i)?;
 
         Ok((
