@@ -22,6 +22,7 @@ heapless = "0.7.14"
 bbqueue = "0.5.1"
 futures-lite = { version = "1.12.0", default-features = false }
 parking_lot = { version = "0.12.1", features = ["deadlock_detection"] }
+async-ctrlc = "1.2.0"
 
 [dev-dependencies]
 async-io = "1.6.0"

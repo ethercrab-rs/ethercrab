@@ -48,3 +48,12 @@ ETG 1000.4 has tables holding a bunch of magic addresses that do certain things 
 - The first slave connected seems to increment the first MAC octet by 2. Observed both from SOEM and
   TwinCAT. I can't find anything in the spec about this behaviour, but we can use it to filter out
   self-received packets.
+
+# Data types
+
+ETG 1000.4 section 5.2 Data types and encoding rules
+
+- `u8`, `u16`, `u32`, `u64`
+- `i8`, `i16`, `i32`, `i64`
+- `array` (aka "octet string")
+- `string` (aka "visible string") - like an array but only allows `0x20` to `0x7E`

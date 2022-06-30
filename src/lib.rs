@@ -9,7 +9,8 @@ use pdu2::Pdu;
 use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol};
 use std::io::{self, Write};
 
-const LEN_MASK: u16 = 0b0000_0111_1111_1111;
+// TODO: Un-pub
+pub const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: u16 = 0x88A4;
 
 // #[derive(Debug)]

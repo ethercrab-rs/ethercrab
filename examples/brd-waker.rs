@@ -1,11 +1,14 @@
 //! Similar to waker-list, it keeps a list of wakers, but this time will send a `BRD` service and
 //! listen for its response by parsing the frame.
 
+use async_ctrlc::CtrlC;
 use core::cell::RefCell;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU8, Ordering};
 use core::task::Poll;
 use core::task::Waker;
 use ethercrab::pdu2::Pdu;
+use ethercrab::register::RegisterAddress;
+use futures_lite::FutureExt;
 use mac_address::get_mac_address;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smol::LocalExecutor;
@@ -14,7 +17,7 @@ use std::sync::Arc;
 
 #[cfg(target_os = "windows")]
 // ASRock NIC
-// const INTERFACE: &str = "\\Device\\NPF_{0D792EC2-0E89-4AB6-BE39-3F41EC42AEA3}";
+// const INTERFACE: &str = "TODO";
 // USB NIC
 const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
 #[cfg(not(target_os = "windows"))]
@@ -27,7 +30,7 @@ fn get_tx_rx() -> (Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>) {
 
     let interface = interfaces
         .into_iter()
-        .find(|interface| dbg!(&interface.name) == INTERFACE)
+        .find(|interface| interface.name == INTERFACE)
         .unwrap();
 
     dbg!(interface.mac);
@@ -57,8 +60,10 @@ fn main() {
             .bytes(),
     );
 
-    futures_lite::future::block_on(local_ex.run(async {
-        let client = Arc::new(Client::<16, 16>::default());
+    let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
+
+    futures_lite::future::block_on(local_ex.run(ctrlc.race(async {
+        let client = Arc::new(Client::<16, 16>::new());
 
         let client2 = client.clone();
         // let mut client3 = client.clone();
@@ -77,16 +82,16 @@ fn main() {
                         let packet = EthernetFrame::new_unchecked(packet);
 
                         if packet.ethertype() == EthernetProtocol::Unknown(0x88a4) {
+                            // Ignore broadcast packets sent from self
+                            if packet.src_addr() == my_mac_addr {
+                                continue;
+                            }
+
                             println!(
                                 "Received EtherCAT packet. Source MAC {}, dest MAC {}",
                                 packet.src_addr(),
                                 packet.dst_addr()
                             );
-
-                            // Ignore broadcast packets sent from self
-                            if packet.src_addr() == my_mac_addr {
-                                continue;
-                            }
 
                             client2.parse_response_ethernet_frame(packet.payload());
                         }
@@ -100,43 +105,60 @@ fn main() {
         }))
         .detach();
 
-        let res = client.brd::<[u8; 1]>(0x0000, &mut tx).await.unwrap();
+        let res = client
+            .brd::<[u8; 1]>(RegisterAddress::Type, &mut tx)
+            .await
+            .unwrap();
         println!("RESULT: {:?}", res);
-    }));
+        let res = client
+            .brd::<[u8; 2]>(RegisterAddress::Build, &mut tx)
+            .await
+            .unwrap();
+        println!("RESULT: {:?}", res);
+    })));
 }
 
 // #[derive(Clone)]
 struct Client<const N: usize, const D: usize> {
     wakers: RefCell<[Option<Waker>; N]>,
     frames: RefCell<[Option<Pdu<D>>; N]>,
-    idx: AtomicUsize,
+    idx: AtomicU8,
 }
 
 // TODO: Make sure this is ok
 unsafe impl<const N: usize, const D: usize> Sync for Client<D, N> {}
 
-impl<const N: usize, const D: usize> Default for Client<N, D> {
-    fn default() -> Self {
+impl<const N: usize, const D: usize> Client<N, D> {
+    fn new() -> Self {
+        assert!(
+            N < u8::MAX.into(),
+            "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
+        );
+
         Self {
             wakers: RefCell::new([(); N].map(|_| None)),
             frames: RefCell::new([(); N].map(|_| None)),
-            idx: AtomicUsize::new(0),
+            idx: AtomicU8::new(0),
         }
     }
-}
 
-impl<const N: usize, const D: usize> Client<N, D> {
     // TODO: Register address enum ETG1000.4 Table 31
     // TODO: Make `tx` a trait somehow so we can use it in both no_std and std
-    pub async fn brd<T>(&self, address: u16, tx: &mut Box<dyn DataLinkSender>) -> Result<T, ()>
+    pub async fn brd<T>(
+        &self,
+        address: RegisterAddress,
+        tx: &mut Box<dyn DataLinkSender>,
+    ) -> Result<T, ()>
     where
+        T: PduData,
         for<'a> T: TryFrom<&'a [u8]>,
         for<'a> <T as TryFrom<&'a [u8]>>::Error: core::fmt::Debug,
     {
-        let idx = self.idx.fetch_add(1, Ordering::Release) % N;
+        let address = address as u16;
+        let idx = self.idx.fetch_add(1, Ordering::Release) % N as u8;
 
         // We're receiving too fast or the receive buffer isn't long enough
-        if self.frames.borrow()[idx].is_some() {
+        if self.frames.borrow()[usize::from(idx)].is_some() {
             println!("Index {idx} is already in use");
 
             return Err(());
@@ -144,7 +166,9 @@ impl<const N: usize, const D: usize> Client<N, D> {
 
         println!("BRD {idx}");
 
-        let pdu = Pdu::<1>::brd(address);
+        let data_length = T::len();
+
+        let pdu = Pdu::<D>::brd(address, data_length, idx);
 
         let ethernet_frame = pdu_to_ethernet(&pdu);
 
@@ -153,7 +177,7 @@ impl<const N: usize, const D: usize> Client<N, D> {
             .expect("Send");
 
         let res = futures_lite::future::poll_fn(|ctx| {
-            let removed = self.frames.borrow_mut()[idx as usize].take();
+            let removed = self.frames.borrow_mut()[usize::from(idx)].take();
 
             println!("poll_fn idx {} has data {:?}", idx, removed);
 
@@ -161,7 +185,7 @@ impl<const N: usize, const D: usize> Client<N, D> {
                 println!("poll_fn -> Ready, data {:?}", frame.data);
                 Poll::Ready(frame)
             } else {
-                self.wakers.borrow_mut()[idx as usize].replace(ctx.waker().clone());
+                self.wakers.borrow_mut()[usize::from(idx)].replace(ctx.waker().clone());
 
                 println!("poll_fn -> Pending, waker #{idx}");
 
@@ -190,7 +214,7 @@ impl<const N: usize, const D: usize> Client<N, D> {
 
         let idx = pdu.index;
 
-        let waker = self.wakers.borrow_mut()[idx as usize].take();
+        let waker = self.wakers.borrow_mut()[usize::from(idx)].take();
 
         println!("Looking for waker #{idx}: {:?}", waker);
 
@@ -200,10 +224,29 @@ impl<const N: usize, const D: usize> Client<N, D> {
 
             println!("Waker #{idx} found. Insert PDU {:?}", pdu);
 
-            self.frames.borrow_mut()[idx as usize].replace(pdu);
+            self.frames.borrow_mut()[usize::from(idx)].replace(pdu);
             waker.wake()
         }
     }
+}
+
+// TODO: Move into crate
+trait PduData {
+    const LEN: u16;
+
+    fn len() -> u16 {
+        Self::LEN & ethercrab::LEN_MASK
+    }
+}
+
+impl PduData for u8 {
+    const LEN: u16 = Self::BITS as u16 / 8;
+}
+impl PduData for u16 {
+    const LEN: u16 = Self::BITS as u16 / 8;
+}
+impl<const N: usize> PduData for [u8; N] {
+    const LEN: u16 = N as u16;
 }
 
 // TODO: Move into crate, pass buffer in instead of returning a vec
