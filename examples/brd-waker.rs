@@ -8,6 +8,7 @@ use core::task::Poll;
 use core::task::Waker;
 use ethercrab::pdu2::Pdu;
 use ethercrab::register::RegisterAddress;
+use ethercrab::PduData;
 use futures_lite::FutureExt;
 use mac_address::get_mac_address;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
@@ -64,17 +65,8 @@ fn main() {
 
     futures_lite::future::block_on(local_ex.run(ctrlc.race(async {
         let client = Arc::new(Client::<16, 16>::new());
-
         let client2 = client.clone();
-        // let mut client3 = client.clone();
 
-        // local_ex
-        //     .spawn(async move {
-        //     //
-        //     })
-        //     .detach();
-
-        // MSRV: Use scoped threads in 1.63
         smol::spawn(smol::unblock(move || {
             loop {
                 match rx.next() {
@@ -236,25 +228,6 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
             waker.wake()
         }
     }
-}
-
-// TODO: Move into crate
-trait PduData {
-    const LEN: u16;
-
-    fn len() -> u16 {
-        Self::LEN & ethercrab::LEN_MASK
-    }
-}
-
-impl PduData for u8 {
-    const LEN: u16 = Self::BITS as u16 / 8;
-}
-impl PduData for u16 {
-    const LEN: u16 = Self::BITS as u16 / 8;
-}
-impl<const N: usize> PduData for [u8; N] {
-    const LEN: u16 = N as u16;
 }
 
 // TODO: Move into crate, pass buffer in instead of returning a vec

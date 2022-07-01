@@ -9,9 +9,48 @@ use pdu2::Pdu;
 use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol};
 use std::io::{self, Write};
 
-// TODO: Un-pub
-pub const LEN_MASK: u16 = 0b0000_0111_1111_1111;
+const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: u16 = 0x88A4;
+
+pub trait PduData {
+    const LEN: u16;
+
+    fn len() -> u16 {
+        Self::LEN & LEN_MASK
+    }
+}
+
+impl PduData for u8 {
+    const LEN: u16 = Self::BITS as u16 / 8;
+}
+impl PduData for u16 {
+    const LEN: u16 = Self::BITS as u16 / 8;
+}
+impl PduData for u32 {
+    const LEN: u16 = Self::BITS as u16 / 8;
+}
+impl PduData for u64 {
+    const LEN: u16 = Self::BITS as u16 / 8;
+}
+impl PduData for i8 {
+    const LEN: u16 = Self::BITS as u16 / 8;
+}
+impl PduData for i16 {
+    const LEN: u16 = Self::BITS as u16 / 8;
+}
+impl PduData for i32 {
+    const LEN: u16 = Self::BITS as u16 / 8;
+}
+impl PduData for i64 {
+    const LEN: u16 = Self::BITS as u16 / 8;
+}
+impl<const N: usize> PduData for [u8; N] {
+    const LEN: u16 = N as u16;
+}
+/// A "Visible String" representation. Characters are specified to be within the ASCII range.
+impl<const N: usize> PduData for heapless::String<N> {
+    const LEN: u16 = N as u16;
+}
 
 // #[derive(Debug)]
 // pub struct EthercatPduFrame {
