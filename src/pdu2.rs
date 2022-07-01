@@ -75,7 +75,7 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     }
 
     /// Write an EtherCAT PDU frame into the given buffer.
-    pub fn as_ethercat_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
+    pub fn write_ethernet_payload<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
         let header = FrameHeader::pdu(self.buf_len());
 
         let buf = gen_simple(le_u16(header.0), buf)?;
