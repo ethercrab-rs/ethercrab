@@ -119,25 +119,29 @@ fn main() {
 }
 
 // #[derive(Clone)]
-struct Client<const N: usize, const D: usize> {
-    wakers: RefCell<[Option<Waker>; N]>,
-    frames: RefCell<[Option<Pdu<D>>; N]>,
+struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
+    wakers: RefCell<[Option<Waker>; MAX_FRAMES]>,
+    frames: RefCell<[Option<heapless::Vec<u8, MAX_PDU_DATA>>; MAX_FRAMES]>,
     idx: AtomicU8,
 }
 
 // TODO: Make sure this is ok
-unsafe impl<const N: usize, const D: usize> Sync for Client<D, N> {}
+unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
+    for Client<MAX_FRAMES, MAX_PDU_DATA>
+{
+}
 
-impl<const N: usize, const D: usize> Client<N, D> {
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_PDU_DATA> {
     fn new() -> Self {
+        // TODO: Make `N` a `u8` when the compiler supports converting to `usize` in const
         assert!(
-            N < u8::MAX.into(),
+            MAX_FRAMES < u8::MAX.into(),
             "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
         );
 
         Self {
-            wakers: RefCell::new([(); N].map(|_| None)),
-            frames: RefCell::new([(); N].map(|_| None)),
+            wakers: RefCell::new([(); MAX_FRAMES].map(|_| None)),
+            frames: RefCell::new([(); MAX_FRAMES].map(|_| None)),
             idx: AtomicU8::new(0),
         }
     }
@@ -155,7 +159,7 @@ impl<const N: usize, const D: usize> Client<N, D> {
         for<'a> <T as TryFrom<&'a [u8]>>::Error: core::fmt::Debug,
     {
         let address = address as u16;
-        let idx = self.idx.fetch_add(1, Ordering::Release) % N as u8;
+        let idx = self.idx.fetch_add(1, Ordering::Release) % MAX_FRAMES as u8;
 
         // We're receiving too fast or the receive buffer isn't long enough
         if self.frames.borrow()[usize::from(idx)].is_some() {
@@ -168,7 +172,7 @@ impl<const N: usize, const D: usize> Client<N, D> {
 
         let data_length = T::len();
 
-        let pdu = Pdu::<D>::brd(address, data_length, idx);
+        let pdu = Pdu::<MAX_PDU_DATA>::brd(address, data_length, idx);
 
         let ethernet_frame = pdu_to_ethernet(&pdu);
 
@@ -182,7 +186,10 @@ impl<const N: usize, const D: usize> Client<N, D> {
             println!("poll_fn idx {} has data {:?}", idx, removed);
 
             if let Some(frame) = removed {
-                println!("poll_fn -> Ready, data {:?}", frame.data);
+                println!("poll_fn -> Ready, data {:?}", frame);
+
+                assert_eq!(frame.len(), data_length as usize);
+
                 Poll::Ready(frame)
             } else {
                 self.wakers.borrow_mut()[usize::from(idx)].replace(ctx.waker().clone());
@@ -194,9 +201,9 @@ impl<const N: usize, const D: usize> Client<N, D> {
         })
         .await;
 
-        println!("Raw data {:?}", res.data.as_slice());
+        println!("Raw data {:?}", res.as_slice());
 
-        res.data.as_slice().try_into().map_err(|e| {
+        res.as_slice().try_into().map_err(|e| {
             println!("{:?}", e);
             ()
         })
@@ -205,7 +212,8 @@ impl<const N: usize, const D: usize> Client<N, D> {
     // TODO: Return a result if index is out of bounds, or we don't have a waiting packet
     pub fn parse_response_ethernet_frame(&self, ethernet_frame_payload: &[u8]) {
         let (rest, pdu) =
-            Pdu::<D>::from_ethercat_frame_unchecked(&ethernet_frame_payload).expect("Packet parse");
+            Pdu::<MAX_PDU_DATA>::from_ethercat_frame_unchecked(&ethernet_frame_payload)
+                .expect("Packet parse");
 
         // TODO: Handle multiple PDUs here
         if !rest.is_empty() {
@@ -224,7 +232,7 @@ impl<const N: usize, const D: usize> Client<N, D> {
 
             println!("Waker #{idx} found. Insert PDU {:?}", pdu);
 
-            self.frames.borrow_mut()[usize::from(idx)].replace(pdu);
+            self.frames.borrow_mut()[usize::from(idx)].replace(pdu.data);
             waker.wake()
         }
     }

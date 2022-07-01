@@ -132,6 +132,7 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     pub fn from_ethercat_frame_unchecked(i: &[u8]) -> IResult<&[u8], Self> {
         // TODO: Split out frame header parsing when we want to support multiple PDUs. This should
         // also let us do better with the const generics.
+        // TODO: Take as much as the header says we should. Check for too long after parse completes.
         let (i, _header) = FrameHeader::parse_pdu(i)?;
 
         let (i, command_code) = map_res(nom::number::complete::u8, CommandCode::try_from)(i)?;
