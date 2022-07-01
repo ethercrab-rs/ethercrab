@@ -10,7 +10,12 @@ use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol};
 use std::io::{self, Write};
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
-const ETHERCAT_ETHERTYPE: u16 = 0x88A4;
+// TODO: Un-pub
+pub const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
+
+/// Address that packets are sent from. EtherCAT doesn't really care about MAC address (particularly
+/// as everything is sent to the broadcast address), so this can be pretty arbitrary.
+pub const MASTER_ADDR: EthernetAddress = EthernetAddress([0x02, 0x02, 0x02, 0x02, 0x02, 0x02]);
 
 pub trait PduData {
     const LEN: u16;

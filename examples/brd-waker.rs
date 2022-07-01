@@ -8,7 +8,7 @@ use core::task::Poll;
 use core::task::Waker;
 use ethercrab::pdu2::Pdu;
 use ethercrab::register::RegisterAddress;
-use ethercrab::PduData;
+use ethercrab::{PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR};
 use futures_lite::FutureExt;
 use mac_address::get_mac_address;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
@@ -110,14 +110,12 @@ fn main() {
     })));
 }
 
-// #[derive(Clone)]
 struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
     wakers: RefCell<[Option<Waker>; MAX_FRAMES]>,
     frames: RefCell<[Option<heapless::Vec<u8, MAX_PDU_DATA>>; MAX_FRAMES]>,
     idx: AtomicU8,
 }
 
-// TODO: Make sure this is ok
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
     for Client<MAX_FRAMES, MAX_PDU_DATA>
 {
@@ -138,8 +136,9 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
         }
     }
 
-    // TODO: Register address enum ETG1000.4 Table 31
     // TODO: Make `tx` a trait somehow so we can use it in both no_std and std
+    // TODO: Timeout
+    // TODO: Error handling
     pub async fn brd<T>(
         &self,
         address: RegisterAddress,
@@ -166,7 +165,9 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
 
         let pdu = Pdu::<MAX_PDU_DATA>::brd(address, data_length, idx);
 
-        let ethernet_frame = pdu_to_ethernet(&pdu);
+        let mut ethernet_buf = [0x00u8; 1536];
+
+        let ethernet_frame = pdu_to_ethernet(&pdu, &mut ethernet_buf);
 
         tx.send_to(&ethernet_frame.as_ref(), None)
             .unwrap()
@@ -230,32 +231,28 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
     }
 }
 
-// TODO: Move into crate, pass buffer in instead of returning a vec
-fn pdu_to_ethernet<const N: usize>(pdu: &Pdu<N>) -> EthernetFrame<Vec<u8>> {
-    let src = get_mac_address()
-        .expect("Failed to read MAC")
-        .expect("No mac found");
-
-    // Broadcast
-    let dest = EthernetAddress::BROADCAST;
-
+// Returns written bytes
+fn pdu_to_ethernet<'a, const N: usize>(pdu: &Pdu<N>, buf: &'a mut [u8]) -> &'a [u8] {
     let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(pdu.frame_buf_len());
 
-    let mut buffer = Vec::new();
-    buffer.resize(ethernet_len, 0x00u8);
+    // TODO: Return result if it's not long enough
+    let buf = &mut buf[0..ethernet_len];
 
-    let mut frame = EthernetFrame::new_checked(buffer).unwrap();
+    let mut frame = EthernetFrame::new_checked(buf).unwrap();
 
-    pdu.as_ethercat_frame(&mut frame.payload_mut()).unwrap();
-    frame.set_src_addr(EthernetAddress::from_bytes(&src.bytes()));
-    frame.set_dst_addr(dest);
-    // TODO: Const
-    frame.set_ethertype(EthernetProtocol::Unknown(0x88a4));
+    frame.set_src_addr(MASTER_ADDR);
+    frame.set_dst_addr(EthernetAddress::BROADCAST);
+    frame.set_ethertype(ETHERCAT_ETHERTYPE);
+
+    pdu.write_ethernet_payload(&mut frame.payload_mut())
+        .unwrap();
 
     println!(
         "Send {}",
         PrettyPrinter::<EthernetFrame<&'static [u8]>>::new("", &frame)
     );
 
-    frame
+    let buf = frame.into_inner();
+
+    buf
 }

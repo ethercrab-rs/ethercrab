@@ -146,7 +146,8 @@ fn pdu_to_ethernet<const N: usize>(pdu: &Pdu<N>) -> EthernetFrame<Vec<u8>> {
 
     let mut frame = EthernetFrame::new_checked(buffer).unwrap();
 
-    pdu.as_ethercat_frame(&mut frame.payload_mut()).unwrap();
+    pdu.write_ethernet_payload(&mut frame.payload_mut())
+        .unwrap();
     frame.set_src_addr(EthernetAddress::from_bytes(&src.bytes()));
     frame.set_dst_addr(EthernetAddress::from_bytes(&dest.bytes()));
     // TODO: Const
