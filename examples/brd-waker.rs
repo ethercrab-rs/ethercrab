@@ -6,6 +6,7 @@ use core::cell::RefCell;
 use core::sync::atomic::{AtomicU8, Ordering};
 use core::task::Poll;
 use core::task::Waker;
+use ethercrab::command::Command;
 use ethercrab::pdu2::Pdu;
 use ethercrab::register::RegisterAddress;
 use ethercrab::{PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR};
@@ -53,14 +54,6 @@ fn main() {
 
     let (mut tx, mut rx) = get_tx_rx();
 
-    // TODO: Hard code to some value. EtherCAT doesn't care about MAC if broadcast is always used
-    let my_mac_addr = EthernetAddress::from_bytes(
-        &get_mac_address()
-            .expect("Failed to read MAC")
-            .expect("No mac found")
-            .bytes(),
-    );
-
     let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
 
     futures_lite::future::block_on(local_ex.run(ctrlc.race(async {
@@ -75,7 +68,7 @@ fn main() {
 
                         if packet.ethertype() == EthernetProtocol::Unknown(0x88a4) {
                             // Ignore broadcast packets sent from self
-                            if packet.src_addr() == my_mac_addr {
+                            if packet.src_addr() == MASTER_ADDR {
                                 continue;
                             }
 
@@ -101,12 +94,12 @@ fn main() {
             .brd::<[u8; 1]>(RegisterAddress::Type, &mut tx)
             .await
             .unwrap();
-        println!("RESULT: {:?}", res);
+        println!("RESULT: {:#02x?}", res);
         let res = client
             .brd::<[u8; 2]>(RegisterAddress::Build, &mut tx)
             .await
             .unwrap();
-        println!("RESULT: {:?}", res);
+        println!("RESULT: {:#04x?}", res);
     })));
 }
 
@@ -163,7 +156,14 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
 
         let data_length = T::len();
 
-        let pdu = Pdu::<MAX_PDU_DATA>::brd(address, data_length, idx);
+        let pdu = Pdu::<MAX_PDU_DATA>::new(
+            Command::Brd {
+                address: 0,
+                register: address,
+            },
+            data_length,
+            idx,
+        );
 
         let mut ethernet_buf = [0x00u8; 1536];
 
@@ -204,9 +204,8 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
 
     // TODO: Return a result if index is out of bounds, or we don't have a waiting packet
     pub fn parse_response_ethernet_frame(&self, ethernet_frame_payload: &[u8]) {
-        let (rest, pdu) =
-            Pdu::<MAX_PDU_DATA>::from_ethercat_frame_unchecked(&ethernet_frame_payload)
-                .expect("Packet parse");
+        let (rest, pdu) = Pdu::<MAX_PDU_DATA>::from_ethernet_payload(&ethernet_frame_payload)
+            .expect("Packet parse");
 
         // TODO: Handle multiple PDUs here
         if !rest.is_empty() {
@@ -223,7 +222,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
         if let Some(waker) = waker {
             // TODO: Validate PDU against the one stored with the waker.
 
-            println!("Waker #{idx} found. Insert PDU {:?}", pdu);
+            println!("Waker #{idx} found. Insert PDU data {:?}", pdu);
 
             self.frames.borrow_mut()[usize::from(idx)].replace(pdu.data);
             waker.wake()

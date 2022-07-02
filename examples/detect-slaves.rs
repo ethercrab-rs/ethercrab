@@ -42,7 +42,7 @@ fn main() -> io::Result<()> {
     let (mut tx, mut rx) = get_tx_rx();
 
     // TODO: Register address enum ETG1000.4 Table 31
-    let pdu = Pdu::<1>::brd(0x0000);
+    let pdu = Pdu::<1>::new(0x0000);
 
     // let mut frame = EthercatPduFrame::new();
 
