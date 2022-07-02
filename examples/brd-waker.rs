@@ -11,7 +11,6 @@ use ethercrab::pdu2::Pdu;
 use ethercrab::register::RegisterAddress;
 use ethercrab::{PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR};
 use futures_lite::FutureExt;
-use mac_address::get_mac_address;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smol::LocalExecutor;
 use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol, PrettyPrinter};
@@ -96,7 +95,7 @@ fn main() {
             .unwrap();
         println!("RESULT: {:#02x?}", res);
         let res = client
-            .brd::<[u8; 2]>(RegisterAddress::Build, &mut tx)
+            .brd::<u16>(RegisterAddress::Build, &mut tx)
             .await
             .unwrap();
         println!("RESULT: {:#04x?}", res);
@@ -139,8 +138,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
     ) -> Result<T, ()>
     where
         T: PduData,
-        for<'a> T: TryFrom<&'a [u8]>,
-        for<'a> <T as TryFrom<&'a [u8]>>::Error: core::fmt::Debug,
+        <T as PduData>::Error: core::fmt::Debug,
     {
         let address = address as u16;
         let idx = self.idx.fetch_add(1, Ordering::Release) % MAX_FRAMES as u8;
@@ -196,7 +194,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
 
         println!("Raw data {:?}", res.as_slice());
 
-        res.as_slice().try_into().map_err(|e| {
+        T::try_from_slice(res.as_slice()).map_err(|e| {
             println!("{:?}", e);
             ()
         })
