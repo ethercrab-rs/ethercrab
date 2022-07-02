@@ -116,7 +116,6 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
 }
 
 #[derive(Copy, Clone, Debug, PackedStruct, PartialEq)]
-// TODO: Fix endianness
 #[packed_struct(size_bytes = "2", bit_numbering = "msb0", endian = "lsb")]
 pub struct PduFlags {
     /// Data length of this PDU.
