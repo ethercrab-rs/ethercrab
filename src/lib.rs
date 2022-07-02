@@ -1,4 +1,6 @@
 // pub mod pdu;
+pub mod command;
+pub mod frame;
 pub mod pdu2;
 pub mod register;
 
@@ -12,10 +14,7 @@ use std::io::{self, Write};
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 // TODO: Un-pub
 pub const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
-
-/// Address that packets are sent from. EtherCAT doesn't really care about MAC address (particularly
-/// as everything is sent to the broadcast address), so this can be pretty arbitrary.
-pub const MASTER_ADDR: EthernetAddress = EthernetAddress([0x02, 0x02, 0x02, 0x02, 0x02, 0x02]);
+pub const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
 
 pub trait PduData {
     const LEN: u16;
