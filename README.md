@@ -2,6 +2,10 @@
 
 An EtherCAT master written in pure Rust.
 
+EtherCrab is looking for sponsors! I (@jamwaffles) am developing EtherCrab in my spare time with
+currently no fulltime income, so if you want a safe, performant Rust EtherCat master please consider
+becoming a sponsor!
+
 ## Current goals
 
 - [x] Become a member of the
