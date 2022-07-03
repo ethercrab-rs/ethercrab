@@ -8,8 +8,8 @@ An EtherCAT master written in pure Rust.
       [EtherCAT Technologies Group (ETG)](https://www.ethercat.org/default.htm) and get access to
       the EtherCAT specification.
 - [ ] (in progress) Explore basic master architecture to support current design goals
-- [ ] Usable in no_std environments with either [RTIC](https://rtic.rs) or
-      [Embassy](https://embassy.dev/)
+- [ ] `async` API usable in no_std environments with either [RTIC](https://rtic.rs) (once async
+      support is released) or [Embassy](https://embassy.dev/)
 - [ ] Usable in multi-threaded Linux systems with optional realtime support via the PREEMPT-RT
       patches
 - [ ] Configuration and cyclic communication with multiple EtherCAT slaves.
@@ -26,6 +26,8 @@ An EtherCAT master written in pure Rust.
 
 These may change at any time.
 
+- [ ] A blocking API which spins on internal futures for best compatibility, possibly using
+      [casette](https://lib.rs/crates/cassette) or [nb-executor](https://lib.rs/crates/nb-executor).
 - [ ] Integration with LinuxCNC as a HAL component.
 - [ ] A multiplatform configuration/debugging/management GUI
 
