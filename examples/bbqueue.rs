@@ -1,8 +1,4 @@
 use bbqueue::BBBuffer;
-use core::marker::PhantomData;
-use core::task::Waker;
-use ethercrab::pdu2::CommandCode;
-use smol::process::Command;
 
 fn main() {
     // Create a buffer with six elements

@@ -1,6 +1,6 @@
 //! Listen to frames coming through a raw socket.
 
-use std::{io, time::Instant};
+use std::io;
 
 #[cfg(not(target_os = "windows"))]
 fn main() -> io::Result<()> {
@@ -59,7 +59,7 @@ fn main() -> io::Result<()> {
         .find(|interface| interface.name == interface_name)
         .unwrap();
 
-    let (mut tx, mut rx) = match datalink::channel(&interface, Default::default()) {
+    let (_tx, mut rx) = match datalink::channel(&interface, Default::default()) {
         Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("Unhandled channel type"),
         Err(e) => panic!(
@@ -88,25 +88,5 @@ fn main() -> io::Result<()> {
                 panic!("An error occurred while reading: {}", e);
             }
         }
-    }
-
-    Ok(())
-}
-
-fn smoltcp_to_io(e: smoltcp::Error) -> std::io::ErrorKind {
-    match e {
-        smoltcp::Error::Exhausted => std::io::ErrorKind::OutOfMemory,
-        // TODO: Proper mappings
-        smoltcp::Error::Illegal => std::io::ErrorKind::Other,
-        smoltcp::Error::Unaddressable => std::io::ErrorKind::Other,
-        smoltcp::Error::Finished => std::io::ErrorKind::Other,
-        smoltcp::Error::Truncated => std::io::ErrorKind::Other,
-        smoltcp::Error::Checksum => std::io::ErrorKind::Other,
-        smoltcp::Error::Unrecognized => std::io::ErrorKind::Other,
-        smoltcp::Error::Fragmented => std::io::ErrorKind::Other,
-        smoltcp::Error::Malformed => std::io::ErrorKind::Other,
-        smoltcp::Error::Dropped => std::io::ErrorKind::Other,
-        smoltcp::Error::NotSupported => std::io::ErrorKind::Other,
-        _ => std::io::ErrorKind::Other,
     }
 }

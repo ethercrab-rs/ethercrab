@@ -3,10 +3,9 @@
 use chrono::Utc;
 use cookie_factory::{
     bytes::{le_u16, le_u8},
-    combinator::{skip, slice},
-    gen_simple, GenError, GenResult,
+    combinator::skip,
+    gen_simple, GenError,
 };
-use ethercrab::pdu2::CommandCode;
 use mac_address::{get_mac_address, MacAddress};
 use pcap::{Capture, Linktype, Packet, PacketHeader};
 use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol, PrettyPrinter};

@@ -43,7 +43,7 @@ impl Default for Client {
 }
 
 impl Client {
-    pub async fn brd<T>(&self, address: u16) -> () {
+    pub async fn brd<T>(&self, _address: u16) -> () {
         futures_lite::future::poll_fn(|ctx| {
             println!("poll_fn");
 
@@ -61,7 +61,7 @@ impl Client {
         .await;
     }
 
-    pub fn parse_response_ethernet_frame(&mut self, ethernet_frame_payload: &[u8]) {
+    pub fn parse_response_ethernet_frame(&mut self, _ethernet_frame_payload: &[u8]) {
         println!("Got ethernet frame");
 
         // Frame is ready; tell everyone about it
