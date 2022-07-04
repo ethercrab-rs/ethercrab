@@ -153,7 +153,6 @@ where
     ) -> Result<T, SendPduError>
     where
         T: PduData,
-        <T as PduData>::Error: core::fmt::Debug,
     {
         let address = address as u16;
         let idx = self.idx.fetch_add(1, Ordering::Release) % MAX_FRAMES as u8;
