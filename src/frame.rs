@@ -2,6 +2,7 @@
 
 use crate::LEN_MASK;
 use nom::{error::ErrorKind, IResult};
+use smoltcp::wire::EthernetFrame;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
@@ -24,19 +25,22 @@ impl TryFrom<u8> for ProtocolType {
     }
 }
 
+#[derive(Debug)]
+pub enum FrameError {
+    TooLong,
+    Encode(cookie_factory::GenError),
+}
+
 // TODO: Represent different behaviours with different typestates?
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(transparent)]
 pub struct FrameHeader(pub u16);
 
 impl FrameHeader {
-    // TODO: Proper error.
     /// Create a new PDU frame header.
-    pub fn pdu(len: usize) -> Result<Self, ()> {
-        // debug_assert!(len <= LEN_MASK.into());
-
+    pub fn pdu(len: usize) -> Result<Self, FrameError> {
         if len > LEN_MASK.into() {
-            return Err(());
+            return Err(FrameError::TooLong);
         }
 
         let len = (len as u16) & LEN_MASK;
@@ -49,10 +53,6 @@ impl FrameHeader {
     /// Remove and parse an EtherCAT frame header from the given buffer.
     pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, raw) = nom::number::complete::le_u16(i)?;
-
-        // TODO: Take LEN_MASK + reserved bit and see if length has overflowed?
-
-        let len = raw & LEN_MASK;
 
         let self_ = Self(raw);
 
@@ -70,11 +70,6 @@ impl FrameHeader {
     /// The length of the payload contained in this frame.
     pub fn payload_len(&self) -> u16 {
         self.0 & LEN_MASK
-    }
-
-    /// The total length of the frame, including header.
-    fn total_len(&self) -> usize {
-        usize::from(self.payload_len() + 2)
     }
 
     fn protocol_type(&self) -> ProtocolType {
