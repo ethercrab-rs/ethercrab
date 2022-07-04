@@ -7,6 +7,7 @@ use core::sync::atomic::{AtomicU8, Ordering};
 use core::task::Poll;
 use core::task::Waker;
 use ethercrab::command::Command;
+use ethercrab::frame::FrameError;
 use ethercrab::pdu2::Pdu;
 use ethercrab::register::RegisterAddress;
 use ethercrab::{PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR};
@@ -153,6 +154,7 @@ where
     ) -> Result<T, SendPduError>
     where
         T: PduData,
+        <T as PduData>::Error: core::fmt::Debug,
     {
         let address = address as u16;
         let idx = self.idx.fetch_add(1, Ordering::Release) % MAX_FRAMES as u8;
@@ -161,7 +163,7 @@ where
         if self.frames.borrow()[usize::from(idx)].is_some() {
             println!("Index {idx} is already in use");
 
-            return Err(SendPduError::Index);
+            return Err(SendPduError::IndexInUse);
         }
 
         println!("BRD {idx}");
@@ -179,7 +181,7 @@ where
 
         let mut ethernet_buf = [0x00u8; 1536];
 
-        let ethernet_frame = pdu_to_ethernet(&pdu, &mut ethernet_buf);
+        let ethernet_frame = pdu_to_ethernet(&pdu, &mut ethernet_buf)?;
 
         tx.send_to(&ethernet_frame.as_ref(), None)
             .ok_or_else(|| SendPduError::Send)?
@@ -206,7 +208,7 @@ where
         });
 
         // TODO: Configurable timeout
-        let timeout = TIMEOUT::timer(core::time::Duration::from_nanos(30_000));
+        let timeout = TIMEOUT::timer(core::time::Duration::from_micros(30_000));
 
         let res = match futures::future::select(res, timeout).await {
             futures::future::Either::Left((res, _timeout)) => res,
@@ -249,29 +251,35 @@ where
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum SendPduError {
     Timeout,
-    Index,
+    IndexInUse,
     Send,
     Decode,
+    CreateFrame(smoltcp::Error),
+    Encode(cookie_factory::GenError),
+    Frame(FrameError),
 }
 
 // Returns written bytes
-fn pdu_to_ethernet<'a, const N: usize>(pdu: &Pdu<N>, buf: &'a mut [u8]) -> &'a [u8] {
+fn pdu_to_ethernet<'a, const N: usize>(
+    pdu: &Pdu<N>,
+    buf: &'a mut [u8],
+) -> Result<&'a [u8], SendPduError> {
     let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(pdu.frame_buf_len());
 
     // TODO: Return result if it's not long enough
     let buf = &mut buf[0..ethernet_len];
 
-    let mut frame = EthernetFrame::new_checked(buf).unwrap();
+    let mut frame = EthernetFrame::new_checked(buf).map_err(SendPduError::CreateFrame)?;
 
     frame.set_src_addr(MASTER_ADDR);
     frame.set_dst_addr(EthernetAddress::BROADCAST);
     frame.set_ethertype(ETHERCAT_ETHERTYPE);
 
     pdu.write_ethernet_payload(&mut frame.payload_mut())
-        .unwrap();
+        .map_err(SendPduError::Frame)?;
 
     println!(
         "Send {}",
@@ -280,5 +288,5 @@ fn pdu_to_ethernet<'a, const N: usize>(pdu: &Pdu<N>, buf: &'a mut [u8]) -> &'a [
 
     let buf = frame.into_inner();
 
-    buf
+    Ok(buf)
 }

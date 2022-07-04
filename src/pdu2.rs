@@ -1,6 +1,6 @@
 use crate::{
     command::{Command, CommandCode},
-    frame::FrameHeader,
+    frame::{FrameError, FrameHeader},
     LEN_MASK,
 };
 use cookie_factory::{
@@ -12,8 +12,6 @@ use core::mem;
 use nom::{bytes::complete::take, combinator::map_res, IResult};
 use packed_struct::prelude::*;
 
-// TODO: Logical PDU with 32 bit address
-// TODO: Auto increment PDU with i16 address
 #[derive(Debug)]
 pub struct Pdu<const MAX_DATA: usize> {
     command: Command,
@@ -74,13 +72,13 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     }
 
     /// Write an EtherCAT PDU including frame header into the given buffer.
-    pub fn write_ethernet_payload<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
+    pub fn write_ethernet_payload<'a>(&self, buf: &'a mut [u8]) -> Result<(), FrameError> {
         let header = FrameHeader::pdu(self.buf_len())?;
 
-        let buf = gen_simple(le_u16(header.0), buf)?;
-        let buf = self.as_bytes(buf)?;
+        let buf = gen_simple(le_u16(header.0), buf).map_err(FrameError::Encode)?;
+        let _buf = self.as_bytes(buf).map_err(FrameError::Encode)?;
 
-        Ok(buf)
+        Ok(())
     }
 
     /// Create an EtherCAT frame from an Ethernet II frame's payload.
@@ -121,8 +119,6 @@ pub struct PduFlags {
     /// Data length of this PDU.
     #[packed_field(bits = "0..=10")]
     length: u16,
-    #[packed_field(bits = "11..=13")]
-    _reserved: u8,
     /// Circulating frame
     ///
     /// 0: Frame is not circulating,
@@ -139,7 +135,6 @@ impl PduFlags {
     pub const fn with_len(len: u16) -> Self {
         Self {
             length: len,
-            _reserved: 0,
             circulated: false,
             is_not_last: false,
         }
