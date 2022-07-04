@@ -114,3 +114,126 @@ async fn receive(&mut self) -> PacketBuf {
     }).await
 }
 ```
+
+Can only register one waker for both TX + RX, so the suggestion is to have a device task and have
+channels to send `PacketBuf`s between it and whatever else is waiting for them.
+
+> PacketBuf is just ptr+length so it's fine to do a Channel<PacketBuf>, you won't be actually
+> copying packets around
+
+I can then have a single `poll_fn` that handles both TX and RX, using the channels appropriately.
+
+Can't bind a task to an interrupt in Embassy, but I could do:
+
+```rust
+#[embassy::task]
+async fn my_task(..) {
+    loop {
+        let pkt = device.receive().await;
+        // process pkt
+    }
+}
+```
+
+But note:
+
+> or a channel receive if you want to do tx/rx from separate tasks, because you can't share/split
+> the Device itself
+
+## ways to share stuff
+
+- `put()` in a `Forever<Cell<Thing>>` in main, send `&'static Cell<Thing>` as an argument to tasks
+- `put()` in a `Forever<RefCell<Thing>>` in main, send `&'static RefCell<Thing>` as an argument to
+  tasks -- warning make sure not to hold a Ref across an await
+- Global ThreadModeMutex, if all tasks run in thread mode, which is the default
+- Global CriticalSectionMutex if not (if using InterruptExecutor or raw irq handlers)
+- Channels kinda
+- async Mutex (this is best for stuff you need to call async methods on, like shared spi/i2c buses)
+
+Some rough pseudocode by @dirbaio on Element:
+
+```rust
+struct Client {
+    state: RefCell<ClientState>,
+}
+
+struct ClientState {
+    waker: WakerRegistration,
+    requests: [Option<RequestState>; N],
+}
+
+struct RequestState {
+    waker: WakerRegistration,
+    state: RequestStateEnum,
+}
+
+enum RequestStateEnum {
+    Created{payload: [u8;N]},
+    Waiting,
+    Done{response: [u8;N]},
+}
+
+#[embassy::task]
+async fn client_task(device: Device, client: &'static Client) {
+    poll_fn(|cx| {
+        let client = &mut *self.client.borrow_mut();
+        client.waker.register(cx.waker);
+        device.register_waker(self.waker);
+
+        // process tx
+        for each request in client.requests{
+            match request.state {
+                Created(payload) => {
+                    // if we can't send it now, try again later.
+                    if !device.transmit_ready() {
+                        break;
+                    }
+                    device.transmit(payload);
+                    request.state = Waiting
+                }
+                _ => {}
+            }
+        }
+
+        // process rx
+        while let Some(pkt) = device.receive() {
+            // parse pkt
+            let req = // find waiting request matching the packet
+            req.state = Done{payload};
+            req.waker.wake();
+        }
+    })
+}
+
+impl Client {
+    async fn do_request(&self, payload: [u8;N]) -> [u8;N] {
+        // braces to ensure we don't hold the refcell across awaits!!
+        let slot = {
+            let client = &mut *self.client.borrow_mut();
+            let slot: usize = // find empty slot in client.requests
+            client.requests[slot] = Some(RequestState{
+                state: Created(payload),
+                ...
+            });
+            client.waker.wake();
+            slot
+        };
+
+        poll_fn(|cx| {
+            let client = &mut *self.client.borrow_mut();
+            client.requests[slot].waker.register(cx.waker);
+            match client.requests[slot].state {
+                Done(payload) => Poll::Ready(payload),
+                _ => Poll::Pending
+            }
+        }).await
+    }
+}
+```
+
+> the key is you share just data
+>
+> so instead of txing from the task doing the req, you just set some state saying "there's this
+> request pending to be sent"
+>
+> and then the client_task sends it
