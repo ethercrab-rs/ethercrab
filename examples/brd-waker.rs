@@ -14,6 +14,7 @@ use futures_lite::FutureExt;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smol::LocalExecutor;
 use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol, PrettyPrinter};
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 #[cfg(target_os = "windows")]
@@ -56,7 +57,7 @@ fn main() {
     let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
 
     futures_lite::future::block_on(local_ex.run(ctrlc.race(async {
-        let client = Arc::new(Client::<16, 16>::new());
+        let client = Arc::new(Client::<16, 16, smol::Timer>::new());
         let client2 = client.clone();
 
         smol::spawn(smol::unblock(move || {
@@ -102,20 +103,35 @@ fn main() {
     })));
 }
 
-struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
+struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     wakers: RefCell<[Option<Waker>; MAX_FRAMES]>,
     frames: RefCell<[Option<heapless::Vec<u8, MAX_PDU_DATA>>; MAX_FRAMES]>,
     idx: AtomicU8,
+    _timeout: PhantomData<TIMEOUT>,
 }
 
-unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
-    for Client<MAX_FRAMES, MAX_PDU_DATA>
+unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
+    for Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
 }
 
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_PDU_DATA> {
+trait TimerFactory: core::future::Future + Unpin {
+    fn timer(duration: core::time::Duration) -> Self;
+}
+
+impl TimerFactory for smol::Timer {
+    fn timer(duration: core::time::Duration) -> Self {
+        Self::after(duration)
+    }
+}
+
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+where
+    TIMEOUT: TimerFactory,
+{
     fn new() -> Self {
-        // TODO: Make `N` a `u8` when the compiler supports converting to `usize` in const
+        // MSRV: Make `N` a `u8` when `generic_const_exprs` is stablised
         assert!(
             MAX_FRAMES < u8::MAX.into(),
             "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
@@ -125,17 +141,16 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
             wakers: RefCell::new([(); MAX_FRAMES].map(|_| None)),
             frames: RefCell::new([(); MAX_FRAMES].map(|_| None)),
             idx: AtomicU8::new(0),
+            _timeout: PhantomData,
         }
     }
 
     // TODO: Make `tx` a trait somehow so we can use it in both no_std and std
-    // TODO: Timeout
-    // TODO: Error handling
     pub async fn brd<T>(
         &self,
         address: RegisterAddress,
         tx: &mut Box<dyn DataLinkSender>,
-    ) -> Result<T, ()>
+    ) -> Result<T, SendPduError>
     where
         T: PduData,
         <T as PduData>::Error: core::fmt::Debug,
@@ -147,7 +162,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
         if self.frames.borrow()[usize::from(idx)].is_some() {
             println!("Index {idx} is already in use");
 
-            return Err(());
+            return Err(SendPduError::Index);
         }
 
         println!("BRD {idx}");
@@ -168,8 +183,8 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
         let ethernet_frame = pdu_to_ethernet(&pdu, &mut ethernet_buf);
 
         tx.send_to(&ethernet_frame.as_ref(), None)
-            .unwrap()
-            .expect("Send");
+            .ok_or_else(|| SendPduError::Send)?
+            .map_err(|_| SendPduError::Send)?;
 
         let res = futures_lite::future::poll_fn(|ctx| {
             let removed = self.frames.borrow_mut()[usize::from(idx)].take();
@@ -189,14 +204,21 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
 
                 Poll::Pending
             }
-        })
-        .await;
+        });
+
+        // TODO: Configurable timeout
+        let timeout = TIMEOUT::timer(core::time::Duration::from_nanos(30_000));
+
+        let res = match futures::future::select(res, timeout).await {
+            futures::future::Either::Left((res, _timeout)) => res,
+            futures::future::Either::Right((_timeout, _res)) => return Err(SendPduError::Timeout),
+        };
 
         println!("Raw data {:?}", res.as_slice());
 
         T::try_from_slice(res.as_slice()).map_err(|e| {
             println!("{:?}", e);
-            ()
+            SendPduError::Decode
         })
     }
 
@@ -226,6 +248,14 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Client<MAX_FRAMES, MAX_
             waker.wake()
         }
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum SendPduError {
+    Timeout,
+    Index,
+    Send,
+    Decode,
 }
 
 // Returns written bytes
