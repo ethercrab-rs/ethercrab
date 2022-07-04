@@ -56,3 +56,61 @@ Windows doesn't support L2 networking out of the box - a driver is required, e.g
 Because libpnet isn't really conducive to async, we pretty much can't do async on Windows at all.
 
 Let's just use async stuff with an "in flight packets" queue for now
+
+# Embassy async raw sockets
+
+you can easily wrap them into async like this though
+
+```rust
+poll_fn(|cx| {
+    if device.is_transmit_ready() {
+        Poll::Ready(())
+    } else {
+        device.register_waker(cx.waker());
+        Poll::Pending
+    }
+}).await;
+device.transmit(pkt);
+```
+
+or for receive
+
+```rust
+let received_pkt = poll_fn(|cx| match device.receive() {
+     Some(pkt) => Poll::Ready(pkt)
+     None => {
+          device.register_waker(cx.waker());
+          Poll::Pending
+    }
+}).await;
+```
+
+Note however:
+
+> ah, but receive() and register_waker() are separate calls, so an irq can definitely sneak in
+> between them
+
+So to fix:
+
+```rust
+async fn transmit(&mut self, pkt: PacketBuf) {
+    poll_fn(|cx| {
+        self.device.register_waker(cx.waker());
+        match self.device.is_transmit_ready() {
+            true => Poll::Ready(()),
+            false => Poll::Pending,
+        }
+    }).await;
+    self.device.transmit(pkt);
+}
+
+async fn receive(&mut self) -> PacketBuf {
+    poll_fn(|cx| {
+        self.device.register_waker(cx.waker());
+        match self.device.receive() {
+            Some(pkt) => Poll::Ready(pkt),
+            false => Poll::Pending,
+        }
+    }).await
+}
+```
