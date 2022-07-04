@@ -1,11 +1,10 @@
-use core::cell::{Cell, RefCell};
+use core::cell::RefCell;
 use core::sync::atomic::{AtomicU8, Ordering};
 use core::task::Poll;
 use core::task::Waker;
 use core::time::Duration;
 use heapless::FnvIndexMap;
 use smol::LocalExecutor;
-use std::rc::Rc;
 use std::sync::Arc;
 
 fn main() {
@@ -14,8 +13,8 @@ fn main() {
     futures_lite::future::block_on(local_ex.run(async {
         let client = Arc::new(Client::default());
 
-        let mut client2 = client.clone();
-        let mut client3 = client.clone();
+        let client2 = client.clone();
+        let client3 = client.clone();
 
         local_ex
             .spawn(async move {
@@ -58,7 +57,7 @@ impl Default for Client {
 }
 
 impl Client {
-    pub async fn brd<T>(&self, address: u16) -> () {
+    pub async fn brd<T>(&self, _address: u16) -> () {
         let idx = self.idx.fetch_add(1, Ordering::Release);
 
         println!("BRD {idx}");
