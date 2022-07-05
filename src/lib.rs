@@ -59,6 +59,7 @@ impl<const N: usize> PduData for [u8; N] {
 }
 
 /// A "Visible String" representation. Characters are specified to be within the ASCII range.
+// TODO: Implement for `std::String` with a feature switch
 impl<const N: usize> PduData for heapless::String<N> {
     const LEN: u16 = N as u16;
 
