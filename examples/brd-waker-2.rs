@@ -62,63 +62,65 @@ fn main() {
         let client2 = client.clone();
         let client3 = client.clone();
 
-        smol::spawn(futures_lite::future::poll_fn::<(), _>(move |ctx| {
-            if client2.send_waker.borrow().is_none() {
-                client2.send_waker.borrow_mut().replace(ctx.waker().clone());
-            }
+        local_ex
+            .spawn(futures_lite::future::poll_fn::<(), _>(move |ctx| {
+                if client2.send_waker.borrow().is_none() {
+                    client2.send_waker.borrow_mut().replace(ctx.waker().clone());
+                }
 
-            if let Ok(mut frames) = client2.frames.try_borrow_mut() {
-                for request in frames.iter_mut() {
-                    if let Some(state) = request {
-                        match state {
-                            RequestState::Created { pdu } => {
-                                let mut packet_buf = [0u8; 1536];
+                if let Ok(mut frames) = client2.frames.try_borrow_mut() {
+                    for request in frames.iter_mut() {
+                        if let Some(state) = request {
+                            match state {
+                                RequestState::Created { pdu } => {
+                                    let mut packet_buf = [0u8; 1536];
 
-                                let packet = pdu_to_ethernet(pdu, &mut packet_buf).unwrap();
+                                    let packet = pdu_to_ethernet(pdu, &mut packet_buf).unwrap();
 
-                                tx.send_to(packet, None).unwrap().expect("Send");
+                                    tx.send_to(packet, None).unwrap().expect("Send");
 
-                                *state = RequestState::Waiting;
+                                    *state = RequestState::Waiting;
+                                }
+                                _ => (),
                             }
-                            _ => (),
                         }
                     }
                 }
-            }
 
-            Poll::Pending
-        }))
-        .detach();
+                Poll::Pending
+            }))
+            .detach();
 
-        smol::spawn(smol::unblock(move || {
-            loop {
-                match rx.next() {
-                    Ok(packet) => {
-                        let packet = EthernetFrame::new_unchecked(packet);
+        local_ex
+            .spawn(smol::unblock(move || {
+                loop {
+                    match rx.next() {
+                        Ok(packet) => {
+                            let packet = EthernetFrame::new_unchecked(packet);
 
-                        if packet.ethertype() == EthernetProtocol::Unknown(0x88a4) {
-                            // Ignore broadcast packets sent from self
-                            if packet.src_addr() == MASTER_ADDR {
-                                continue;
+                            if packet.ethertype() == EthernetProtocol::Unknown(0x88a4) {
+                                // Ignore broadcast packets sent from self
+                                if packet.src_addr() == MASTER_ADDR {
+                                    continue;
+                                }
+
+                                // println!(
+                                //     "Received EtherCAT packet. Source MAC {}, dest MAC {}",
+                                //     packet.src_addr(),
+                                //     packet.dst_addr()
+                                // );
+
+                                client3.parse_response_ethernet_frame(packet.payload());
                             }
-
-                            // println!(
-                            //     "Received EtherCAT packet. Source MAC {}, dest MAC {}",
-                            //     packet.src_addr(),
-                            //     packet.dst_addr()
-                            // );
-
-                            client3.parse_response_ethernet_frame(packet.payload());
+                        }
+                        Err(e) => {
+                            // If an error occurs, we can handle it here
+                            panic!("An error occurred while reading: {}", e);
                         }
                     }
-                    Err(e) => {
-                        // If an error occurs, we can handle it here
-                        panic!("An error occurred while reading: {}", e);
-                    }
                 }
-            }
-        }))
-        .detach();
+            }))
+            .detach();
 
         let res = client.brd::<[u8; 1]>(RegisterAddress::Type).await.unwrap();
         println!("RESULT: {:#02x?}", res);
