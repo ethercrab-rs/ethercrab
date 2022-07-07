@@ -2,7 +2,6 @@
 
 use crate::LEN_MASK;
 use nom::{error::ErrorKind, IResult};
-use smoltcp::wire::EthernetFrame;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]

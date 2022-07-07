@@ -111,6 +111,19 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
             },
         ))
     }
+
+    // TODO: Proper error enum
+    pub fn is_response_to(&self, request_pdu: &Self) -> Result<(), ()> {
+        if request_pdu.index != self.index {
+            return Err(());
+        }
+
+        if request_pdu.command != self.command {
+            return Err(());
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Copy, Clone, Debug, PackedStruct, PartialEq)]

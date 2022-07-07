@@ -293,7 +293,15 @@ where
 
             // println!("Waker #{idx} found. Insert PDU data {:?}", pdu);
 
-            self.frames.borrow_mut()[usize::from(idx)] = Some(RequestState::Done { pdu });
+            if let Some(existing_pdu) = self.frames.borrow_mut()[usize::from(idx)].as_mut() {
+                // TODO: Validate PDU. Requires separating PDU from send state
+                // pdu.is_response_to(existing_pdu).unwrap();
+
+                *existing_pdu = RequestState::Done { pdu }
+            } else {
+                panic!("No waiting frame for response");
+            }
+
             waker.wake()
         }
     }
