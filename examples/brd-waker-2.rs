@@ -2,6 +2,7 @@
 
 use async_ctrlc::CtrlC;
 use core::cell::RefCell;
+use core::marker::PhantomData;
 use core::sync::atomic::{AtomicU8, Ordering};
 use core::task::Poll;
 use core::task::Waker;
@@ -13,9 +14,7 @@ use ethercrab::{PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR};
 use futures_lite::FutureExt;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smol::LocalExecutor;
-use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol, PrettyPrinter};
-use std::marker::PhantomData;
-use std::sync::atomic::AtomicBool;
+use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol};
 use std::sync::Arc;
 
 #[cfg(target_os = "windows")]
@@ -70,9 +69,9 @@ fn main() {
 
                 if let Ok(mut frames) = client2.frames.try_borrow_mut() {
                     for request in frames.iter_mut() {
-                        if let Some(state) = request {
+                        if let Some((state, pdu)) = request {
                             match state {
-                                RequestState::Created { pdu } => {
+                                RequestState::Created => {
                                     let mut packet_buf = [0u8; 1536];
 
                                     let packet = pdu_to_ethernet(pdu, &mut packet_buf).unwrap();
@@ -130,16 +129,16 @@ fn main() {
 }
 
 #[derive(Debug)]
-enum RequestState<const N: usize> {
-    Created { pdu: Pdu<N> },
+enum RequestState {
+    Created,
     Waiting,
-    Done { pdu: Pdu<N> },
+    Done,
 }
 
 // TODO: Use atomic_refcell crate
 struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     wakers: RefCell<[Option<Waker>; MAX_FRAMES]>,
-    frames: RefCell<[Option<RequestState<MAX_PDU_DATA>>; MAX_FRAMES]>,
+    frames: RefCell<[Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>,
     send_waker: RefCell<Option<Waker>>,
     idx: AtomicU8,
     _timeout: PhantomData<TIMEOUT>,
@@ -213,7 +212,7 @@ where
                 idx,
             );
 
-            self.frames.borrow_mut()[usize::from(idx)] = Some(RequestState::Created { pdu });
+            self.frames.borrow_mut()[usize::from(idx)] = Some((RequestState::Created, pdu));
 
             // println!("TX waker? {:?}", self.send_waker);
 
@@ -240,7 +239,7 @@ where
                 let frame = frames[usize::from(idx)].take();
 
                 match frame {
-                    Some(RequestState::Done { pdu }) => Poll::Ready(pdu),
+                    Some((RequestState::Done, pdu)) => Poll::Ready(pdu),
                     // Not ready yet, put the request back.
                     // TODO: Race conditions!
                     Some(state) => {
@@ -289,15 +288,12 @@ where
 
         // Frame is ready; tell everyone about it
         if let Some(waker) = waker {
-            // TODO: Validate PDU against the one stored with the waker.
+            if let Some((state, existing_pdu)) = self.frames.borrow_mut()[usize::from(idx)].as_mut()
+            {
+                pdu.is_response_to(existing_pdu).unwrap();
 
-            // println!("Waker #{idx} found. Insert PDU data {:?}", pdu);
-
-            if let Some(existing_pdu) = self.frames.borrow_mut()[usize::from(idx)].as_mut() {
-                // TODO: Validate PDU. Requires separating PDU from send state
-                // pdu.is_response_to(existing_pdu).unwrap();
-
-                *existing_pdu = RequestState::Done { pdu }
+                *state = RequestState::Done;
+                *existing_pdu = pdu
             } else {
                 panic!("No waiting frame for response");
             }
