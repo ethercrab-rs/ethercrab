@@ -1,7 +1,7 @@
 use cookie_factory::{gen_simple, GenError};
 use nom::{combinator::map, sequence::pair, IResult};
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Command {
     Aprd {
         /// Auto increment counter.
@@ -78,7 +78,7 @@ impl Command {
     ///
     /// Commands which cause address autoincrements during slave traversal will not compare
     /// addresses.
-    pub fn is_valid_response(&self, other: &Self) -> bool {
+    pub fn is_response_to(&self, other: &Self) -> bool {
         match self {
             // Ignore addresses for autoincrement services; the master sends zero and any slave
             // response is non-zero.

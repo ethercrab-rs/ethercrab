@@ -112,18 +112,23 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         ))
     }
 
-    // TODO: Proper error enum
-    pub fn is_response_to(&self, request_pdu: &Self) -> Result<(), ()> {
+    pub fn is_response_to(&self, request_pdu: &Self) -> Result<(), PduValidationError> {
         if request_pdu.index != self.index {
-            return Err(());
+            return Err(PduValidationError::IndexMismatch);
         }
 
-        if request_pdu.command != self.command {
-            return Err(());
+        if !self.command.is_response_to(&request_pdu.command) {
+            return Err(PduValidationError::CommandMismatch);
         }
 
         Ok(())
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum PduValidationError {
+    IndexMismatch,
+    CommandMismatch,
 }
 
 #[derive(Copy, Clone, Debug, PackedStruct, PartialEq)]
