@@ -15,6 +15,12 @@ pub enum RegisterAddress {
     SupportFlags = 0x0008,
 }
 
+impl From<RegisterAddress> for u16 {
+    fn from(reg: RegisterAddress) -> Self {
+        reg as u16
+    }
+}
+
 #[derive(PackedStruct)]
 #[packed_struct(bit_numbering = "msb0")]
 pub struct PortDescriptors {

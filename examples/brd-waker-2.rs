@@ -2,6 +2,7 @@
 
 use async_ctrlc::CtrlC;
 use core::cell::RefCell;
+use core::future::Future;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicU8, Ordering};
 use core::task::Poll;
@@ -25,100 +26,18 @@ const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
 #[cfg(not(target_os = "windows"))]
 const INTERFACE: &str = "eth0";
 
-fn get_tx_rx() -> (Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>) {
-    let interfaces = datalink::interfaces();
-
-    dbg!(&interfaces);
-
-    let interface = interfaces
-        .into_iter()
-        .find(|interface| interface.name == INTERFACE)
-        .unwrap();
-
-    dbg!(interface.mac);
-
-    let (tx, rx) = match datalink::channel(&interface, Default::default()) {
-        Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
-        Ok(_) => panic!("Unhandled channel type"),
-        Err(e) => panic!(
-            "An error occurred when creating the datalink channel: {}",
-            e
-        ),
-    };
-
-    (tx, rx)
-}
-
 fn main() {
     let local_ex = LocalExecutor::new();
 
-    let (mut tx, mut rx) = get_tx_rx();
+    // let (mut tx, mut rx) = get_tx_rx();
 
     let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
 
     futures_lite::future::block_on(local_ex.run(ctrlc.race(async {
-        let client = Arc::new(Client::<16, 16, smol::Timer>::new());
-        let client2 = client.clone();
-        let client3 = client.clone();
+        let client = WrappedClient::<16, 16, smol::Timer>::new();
 
         local_ex
-            .spawn(futures_lite::future::poll_fn::<(), _>(move |ctx| {
-                if client2.send_waker.borrow().is_none() {
-                    client2.send_waker.borrow_mut().replace(ctx.waker().clone());
-                }
-
-                if let Ok(mut frames) = client2.frames.try_borrow_mut() {
-                    for request in frames.iter_mut() {
-                        if let Some((state, pdu)) = request {
-                            match state {
-                                RequestState::Created => {
-                                    let mut packet_buf = [0u8; 1536];
-
-                                    let packet = pdu_to_ethernet(pdu, &mut packet_buf).unwrap();
-
-                                    tx.send_to(packet, None).unwrap().expect("Send");
-
-                                    *state = RequestState::Waiting;
-                                }
-                                _ => (),
-                            }
-                        }
-                    }
-                }
-
-                Poll::Pending
-            }))
-            .detach();
-
-        local_ex
-            .spawn(smol::unblock(move || {
-                loop {
-                    match rx.next() {
-                        Ok(packet) => {
-                            let packet = EthernetFrame::new_unchecked(packet);
-
-                            if packet.ethertype() == EthernetProtocol::Unknown(0x88a4) {
-                                // Ignore broadcast packets sent from self
-                                if packet.src_addr() == MASTER_ADDR {
-                                    continue;
-                                }
-
-                                // println!(
-                                //     "Received EtherCAT packet. Source MAC {}, dest MAC {}",
-                                //     packet.src_addr(),
-                                //     packet.dst_addr()
-                                // );
-
-                                client3.parse_response_ethernet_frame(packet.payload());
-                            }
-                        }
-                        Err(e) => {
-                            // If an error occurs, we can handle it here
-                            panic!("An error occurred while reading: {}", e);
-                        }
-                    }
-                }
-            }))
+            .spawn(client.tx_rx_task(INTERFACE).unwrap())
             .detach();
 
         let res = client.brd::<[u8; 1]>(RegisterAddress::Type).await.unwrap();
@@ -133,6 +52,126 @@ enum RequestState {
     Created,
     Waiting,
     Done,
+}
+
+fn get_tx_rx(
+    device: &str,
+) -> Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>), std::io::Error> {
+    let interfaces = datalink::interfaces();
+
+    dbg!(&interfaces);
+
+    let interface = interfaces
+        .into_iter()
+        .find(|interface| interface.name == device)
+        .unwrap();
+
+    dbg!(interface.mac);
+
+    let (tx, rx) = match datalink::channel(&interface, Default::default()) {
+        Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
+        // FIXME
+        Ok(_) => panic!("Unhandled channel type"),
+        Err(e) => return Err(e),
+    };
+
+    Ok((tx, rx))
+}
+
+#[derive(Clone)]
+struct WrappedClient<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+    client: Arc<Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>,
+}
+
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    WrappedClient<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+where
+    TIMEOUT: TimerFactory + Send + 'static,
+{
+    fn new() -> Self {
+        Self {
+            client: Arc::new(Client::new()),
+        }
+    }
+
+    // TODO: Proper error - there are a couple of unwraps in here
+    fn tx_rx_task(&self, device: &str) -> Result<impl Future<Output = ()>, std::io::Error> {
+        let client_tx = self.client.clone();
+        let client_rx = self.client.clone();
+
+        let (mut tx, mut rx) = get_tx_rx(device)?;
+
+        let tx_task = futures_lite::future::poll_fn::<(), _>(move |ctx| {
+            if client_tx.send_waker.borrow().is_none() {
+                client_tx
+                    .send_waker
+                    .borrow_mut()
+                    .replace(ctx.waker().clone());
+            }
+
+            if let Ok(mut frames) = client_tx.frames.try_borrow_mut() {
+                for request in frames.iter_mut() {
+                    if let Some((state, pdu)) = request {
+                        match state {
+                            RequestState::Created => {
+                                let mut packet_buf = [0u8; 1536];
+
+                                let packet = pdu_to_ethernet(pdu, &mut packet_buf).unwrap();
+
+                                tx.send_to(packet, None).unwrap().expect("Send");
+
+                                *state = RequestState::Waiting;
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+            }
+
+            Poll::Pending
+        });
+
+        let rx_task = smol::unblock(move || {
+            loop {
+                match rx.next() {
+                    Ok(packet) => {
+                        let packet = EthernetFrame::new_unchecked(packet);
+
+                        // Look for EtherCAT packets whilst ignoring broadcast packets sent from self
+                        if packet.ethertype() == EthernetProtocol::Unknown(0x88a4)
+                            && packet.src_addr() != MASTER_ADDR
+                        {
+                            client_rx.parse_response_ethernet_frame(packet.payload());
+                        }
+                    }
+                    Err(e) => {
+                        // If an error occurs, we can handle it here
+                        panic!("An error occurred while reading: {}", e);
+                    }
+                }
+            }
+        });
+
+        Ok(tx_task.race(rx_task))
+    }
+
+    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<T, SendPduError>
+    where
+        T: PduData,
+        <T as PduData>::Error: core::fmt::Debug,
+    {
+        self.client
+            .pdu(
+                Command::Brd {
+                    // Address is always zero when sent from master
+                    address: 0,
+                    register: register.into(),
+                },
+                // No input data; this is a read
+                &[],
+            )
+            .await
+    }
 }
 
 // TODO: Use atomic_refcell crate
@@ -180,13 +219,12 @@ where
         }
     }
 
-    pub async fn brd<T>(&self, address: RegisterAddress) -> Result<T, SendPduError>
+    // TODO: Send data
+    pub async fn pdu<T>(&self, command: Command, _data: &[u8]) -> Result<T, SendPduError>
     where
         T: PduData,
         <T as PduData>::Error: core::fmt::Debug,
     {
-        let address = address as u16;
-
         // braces to ensure we don't hold the refcell across awaits!!
         let idx = {
             // TODO: Confirm ordering
@@ -203,14 +241,7 @@ where
 
             let data_length = T::len();
 
-            let pdu = Pdu::<MAX_PDU_DATA>::new(
-                Command::Brd {
-                    address: 0,
-                    register: address,
-                },
-                data_length,
-                idx,
-            );
+            let pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx);
 
             self.frames.borrow_mut()[usize::from(idx)] = Some((RequestState::Created, pdu));
 
@@ -219,14 +250,6 @@ where
             if let Some(waker) = &*self.send_waker.borrow() {
                 waker.wake_by_ref()
             }
-
-            // if let Ok(mut send_waker) = self.send_waker.try_borrow_mut() {
-            //     if let Some(waker) = send_waker.take() {
-            //         waker.wake()
-            //     }
-            // } else {
-            //     println!("Could not borrow waker!");
-            // }
 
             usize::from(idx)
         };
@@ -241,7 +264,7 @@ where
                 match frame {
                     Some((RequestState::Done, pdu)) => Poll::Ready(pdu),
                     // Not ready yet, put the request back.
-                    // TODO: Race conditions!
+                    // TODO: This is dumb, we just want a reference
                     Some(state) => {
                         frames[usize::from(idx)] = Some(state);
                         Poll::Pending
@@ -249,8 +272,8 @@ where
                     _ => Poll::Pending,
                 }
             } else {
-                // println!("RACE");
-                // Packets are being sent/received; do nothing for now
+                // Using the failed borrow on `self.frames` as a sentinel, we can assume packets are
+                // being sent/received so we'll do nothing for now
                 Poll::Pending
             };
 
