@@ -57,3 +57,8 @@ ETG 1000.4 section 5.2 Data types and encoding rules
 - `i8`, `i16`, `i32`, `i64`
 - `array` (aka "octet string")
 - `string` (aka "visible string") - like an array but only allows `0x20` to `0x7E`
+
+# ESM (EtherCAT State Machine)
+
+- <https://www.ethercat.org/memberarea/en/knowledge_base_7B6EA38CBF2349C388F6F29004196B88.htm>
+- ETG1000.6 Table 102 shows ESM state table
