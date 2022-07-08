@@ -1,51 +1,18 @@
-//! A refactor of brd-waker to contain TX/RX in a single task, only passing data/wakers.
-
-use async_ctrlc::CtrlC;
+use crate::command::Command;
+use crate::pdu::{Pdu, PduError};
+use crate::register::RegisterAddress;
+use crate::timer_factory::TimerFactory;
+use crate::{PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR};
 use core::cell::RefCell;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicU8, Ordering};
 use core::task::Poll;
 use core::task::Waker;
-use ethercrab::command::Command;
-use ethercrab::frame::FrameError;
-use ethercrab::pdu::Pdu;
-use ethercrab::register::RegisterAddress;
-use ethercrab::{PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR};
+use futures::future::{select, Either};
 use futures_lite::FutureExt;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
-use smol::LocalExecutor;
-use smoltcp::wire::{EthernetAddress, EthernetFrame, EthernetProtocol};
-use std::sync::Arc;
-
-#[cfg(target_os = "windows")]
-// ASRock NIC
-// const INTERFACE: &str = "TODO";
-// USB NIC
-const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
-#[cfg(not(target_os = "windows"))]
-const INTERFACE: &str = "eth0";
-
-fn main() {
-    let local_ex = LocalExecutor::new();
-
-    // let (mut tx, mut rx) = get_tx_rx();
-
-    let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
-
-    futures_lite::future::block_on(local_ex.run(ctrlc.race(async {
-        let client = WrappedClient::<16, 16, smol::Timer>::new();
-
-        local_ex
-            .spawn(client.tx_rx_task(INTERFACE).unwrap())
-            .detach();
-
-        let res = client.brd::<[u8; 1]>(RegisterAddress::Type).await.unwrap();
-        println!("RESULT: {:#02x?}", res);
-        let res = client.brd::<u16>(RegisterAddress::Build).await.unwrap();
-        println!("RESULT: {:#04x?}", res);
-    })));
-}
+use smoltcp::wire::EthernetFrame;
 
 #[derive(Debug)]
 enum RequestState {
@@ -79,23 +46,23 @@ fn get_tx_rx(
 }
 
 #[derive(Clone)]
-struct WrappedClient<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    client: Arc<Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>,
+pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+    client: std::sync::Arc<ClientInternals<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>,
 }
 
 impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    WrappedClient<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+    Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory + Send + 'static,
 {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            client: Arc::new(Client::new()),
+            client: std::sync::Arc::new(ClientInternals::new()),
         }
     }
 
     // TODO: Proper error - there are a couple of unwraps in here
-    fn tx_rx_task(&self, device: &str) -> Result<impl Future<Output = ()>, std::io::Error> {
+    pub fn tx_rx_task(&self, device: &str) -> Result<impl Future<Output = ()>, std::io::Error> {
         let client_tx = self.client.clone();
         let client_rx = self.client.clone();
 
@@ -116,7 +83,7 @@ where
                             RequestState::Created => {
                                 let mut packet_buf = [0u8; 1536];
 
-                                let packet = pdu_to_ethernet(pdu, &mut packet_buf).unwrap();
+                                let packet = pdu.to_ethernet_frame(&mut packet_buf).unwrap();
 
                                 tx.send_to(packet, None).unwrap().expect("Send");
 
@@ -138,7 +105,7 @@ where
                         let packet = EthernetFrame::new_unchecked(packet);
 
                         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self
-                        if packet.ethertype() == EthernetProtocol::Unknown(0x88a4)
+                        if packet.ethertype() == ETHERCAT_ETHERTYPE
                             && packet.src_addr() != MASTER_ADDR
                         {
                             client_rx.parse_response_ethernet_frame(packet.payload());
@@ -155,7 +122,7 @@ where
         Ok(tx_task.race(rx_task))
     }
 
-    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<T, SendPduError>
+    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<T, PduError>
     where
         T: PduData,
         <T as PduData>::Error: core::fmt::Debug,
@@ -175,7 +142,7 @@ where
 }
 
 // TODO: Use atomic_refcell crate
-struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+struct ClientInternals<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     wakers: RefCell<[Option<Waker>; MAX_FRAMES]>,
     frames: RefCell<[Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>,
     send_waker: RefCell<Option<Waker>>,
@@ -184,22 +151,12 @@ struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
 }
 
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
-    for Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+    for ClientInternals<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
 }
 
-trait TimerFactory: core::future::Future + Unpin {
-    fn timer(duration: core::time::Duration) -> Self;
-}
-
-impl TimerFactory for smol::Timer {
-    fn timer(duration: core::time::Duration) -> Self {
-        Self::after(duration)
-    }
-}
-
 impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+    ClientInternals<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
@@ -220,7 +177,7 @@ where
     }
 
     // TODO: Send data
-    pub async fn pdu<T>(&self, command: Command, _data: &[u8]) -> Result<T, SendPduError>
+    pub async fn pdu<T>(&self, command: Command, _data: &[u8]) -> Result<T, PduError>
     where
         T: PduData,
         <T as PduData>::Error: core::fmt::Debug,
@@ -234,7 +191,7 @@ where
             if self.frames.borrow()[usize::from(idx)].is_some() {
                 // println!("Index {idx} is already in use");
 
-                return Err(SendPduError::IndexInUse);
+                return Err(PduError::IndexInUse);
             }
 
             // println!("BRD {idx}");
@@ -285,16 +242,16 @@ where
         // TODO: Configurable timeout
         let timeout = TIMEOUT::timer(core::time::Duration::from_micros(30_000));
 
-        let res = match futures::future::select(res, timeout).await {
-            futures::future::Either::Left((res, _timeout)) => res,
-            futures::future::Either::Right((_timeout, _res)) => return Err(SendPduError::Timeout),
+        let res = match select(res, timeout).await {
+            Either::Left((res, _timeout)) => res,
+            Either::Right((_timeout, _res)) => return Err(PduError::Timeout),
         };
 
         // println!("Raw data {:?}", res.data.as_slice());
 
         T::try_from_slice(res.data.as_slice()).map_err(|e| {
             println!("{:?}", e);
-            SendPduError::Decode
+            PduError::Decode
         })
     }
 
@@ -324,44 +281,4 @@ where
             waker.wake()
         }
     }
-}
-
-#[derive(Debug)]
-pub enum SendPduError {
-    Timeout,
-    IndexInUse,
-    Send,
-    Decode,
-    CreateFrame(smoltcp::Error),
-    Encode(cookie_factory::GenError),
-    Frame(FrameError),
-}
-
-// Returns written bytes
-fn pdu_to_ethernet<'a, const N: usize>(
-    pdu: &Pdu<N>,
-    buf: &'a mut [u8],
-) -> Result<&'a [u8], SendPduError> {
-    let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(pdu.frame_buf_len());
-
-    // TODO: Return result if it's not long enough
-    let buf = &mut buf[0..ethernet_len];
-
-    let mut frame = EthernetFrame::new_checked(buf).map_err(SendPduError::CreateFrame)?;
-
-    frame.set_src_addr(MASTER_ADDR);
-    frame.set_dst_addr(EthernetAddress::BROADCAST);
-    frame.set_ethertype(ETHERCAT_ETHERTYPE);
-
-    pdu.write_ethernet_payload(&mut frame.payload_mut())
-        .map_err(SendPduError::Frame)?;
-
-    // println!(
-    //     "Send {}",
-    //     PrettyPrinter::<EthernetFrame<&'static [u8]>>::new("", &frame)
-    // );
-
-    let buf = frame.into_inner();
-
-    Ok(buf)
 }

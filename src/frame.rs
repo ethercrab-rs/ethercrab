@@ -24,12 +24,6 @@ impl TryFrom<u8> for ProtocolType {
     }
 }
 
-#[derive(Debug)]
-pub enum FrameError {
-    TooLong,
-    Encode(cookie_factory::GenError),
-}
-
 // TODO: Represent different behaviours with different typestates?
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(transparent)]
@@ -37,16 +31,18 @@ pub struct FrameHeader(pub u16);
 
 impl FrameHeader {
     /// Create a new PDU frame header.
-    pub fn pdu(len: usize) -> Result<Self, FrameError> {
-        if len > LEN_MASK.into() {
-            return Err(FrameError::TooLong);
-        }
+    pub fn pdu(len: usize) -> Self {
+        assert!(
+            len <= LEN_MASK.into(),
+            "Frame length may not exceed {} bytes",
+            LEN_MASK
+        );
 
         let len = (len as u16) & LEN_MASK;
 
         let protocol_type = (ProtocolType::DlPdu as u16) << 12;
 
-        Ok(Self(len | protocol_type))
+        Self(len | protocol_type)
     }
 
     /// Remove and parse an EtherCAT frame header from the given buffer.
@@ -85,7 +81,7 @@ mod tests {
 
     #[test]
     fn pdu_header() {
-        let header = FrameHeader::pdu(0x28).unwrap();
+        let header = FrameHeader::pdu(0x28);
 
         let packed = header.0;
 
