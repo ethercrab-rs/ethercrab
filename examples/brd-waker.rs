@@ -8,7 +8,7 @@ use core::task::Poll;
 use core::task::Waker;
 use ethercrab::command::Command;
 use ethercrab::frame::FrameError;
-use ethercrab::pdu2::Pdu;
+use ethercrab::pdu::Pdu;
 use ethercrab::register::RegisterAddress;
 use ethercrab::{PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR};
 use futures_lite::FutureExt;

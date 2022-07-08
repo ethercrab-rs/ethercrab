@@ -1,7 +1,7 @@
 //! Detect slaves by reading the working counter value in the returned packet
 
 use chrono::Utc;
-use ethercrab::pdu2::Pdu;
+use ethercrab::pdu::Pdu;
 use mac_address::{get_mac_address, MacAddress};
 use pcap::PacketHeader;
 use pnet::{

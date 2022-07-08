@@ -1,310 +1,187 @@
-use super::LEN_MASK;
-use nom::{
-    bytes::complete::{tag, take},
-    combinator::{map_res, verify},
-    error::{context, FromExternalError, ParseError},
-    number::complete::{self, le_u16},
-    IResult,
+use crate::{
+    command::{Command, CommandCode},
+    frame::FrameHeader,
+    ETHERCAT_ETHERTYPE, LEN_MASK, MASTER_ADDR,
 };
-use std::io::{self, Write};
+use cookie_factory::{
+    bytes::{le_u16, le_u8},
+    combinator::slice,
+    gen_simple, GenError,
+};
+use core::mem;
+use nom::{bytes::complete::take, combinator::map_res, IResult};
+use packed_struct::prelude::*;
+use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 #[derive(Debug)]
-pub enum Pdu {
-    Fprd(Fprd),
-    Brd(Brd),
-}
-
-impl Pdu {
-    pub fn byte_len(&self) -> u16 {
-        match self {
-            Self::Fprd(c) => c.byte_len(),
-            Self::Brd(c) => c.byte_len(),
-        }
-    }
-
-    pub fn as_bytes(&self, buf: &mut [u8]) -> io::Result<()> {
-        match self {
-            Self::Fprd(c) => c.as_bytes(buf),
-            Self::Brd(c) => c.as_bytes(buf),
-        }
-    }
-
-    pub(crate) fn set_has_next(&mut self, has_next: bool) {
-        match self {
-            Self::Fprd(c) => c.set_has_next(has_next),
-            Self::Brd(c) => c.set_has_next(has_next),
-        }
-    }
-
-    pub fn parse_response<'a, 'b>(&'a self, i: &'b [u8]) -> IResult<&'b [u8], Self, PduParseError> {
-        match self {
-            Self::Fprd(_) => todo!(),
-            Self::Brd(brd) => brd.parse_response(i).map(|(i, brd)| (i, Self::Brd(brd))),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Fprd {
-    // TODO: Make this the `Command` enum
-    command: u8,
-    idx: u8,
-    adp: u16,
-    /// Memory or register address.
-    ado: u16,
-    /// len(11), reserved(3), circulating(1), next(1)
-    packed: u16,
+pub struct Pdu<const MAX_DATA: usize> {
+    command: Command,
+    pub index: u8,
+    flags: PduFlags,
     irq: u16,
-    /// Read buffer containing response from slave.
-    data: Vec<u8>,
-    working_counter: u16,
-
-    // Not in PDU
-    data_len: u16,
+    pub data: heapless::Vec<u8, MAX_DATA>,
+    pub working_counter: u16,
 }
 
-impl Fprd {
-    pub fn new(len: u16, slave_addr: u16, memory_address: u16) -> Self {
-        // Other fields are all zero for now
-        let packed = len & LEN_MASK;
+impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
+    pub const fn new(command: Command, data_length: u16, index: u8) -> Self {
+        debug_assert!(MAX_DATA <= LEN_MASK as usize);
+        debug_assert!(data_length as usize <= MAX_DATA);
 
         Self {
-            command: Command::Fprd as u8,
-            idx: 0x01,
-            adp: slave_addr,
-            ado: memory_address,
-            packed,
+            command,
+            index,
+            flags: PduFlags::with_len(data_length),
             irq: 0,
-            data: Vec::with_capacity(len.into()),
+            data: heapless::Vec::new(),
             working_counter: 0,
-            data_len: len,
         }
     }
 
-    /// Length of this entire struct in bytes
-    pub fn byte_len(&self) -> u16 {
-        let static_len = 12;
+    fn as_bytes<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
+        // Order is VITAL here
+        let buf = gen_simple(le_u8(self.command.code() as u8), buf)?;
+        let buf = gen_simple(le_u8(self.index), buf)?;
 
-        static_len + u16::try_from(self.data_len).expect("Too long")
+        // Write address and register data
+        let buf = gen_simple(slice(self.command.address()?), buf)?;
+
+        let buf = gen_simple(le_u16(u16::from_le_bytes(self.flags.pack().unwrap())), buf)?;
+        let buf = gen_simple(le_u16(self.irq), buf)?;
+        let buf = gen_simple(slice(&self.data), buf)?;
+        // Working counter is always zero when sending
+        let buf = gen_simple(le_u16(0u16), buf)?;
+
+        Ok(buf)
     }
 
-    pub fn as_bytes(&self, mut buf: &mut [u8]) -> io::Result<()> {
-        buf.write_all(&[self.command])?;
-        buf.write_all(&[self.idx])?;
-        buf.write_all(&self.adp.to_le_bytes())?;
-        buf.write_all(&self.ado.to_le_bytes())?;
-        buf.write_all(&self.packed.to_le_bytes())?;
-        buf.write_all(&self.irq.to_le_bytes())?;
-        // Populate data payload with zeroes. The slave will write data into this section.
-        buf.write_all(&[0x00].repeat(self.data_len.into()))?;
-        buf.write_all(&self.working_counter.to_le_bytes())?;
-
-        Ok(())
+    /// Compute the number of bytes required to store the PDU payload and metadata.
+    const fn buf_len(&self) -> usize {
+        // TODO: Add unit test to stop regressions
+        MAX_DATA + 12
     }
 
-    fn set_has_next(&mut self, has_next: bool) {
-        let flag = u16::from(has_next) << 15;
+    /// Compute the number of bytes required to store the PDU payload, metadata and EtherCAT frame
+    /// header data.
+    pub fn frame_buf_len(&self) -> usize {
+        let size = self.buf_len() + mem::size_of::<FrameHeader>();
 
-        self.packed |= flag;
-    }
-}
+        // TODO: Move to unit test
+        assert_eq!(size, MAX_DATA + 14);
 
-#[derive(Debug, Clone)]
-pub struct Brd {
-    // TODO: Make this the `Command` enum
-    command: u8,
-    idx: u8,
-    adp: u16,
-    /// Memory or register address.
-    ado: u16,
-    /// len(11), reserved(3), circulating(1), next(1)
-    packed: u16,
-    irq: u16,
-    /// Read buffer containing response from slave.
-    data: Vec<u8>,
-    working_counter: u16,
-
-    // Not in PDU
-    data_len: u16,
-}
-
-impl Brd {
-    pub fn new(len: u16, memory_address: u16) -> Self {
-        // Other fields are all zero for now
-        let packed = len & LEN_MASK;
-
-        Self {
-            command: Command::Brd as u8,
-            idx: 0x01,
-            adp: 0,
-            ado: memory_address,
-            packed,
-            irq: 0,
-            data: Vec::with_capacity(len.into()),
-            working_counter: 0,
-            data_len: len,
-        }
+        size
     }
 
-    /// Length of this entire struct in bytes
-    pub fn byte_len(&self) -> u16 {
-        let static_len = 12;
+    /// Write an ethernet frame into `buf`, returning the used portion of the buffer.
+    pub fn to_ethernet_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8], PduError> {
+        let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.frame_buf_len());
 
-        static_len + u16::try_from(self.data_len).expect("Too long")
+        // TODO: Return result if it's not long enough
+        let buf = &mut buf[0..ethernet_len];
+
+        let mut ethernet_frame = EthernetFrame::new_checked(buf).map_err(PduError::CreateFrame)?;
+
+        ethernet_frame.set_src_addr(MASTER_ADDR);
+        ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
+        ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
+
+        let header = FrameHeader::pdu(self.buf_len());
+
+        let buf = ethernet_frame.payload_mut();
+
+        let buf = gen_simple(le_u16(header.0), buf).map_err(PduError::Encode)?;
+        let _buf = self.as_bytes(buf).map_err(PduError::Encode)?;
+
+        let buf = ethernet_frame.into_inner();
+
+        Ok(buf)
     }
 
-    pub fn as_bytes(&self, mut buf: &mut [u8]) -> io::Result<()> {
-        buf.write_all(&[self.command])?;
-        buf.write_all(&[self.idx])?;
-        buf.write_all(&self.adp.to_le_bytes())?;
-        buf.write_all(&self.ado.to_le_bytes())?;
-        buf.write_all(&self.packed.to_le_bytes())?;
-        buf.write_all(&self.irq.to_le_bytes())?;
-        // Populate data payload with zeroes. The slave will write data into this section.
-        buf.write_all(&[0x00].repeat(self.data_len.into()))?;
-        buf.write_all(&self.working_counter.to_le_bytes())?;
+    /// Create an EtherCAT frame from an Ethernet II frame's payload.
+    pub fn from_ethernet_payload<'a>(i: &[u8]) -> IResult<&[u8], Self> {
+        // TODO: Split out frame header parsing when we want to support multiple PDUs. This should
+        // also let us do better with the const generics.
+        let (i, header) = FrameHeader::parse(i)?;
 
-        Ok(())
-    }
+        // Only take as much as the header says we should
+        let (_rest, i) = take(header.payload_len())(i)?;
 
-    fn set_has_next(&mut self, has_next: bool) {
-        let flag = u16::from(has_next) << 15;
+        let (i, command_code) = map_res(nom::number::complete::u8, CommandCode::try_from)(i)?;
+        let (i, index) = nom::number::complete::u8(i)?;
+        let (i, command) = command_code.parse_address(i)?;
+        let (i, flags) = map_res(take(2usize), PduFlags::unpack_from_slice)(i)?;
+        let (i, irq) = nom::number::complete::le_u16(i)?;
 
-        self.packed |= flag;
-    }
-
-    pub fn parse_response<'a, 'b>(&'a self, i: &'b [u8]) -> IResult<&'b [u8], Self, PduParseError> {
-        let (i, command) = map_res(complete::u8, |b| {
-            if b == (Command::Brd as u8) {
-                Ok(b)
-            } else {
-                dbg!(b, Command::Brd as u8);
-                Err(PduParseError::Command {
-                    received: b
-                        .try_into()
-                        .map_err(|unknown| PduParseError::InvalidCommand(unknown))?,
-                    expected: self
-                        .command
-                        .try_into()
-                        .map_err(|unknown| PduParseError::InvalidCommand(unknown))?,
-                })
-            }
-        })(i)?;
-        let (i, idx) = map_res(complete::u8, |idx| {
-            if idx == self.idx {
-                Ok(idx)
-            } else {
-                Err(PduParseError::Index {
-                    received: idx,
-                    expected: self.idx,
-                })
-            }
-        })(i)?;
-        let (i, adp) = le_u16(i)?;
-        let (i, ado) = le_u16(i)?;
-        let (i, packed) = le_u16(i)?;
-        let (i, irq) = le_u16(i)?;
-
-        let data_len = packed & LEN_MASK;
-
-        let (i, data) = take(data_len)(i)?;
-        let (i, working_counter) = le_u16(i)?;
-
-        // if !i.is_empty() {
-        //     return Err(PduParseError::Incomplete);
-        // }
+        let (i, data) = map_res(take(flags.length), |slice: &[u8]| slice.try_into())(i)?;
+        let (i, working_counter) = nom::number::complete::le_u16(i)?;
 
         Ok((
             i,
             Self {
                 command,
-                idx,
-                adp,
-                ado,
-                packed,
+                index,
+                flags,
                 irq,
-                data: data.to_vec(),
+                data,
                 working_counter,
-                data_len,
             },
         ))
     }
 
-    /// Check if the given packet is in response to self.
-    pub fn is_response(&self, other: &Self) -> bool {
-        self.command == other.command && self.idx == other.idx
-    }
-
-    pub fn wkc(&self) -> u16 {
-        self.working_counter
-    }
-}
-
-#[derive(Debug)]
-// TODO: thiserror
-pub enum PduParseError {
-    Command {
-        received: Command,
-        expected: Command,
-    },
-    Index {
-        received: u8,
-        expected: u8,
-    },
-    Parse(String),
-    // Incomplete,
-    InvalidCommand(u8),
-}
-
-// TODO: This is garbage
-impl ParseError<&[u8]> for PduParseError {
-    fn from_error_kind(_input: &[u8], kind: nom::error::ErrorKind) -> Self {
-        Self::Parse(format!("{:?}", kind))
-    }
-
-    fn append(_input: &[u8], kind: nom::error::ErrorKind, other: Self) -> Self {
-        Self::Parse(format!("{:?}: {:?}", other, kind))
-    }
-}
-
-// TODO: This is garbage
-impl FromExternalError<&[u8], PduParseError> for PduParseError {
-    fn from_external_error(_input: &[u8], _kind: nom::error::ErrorKind, e: PduParseError) -> Self {
-        e
-    }
-}
-
-impl From<nom::Err<nom::error::VerboseError<&[u8]>>> for PduParseError {
-    fn from(e: nom::Err<nom::error::VerboseError<&[u8]>>) -> Self {
-        match e.clone() {
-            nom::Err::Incomplete(_) => todo!(),
-            nom::Err::Error(e) => {
-                for (slice, error) in e.errors {
-                    println!("Failed to parse: {error:?}\n{slice:02x?}");
-                }
-            }
-            nom::Err::Failure(_) => todo!(),
+    pub fn is_response_to(&self, request_pdu: &Self) -> Result<(), PduValidationError> {
+        if request_pdu.index != self.index {
+            return Err(PduValidationError::IndexMismatch);
         }
 
-        Self::Parse(e.to_string())
+        if !self.command.is_response_to(&request_pdu.command) {
+            return Err(PduValidationError::CommandMismatch);
+        }
+
+        Ok(())
     }
 }
 
 #[derive(Debug)]
-// TODO: Derive packed_struct::PrimitiveEnum_u8
-pub enum Command {
-    Fprd = 0x04,
-    Brd = 0x07,
+pub enum PduError {
+    Timeout,
+    IndexInUse,
+    Send,
+    Decode,
+    TooLong,
+    CreateFrame(smoltcp::Error),
+    Encode(cookie_factory::GenError),
 }
 
-impl TryFrom<u8> for Command {
-    type Error = u8;
+#[derive(Copy, Clone, Debug)]
+pub enum PduValidationError {
+    IndexMismatch,
+    CommandMismatch,
+}
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0x04 => Ok(Self::Fprd),
-            0x07 => Ok(Self::Brd),
-            unknown => Err(unknown),
+#[derive(Copy, Clone, Debug, PackedStruct, PartialEq)]
+#[packed_struct(size_bytes = "2", bit_numbering = "msb0", endian = "lsb")]
+pub struct PduFlags {
+    /// Data length of this PDU.
+    #[packed_field(bits = "0..=10")]
+    length: u16,
+    /// Circulating frame
+    ///
+    /// 0: Frame is not circulating,
+    /// 1: Frame has circulated once
+    #[packed_field(bits = "14")]
+    circulated: bool,
+    /// 0: last EtherCAT PDU in EtherCAT frame
+    /// 1: EtherCAT PDU in EtherCAT frame follows
+    #[packed_field(bits = "15")]
+    is_not_last: bool,
+}
+
+impl PduFlags {
+    pub const fn with_len(len: u16) -> Self {
+        Self {
+            length: len,
+            circulated: false,
+            is_not_last: false,
         }
     }
 }
