@@ -12,7 +12,12 @@ pub enum RegisterAddress {
     /// RAM size in kilo-octets (1024 octets)
     RamSize = 0x0006,
     PortDescriptors = 0x0007,
+    // u16
     SupportFlags = 0x0008,
+    // u16
+    ConfiguredStationAddress = 0x0010,
+    // u16
+    ConfiguredStationAlias = 0x0012,
 }
 
 impl From<RegisterAddress> for u16 {

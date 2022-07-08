@@ -14,6 +14,8 @@ use futures_lite::FutureExt;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
 
+pub type PduResponse<T> = (T, u16);
+
 #[derive(Debug)]
 enum RequestState {
     Created,
@@ -122,12 +124,13 @@ where
         Ok(tx_task.race(rx_task))
     }
 
-    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<T, PduError>
+    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, PduError>
     where
         T: PduData,
         <T as PduData>::Error: core::fmt::Debug,
     {
-        self.client
+        let pdu = self
+            .client
             .pdu(
                 Command::Brd {
                     // Address is always zero when sent from master
@@ -137,7 +140,14 @@ where
                 // No input data; this is a read
                 &[],
             )
-            .await
+            .await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
     }
 }
 
@@ -176,12 +186,7 @@ where
         }
     }
 
-    // TODO: Send data
-    pub async fn pdu<T>(&self, command: Command, _data: &[u8]) -> Result<T, PduError>
-    where
-        T: PduData,
-        <T as PduData>::Error: core::fmt::Debug,
-    {
+    pub async fn pdu(&self, command: Command, _data: &[u8]) -> Result<Pdu<MAX_PDU_DATA>, PduError> {
         // braces to ensure we don't hold the refcell across awaits!!
         let idx = {
             // TODO: Confirm ordering
@@ -249,10 +254,7 @@ where
 
         // println!("Raw data {:?}", res.data.as_slice());
 
-        T::try_from_slice(res.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })
+        Ok(res)
     }
 
     // TODO: Return a result if index is out of bounds, or we don't have a waiting packet
