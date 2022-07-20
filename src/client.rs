@@ -139,6 +139,7 @@ where
                 },
                 // No input data; this is a read
                 &[],
+                T::len().try_into().expect("Length conversion"),
             )
             .await?;
 
@@ -186,7 +187,12 @@ where
         }
     }
 
-    pub async fn pdu(&self, command: Command, _data: &[u8]) -> Result<Pdu<MAX_PDU_DATA>, PduError> {
+    async fn pdu(
+        &self,
+        command: Command,
+        _data: &[u8],
+        data_length: u16,
+    ) -> Result<Pdu<MAX_PDU_DATA>, PduError> {
         // braces to ensure we don't hold the refcell across awaits!!
         let idx = {
             // TODO: Confirm ordering
@@ -200,8 +206,6 @@ where
             }
 
             // println!("BRD {idx}");
-
-            let data_length = T::len();
 
             let pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx);
 
