@@ -17,6 +17,9 @@ const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 pub const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
 pub const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
 
+#[cfg(not(target_endian = "little"))]
+compile_error!("Only little-endian targets are supported at this time as primitive integers are cast to slices as-is");
+
 pub trait PduData: Sized {
     const LEN: u16;
 
@@ -27,6 +30,7 @@ pub trait PduData: Sized {
     }
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error>;
+    fn as_slice(&self) -> &[u8];
 }
 
 macro_rules! impl_pdudata {
@@ -37,6 +41,18 @@ macro_rules! impl_pdudata {
 
             fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
                 Ok(Self::from_le_bytes(slice.try_into()?))
+            }
+
+            fn as_slice<'a>(&'a self) -> &'a [u8] {
+                // SAFETY: Copied from `safe-transmute` crate so I'm assuming...
+                // SAFETY: EtherCAT is little-endian on the wire, so this will ONLY work on
+                // little-endian targets, hence the `compile_error!()` above.
+                unsafe {
+                    core::slice::from_raw_parts(
+                        self as *const Self as *const u8,
+                        core::mem::size_of::<Self>(),
+                    )
+                }
             }
         }
     };
@@ -59,6 +75,10 @@ impl<const N: usize> PduData for [u8; N] {
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         slice.try_into()
     }
+
+    fn as_slice(&self) -> &[u8] {
+        self
+    }
 }
 
 /// A "Visible String" representation. Characters are specified to be within the ASCII range.
@@ -75,6 +95,10 @@ impl<const N: usize> PduData for heapless::String<N> {
             .map_err(|_| VisibleStringError::TooLong)?;
 
         Ok(out)
+    }
+
+    fn as_slice(&self) -> &[u8] {
+        self.as_bytes()
     }
 }
 
