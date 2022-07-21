@@ -2,6 +2,7 @@
 
 pub mod client;
 pub mod command;
+pub mod fmmu;
 pub mod frame;
 pub mod pdu;
 pub mod register;
