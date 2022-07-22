@@ -1,5 +1,5 @@
 use cookie_factory::{gen_simple, GenError};
-use nom::{combinator::map, sequence::pair, IResult};
+use nom::{combinator::map, error::ParseError, sequence::pair, IResult};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Command {
@@ -89,7 +89,8 @@ impl Command {
 }
 
 /// Broadcast or configured station addressing.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, num_enum::TryFromPrimitive)]
+#[repr(u8)]
 pub enum CommandCode {
     // Reads
     Aprd = 0x01,
@@ -125,24 +126,6 @@ impl CommandCode {
                 address,
                 register,
             })(i),
-        }
-    }
-}
-
-impl TryFrom<u8> for CommandCode {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            // Reads
-            0x01 => Ok(Self::Aprd),
-            0x04 => Ok(Self::Fprd),
-            0x07 => Ok(Self::Brd),
-            0x0A => Ok(Self::Lrd),
-
-            // Writes
-            0x05 => Ok(Self::Fpwr),
-            _ => Err(()),
         }
     }
 }
