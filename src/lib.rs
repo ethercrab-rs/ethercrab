@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod al_status_code;
 pub mod client;
 pub mod command;
 pub mod fmmu;
