@@ -1,5 +1,7 @@
 use packed_struct::prelude::*;
 
+use crate::PduData;
+
 #[repr(u16)]
 pub enum RegisterAddress {
     Type = 0x0000u16,
@@ -11,6 +13,7 @@ pub enum RegisterAddress {
     SyncManagerChannels = 0x0005,
     /// RAM size in kilo-octets (1024 octets)
     RamSize = 0x0006,
+    // u8
     PortDescriptors = 0x0007,
     // u16
     SupportFlags = 0x0008,
@@ -26,7 +29,7 @@ impl From<RegisterAddress> for u16 {
     }
 }
 
-#[derive(PackedStruct)]
+#[derive(Debug, PackedStruct)]
 #[packed_struct(bit_numbering = "msb0")]
 pub struct PortDescriptors {
     #[packed_field(bits = "0..=1", ty = "enum")]
@@ -39,7 +42,25 @@ pub struct PortDescriptors {
     port_3: PortType,
 }
 
-#[derive(Clone, Copy, PartialEq, PrimitiveEnum_u8)]
+impl PduData for PortDescriptors {
+    const LEN: u16 = 1;
+
+    type Error = packed_struct::PackingError;
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        let arr = slice[0..1]
+            .try_into()
+            .map_err(|_| PackingError::BufferTooSmall)?;
+
+        Self::unpack(arr)
+    }
+
+    fn as_slice(&self) -> &[u8] {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PrimitiveEnum_u8)]
 #[repr(u8)]
 pub enum PortType {
     NotImplemented = 0x00u8,
