@@ -1,7 +1,11 @@
 //! An EtherCAT frame.
 
 use crate::LEN_MASK;
-use nom::{error::ErrorKind, IResult};
+use nom::{
+    combinator::{map, verify},
+    error::ParseError,
+    IResult,
+};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
@@ -46,20 +50,13 @@ impl FrameHeader {
     }
 
     /// Remove and parse an EtherCAT frame header from the given buffer.
-    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, raw) = nom::number::complete::le_u16(i)?;
-
-        let self_ = Self(raw);
-
-        // TODO: Support other frame types
-        if self_.protocol_type() == ProtocolType::DlPdu {
-            Ok((i, self_))
-        } else {
-            Err(nom::Err::Error(nom::error::Error::new(
-                i,
-                ErrorKind::Verify,
-            )))
-        }
+    pub fn parse<'a, E>(i: &'a [u8]) -> IResult<&[u8], Self, E>
+    where
+        E: ParseError<&'a [u8]>,
+    {
+        verify(map(nom::number::complete::le_u16, Self), |self_| {
+            self_.protocol_type() == ProtocolType::DlPdu
+        })(i)
     }
 
     /// The length of the payload contained in this frame.
@@ -104,7 +101,7 @@ mod tests {
     fn parse() {
         let raw = &[0b0001_0000, 0b0010_1000];
 
-        let (rest, header) = FrameHeader::parse(raw).unwrap();
+        let (rest, header) = FrameHeader::parse::<'_, nom::error::Error<_>>(raw).unwrap();
 
         assert_eq!(rest, &[]);
 
