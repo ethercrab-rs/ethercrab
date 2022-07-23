@@ -62,3 +62,32 @@ ETG 1000.4 section 5.2 Data types and encoding rules
 
 - <https://www.ethercat.org/memberarea/en/knowledge_base_7B6EA38CBF2349C388F6F29004196B88.htm>
 - ETG1000.6 Table 102 shows ESM state table
+
+# Initialisation
+
+## Station address
+
+### ETG1000.3 4.8.3.2
+
+Use position addressing (array indexing) to initialise slave addresses to a configured station
+address. Use CSA for the rest of the program.
+
+### ETG1000.4 6.1.2/ETG1000.3 4.8.3.3
+
+Write a u16 to register 0x0010 a configured address, can probably just be the slave index.
+
+# AL status/control
+
+- AL control is at `0x0120`
+- AL status is at `0x0130`
+- AL status code is at `0x0134`
+
+ETG1000.6 5.3.2 lists DL-user register mappings to AL status/control/etc
+
+ETG1000.4 6.1.5.4 which lists this mapping lists DLS-user registers and their addresses.
+
+|             |                |
+| ----------- | -------------- |
+| DLS-user R1 | AL control     |
+| DLS-user R3 | AL status      |
+| DLS-user R6 | AL status code |
