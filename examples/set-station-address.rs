@@ -33,30 +33,29 @@ fn main() -> Result<(), PduError> {
 
         println!("Discovered {num_slaves} slaves");
 
-        // TODO: Fix timer factory clone issue
-        // let client2 = client.clone();
+        let client2 = client.clone();
 
-        // local_ex
-        //     .spawn(async move {
-        //         loop {
-        //             for slave_idx in 0..num_slaves {
-        //                 let (configured_address, working_counter) = client2
-        //                     .aprd::<u16>(slave_idx, RegisterAddress::AlStatus)
-        //                     .await
-        //                     .unwrap();
+        local_ex
+            .spawn(async move {
+                loop {
+                    for slave_idx in 0..num_slaves {
+                        let (configured_address, working_counter) = client2
+                            .aprd::<u16>(slave_idx, RegisterAddress::AlStatus)
+                            .await
+                            .unwrap();
 
-        //                 assert_eq!(
-        //                     working_counter, 1,
-        //                     "Failed to read AL status for slave {slave_idx}"
-        //                 );
+                        assert_eq!(
+                            working_counter, 1,
+                            "Failed to read AL status for slave {slave_idx}"
+                        );
 
-        //                 println!("Slave {slave_idx} configured address: {configured_address}");
+                        println!("Slave {slave_idx} AL status: {configured_address}");
 
-        //                 async_io::Timer::after(Duration::from_millis(500)).await;
-        //             }
-        //         }
-        //     })
-        //     .detach();
+                        async_io::Timer::after(Duration::from_millis(500)).await;
+                    }
+                }
+            })
+            .detach();
 
         for slave_idx in 0..num_slaves {
             println!("Read slave {slave_idx}");
@@ -136,6 +135,8 @@ fn main() -> Result<(), PduError> {
 
             println!("Slave {slave_idx} configured address: {configured_address}");
         }
+
+        async_io::Timer::after(Duration::from_millis(5000)).await;
     })));
 
     Ok(())

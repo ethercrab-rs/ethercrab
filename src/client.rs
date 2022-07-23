@@ -50,9 +50,24 @@ fn get_tx_rx(
     Ok((tx, rx))
 }
 
-#[derive(Clone)]
 pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     client: std::sync::Arc<ClientInternals<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>,
+}
+
+// NOTE: Using a manual impl here as derived `Clone` can be too conservative. See:
+//
+// - https://www.reddit.com/r/rust/comments/42nuwc/cloning_phantomdata_problem/
+// - https://github.com/rust-lang/rust/issues/26925
+//
+// This lets us clone `Client` even if `TIMEOUT` isn't `Clone`.
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Clone
+    for Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+{
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+        }
+    }
 }
 
 impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
