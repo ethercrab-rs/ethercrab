@@ -130,11 +130,17 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
 
     pub fn is_response_to(&self, request_pdu: &Self) -> Result<(), PduValidationError> {
         if request_pdu.index != self.index {
-            return Err(PduValidationError::IndexMismatch);
+            return Err(PduValidationError::IndexMismatch {
+                sent: request_pdu.command,
+                received: self.command,
+            });
         }
 
-        if !self.command.is_response_to(&request_pdu.command) {
-            return Err(PduValidationError::CommandMismatch);
+        if request_pdu.command.code() != self.command.code() {
+            return Err(PduValidationError::CommandMismatch {
+                sent: request_pdu.command,
+                received: self.command,
+            });
         }
 
         Ok(())
@@ -154,8 +160,8 @@ pub enum PduError {
 
 #[derive(Copy, Clone, Debug)]
 pub enum PduValidationError {
-    IndexMismatch,
-    CommandMismatch,
+    IndexMismatch { sent: Command, received: Command },
+    CommandMismatch { sent: Command, received: Command },
 }
 
 #[derive(Copy, Clone, Debug, PackedStruct, PartialEq)]
