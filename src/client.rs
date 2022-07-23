@@ -1,14 +1,17 @@
-use crate::command::Command;
-use crate::pdu::{Pdu, PduError};
-use crate::register::RegisterAddress;
-use crate::timer_factory::TimerFactory;
-use crate::{PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR};
-use core::cell::RefCell;
-use core::future::Future;
-use core::marker::PhantomData;
-use core::sync::atomic::{AtomicU8, Ordering};
-use core::task::Poll;
-use core::task::Waker;
+use crate::{
+    command::Command,
+    pdu::{Pdu, PduError},
+    register::RegisterAddress,
+    timer_factory::TimerFactory,
+    PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR,
+};
+use core::{
+    cell::RefCell,
+    future::Future,
+    marker::PhantomData,
+    sync::atomic::{AtomicU8, Ordering},
+    task::{Poll, Waker},
+};
 use futures::future::{select, Either};
 use futures_lite::FutureExt;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
@@ -150,6 +153,101 @@ where
 
         Ok((res, pdu.working_counter))
     }
+
+    /// Auto Increment Physical Read.
+    pub async fn aprd<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+    ) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduData>::Error: core::fmt::Debug,
+    {
+        let address = 0u16.wrapping_sub(address);
+
+        let pdu = self
+            .client
+            .pdu(
+                Command::Aprd {
+                    address,
+                    register: register.into(),
+                },
+                &[],
+                T::len().try_into().expect("Length conversion"),
+            )
+            .await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
+    }
+
+    /// Configured address read.
+    pub async fn fprd<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+    ) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduData>::Error: core::fmt::Debug,
+    {
+        let pdu = self
+            .client
+            .pdu(
+                Command::Fprd {
+                    address,
+                    register: register.into(),
+                },
+                &[],
+                T::len().try_into().expect("Length conversion"),
+            )
+            .await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
+    }
+
+    /// Auto Increment Physical Write.
+    pub async fn apwr<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+        value: T,
+    ) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduData>::Error: core::fmt::Debug,
+    {
+        let address = 0u16.wrapping_sub(address);
+
+        let pdu = self
+            .client
+            .pdu(
+                Command::Apwr {
+                    address,
+                    register: register.into(),
+                },
+                value.as_slice(),
+                T::len().try_into().expect("Length conversion"),
+            )
+            .await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
+    }
 }
 
 // TODO: Use atomic_refcell crate
@@ -190,7 +288,7 @@ where
     async fn pdu(
         &self,
         command: Command,
-        _data: &[u8],
+        data: &[u8],
         data_length: u16,
     ) -> Result<Pdu<MAX_PDU_DATA>, PduError> {
         // braces to ensure we don't hold the refcell across awaits!!
@@ -205,9 +303,9 @@ where
                 return Err(PduError::IndexInUse);
             }
 
-            // println!("BRD {idx}");
+            let mut pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx);
 
-            let pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx);
+            pdu.data = data.try_into().map_err(|_| PduError::TooLong)?;
 
             self.frames.borrow_mut()[usize::from(idx)] = Some((RequestState::Created, pdu));
 
@@ -263,8 +361,10 @@ where
 
     // TODO: Return a result if index is out of bounds, or we don't have a waiting packet
     pub fn parse_response_ethernet_frame(&self, ethernet_frame_payload: &[u8]) {
-        let (_rest, pdu) = Pdu::<MAX_PDU_DATA>::from_ethernet_payload(&ethernet_frame_payload)
-            .expect("Packet parse");
+        let (_rest, pdu) = Pdu::<MAX_PDU_DATA>::from_ethernet_payload::<nom::error::Error<&[u8]>>(
+            &ethernet_frame_payload,
+        )
+        .expect("Packet parse");
 
         let idx = pdu.index;
 
