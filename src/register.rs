@@ -21,6 +21,16 @@ pub enum RegisterAddress {
     ConfiguredStationAddress = 0x0010,
     // u16
     ConfiguredStationAlias = 0x0012,
+
+    // u8
+    // AKA DLS-user R1
+    AlControl = 0x0120,
+    // u8
+    // AKA DLS-user R3
+    AlStatus = 0x0130,
+    // u16
+    // AKA DLS-user R6
+    AlStatusCode = 0x0134,
 }
 
 impl From<RegisterAddress> for u16 {
