@@ -5,7 +5,7 @@ use nom::{combinator::map, error::ParseError, sequence::pair, IResult};
 pub enum Command {
     Aprd {
         /// Auto increment counter.
-        address: i16,
+        address: u16,
 
         /// Memory location to read from.
         register: u16,
@@ -29,6 +29,13 @@ pub enum Command {
         address: u32,
     },
 
+    Apwr {
+        /// Auto increment counter.
+        address: u16,
+
+        /// Memory location to write to.
+        register: u16,
+    },
     Fpwr {
         /// Configured station address.
         address: u16,
@@ -48,6 +55,7 @@ impl Command {
             Self::Lrd { .. } => CommandCode::Lrd,
 
             // Writes
+            Self::Apwr { .. } => CommandCode::Apwr,
             Self::Fpwr { .. } => CommandCode::Fpwr,
         }
     }
@@ -58,11 +66,9 @@ impl Command {
         let buf = arr.as_mut_slice();
 
         match *self {
-            Command::Aprd { address, register } => {
-                let buf = gen_simple(cookie_factory::bytes::le_i16(address), buf)?;
-                gen_simple(cookie_factory::bytes::le_u16(register), buf)
-            }
-            Command::Fprd { address, register }
+            Command::Aprd { address, register }
+            | Command::Apwr { address, register }
+            | Command::Fprd { address, register }
             | Command::Fpwr { address, register }
             | Command::Brd { address, register } => {
                 let buf = gen_simple(cookie_factory::bytes::le_u16(address), buf)?;
@@ -72,19 +78,6 @@ impl Command {
         }?;
 
         Ok(arr)
-    }
-
-    /// Compare another command and address against self.
-    ///
-    /// Commands which cause address autoincrements during slave traversal will not compare
-    /// addresses.
-    pub fn is_response_to(&self, other: &Self) -> bool {
-        match self {
-            // Ignore addresses for autoincrement services; the master sends zero and any slave
-            // response is non-zero.
-            Command::Aprd { .. } | Command::Brd { .. } => self.code() == other.code(),
-            _ => self == other,
-        }
     }
 }
 
@@ -99,16 +92,20 @@ pub enum CommandCode {
     Lrd = 0x0A,
 
     // Writes
+    Apwr = 0x02,
     Fpwr = 0x05,
 }
 
 impl CommandCode {
     /// Parse an address, producing a [`Command`].
-    pub fn parse_address(self, i: &[u8]) -> IResult<&[u8], Command> {
-        use nom::number::complete::{le_i16, le_u16, le_u32};
+    pub fn parse_address<'a, E>(self, i: &'a [u8]) -> IResult<&'a [u8], Command, E>
+    where
+        E: ParseError<&'a [u8]>,
+    {
+        use nom::number::complete::{le_u16, le_u32};
 
         match self {
-            Self::Aprd => map(pair(le_i16, le_u16), |(address, register)| Command::Aprd {
+            Self::Aprd => map(pair(le_u16, le_u16), |(address, register)| Command::Aprd {
                 address,
                 register,
             })(i),
@@ -122,6 +119,10 @@ impl CommandCode {
             })(i),
             Self::Lrd => map(le_u32, |address| Command::Lrd { address })(i),
 
+            Self::Apwr => map(pair(le_u16, le_u16), |(address, register)| Command::Apwr {
+                address,
+                register,
+            })(i),
             Self::Fpwr => map(pair(le_u16, le_u16), |(address, register)| Command::Fpwr {
                 address,
                 register,
