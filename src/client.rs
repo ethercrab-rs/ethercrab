@@ -1,15 +1,18 @@
 use crate::{
+    check_working_counter,
     client_inner::{ClientInternals, RequestState},
     command::Command,
     error::{Error, PduError},
     register::RegisterAddress,
+    slave::Slave,
     timer_factory::TimerFactory,
-    PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR,
+    PduData, BASE_SLAVE_ADDR, ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
-use core::{future::Future, task::Poll};
+use core::{cell::RefCell, future::Future, task::Poll};
 use futures_lite::FutureExt;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
+use std::sync::Arc;
 
 pub type PduResponse<T> = (T, u16);
 
@@ -37,8 +40,12 @@ fn get_tx_rx(
     Ok((tx, rx))
 }
 
+// TODO: Refactor so this client is a thin `Arc` wrapper around internals
 pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    client: std::sync::Arc<ClientInternals<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>,
+    client: Arc<ClientInternals<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>,
+    // TODO: Configurable max slaves
+    // TODO: Move to internals
+    slaves: Arc<RefCell<heapless::Vec<Slave, 16>>>,
 }
 
 // NOTE: Using a manual impl here as derived `Clone` can be too conservative. See:
@@ -53,6 +60,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Clone
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
+            slaves: self.slaves.clone(),
         }
     }
 }
@@ -64,11 +72,57 @@ where
 {
     pub fn new() -> Self {
         Self {
-            client: std::sync::Arc::new(ClientInternals::new()),
+            client: Arc::new(ClientInternals::new()),
+            slaves: Arc::new(RefCell::new(heapless::Vec::new())),
         }
     }
 
+    /// Detect slaves and set their configured station addresses.
+    pub async fn init(&self) -> Result<(), Error> {
+        // Each slave increments working counter, so we can use it as a total count of slaves
+        let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
+
+        if usize::from(num_slaves) > self.slaves.borrow().capacity() {
+            return Err(Error::TooManySlaves);
+        }
+
+        self.slaves.borrow_mut().truncate(0);
+
+        for slave_idx in 0..num_slaves {
+            let address = BASE_SLAVE_ADDR + slave_idx;
+
+            let (_, working_counter) = self
+                .apwr(
+                    slave_idx,
+                    RegisterAddress::ConfiguredStationAddress,
+                    address,
+                )
+                .await?;
+
+            check_working_counter!(working_counter, 1, "set station address")?;
+
+            let (slave_state, working_counter) =
+                self.fprd(address, RegisterAddress::AlStatus).await?;
+
+            check_working_counter!(working_counter, 1, "get AL status")?;
+
+            // TODO: Unwrap
+            self.slaves
+                .borrow_mut()
+                .push(Slave::new(address, slave_state))
+                .unwrap();
+        }
+
+        Ok(())
+    }
+
+    // TODO: Unwrap
+    pub fn slaves<'a>(&'a self) -> core::cell::Ref<'a, heapless::Vec<Slave, 16>> {
+        self.slaves.try_borrow().unwrap()
+    }
+
     // TODO: Proper error - there are a couple of unwraps in here
+    // TODO: Pass packet buffer in?
     pub fn tx_rx_task(&self, device: &str) -> Result<impl Future<Output = ()>, std::io::Error> {
         let client_tx = self.client.clone();
         let client_rx = self.client.clone();

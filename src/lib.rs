@@ -10,6 +10,7 @@ pub mod fmmu;
 pub mod frame;
 pub mod pdu;
 pub mod register;
+pub mod slave;
 pub mod timer_factory;
 pub mod vendors;
 
@@ -22,6 +23,8 @@ const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 // TODO: Un-pub
 pub const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
 pub const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
+
+const BASE_SLAVE_ADDR: u16 = 0x1000;
 
 #[cfg(not(target_endian = "little"))]
 compile_error!("Only little-endian targets are supported at this time as primitive integers are cast to slices as-is");
