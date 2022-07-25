@@ -1,4 +1,5 @@
-//! A refactor of brd-waker to contain TX/RX in a single task, only passing data/wakers.
+//! A small example to set the configured station address for each slave, as well as periodically
+//! log the AL Status register.
 
 use std::time::Duration;
 
@@ -37,12 +38,13 @@ fn main() -> Result<(), PduError> {
 
         let client2 = client.clone();
 
+        // Periodically log slave status as a raw number
         local_ex
             .spawn(async move {
                 loop {
                     for slave_idx in 0..num_slaves {
                         let (configured_address, working_counter) = client2
-                            .aprd::<u16>(slave_idx, RegisterAddress::AlStatus)
+                            .aprd::<u8>(slave_idx, RegisterAddress::AlStatus)
                             .await
                             .unwrap();
 

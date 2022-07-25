@@ -36,7 +36,7 @@ fn get_tx_rx(
     let interface = interfaces
         .into_iter()
         .find(|interface| interface.name == device)
-        .unwrap();
+        .expect("Could not find interface");
 
     dbg!(interface.mac);
 

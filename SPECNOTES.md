@@ -86,8 +86,8 @@ ETG1000.6 5.3.2 lists DL-user register mappings to AL status/control/etc
 
 ETG1000.4 6.1.5.4 which lists this mapping lists DLS-user registers and their addresses.
 
-|             |                |
-| ----------- | -------------- |
-| DLS-user R1 | AL control     |
-| DLS-user R3 | AL status      |
-| DLS-user R6 | AL status code |
+|             |                | Size  |
+| ----------- | -------------- | ----- |
+| DLS-user R1 | AL control     | `u8`  |
+| DLS-user R3 | AL status      | `u8`  |
+| DLS-user R6 | AL status code | `u16` |
