@@ -1,7 +1,7 @@
 use crate::{
     client_inner::{ClientInternals, RequestState},
     command::Command,
-    pdu::PduError,
+    error::{Error, PduError},
     register::RegisterAddress,
     timer_factory::TimerFactory,
     PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR,
