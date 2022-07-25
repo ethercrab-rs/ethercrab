@@ -9,6 +9,7 @@ pub mod frame;
 pub mod pdu;
 pub mod register;
 pub mod timer_factory;
+pub mod vendors;
 
 // use pdu::{Pdu, PduParseError};
 use core::array::TryFromSliceError;
