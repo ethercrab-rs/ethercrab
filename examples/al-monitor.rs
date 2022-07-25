@@ -28,10 +28,6 @@ const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
 #[cfg(not(target_os = "windows"))]
 const INTERFACE: &str = "eth0";
 
-struct Slave {
-    status_code: AlStatusCode,
-}
-
 struct App {
     state: TableState,
     slaves: Vec<Slave>,

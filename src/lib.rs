@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod al_status;
 pub mod al_status_code;
 pub mod client;
 pub mod client_inner;
