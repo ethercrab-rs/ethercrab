@@ -25,6 +25,10 @@ parking_lot = { version = "0.12.1", features = ["deadlock_detection"] }
 async-ctrlc = "1.2.0"
 futures = { version = "0.3.21", default-features = false }
 num_enum = { version = "0.5.7", default-features = false }
+tui = "0.18.0"
+crossterm = "0.24.0"
+log = "0.4.17"
+tui-logger = "0.8.0"
 
 [target.'cfg(windows)'.dependencies]
 smol = "1.2.5"
