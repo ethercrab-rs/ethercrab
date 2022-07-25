@@ -1,5 +1,6 @@
 use crate::{
     command::{Command, CommandCode},
+    error::{PduError, PduValidationError},
     frame::FrameHeader,
     ETHERCAT_ETHERTYPE, LEN_MASK, MASTER_ADDR,
 };
@@ -164,24 +165,6 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
 
         Ok(())
     }
-}
-
-#[derive(Debug)]
-pub enum PduError {
-    Timeout,
-    IndexInUse,
-    Send,
-    Decode,
-    TooLong,
-    CreateFrame(smoltcp::Error),
-    Encode(cookie_factory::GenError),
-    Address,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum PduValidationError {
-    IndexMismatch { sent: Command, received: Command },
-    CommandMismatch { sent: Command, received: Command },
 }
 
 #[derive(Copy, Clone, Debug, PackedStruct, PartialEq)]

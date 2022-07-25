@@ -1,8 +1,4 @@
-use crate::{
-    command::Command,
-    pdu::{Pdu, PduError},
-    timer_factory::TimerFactory,
-};
+use crate::{command::Command, error::PduError, pdu::Pdu, timer_factory::TimerFactory};
 use core::{
     cell::RefCell,
     marker::PhantomData,

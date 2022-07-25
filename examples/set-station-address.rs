@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_ctrlc::CtrlC;
 use ethercrab::client::Client;
-use ethercrab::pdu::PduError;
+use ethercrab::error::PduError;
 use ethercrab::register::RegisterAddress;
 use futures_lite::FutureExt;
 use smol::LocalExecutor;
