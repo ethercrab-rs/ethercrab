@@ -1,15 +1,17 @@
 use crate::{
     command::Command, error::PduError, pdu::Pdu, slave::Slave, timer_factory::TimerFactory,
+    ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
-    cell::RefCell,
+    cell::{BorrowMutError, RefCell, RefMut},
     marker::PhantomData,
     sync::atomic::{AtomicU8, Ordering},
     task::{Poll, Waker},
 };
 use futures::future::{select, Either};
+use smoltcp::wire::EthernetFrame;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum RequestState {
     Created,
     Waiting,
@@ -24,11 +26,11 @@ pub struct ClientInternals<
     TIMEOUT,
 > {
     wakers: RefCell<[Option<Waker>; MAX_FRAMES]>,
-    // TODO: Un-pub
-    pub frames: RefCell<[Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>,
-    pub send_waker: RefCell<Option<Waker>>,
+    frames: RefCell<[Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>,
+    send_waker: RefCell<Option<Waker>>,
     idx: AtomicU8,
     _timeout: PhantomData<TIMEOUT>,
+    // TODO: un-pub
     pub slaves: RefCell<heapless::Vec<Slave, MAX_SLAVES>>,
 }
 
@@ -59,21 +61,32 @@ where
         }
     }
 
+    pub fn set_send_waker(&self, waker: &Waker) {
+        if self.send_waker.borrow().is_none() {
+            self.send_waker.borrow_mut().replace(waker.clone());
+        }
+    }
+
+    pub fn frames_mut(
+        &self,
+    ) -> Result<RefMut<'_, [Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>, BorrowMutError>
+    {
+        self.frames.try_borrow_mut()
+    }
+
     pub async fn pdu(
         &self,
         command: Command,
         data: &[u8],
         data_length: u16,
     ) -> Result<Pdu<MAX_PDU_DATA>, PduError> {
-        // braces to ensure we don't hold the refcell across awaits!!
+        // braces to ensure we don't hold the refcell across awaits
         let idx = {
             // TODO: Confirm ordering
             let idx = self.idx.fetch_add(1, Ordering::Release) % MAX_FRAMES as u8;
 
             // We're receiving too fast or the receive buffer isn't long enough
             if self.frames.borrow()[usize::from(idx)].is_some() {
-                // println!("Index {idx} is already in use");
-
                 return Err(PduError::IndexInUse);
             }
 
@@ -94,25 +107,20 @@ where
 
         // MSRV: Use core::future::poll_fn when `future_poll_fn ` is stabilised
         let res = futures_lite::future::poll_fn(|ctx| {
-            let frames = self.frames.try_borrow_mut();
+            // TODO: Races
+            let mut frames = self.frames.borrow_mut();
 
-            let res = if let Ok(mut frames) = frames {
-                let frame = frames[usize::from(idx)].take();
+            let frame = frames[usize::from(idx)].take();
 
-                match frame {
-                    Some((RequestState::Done, pdu)) => Poll::Ready(pdu),
-                    // Not ready yet, put the request back.
-                    // TODO: This is dumb, we just want a reference
-                    Some(state) => {
-                        frames[usize::from(idx)] = Some(state);
-                        Poll::Pending
-                    }
-                    _ => Poll::Pending,
+            let res = match frame {
+                Some((RequestState::Done, pdu)) => Poll::Ready(pdu),
+                // Not ready yet, put the request back.
+                // TODO: This is dumb, we just want a reference
+                Some(state) => {
+                    frames[usize::from(idx)] = Some(state);
+                    Poll::Pending
                 }
-            } else {
-                // Using the failed borrow on `self.frames` as a sentinel, we can assume packets are
-                // being sent/received so we'll do nothing for now
-                Poll::Pending
+                _ => Poll::Pending,
             };
 
             self.wakers.borrow_mut()[usize::from(idx)] = Some(ctx.waker().clone());
@@ -128,15 +136,20 @@ where
             Either::Right((_timeout, _res)) => return Err(PduError::Timeout),
         };
 
-        // println!("Raw data {:?}", res.data.as_slice());
-
         Ok(res)
     }
 
     // TODO: Return a result if index is out of bounds, or we don't have a waiting packet
-    pub fn parse_response_ethernet_frame(&self, ethernet_frame_payload: &[u8]) {
+    pub fn parse_response_ethernet_packet(&self, raw_packet: &[u8]) {
+        let raw_packet = EthernetFrame::new_unchecked(raw_packet);
+
+        // Look for EtherCAT packets whilst ignoring broadcast packets sent from self
+        if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == MASTER_ADDR {
+            return ();
+        }
+
         let (_rest, pdu) = Pdu::<MAX_PDU_DATA>::from_ethernet_payload::<nom::error::Error<&[u8]>>(
-            &ethernet_frame_payload,
+            &raw_packet.payload(),
         )
         .expect("Packet parse");
 
@@ -144,10 +157,9 @@ where
 
         let waker = self.wakers.borrow_mut()[usize::from(idx)].take();
 
-        // println!("Looking for waker #{idx}: {:?}", waker);
-
         // Frame is ready; tell everyone about it
         if let Some(waker) = waker {
+            // TODO: Borrow races
             if let Some((state, existing_pdu)) = self.frames.borrow_mut()[usize::from(idx)].as_mut()
             {
                 pdu.is_response_to(existing_pdu).unwrap();
