@@ -11,6 +11,7 @@ pub mod frame;
 pub mod pdu;
 pub mod register;
 pub mod slave;
+pub mod sync_manager_channel;
 pub mod timer_factory;
 pub mod vendors;
 
