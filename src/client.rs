@@ -6,12 +6,11 @@ use crate::{
     register::RegisterAddress,
     slave::Slave,
     timer_factory::TimerFactory,
-    PduData, BASE_SLAVE_ADDR, ETHERCAT_ETHERTYPE, MASTER_ADDR,
+    PduData, BASE_SLAVE_ADDR,
 };
 use core::{future::Future, task::Poll};
 use futures_lite::FutureExt;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
-use smoltcp::wire::EthernetFrame;
 use std::sync::Arc;
 
 pub type PduResponse<T> = (T, u16);
@@ -124,7 +123,8 @@ where
     }
 
     // TODO: Proper error - there are a couple of unwraps in here
-    // TODO: Pass packet buffer in?
+    // TODO: Pass packet buffer in? Make it configurable with a const generic? Use `MAX_PDU_DATA`?
+    // TODO: Make some sort of split() method to ensure we can only ever have one tx/rx future running
     pub fn tx_rx_task(&self, device: &str) -> Result<impl Future<Output = ()>, std::io::Error> {
         let client_tx = self.client.clone();
         let client_rx = self.client.clone();
@@ -132,28 +132,22 @@ where
         let (mut tx, mut rx) = get_tx_rx(device)?;
 
         let tx_task = futures_lite::future::poll_fn::<(), _>(move |ctx| {
-            if client_tx.send_waker.borrow().is_none() {
-                client_tx
-                    .send_waker
-                    .borrow_mut()
-                    .replace(ctx.waker().clone());
-            }
+            client_tx.set_send_waker(&ctx.waker());
 
-            if let Ok(mut frames) = client_tx.frames.try_borrow_mut() {
-                for request in frames.iter_mut() {
-                    if let Some((state, pdu)) = request {
-                        match state {
-                            RequestState::Created => {
-                                let mut packet_buf = [0u8; 1536];
+            // TODO: Unwrap and/or borrow races with the receiving side
+            for request in client_tx.frames_mut().unwrap().iter_mut() {
+                if let Some((state, pdu)) = request {
+                    match state {
+                        RequestState::Created => {
+                            let mut packet_buf = [0u8; 1536];
 
-                                let packet = pdu.to_ethernet_frame(&mut packet_buf).unwrap();
+                            let packet = pdu.to_ethernet_frame(&mut packet_buf).unwrap();
 
-                                tx.send_to(packet, None).unwrap().expect("Send");
+                            tx.send_to(packet, None).unwrap().expect("Send");
 
-                                *state = RequestState::Waiting;
-                            }
-                            _ => (),
+                            *state = RequestState::Waiting;
                         }
+                        _ => (),
                     }
                 }
             }
@@ -165,14 +159,7 @@ where
             loop {
                 match rx.next() {
                     Ok(packet) => {
-                        let packet = EthernetFrame::new_unchecked(packet);
-
-                        // Look for EtherCAT packets whilst ignoring broadcast packets sent from self
-                        if packet.ethertype() == ETHERCAT_ETHERTYPE
-                            && packet.src_addr() != MASTER_ADDR
-                        {
-                            client_rx.parse_response_ethernet_frame(packet.payload());
-                        }
+                        client_rx.parse_response_ethernet_packet(packet);
                     }
                     Err(e) => {
                         // If an error occurs, we can handle it here
