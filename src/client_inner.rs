@@ -1,6 +1,13 @@
 use crate::{
-    command::Command, error::PduError, pdu::Pdu, slave::Slave, timer_factory::TimerFactory,
-    ETHERCAT_ETHERTYPE, MASTER_ADDR,
+    check_working_counter,
+    client::PduResponse,
+    command::Command,
+    error::{Error, PduError},
+    pdu::Pdu,
+    register::RegisterAddress,
+    slave::Slave,
+    timer_factory::TimerFactory,
+    PduData, BASE_SLAVE_ADDR, ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
     cell::{BorrowMutError, RefCell, RefMut},
@@ -59,6 +66,46 @@ where
             slaves: RefCell::new(heapless::Vec::new()),
             _timeout: PhantomData,
         }
+    }
+
+    /// Detect slaves and set their configured station addresses.
+    pub async fn init(&self) -> Result<(), Error> {
+        // Each slave increments working counter, so we can use it as a total count of slaves
+        let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
+
+        if usize::from(num_slaves) > self.slaves.borrow().capacity() {
+            return Err(Error::TooManySlaves);
+        }
+
+        // Make sure slave list is empty
+        self.slaves.borrow_mut().truncate(0);
+
+        for slave_idx in 0..num_slaves {
+            let address = BASE_SLAVE_ADDR + slave_idx;
+
+            let (_, working_counter) = self
+                .apwr(
+                    slave_idx,
+                    RegisterAddress::ConfiguredStationAddress,
+                    address,
+                )
+                .await?;
+
+            check_working_counter!(working_counter, 1, "set station address")?;
+
+            let (slave_state, working_counter) =
+                self.fprd(address, RegisterAddress::AlStatus).await?;
+
+            check_working_counter!(working_counter, 1, "get AL status")?;
+
+            // TODO: Unwrap
+            self.slaves
+                .borrow_mut()
+                .push(Slave::new(address, slave_state))
+                .unwrap();
+        }
+
+        Ok(())
     }
 
     pub fn set_send_waker(&self, waker: &Waker) {
@@ -171,5 +218,123 @@ where
 
             waker.wake()
         }
+    }
+
+    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduData>::Error: core::fmt::Debug,
+    {
+        let pdu = self
+            .pdu(
+                Command::Brd {
+                    // Address is always zero when sent from master
+                    address: 0,
+                    register: register.into(),
+                },
+                // No input data; this is a read
+                &[],
+                T::len().try_into().expect("Length conversion"),
+            )
+            .await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
+    }
+
+    /// Auto Increment Physical Read.
+    pub async fn aprd<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+    ) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduData>::Error: core::fmt::Debug,
+    {
+        let address = 0u16.wrapping_sub(address);
+
+        let pdu = self
+            .pdu(
+                Command::Aprd {
+                    address,
+                    register: register.into(),
+                },
+                &[],
+                T::len().try_into().expect("Length conversion"),
+            )
+            .await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
+    }
+
+    /// Configured address read.
+    pub async fn fprd<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+    ) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduData>::Error: core::fmt::Debug,
+    {
+        let pdu = self
+            .pdu(
+                Command::Fprd {
+                    address,
+                    register: register.into(),
+                },
+                &[],
+                T::len().try_into().expect("Length conversion"),
+            )
+            .await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
+    }
+
+    /// Auto Increment Physical Write.
+    pub async fn apwr<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+        value: T,
+    ) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduData>::Error: core::fmt::Debug,
+    {
+        let address = 0u16.wrapping_sub(address);
+
+        let pdu = self
+            .pdu(
+                Command::Apwr {
+                    address,
+                    register: register.into(),
+                },
+                value.as_slice(),
+                T::len().try_into().expect("Length conversion"),
+            )
+            .await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
     }
 }
