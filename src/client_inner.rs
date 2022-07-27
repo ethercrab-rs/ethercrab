@@ -115,6 +115,8 @@ where
                     Some((RequestState::Done, _pdu)) => frame
                         .take()
                         .map(|(_state, pdu)| Poll::Ready(Ok(pdu)))
+                        // We shouldn't ever get here because we're already matching against
+                        // `Some()`, but the alternative is an `unwrap()` so let's not go there.
                         .unwrap_or(Poll::Pending),
                     _ => Poll::Pending,
                 })
