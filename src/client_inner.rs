@@ -3,7 +3,6 @@ use crate::{
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
-    borrow::Borrow,
     cell::{BorrowMutError, RefCell, RefMut},
     marker::PhantomData,
     sync::atomic::{AtomicU8, Ordering},
@@ -83,7 +82,7 @@ where
     ) -> Result<Pdu<MAX_PDU_DATA>, PduError> {
         // braces to ensure we don't hold the refcell across awaits
         let idx = {
-            // TODO: Confirm ordering
+            // TODO: Confirm Ordering enum
             let idx = self.idx.fetch_add(1, Ordering::Release) % MAX_FRAMES as u8;
 
             // We're receiving too fast or the receive buffer isn't long enough
@@ -95,9 +94,8 @@ where
 
             pdu.data = data.try_into().map_err(|_| PduError::TooLong)?;
 
+            // TODO: Races
             self.frames.borrow_mut()[usize::from(idx)] = Some((RequestState::Created, pdu));
-
-            // println!("TX waker? {:?}", self.send_waker);
 
             if let Some(waker) = &*self.send_waker.borrow() {
                 waker.wake_by_ref()
@@ -113,22 +111,14 @@ where
 
             let res = frames
                 .get_mut(idx)
-                .and_then(|frame| match frame {
-                    Some((RequestState::Done, _pdu)) => Some(Poll::Ready(frame.take().unwrap().1)),
-                    _ => Some(Poll::Pending),
+                .map(|frame| match frame {
+                    Some((RequestState::Done, _pdu)) => frame
+                        .take()
+                        .map(|(_state, pdu)| Poll::Ready(Ok(pdu)))
+                        .unwrap_or(Poll::Pending),
+                    _ => Poll::Pending,
                 })
-                .unwrap();
-
-            // let res = match frame {
-            //     Some((RequestState::Done, pdu)) => Poll::Ready(pdu),
-            //     // Not ready yet, put the request back.
-            //     // TODO: This is dumb, we just want a reference
-            //     Some(state) => {
-            //         frames[usize::from(idx)] = Some(state);
-            //         Poll::Pending
-            //     }
-            //     _ => Poll::Pending,
-            // };
+                .unwrap_or_else(|| Poll::Ready(Err(PduError::InvalidIndex(idx))));
 
             self.wakers.borrow_mut()[usize::from(idx)] = Some(ctx.waker().clone());
 
@@ -143,7 +133,7 @@ where
             Either::Right((_timeout, _res)) => return Err(PduError::Timeout),
         };
 
-        Ok(res)
+        res
     }
 
     // TODO: Return a result if index is out of bounds, or we don't have a waiting packet
