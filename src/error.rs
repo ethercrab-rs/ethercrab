@@ -22,6 +22,7 @@ pub enum PduError {
     CreateFrame(smoltcp::Error),
     Encode(cookie_factory::GenError),
     Address,
+    InvalidIndex(usize),
 }
 
 #[derive(Copy, Clone, Debug)]
