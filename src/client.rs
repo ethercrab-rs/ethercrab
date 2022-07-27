@@ -1,12 +1,10 @@
 use crate::{
-    check_working_counter,
     client_inner::{ClientInternals, RequestState},
-    command::Command,
     error::{Error, PduError},
     register::RegisterAddress,
     slave::Slave,
     timer_factory::TimerFactory,
-    PduData, BASE_SLAVE_ADDR,
+    PduData,
 };
 use core::{future::Future, task::Poll};
 use futures_lite::FutureExt;
@@ -39,7 +37,7 @@ fn get_tx_rx(
     Ok((tx, rx))
 }
 
-// TODO: Refactor so this client is a thin `Arc` wrapper around internals
+/// A `std`-compatible wrapper around the core client.
 pub struct Client<
     const MAX_FRAMES: usize,
     const MAX_PDU_DATA: usize,
@@ -76,45 +74,8 @@ where
         }
     }
 
-    /// Detect slaves and set their configured station addresses.
     pub async fn init(&self) -> Result<(), Error> {
-        // Each slave increments working counter, so we can use it as a total count of slaves
-        let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
-
-        if usize::from(num_slaves) > self.client.slaves.borrow().capacity() {
-            return Err(Error::TooManySlaves);
-        }
-
-        // Make sure slave list is empty
-        self.client.slaves.borrow_mut().truncate(0);
-
-        for slave_idx in 0..num_slaves {
-            let address = BASE_SLAVE_ADDR + slave_idx;
-
-            let (_, working_counter) = self
-                .apwr(
-                    slave_idx,
-                    RegisterAddress::ConfiguredStationAddress,
-                    address,
-                )
-                .await?;
-
-            check_working_counter!(working_counter, 1, "set station address")?;
-
-            let (slave_state, working_counter) =
-                self.fprd(address, RegisterAddress::AlStatus).await?;
-
-            check_working_counter!(working_counter, 1, "get AL status")?;
-
-            // TODO: Unwrap
-            self.client
-                .slaves
-                .borrow_mut()
-                .push(Slave::new(address, slave_state))
-                .unwrap();
-        }
-
-        Ok(())
+        self.client.init().await
     }
 
     // TODO: Unwrap
@@ -177,26 +138,7 @@ where
         T: PduData,
         <T as PduData>::Error: core::fmt::Debug,
     {
-        let pdu = self
-            .client
-            .pdu(
-                Command::Brd {
-                    // Address is always zero when sent from master
-                    address: 0,
-                    register: register.into(),
-                },
-                // No input data; this is a read
-                &[],
-                T::len().try_into().expect("Length conversion"),
-            )
-            .await?;
-
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
-
-        Ok((res, pdu.working_counter))
+        self.client.brd(register).await
     }
 
     /// Auto Increment Physical Read.
@@ -209,26 +151,7 @@ where
         T: PduData,
         <T as PduData>::Error: core::fmt::Debug,
     {
-        let address = 0u16.wrapping_sub(address);
-
-        let pdu = self
-            .client
-            .pdu(
-                Command::Aprd {
-                    address,
-                    register: register.into(),
-                },
-                &[],
-                T::len().try_into().expect("Length conversion"),
-            )
-            .await?;
-
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
-
-        Ok((res, pdu.working_counter))
+        self.client.aprd(address, register).await
     }
 
     /// Configured address read.
@@ -241,24 +164,7 @@ where
         T: PduData,
         <T as PduData>::Error: core::fmt::Debug,
     {
-        let pdu = self
-            .client
-            .pdu(
-                Command::Fprd {
-                    address,
-                    register: register.into(),
-                },
-                &[],
-                T::len().try_into().expect("Length conversion"),
-            )
-            .await?;
-
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
-
-        Ok((res, pdu.working_counter))
+        self.client.fprd(address, register).await
     }
 
     /// Auto Increment Physical Write.
@@ -272,25 +178,6 @@ where
         T: PduData,
         <T as PduData>::Error: core::fmt::Debug,
     {
-        let address = 0u16.wrapping_sub(address);
-
-        let pdu = self
-            .client
-            .pdu(
-                Command::Apwr {
-                    address,
-                    register: register.into(),
-                },
-                value.as_slice(),
-                T::len().try_into().expect("Length conversion"),
-            )
-            .await?;
-
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
-
-        Ok((res, pdu.working_counter))
+        self.client.apwr(address, register, value).await
     }
 }
