@@ -3,6 +3,7 @@ use crate::{
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
+    borrow::Borrow,
     cell::{BorrowMutError, RefCell, RefMut},
     marker::PhantomData,
     sync::atomic::{AtomicU8, Ordering},
@@ -110,18 +111,24 @@ where
             // TODO: Races
             let mut frames = self.frames.borrow_mut();
 
-            let frame = frames[usize::from(idx)].take();
+            let res = frames
+                .get_mut(idx)
+                .and_then(|frame| match frame {
+                    Some((RequestState::Done, _pdu)) => Some(Poll::Ready(frame.take().unwrap().1)),
+                    _ => Some(Poll::Pending),
+                })
+                .unwrap();
 
-            let res = match frame {
-                Some((RequestState::Done, pdu)) => Poll::Ready(pdu),
-                // Not ready yet, put the request back.
-                // TODO: This is dumb, we just want a reference
-                Some(state) => {
-                    frames[usize::from(idx)] = Some(state);
-                    Poll::Pending
-                }
-                _ => Poll::Pending,
-            };
+            // let res = match frame {
+            //     Some((RequestState::Done, pdu)) => Poll::Ready(pdu),
+            //     // Not ready yet, put the request back.
+            //     // TODO: This is dumb, we just want a reference
+            //     Some(state) => {
+            //         frames[usize::from(idx)] = Some(state);
+            //         Poll::Pending
+            //     }
+            //     _ => Poll::Pending,
+            // };
 
             self.wakers.borrow_mut()[usize::from(idx)] = Some(ctx.waker().clone());
 
