@@ -26,7 +26,7 @@ fn main() -> Result<(), PduError> {
     let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
 
     futures_lite::future::block_on(local_ex.run(ctrlc.race(async {
-        let client = Client::<16, 16, smol::Timer>::new();
+        let client = Client::<16, 16, 16, smol::Timer>::new();
 
         local_ex
             .spawn(client.tx_rx_task(INTERFACE).unwrap())
