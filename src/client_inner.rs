@@ -1,4 +1,6 @@
-use crate::{command::Command, error::PduError, pdu::Pdu, timer_factory::TimerFactory};
+use crate::{
+    command::Command, error::PduError, pdu::Pdu, slave::Slave, timer_factory::TimerFactory,
+};
 use core::{
     cell::RefCell,
     marker::PhantomData,
@@ -15,21 +17,28 @@ pub enum RequestState {
 }
 
 // TODO: Use atomic_refcell crate
-pub struct ClientInternals<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+pub struct ClientInternals<
+    const MAX_FRAMES: usize,
+    const MAX_PDU_DATA: usize,
+    const MAX_SLAVES: usize,
+    TIMEOUT,
+> {
     wakers: RefCell<[Option<Waker>; MAX_FRAMES]>,
+    // TODO: Un-pub
     pub frames: RefCell<[Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>,
     pub send_waker: RefCell<Option<Waker>>,
     idx: AtomicU8,
     _timeout: PhantomData<TIMEOUT>,
+    pub slaves: RefCell<heapless::Vec<Slave, MAX_SLAVES>>,
 }
 
-unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
-    for ClientInternals<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
+    Sync for ClientInternals<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
 {
 }
 
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    ClientInternals<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
+    ClientInternals<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
@@ -45,6 +54,7 @@ where
             frames: RefCell::new([(); MAX_FRAMES].map(|_| None)),
             send_waker: RefCell::new(None),
             idx: AtomicU8::new(0),
+            slaves: RefCell::new(heapless::Vec::new()),
             _timeout: PhantomData,
         }
     }

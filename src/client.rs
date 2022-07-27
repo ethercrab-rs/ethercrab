@@ -8,7 +8,7 @@ use crate::{
     timer_factory::TimerFactory,
     PduData, BASE_SLAVE_ADDR, ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
-use core::{cell::RefCell, future::Future, task::Poll};
+use core::{future::Future, task::Poll};
 use futures_lite::FutureExt;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
@@ -41,11 +41,13 @@ fn get_tx_rx(
 }
 
 // TODO: Refactor so this client is a thin `Arc` wrapper around internals
-pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    client: Arc<ClientInternals<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>,
-    // TODO: Configurable max slaves
-    // TODO: Move to internals
-    slaves: Arc<RefCell<heapless::Vec<Slave, 16>>>,
+pub struct Client<
+    const MAX_FRAMES: usize,
+    const MAX_PDU_DATA: usize,
+    const MAX_SLAVES: usize,
+    TIMEOUT,
+> {
+    client: Arc<ClientInternals<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>>,
 }
 
 // NOTE: Using a manual impl here as derived `Clone` can be too conservative. See:
@@ -54,26 +56,24 @@ pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
 // - https://github.com/rust-lang/rust/issues/26925
 //
 // This lets us clone `Client` even if `TIMEOUT` isn't `Clone`.
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Clone
-    for Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT> Clone
+    for Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
-            slaves: self.slaves.clone(),
         }
     }
 }
 
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
+    Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
 where
     TIMEOUT: TimerFactory + Send + 'static,
 {
     pub fn new() -> Self {
         Self {
             client: Arc::new(ClientInternals::new()),
-            slaves: Arc::new(RefCell::new(heapless::Vec::new())),
         }
     }
 
@@ -82,11 +82,12 @@ where
         // Each slave increments working counter, so we can use it as a total count of slaves
         let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
 
-        if usize::from(num_slaves) > self.slaves.borrow().capacity() {
+        if usize::from(num_slaves) > self.client.slaves.borrow().capacity() {
             return Err(Error::TooManySlaves);
         }
 
-        self.slaves.borrow_mut().truncate(0);
+        // Make sure slave list is empty
+        self.client.slaves.borrow_mut().truncate(0);
 
         for slave_idx in 0..num_slaves {
             let address = BASE_SLAVE_ADDR + slave_idx;
@@ -107,7 +108,8 @@ where
             check_working_counter!(working_counter, 1, "get AL status")?;
 
             // TODO: Unwrap
-            self.slaves
+            self.client
+                .slaves
                 .borrow_mut()
                 .push(Slave::new(address, slave_state))
                 .unwrap();
@@ -117,8 +119,8 @@ where
     }
 
     // TODO: Unwrap
-    pub fn slaves<'a>(&'a self) -> core::cell::Ref<'a, heapless::Vec<Slave, 16>> {
-        self.slaves.try_borrow().unwrap()
+    pub fn slaves<'a>(&'a self) -> core::cell::Ref<'a, heapless::Vec<Slave, MAX_SLAVES>> {
+        self.client.slaves.try_borrow().unwrap()
     }
 
     // TODO: Proper error - there are a couple of unwraps in here
