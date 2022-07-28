@@ -55,7 +55,6 @@ mod tests {
 
     #[test]
     fn decode_one() {
-        // TODO: Fix endianness for actual FMMU values
         let raw = [
             // Logical start address
             0x00, 0x00, 0x00, 0x00, //
