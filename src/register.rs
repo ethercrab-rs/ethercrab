@@ -1,6 +1,6 @@
 use packed_struct::prelude::*;
 
-use crate::PduData;
+use crate::{PduData, PduRead};
 
 #[repr(u16)]
 pub enum RegisterAddress {
@@ -52,7 +52,7 @@ pub struct PortDescriptors {
     port_3: PortType,
 }
 
-impl PduData for PortDescriptors {
+impl PduRead for PortDescriptors {
     const LEN: u16 = 1;
 
     type Error = packed_struct::PackingError;
@@ -64,7 +64,9 @@ impl PduData for PortDescriptors {
 
         Self::unpack(arr)
     }
+}
 
+impl PduData for PortDescriptors {
     fn as_slice(&self) -> &[u8] {
         todo!()
     }

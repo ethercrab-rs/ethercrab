@@ -1,4 +1,6 @@
+use crate::PduRead;
 use core::fmt;
+use num_enum::TryFromPrimitiveError;
 
 /// AL Status Code.
 ///
@@ -114,6 +116,18 @@ pub enum AlStatusCode {
     ApplicationControllerAvailableI = 0x00F0,
     // NOTE: Other codes < 0x8000 are reserved.
     // NOTE: Codes 0x8000 - 0xffff are vendor specific.
+}
+
+impl PduRead for AlStatusCode {
+    const LEN: u16 = u16::LEN;
+
+    type Error = TryFromPrimitiveError<Self>;
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        let data = u16::from_le_bytes(slice.try_into().unwrap());
+
+        Self::try_from(data)
+    }
 }
 
 impl fmt::Display for AlStatusCode {

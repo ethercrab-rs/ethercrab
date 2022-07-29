@@ -1,10 +1,11 @@
 use crate::{
+    al_status::AlState,
     client_inner::{ClientInternals, RequestState},
     error::{Error, PduError},
     register::RegisterAddress,
     slave::Slave,
     timer_factory::TimerFactory,
-    PduData,
+    PduData, PduRead,
 };
 use core::{future::Future, task::Poll};
 use futures_lite::FutureExt;
@@ -83,6 +84,10 @@ where
         self.client.slaves.try_borrow().unwrap()
     }
 
+    pub async fn request_slave_state(&self, slave_idx: usize, state: AlState) -> Result<(), Error> {
+        self.client.request_slave_state(slave_idx, state).await
+    }
+
     // TODO: Proper error - there are a couple of unwraps in here
     // TODO: Pass packet buffer in? Make it configurable with a const generic? Use `MAX_PDU_DATA`?
     // TODO: Make some sort of split() method to ensure we can only ever have one tx/rx future running
@@ -135,8 +140,8 @@ where
 
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, PduError>
     where
-        T: PduData,
-        <T as PduData>::Error: core::fmt::Debug,
+        T: PduRead,
+        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.client.brd(register).await
     }
@@ -148,8 +153,8 @@ where
         register: RegisterAddress,
     ) -> Result<PduResponse<T>, PduError>
     where
-        T: PduData,
-        <T as PduData>::Error: core::fmt::Debug,
+        T: PduRead,
+        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.client.aprd(address, register).await
     }
@@ -161,8 +166,8 @@ where
         register: RegisterAddress,
     ) -> Result<PduResponse<T>, PduError>
     where
-        T: PduData,
-        <T as PduData>::Error: core::fmt::Debug,
+        T: PduRead,
+        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.client.fprd(address, register).await
     }
@@ -176,8 +181,22 @@ where
     ) -> Result<PduResponse<T>, PduError>
     where
         T: PduData,
-        <T as PduData>::Error: core::fmt::Debug,
+        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.client.apwr(address, register, value).await
+    }
+
+    /// Configured address write.
+    pub async fn fpwr<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+        value: T,
+    ) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduRead>::Error: core::fmt::Debug,
+    {
+        self.client.fpwr(address, register, value).await
     }
 }

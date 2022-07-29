@@ -1,3 +1,5 @@
+use core::cell::BorrowError;
+
 use crate::command::Command;
 
 #[derive(Debug)]
@@ -10,6 +12,18 @@ pub enum Error {
     },
     /// There is not enough storage to hold the number of detected slaves.
     TooManySlaves,
+    /// Failed to borrow an item. This likely points to a race condition.
+    Borrow,
+    /// Slave index not found.
+    SlaveNotFound(usize),
+    // TODO: Remove from PduError
+    Timeout,
+}
+
+impl From<BorrowError> for Error {
+    fn from(_: BorrowError) -> Self {
+        Self::Borrow
+    }
 }
 
 #[derive(Debug)]
