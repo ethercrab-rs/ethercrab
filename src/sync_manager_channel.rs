@@ -4,7 +4,6 @@ use packed_struct::prelude::*;
 ///
 /// Defined in ETG1000.4 6.7.2
 #[derive(Copy, Clone, Debug, PartialEq, PackedStruct)]
-// #[packed_struct(size_bytes = "8", bit_numbering = "lsb0", endian = "lsb")]
 #[packed_struct(size_bytes = "8", bit_numbering = "msb0", endian = "lsb")]
 pub struct SyncManagerChannel {
     #[packed_field(bits = "0..=15")]
@@ -18,7 +17,6 @@ pub struct SyncManagerChannel {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PackedStruct)]
-// #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Control {
     // ---
@@ -54,7 +52,6 @@ pub struct Control {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PackedStruct)]
-// #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Enable {
     // ---

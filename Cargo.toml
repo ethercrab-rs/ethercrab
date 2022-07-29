@@ -29,6 +29,8 @@ tui = "0.18.0"
 crossterm = "0.24.0"
 log = "0.4.17"
 tui-logger = "0.8.0"
+defmt = "0.3.2"
+env_logger = "0.9.0"
 
 [target.'cfg(windows)'.dependencies]
 smol = "1.2.5"
@@ -39,4 +41,5 @@ smol = "1.2.5"
 
 [features]
 default = ["std"]
+# TODO: Can we rename this to `alloc` and stop using `std` completely? `alloc` has `Arc`...
 std = []

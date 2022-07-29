@@ -1,5 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+// This mod MUST go first, so that the others see its macros.
+pub(crate) mod log;
+
+pub mod al_control;
 pub mod al_status;
 pub mod al_status_code;
 pub mod client;
