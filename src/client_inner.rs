@@ -301,6 +301,35 @@ where
         Ok((res, pdu.working_counter))
     }
 
+    /// Broadcast write.
+    pub async fn bwr<T>(
+        &self,
+        register: RegisterAddress,
+        value: T,
+    ) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduRead>::Error: core::fmt::Debug,
+    {
+        let pdu = self
+            .pdu(
+                Command::Bwr {
+                    address: 0,
+                    register: register.into(),
+                },
+                value.as_slice(),
+                T::len().try_into().expect("Length conversion"),
+            )
+            .await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
+    }
+
     /// Auto Increment Physical Read.
     pub async fn aprd<T>(
         &self,
