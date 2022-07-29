@@ -19,7 +19,7 @@ use core::{
     task::{Poll, Waker},
 };
 use futures::future::{select, Either};
-use packed_struct::PackedStructSlice;
+use packed_struct::PackedStruct;
 use smoltcp::wire::EthernetFrame;
 
 #[derive(Debug, PartialEq)]
@@ -74,6 +74,19 @@ where
 
     /// Detect slaves and set their configured station addresses.
     pub async fn init(&self) -> Result<(), Error> {
+        // Reset everything
+        {
+            // Reset slaves to init
+            self.bwr(
+                RegisterAddress::AlControl,
+                AlControl::reset().pack().unwrap(),
+            )
+            .await?;
+
+            // TODO: Clear FMMUs
+            // TODO: Clear SMs
+        }
+
         // Each slave increments working counter, so we can use it as a total count of slaves
         let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
 
@@ -122,15 +135,16 @@ where
             .ok_or_else(|| Error::SlaveNotFound(slave_idx))?
             .configured_address;
 
-        let value = AlControl::new(state);
-
-        let mut buf = [0u8; 2];
-        value.pack_to_slice(&mut buf).unwrap();
-
         debug!("Set state {} for slave address {:#04x}", state, address);
 
         // Send state request
-        let (_, working_counter) = self.fpwr(address, RegisterAddress::AlControl, buf).await?;
+        let (_, working_counter) = self
+            .fpwr(
+                address,
+                RegisterAddress::AlControl,
+                AlControl::new(state).pack().unwrap(),
+            )
+            .await?;
 
         check_working_counter!(working_counter, 1, "AL control")?;
 
