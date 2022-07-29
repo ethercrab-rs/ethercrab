@@ -1,4 +1,7 @@
 use crate::{
+    al_control::AlControl,
+    al_status::AlState,
+    al_status_code::AlStatusCode,
     check_working_counter,
     client::PduResponse,
     command::Command,
@@ -7,7 +10,7 @@ use crate::{
     register::RegisterAddress,
     slave::Slave,
     timer_factory::TimerFactory,
-    PduData, BASE_SLAVE_ADDR, ETHERCAT_ETHERTYPE, MASTER_ADDR,
+    PduData, PduRead, BASE_SLAVE_ADDR, ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
     cell::{BorrowMutError, RefCell, RefMut},
@@ -16,6 +19,7 @@ use core::{
     task::{Poll, Waker},
 };
 use futures::future::{select, Either};
+use packed_struct::PackedStructSlice;
 use smoltcp::wire::EthernetFrame;
 
 #[derive(Debug, PartialEq)]
@@ -93,19 +97,70 @@ where
 
             check_working_counter!(working_counter, 1, "set station address")?;
 
-            let (slave_state, working_counter) =
-                self.fprd(address, RegisterAddress::AlStatus).await?;
+            let (slave_state, working_counter) = self
+                .fprd::<AlControl>(address, RegisterAddress::AlStatus)
+                .await?;
 
             check_working_counter!(working_counter, 1, "get AL status")?;
 
             // TODO: Unwrap
             self.slaves
                 .borrow_mut()
-                .push(Slave::new(address, slave_state))
+                .push(Slave::new(address, slave_state.state))
                 .unwrap();
         }
 
         Ok(())
+    }
+
+    pub async fn request_slave_state(&self, slave_idx: usize, state: AlState) -> Result<(), Error> {
+        // TODO: Unwrap
+        let address = self
+            .slaves
+            .try_borrow()?
+            .get(slave_idx)
+            .ok_or_else(|| Error::SlaveNotFound(slave_idx))?
+            .configured_address;
+
+        let value = AlControl::new(state);
+
+        let mut buf = [0u8; 2];
+        value.pack_to_slice(&mut buf).unwrap();
+
+        debug!("Set state {} for slave address {:#04x}", state, address);
+
+        // Send state request
+        let (_, working_counter) = self.fpwr(address, RegisterAddress::AlControl, buf).await?;
+
+        check_working_counter!(working_counter, 1, "AL control")?;
+
+        let wait_ms = 200;
+        let delay_ms = 10;
+
+        for _ in 0..(wait_ms / delay_ms) {
+            let (status, working_counter) = self
+                .fprd::<AlControl>(address, RegisterAddress::AlStatus)
+                .await?;
+
+            check_working_counter!(working_counter, 1, "AL status")?;
+
+            if status.state == state {
+                return Ok(());
+            }
+
+            TIMEOUT::timer(core::time::Duration::from_millis(delay_ms)).await;
+        }
+
+        // TODO: Extract into separate method
+        {
+            let (status, _working_counter) = self
+                .fprd::<AlStatusCode>(address, RegisterAddress::AlStatusCode)
+                .await?;
+
+            println!("{}", status);
+        }
+
+        Err(Error::Timeout)
     }
 
     pub fn set_send_waker(&self, waker: &Waker) {
@@ -222,8 +277,8 @@ where
 
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, PduError>
     where
-        T: PduData,
-        <T as PduData>::Error: core::fmt::Debug,
+        T: PduRead,
+        <T as PduRead>::Error: core::fmt::Debug,
     {
         let pdu = self
             .pdu(
@@ -253,8 +308,8 @@ where
         register: RegisterAddress,
     ) -> Result<PduResponse<T>, PduError>
     where
-        T: PduData,
-        <T as PduData>::Error: core::fmt::Debug,
+        T: PduRead,
+        <T as PduRead>::Error: core::fmt::Debug,
     {
         let address = 0u16.wrapping_sub(address);
 
@@ -284,8 +339,8 @@ where
         register: RegisterAddress,
     ) -> Result<PduResponse<T>, PduError>
     where
-        T: PduData,
-        <T as PduData>::Error: core::fmt::Debug,
+        T: PduRead,
+        <T as PduRead>::Error: core::fmt::Debug,
     {
         let pdu = self
             .pdu(
@@ -315,13 +370,43 @@ where
     ) -> Result<PduResponse<T>, PduError>
     where
         T: PduData,
-        <T as PduData>::Error: core::fmt::Debug,
+        <T as PduRead>::Error: core::fmt::Debug,
     {
         let address = 0u16.wrapping_sub(address);
 
         let pdu = self
             .pdu(
                 Command::Apwr {
+                    address,
+                    register: register.into(),
+                },
+                value.as_slice(),
+                T::len().try_into().expect("Length conversion"),
+            )
+            .await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
+    }
+
+    /// Configured address write.
+    pub async fn fpwr<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+        value: T,
+    ) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduRead>::Error: core::fmt::Debug,
+    {
+        let pdu = self
+            .pdu(
+                Command::Fpwr {
                     address,
                     register: register.into(),
                 },

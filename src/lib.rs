@@ -34,7 +34,7 @@ const BASE_SLAVE_ADDR: u16 = 0x1000;
 #[cfg(not(target_endian = "little"))]
 compile_error!("Only little-endian targets are supported at this time as primitive integers are cast to slices as-is");
 
-pub trait PduData: Sized {
+pub trait PduRead: Sized {
     const LEN: u16;
 
     type Error;
@@ -44,19 +44,24 @@ pub trait PduData: Sized {
     }
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error>;
+}
+
+pub trait PduData: PduRead {
     fn as_slice(&self) -> &[u8];
 }
 
 macro_rules! impl_pdudata {
     ($ty:ty) => {
-        impl PduData for $ty {
+        impl PduRead for $ty {
             const LEN: u16 = Self::BITS as u16 / 8;
             type Error = TryFromSliceError;
 
             fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
                 Ok(Self::from_le_bytes(slice.try_into()?))
             }
+        }
 
+        impl PduData for $ty {
             fn as_slice<'a>(&'a self) -> &'a [u8] {
                 // SAFETY: Copied from `safe-transmute` crate so I'm assuming...
                 // SAFETY: EtherCAT is little-endian on the wire, so this will ONLY work on
@@ -81,7 +86,7 @@ impl_pdudata!(i16);
 impl_pdudata!(i32);
 impl_pdudata!(i64);
 
-impl<const N: usize> PduData for [u8; N] {
+impl<const N: usize> PduRead for [u8; N] {
     const LEN: u16 = N as u16;
 
     type Error = TryFromSliceError;
@@ -89,15 +94,15 @@ impl<const N: usize> PduData for [u8; N] {
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         slice.try_into()
     }
+}
 
+impl<const N: usize> PduData for [u8; N] {
     fn as_slice(&self) -> &[u8] {
         self
     }
 }
 
-/// A "Visible String" representation. Characters are specified to be within the ASCII range.
-// TODO: Implement for `std::String` with a feature switch
-impl<const N: usize> PduData for heapless::String<N> {
+impl<const N: usize> PduRead for heapless::String<N> {
     const LEN: u16 = N as u16;
 
     type Error = VisibleStringError;
@@ -110,7 +115,11 @@ impl<const N: usize> PduData for heapless::String<N> {
 
         Ok(out)
     }
+}
 
+/// A "Visible String" representation. Characters are specified to be within the ASCII range.
+// TODO: Implement for `std::String` with a feature switch
+impl<const N: usize> PduData for heapless::String<N> {
     fn as_slice(&self) -> &[u8] {
         self.as_bytes()
     }
