@@ -6,6 +6,7 @@ use packed_struct::prelude::*;
 /// Defined in ETG1000.6 6.4.1
 #[derive(
     Debug,
+    Default,
     Copy,
     Clone,
     PartialEq,
@@ -15,6 +16,7 @@ use packed_struct::prelude::*;
 )]
 #[repr(u8)]
 pub enum AlState {
+    #[default]
     None = 0x00,
     Init = 0x01,
     PreOp = 0x02,

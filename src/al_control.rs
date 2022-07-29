@@ -1,7 +1,7 @@
 use crate::{al_status::AlState, PduRead};
 use packed_struct::prelude::*;
 
-#[derive(Copy, Clone, Debug, PartialEq, PackedStruct)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PackedStruct)]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 pub struct AlControl {
     #[packed_field(bits = "8..=11", ty = "enum")]
@@ -23,6 +23,14 @@ impl AlControl {
             acknowledge: true,
             id_request: false,
             _reserved: 0,
+        }
+    }
+
+    pub fn reset() -> Self {
+        Self {
+            state: AlState::Init,
+            acknowledge: true,
+            ..Default::default()
         }
     }
 }
