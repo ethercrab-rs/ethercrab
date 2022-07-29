@@ -18,7 +18,7 @@ pub enum Command {
         register: u16,
     },
     Brd {
-        /// Autoincremented by each slave visted.
+        /// Autoincremented by each slave visited.
         address: u16,
 
         /// Memory location to read from.
@@ -29,6 +29,13 @@ pub enum Command {
         address: u32,
     },
 
+    Bwr {
+        /// Autoincremented by each slave visited.
+        address: u16,
+
+        /// Memory location to write to.
+        register: u16,
+    },
     Apwr {
         /// Auto increment counter.
         address: u16,
@@ -55,6 +62,7 @@ impl Command {
             Self::Lrd { .. } => CommandCode::Lrd,
 
             // Writes
+            Self::Bwr { .. } => CommandCode::Bwr,
             Self::Apwr { .. } => CommandCode::Apwr,
             Self::Fpwr { .. } => CommandCode::Fpwr,
         }
@@ -70,7 +78,8 @@ impl Command {
             | Command::Apwr { address, register }
             | Command::Fprd { address, register }
             | Command::Fpwr { address, register }
-            | Command::Brd { address, register } => {
+            | Command::Brd { address, register }
+            | Command::Bwr { address, register } => {
                 let buf = gen_simple(cookie_factory::bytes::le_u16(address), buf)?;
                 gen_simple(cookie_factory::bytes::le_u16(register), buf)
             }
@@ -92,6 +101,7 @@ pub enum CommandCode {
     Lrd = 0x0A,
 
     // Writes
+    Bwr = 0x08,
     Apwr = 0x02,
     Fpwr = 0x05,
 }
@@ -119,6 +129,10 @@ impl CommandCode {
             })(i),
             Self::Lrd => map(le_u32, |address| Command::Lrd { address })(i),
 
+            Self::Bwr => map(pair(le_u16, le_u16), |(address, register)| Command::Bwr {
+                address,
+                register,
+            })(i),
             Self::Apwr => map(pair(le_u16, le_u16), |(address, register)| Command::Apwr {
                 address,
                 register,
