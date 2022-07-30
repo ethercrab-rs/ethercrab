@@ -289,23 +289,13 @@ where
         }
     }
 
-    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, PduError>
+    // TODO: Dedupe with write_service when refactoring allows
+    async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, PduError>
     where
         T: PduRead,
         <T as PduRead>::Error: core::fmt::Debug,
     {
-        let pdu = self
-            .pdu(
-                Command::Brd {
-                    // Address is always zero when sent from master
-                    address: 0,
-                    register: register.into(),
-                },
-                // No input data; this is a read
-                &[],
-                T::len().try_into().expect("Length conversion"),
-            )
-            .await?;
+        let pdu = self.pdu(command, &[], T::len().into()).await?;
 
         let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
             println!("{:?}", e);
@@ -313,6 +303,35 @@ where
         })?;
 
         Ok((res, pdu.working_counter))
+    }
+
+    // TODO: Support different I and O types; some things can return different data
+    async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduData,
+        <T as PduRead>::Error: core::fmt::Debug,
+    {
+        let pdu = self.pdu(command, value.as_slice(), T::len().into()).await?;
+
+        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+            println!("{:?}", e);
+            PduError::Decode
+        })?;
+
+        Ok((res, pdu.working_counter))
+    }
+
+    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduRead,
+        <T as PduRead>::Error: core::fmt::Debug,
+    {
+        self.read_service(Command::Brd {
+            // Address is always zero when sent from master
+            address: 0,
+            register: register.into(),
+        })
+        .await
     }
 
     /// Broadcast write.
@@ -325,23 +344,14 @@ where
         T: PduData,
         <T as PduRead>::Error: core::fmt::Debug,
     {
-        let pdu = self
-            .pdu(
-                Command::Bwr {
-                    address: 0,
-                    register: register.into(),
-                },
-                value.as_slice(),
-                T::len().try_into().expect("Length conversion"),
-            )
-            .await?;
-
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
-
-        Ok((res, pdu.working_counter))
+        self.write_service(
+            Command::Bwr {
+                address: 0,
+                register: register.into(),
+            },
+            value,
+        )
+        .await
     }
 
     /// Auto Increment Physical Read.
@@ -354,54 +364,11 @@ where
         T: PduRead,
         <T as PduRead>::Error: core::fmt::Debug,
     {
-        let address = 0u16.wrapping_sub(address);
-
-        let pdu = self
-            .pdu(
-                Command::Aprd {
-                    address,
-                    register: register.into(),
-                },
-                &[],
-                T::len().try_into().expect("Length conversion"),
-            )
-            .await?;
-
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
-
-        Ok((res, pdu.working_counter))
-    }
-
-    /// Configured address read.
-    pub async fn fprd<T>(
-        &self,
-        address: u16,
-        register: RegisterAddress,
-    ) -> Result<PduResponse<T>, PduError>
-    where
-        T: PduRead,
-        <T as PduRead>::Error: core::fmt::Debug,
-    {
-        let pdu = self
-            .pdu(
-                Command::Fprd {
-                    address,
-                    register: register.into(),
-                },
-                &[],
-                T::len().try_into().expect("Length conversion"),
-            )
-            .await?;
-
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
-
-        Ok((res, pdu.working_counter))
+        self.read_service(Command::Aprd {
+            address: 0u16.wrapping_sub(address),
+            register: register.into(),
+        })
+        .await
     }
 
     /// Auto Increment Physical Write.
@@ -415,25 +382,31 @@ where
         T: PduData,
         <T as PduRead>::Error: core::fmt::Debug,
     {
-        let address = 0u16.wrapping_sub(address);
+        self.write_service(
+            Command::Apwr {
+                address: 0u16.wrapping_sub(address),
+                register: register.into(),
+            },
+            value,
+        )
+        .await
+    }
 
-        let pdu = self
-            .pdu(
-                Command::Apwr {
-                    address,
-                    register: register.into(),
-                },
-                value.as_slice(),
-                T::len().try_into().expect("Length conversion"),
-            )
-            .await?;
-
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
-
-        Ok((res, pdu.working_counter))
+    /// Configured address read.
+    pub async fn fprd<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+    ) -> Result<PduResponse<T>, PduError>
+    where
+        T: PduRead,
+        <T as PduRead>::Error: core::fmt::Debug,
+    {
+        self.read_service(Command::Fprd {
+            address,
+            register: register.into(),
+        })
+        .await
     }
 
     /// Configured address write.
@@ -447,22 +420,13 @@ where
         T: PduData,
         <T as PduRead>::Error: core::fmt::Debug,
     {
-        let pdu = self
-            .pdu(
-                Command::Fpwr {
-                    address,
-                    register: register.into(),
-                },
-                value.as_slice(),
-                T::len().try_into().expect("Length conversion"),
-            )
-            .await?;
-
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
-
-        Ok((res, pdu.working_counter))
+        self.write_service(
+            Command::Fpwr {
+                address,
+                register: register.into(),
+            },
+            value,
+        )
+        .await
     }
 }
