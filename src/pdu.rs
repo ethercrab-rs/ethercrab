@@ -1,6 +1,6 @@
 use crate::{
     command::{Command, CommandCode},
-    error::{PduError, PduValidationError},
+    error::{Error, PduError, PduValidationError},
     frame::FrameHeader,
     ETHERCAT_ETHERTYPE, LEN_MASK, MASTER_ADDR,
 };
@@ -19,6 +19,26 @@ use nom::{
 use num_enum::TryFromPrimitiveError;
 use packed_struct::prelude::*;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
+
+pub type PduResponse<T> = (T, u16);
+
+pub trait CheckWorkingCounter<T> {
+    fn wkc(self, expected: u16, context: &'static str) -> Result<T, Error>;
+}
+
+impl<T> CheckWorkingCounter<T> for PduResponse<T> {
+    fn wkc(self, expected: u16, context: &'static str) -> Result<T, Error> {
+        if self.1 == expected {
+            Ok(self.0)
+        } else {
+            Err(Error::WorkingCounter {
+                expected,
+                received: self.1,
+                context: Some(context),
+            })
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Pdu<const MAX_DATA: usize> {

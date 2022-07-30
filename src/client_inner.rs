@@ -2,11 +2,9 @@ use crate::{
     al_control::AlControl,
     al_status::AlState,
     al_status_code::AlStatusCode,
-    check_working_counter,
-    client::PduResponse,
     command::Command,
     error::{Error, PduError},
-    pdu::Pdu,
+    pdu::{CheckWorkingCounter, Pdu, PduResponse},
     register::RegisterAddress,
     slave::Slave,
     timer_factory::TimerFactory,
@@ -30,6 +28,7 @@ pub enum RequestState {
 }
 
 // TODO: Use atomic_refcell crate
+// TODO: Move core PDU tx/rx loop into own struct for better testing/fuzzing?
 pub struct ClientInternals<
     const MAX_FRAMES: usize,
     const MAX_PDU_DATA: usize,
@@ -100,21 +99,18 @@ where
         for slave_idx in 0..num_slaves {
             let address = BASE_SLAVE_ADDR + slave_idx;
 
-            let (_, working_counter) = self
-                .apwr(
-                    slave_idx,
-                    RegisterAddress::ConfiguredStationAddress,
-                    address,
-                )
-                .await?;
+            self.apwr(
+                slave_idx,
+                RegisterAddress::ConfiguredStationAddress,
+                address,
+            )
+            .await?
+            .wkc(1, "set station address")?;
 
-            check_working_counter!(working_counter, 1, "set station address")?;
-
-            let (slave_state, working_counter) = self
+            let slave_state = self
                 .fprd::<AlControl>(address, RegisterAddress::AlStatus)
-                .await?;
-
-            check_working_counter!(working_counter, 1, "get AL status")?;
+                .await?
+                .wkc(1, "get AL status")?;
 
             // TODO: Unwrap
             self.slaves
@@ -138,25 +134,22 @@ where
         debug!("Set state {} for slave address {:#04x}", state, address);
 
         // Send state request
-        let (_, working_counter) = self
-            .fpwr(
-                address,
-                RegisterAddress::AlControl,
-                AlControl::new(state).pack().unwrap(),
-            )
-            .await?;
-
-        check_working_counter!(working_counter, 1, "AL control")?;
+        self.fpwr(
+            address,
+            RegisterAddress::AlControl,
+            AlControl::new(state).pack().unwrap(),
+        )
+        .await?
+        .wkc(1, "AL control")?;
 
         let wait_ms = 200;
         let delay_ms = 10;
 
         for _ in 0..(wait_ms / delay_ms) {
-            let (status, working_counter) = self
+            let status = self
                 .fprd::<AlControl>(address, RegisterAddress::AlStatus)
-                .await?;
-
-            check_working_counter!(working_counter, 1, "AL status")?;
+                .await?
+                .wkc(1, "AL status")?;
 
             if status.state == state {
                 return Ok(());
@@ -282,6 +275,7 @@ where
                 *state = RequestState::Done;
                 *existing_pdu = pdu
             } else {
+                // TODO: Result!
                 panic!("No waiting frame for response");
             }
 
