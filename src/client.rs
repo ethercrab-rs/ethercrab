@@ -2,6 +2,7 @@ use crate::{
     al_status::AlState,
     client_inner::{ClientInternals, RequestState},
     error::{Error, PduError},
+    pdu::PduResponse,
     register::RegisterAddress,
     slave::Slave,
     timer_factory::TimerFactory,
@@ -11,8 +12,6 @@ use core::{future::Future, task::Poll};
 use futures_lite::FutureExt;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use std::sync::Arc;
-
-pub type PduResponse<T> = (T, u16);
 
 fn get_tx_rx(
     device: &str,
