@@ -6,7 +6,7 @@ use ethercrab::{
     pdu::Pdu,
     sync_manager_channel::{BufferState, Control, Direction, OperationMode, SyncManagerChannel},
 };
-use packed_struct::{EnumCatchAll, PackedStruct, PackedStructSlice};
+use packed_struct::{PackedStruct, PackedStructSlice};
 use pcap::{Capture, Linktype, Packet, PacketHeader};
 use smoltcp::wire::{EthernetFrame, PrettyPrinter};
 use std::{mem::size_of, path::PathBuf};
@@ -16,15 +16,15 @@ fn main() {
         physical_start_address: 0x1000,
         length: 0x0080,
         control: Control {
-            buffer_type: EnumCatchAll::Enum(OperationMode::Mailbox),
-            direction: EnumCatchAll::Enum(Direction::MasterWrite),
+            buffer_type: OperationMode::Mailbox,
+            direction: Direction::MasterWrite,
             ecat_event_enable: false,
             dls_user_event_enable: true,
             watchdog_enable: false,
             has_write_event: false,
             has_read_event: false,
             mailbox_full: false,
-            buffer_state: EnumCatchAll::Enum(BufferState::First),
+            buffer_state: BufferState::First,
             read_buffer_open: false,
             write_buffer_open: false,
         },

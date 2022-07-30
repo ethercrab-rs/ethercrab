@@ -23,9 +23,9 @@ pub struct Control {
     // First byte (little endian, so second index)
     // ---
     #[packed_field(bits = "8..=9", ty = "enum")]
-    pub buffer_type: EnumCatchAll<OperationMode>,
+    pub buffer_type: OperationMode,
     #[packed_field(bits = "10..=11", ty = "enum")]
-    pub direction: EnumCatchAll<Direction>,
+    pub direction: Direction,
     #[packed_field(bits = "12")]
     pub ecat_event_enable: bool,
     #[packed_field(bits = "13")]
@@ -44,7 +44,7 @@ pub struct Control {
     #[packed_field(bits = "3")]
     pub mailbox_full: bool,
     #[packed_field(bits = "4..=5", ty = "enum")]
-    pub buffer_state: EnumCatchAll<BufferState>,
+    pub buffer_state: BufferState,
     #[packed_field(bits = "6")]
     pub read_buffer_open: bool,
     #[packed_field(bits = "7")]
@@ -127,15 +127,15 @@ mod tests {
         assert_eq!(
             parsed,
             Control {
-                buffer_type: EnumCatchAll::Enum(OperationMode::Mailbox),
-                direction: EnumCatchAll::Enum(Direction::MasterWrite),
+                buffer_type: OperationMode::Mailbox,
+                direction: Direction::MasterWrite,
                 ecat_event_enable: false,
                 dls_user_event_enable: true,
                 watchdog_enable: false,
                 has_write_event: false,
                 has_read_event: false,
                 mailbox_full: false,
-                buffer_state: EnumCatchAll::Enum(BufferState::First),
+                buffer_state: BufferState::First,
                 read_buffer_open: false,
                 write_buffer_open: false,
             }
@@ -202,15 +202,15 @@ mod tests {
                 physical_start_address: 0x1000,
                 length: 0x0080,
                 control: Control {
-                    buffer_type: EnumCatchAll::Enum(OperationMode::Mailbox),
-                    direction: EnumCatchAll::Enum(Direction::MasterWrite),
+                    buffer_type: OperationMode::Mailbox,
+                    direction: Direction::MasterWrite,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
                     has_write_event: false,
                     has_read_event: false,
                     mailbox_full: false,
-                    buffer_state: EnumCatchAll::Enum(BufferState::First),
+                    buffer_state: BufferState::First,
                     read_buffer_open: false,
                     write_buffer_open: false,
                 },
