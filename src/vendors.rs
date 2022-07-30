@@ -3,6 +3,14 @@
 //! This list is extracted from [ethercat.org](https://www.ethercat.org/en/vendor_id_list.html).
 //!
 //! Last updated: 2022-07-25
+
+pub fn vendor_name(search_id: u32) -> Option<&'static str> {
+    ETHERCAT_VENDORS
+        .iter()
+        .find_map(|(id, name)| if *id == search_id { Some(*name) } else { None })
+}
+
+/// EtherCAT vendor ID and name list.
 pub const ETHERCAT_VENDORS: &[(u32, &'static str)] = &[
     (0x00000001, "EtherCAT Technology Group"),
     (0x00000002, "Beckhoff Automation GmbH & Co. KG"),
