@@ -137,6 +137,10 @@ where
         Ok(tx_task.race(rx_task))
     }
 
+    pub async fn read_eeprom(&self, slave_idx: u16, address: u16) -> Result<u32, Error> {
+        self.client.read_eeprom(slave_idx, address).await
+    }
+
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, PduError>
     where
         T: PduRead,

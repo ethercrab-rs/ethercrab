@@ -6,6 +6,7 @@ use crate::{
     error::{Error, PduError},
     pdu::{CheckWorkingCounter, Pdu, PduResponse},
     register::RegisterAddress,
+    sii::{SiiControl, SiiRequest},
     slave::Slave,
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR, ETHERCAT_ETHERTYPE, MASTER_ADDR,
@@ -122,8 +123,10 @@ where
         Ok(())
     }
 
+    // TODO: Move onto `Slave` struct and invert control, e.g. `slave.request_state(state, &client)`
     pub async fn request_slave_state(&self, slave_idx: usize, state: AlState) -> Result<(), Error> {
         // TODO: Unwrap
+        // TODO: DRY into function
         let address = self
             .slaves
             .try_borrow()?
@@ -142,9 +145,11 @@ where
         .await?
         .wkc(1, "AL control")?;
 
+        // TODO: Move these to consts/timeout config struct
         let wait_ms = 200;
         let delay_ms = 10;
 
+        // TODO: Make this a reusable function? Closure? Struct?
         for _ in 0..(wait_ms / delay_ms) {
             let status = self
                 .fprd::<AlControl>(address, RegisterAddress::AlStatus)
@@ -158,7 +163,7 @@ where
             TIMEOUT::timer(core::time::Duration::from_millis(delay_ms)).await;
         }
 
-        // TODO: Extract into separate method
+        // TODO: Extract into separate method to get slave status code
         {
             let (status, _working_counter) = self
                 .fprd::<AlStatusCode>(address, RegisterAddress::AlStatusCode)
@@ -181,6 +186,66 @@ where
     ) -> Result<RefMut<'_, [Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>, BorrowMutError>
     {
         self.frames.try_borrow_mut()
+    }
+
+    // TODO: Move onto `Slave` struct and invert control, e.g. `slave.request_state(state, &client)`
+    pub async fn read_eeprom(&self, slave_idx: u16, eeprom_address: u16) -> Result<u32, Error> {
+        let slave_idx = usize::from(slave_idx);
+
+        // TODO: Unwrap
+        // TODO: DRY into function
+        let slave_address = self
+            .slaves
+            .try_borrow()?
+            .get(slave_idx)
+            .ok_or_else(|| Error::SlaveNotFound(slave_idx))?
+            .configured_address;
+
+        // TODO: When moved onto slave, check error flags
+
+        let setup = SiiRequest::read(eeprom_address);
+
+        // Set up an SII read. This writes the control word and the register word after it
+        self.fpwr(slave_address, RegisterAddress::SiiControl, setup.to_array())
+            .await?
+            .wkc(1, "SII read setup")?;
+
+        // TODO: Configurable timeout
+        let timeout = TIMEOUT::timer(core::time::Duration::from_millis(10));
+
+        // TODO: Make this a reusable function? Closure? Struct?
+        let res = async {
+            loop {
+                let control = self
+                    .fprd::<SiiControl>(slave_address, RegisterAddress::SiiControl)
+                    .await?
+                    .wkc(1, "SII busy wait")?;
+
+                debug!("Loop {:?}", control.busy);
+
+                if control.busy == false {
+                    info!("WE DID IT");
+                    break Result::<(), Error>::Ok(());
+                }
+
+                // TODO: Configurable loop tick
+                TIMEOUT::timer(core::time::Duration::from_millis(1)).await;
+            }
+        };
+
+        futures_lite::pin!(res);
+
+        match select(res, timeout).await {
+            Either::Right((_timeout, _res)) => return Err(Error::Timeout),
+            _ => (),
+        }
+
+        let data = self
+            .fprd::<u32>(slave_address, RegisterAddress::SiiData)
+            .await?
+            .wkc(1, "SII data")?;
+
+        Ok(data)
     }
 
     pub async fn pdu(

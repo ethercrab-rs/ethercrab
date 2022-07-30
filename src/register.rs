@@ -31,6 +31,15 @@ pub enum RegisterAddress {
     // u16
     // AKA DLS-user R6
     AlStatusCode = 0x0134,
+
+    // u16
+    SiiControl = 0x0502,
+
+    // u16
+    SiiAddress = 0x0504,
+
+    // u32 when reading, u16 when writing
+    SiiData = 0x0508,
 }
 
 impl From<RegisterAddress> for u16 {
