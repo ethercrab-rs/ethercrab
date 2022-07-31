@@ -119,10 +119,7 @@ where
             loop {
                 match rx.next() {
                     Ok(packet) => {
-                        client_rx
-                            .pdu_loop
-                            .parse_response_ethernet_packet(packet)
-                            .unwrap();
+                        client_rx.pdu_loop.pdu_rx(packet).unwrap();
                     }
                     Err(e) => {
                         // If an error occurs, we can handle it here

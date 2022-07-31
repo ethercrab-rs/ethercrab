@@ -29,9 +29,17 @@ impl From<BorrowError> for Error {
 #[derive(Debug)]
 pub enum PduError {
     Timeout,
+    /// A frame index is currently in use.
+    ///
+    /// This is caused by an index wraparound in the frame sending buffer. Either reduce the rate at
+    /// which frames are sent, speed up frame response processing, or increase the length of the
+    /// frame buffer.
     IndexInUse,
     Send,
+    /// Failed to decode raw PDU data into a given data type.
     Decode,
+    Ethernet(smoltcp::Error),
+    /// PDU data is too long to fit in the given array.
     TooLong,
     CreateFrame(smoltcp::Error),
     Encode(cookie_factory::GenError),
@@ -39,6 +47,7 @@ pub enum PduError {
     InvalidIndex(u8),
     Validation(PduValidationError),
     Parse,
+    InvalidFrameState,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -56,5 +65,11 @@ impl From<PduError> for Error {
 impl From<PduValidationError> for PduError {
     fn from(e: PduValidationError) -> Self {
         Self::Validation(e)
+    }
+}
+
+impl From<smoltcp::Error> for PduError {
+    fn from(e: smoltcp::Error) -> Self {
+        Self::Ethernet(e)
     }
 }
