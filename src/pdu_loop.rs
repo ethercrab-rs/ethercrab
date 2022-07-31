@@ -22,11 +22,9 @@ enum FrameState {
 
 #[derive(Debug)]
 struct Frame<const MAX_PDU_DATA: usize> {
-    // TODO: Un-pub
-    pub state: FrameState,
+    state: FrameState,
     waker: MaybeUninit<Waker>,
-    // TODO: Un-pub
-    pub pdu: MaybeUninit<Pdu<MAX_PDU_DATA>>,
+    pdu: MaybeUninit<Pdu<MAX_PDU_DATA>>,
 }
 
 impl<const MAX_PDU_DATA: usize> Default for Frame<MAX_PDU_DATA> {
@@ -39,11 +37,58 @@ impl<const MAX_PDU_DATA: usize> Default for Frame<MAX_PDU_DATA> {
     }
 }
 
+// TODO: Typestates?
+impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
+    fn create(&mut self, pdu: Pdu<MAX_PDU_DATA>) {
+        self.pdu = MaybeUninit::new(pdu);
+        self.state = FrameState::Created;
+    }
+
+    fn set_waker(&mut self, waker: &Waker) {
+        self.waker = MaybeUninit::new(waker.clone());
+    }
+
+    fn wake_done(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
+        if self.state == FrameState::Waiting {
+            let waker = unsafe { self.waker.assume_init_read() };
+
+            pdu.is_response_to(unsafe { self.pdu.assume_init_ref() })?;
+
+            self.pdu = MaybeUninit::new(pdu);
+            self.state = FrameState::Done;
+
+            waker.wake();
+
+            Ok(())
+        } else {
+            Err(PduError::InvalidFrameState)
+        }
+    }
+
+    /// If there is response data ready, return the data and mark this frame as ready to be reused.
+    fn take_ready_data(&mut self) -> Option<Pdu<MAX_PDU_DATA>> {
+        match self.state {
+            // Response has been received and stored
+            FrameState::Done => {
+                // Clear frame state ready for reuse
+                self.state = FrameState::None;
+
+                // Drop waker so it doesn't get woken again
+                unsafe { self.waker.assume_init_drop() };
+
+                Some(unsafe { self.pdu.assume_init_read() })
+            }
+            // Request hasn't been sent yet, or we're waiting for the response
+            _ => None,
+        }
+    }
+}
+
 pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    // wakers: RefCell<[Option<Waker>; MAX_FRAMES]>,
-    // frames: RefCell<[Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>,
-    requests: [UnsafeCell<Frame<MAX_PDU_DATA>>; MAX_FRAMES],
-    send_waker: RefCell<Option<Waker>>,
+    frames: [UnsafeCell<Frame<MAX_PDU_DATA>>; MAX_FRAMES],
+    /// A waker used to wake up the TX task when a new frame is ready to be sent.
+    tx_waker: RefCell<Option<Waker>>,
+    /// EtherCAT frame index.
     idx: AtomicU8,
     _timeout: PhantomData<TIMEOUT>,
 }
@@ -60,10 +105,8 @@ where
 {
     pub fn new() -> Self {
         Self {
-            // wakers: RefCell::new([(); MAX_FRAMES].map(|_| None)),
-            // frames: RefCell::new([(); MAX_FRAMES].map(|_| None)),
-            requests: [(); MAX_FRAMES].map(|_| UnsafeCell::new(Frame::default())),
-            send_waker: RefCell::new(None),
+            frames: [(); MAX_FRAMES].map(|_| UnsafeCell::new(Frame::default())),
+            tx_waker: RefCell::new(None),
             idx: AtomicU8::new(0),
             _timeout: PhantomData,
         }
@@ -71,8 +114,8 @@ where
 
     // TODO: Un-pub?
     pub fn set_send_waker(&self, waker: &Waker) {
-        if self.send_waker.borrow().is_none() {
-            self.send_waker.borrow_mut().replace(waker.clone());
+        if self.tx_waker.borrow().is_none() {
+            self.tx_waker.borrow_mut().replace(waker.clone());
         }
     }
 
@@ -80,12 +123,10 @@ where
     where
         F: FnMut(&Pdu<MAX_PDU_DATA>) -> Result<(), ()>,
     {
-        debug!("Send everything");
-        let sendable_frames = self.requests.iter().find_map(|frame| {
+        let sendable_frames = self.frames.iter().find_map(|frame| {
             let frame = unsafe { &mut *frame.get() };
 
             if frame.state == FrameState::Created {
-                debug!("Found frame");
                 Some(frame)
             } else {
                 None
@@ -104,14 +145,14 @@ where
 
     fn frame(&self, idx: u8) -> Result<&mut Frame<MAX_PDU_DATA>, PduError> {
         let req = self
-            .requests
+            .frames
             .get(usize::from(idx))
             .ok_or_else(|| PduError::InvalidIndex(idx))?;
 
         Ok(unsafe { &mut *req.get() })
     }
 
-    pub async fn pdu(
+    pub async fn pdu_tx(
         &self,
         command: Command,
         data: &[u8],
@@ -121,7 +162,7 @@ where
         let idx = {
             let idx = self.idx.fetch_add(1, Ordering::Acquire) % MAX_FRAMES as u8;
 
-            let mut frame = self.frame(idx)?;
+            let frame = self.frame(idx)?;
 
             // If a frame slot is in flight and the index wraps back around to it, we're
             // sending/receiving too fast for the given buffer size.
@@ -130,14 +171,12 @@ where
             }
 
             let mut pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx);
-
             pdu.data = data.try_into().map_err(|_| PduError::TooLong)?;
 
-            frame.pdu = MaybeUninit::new(pdu);
-            frame.state = FrameState::Created;
+            frame.create(pdu);
 
             // Tell the packet sender there is data ready to send
-            match self.send_waker.try_borrow() {
+            match self.tx_waker.try_borrow() {
                 Ok(waker) => {
                     if let Some(waker) = &*waker {
                         waker.wake_by_ref()
@@ -156,20 +195,12 @@ where
                 Err(e) => return Poll::Ready(Err(e)),
             };
 
-            frame.waker = MaybeUninit::new(ctx.waker().clone());
+            frame.set_waker(ctx.waker());
 
-            match frame.state {
-                FrameState::Done => {
-                    // Clear frame state ready for reuse
-                    frame.state = FrameState::None;
-                    // Drop waker so it doesn't get woken again
-                    unsafe { frame.waker.assume_init_drop() };
-
-                    Poll::Ready(Ok(unsafe { frame.pdu.assume_init_read() }))
-                }
-                // Request hasn't been sent yet, or we're waiting for the response
-                _ => Poll::Pending,
-            }
+            frame
+                .take_ready_data()
+                .map(|data| Poll::Ready(Ok(data)))
+                .unwrap_or(Poll::Pending)
         });
 
         // TODO: Configurable timeout
@@ -183,9 +214,8 @@ where
         res
     }
 
-    // TODO: Return a result if index is out of bounds, or we don't have a waiting packet
-    pub fn parse_response_ethernet_packet(&self, raw_packet: &[u8]) -> Result<(), PduError> {
-        let raw_packet = EthernetFrame::new_unchecked(raw_packet);
+    pub fn pdu_rx(&self, raw_packet: &[u8]) -> Result<(), PduError> {
+        let raw_packet = EthernetFrame::new_checked(raw_packet)?;
 
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self
         if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == MASTER_ADDR {
@@ -197,20 +227,7 @@ where
         )
         .map_err(|_| PduError::Parse)?;
 
-        let idx = pdu.index;
-
-        let frame = self.frame(idx)?;
-
-        if frame.state == FrameState::Waiting {
-            // let waker = self.wakers.borrow_mut()[usize::from(idx)].take();
-            let waker = unsafe { frame.waker.assume_init_read() };
-
-            pdu.is_response_to(unsafe { frame.pdu.assume_init_ref() })?;
-
-            frame.pdu = MaybeUninit::new(pdu);
-            frame.state = FrameState::Done;
-            waker.wake();
-        }
+        self.frame(pdu.index)?.wake_done(pdu)?;
 
         Ok(())
     }

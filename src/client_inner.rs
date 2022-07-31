@@ -224,7 +224,7 @@ where
         T: PduRead,
         <T as PduRead>::Error: core::fmt::Debug,
     {
-        let pdu = self.pdu_loop.pdu(command, &[], T::len().into()).await?;
+        let pdu = self.pdu_loop.pdu_tx(command, &[], T::len().into()).await?;
 
         let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
             println!("{:?}", e);
@@ -242,7 +242,7 @@ where
     {
         let pdu = self
             .pdu_loop
-            .pdu(command, value.as_slice(), T::len().into())
+            .pdu_tx(command, value.as_slice(), T::len().into())
             .await?;
 
         let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
