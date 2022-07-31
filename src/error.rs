@@ -36,7 +36,9 @@ pub enum PduError {
     CreateFrame(smoltcp::Error),
     Encode(cookie_factory::GenError),
     Address,
-    InvalidIndex(usize),
+    InvalidIndex(u8),
+    Validation(PduValidationError),
+    Parse,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -48,5 +50,11 @@ pub enum PduValidationError {
 impl From<PduError> for Error {
     fn from(e: PduError) -> Self {
         Self::Pdu(e)
+    }
+}
+
+impl From<PduValidationError> for PduError {
+    fn from(e: PduValidationError) -> Self {
+        Self::Validation(e)
     }
 }

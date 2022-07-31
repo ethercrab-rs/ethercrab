@@ -3,7 +3,6 @@ use crate::{
     client_inner::ClientInternals,
     error::{Error, PduError},
     pdu::PduResponse,
-    pdu_loop::RequestState,
     register::RegisterAddress,
     slave::Slave,
     timer_factory::TimerFactory,
@@ -99,25 +98,19 @@ where
         let (mut tx, mut rx) = get_tx_rx(device)?;
 
         let tx_task = futures_lite::future::poll_fn::<(), _>(move |ctx| {
-            client_tx.set_send_waker(&ctx.waker());
+            client_tx.pdu_loop.set_send_waker(&ctx.waker());
 
-            // TODO: Unwrap and/or borrow races with the receiving side
-            for request in client_tx.frames_mut().unwrap().iter_mut() {
-                if let Some((state, pdu)) = request {
-                    match state {
-                        RequestState::Created => {
-                            let mut packet_buf = [0u8; 1536];
+            client_tx
+                .pdu_loop
+                .send_frames_blocking(|pdu| {
+                    debug!("Send frame");
+                    let mut packet_buf = [0u8; 1536];
 
-                            let packet = pdu.to_ethernet_frame(&mut packet_buf).unwrap();
+                    let packet = pdu.to_ethernet_frame(&mut packet_buf).unwrap();
 
-                            tx.send_to(packet, None).unwrap().expect("Send");
-
-                            *state = RequestState::Waiting;
-                        }
-                        _ => (),
-                    }
-                }
-            }
+                    tx.send_to(packet, None).unwrap().map_err(|_| ())
+                })
+                .unwrap();
 
             Poll::Pending
         });
@@ -126,7 +119,10 @@ where
             loop {
                 match rx.next() {
                     Ok(packet) => {
-                        client_rx.pdu_loop.parse_response_ethernet_packet(packet);
+                        client_rx
+                            .pdu_loop
+                            .parse_response_ethernet_packet(packet)
+                            .unwrap();
                     }
                     Err(e) => {
                         // If an error occurs, we can handle it here

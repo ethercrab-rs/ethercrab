@@ -4,19 +4,15 @@ use crate::{
     al_status_code::AlStatusCode,
     command::Command,
     error::{Error, PduError},
-    pdu::{CheckWorkingCounter, Pdu, PduResponse},
-    pdu_loop::{PduLoop, RequestState},
+    pdu::{CheckWorkingCounter, PduResponse},
+    pdu_loop::PduLoop,
     register::RegisterAddress,
     sii::{SiiControl, SiiRequest},
     slave::Slave,
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR,
 };
-use core::{
-    cell::{BorrowMutError, RefCell, RefMut},
-    marker::PhantomData,
-    task::Waker,
-};
+use core::{cell::RefCell, marker::PhantomData};
 use futures::future::{select, Either};
 use packed_struct::PackedStruct;
 
@@ -160,19 +156,6 @@ where
         }
 
         Err(Error::Timeout)
-    }
-
-    pub fn set_send_waker(&self, waker: &Waker) {
-        if self.pdu_loop.send_waker.borrow().is_none() {
-            self.pdu_loop.send_waker.borrow_mut().replace(waker.clone());
-        }
-    }
-
-    pub fn frames_mut(
-        &self,
-    ) -> Result<RefMut<'_, [Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>, BorrowMutError>
-    {
-        self.pdu_loop.frames.try_borrow_mut()
     }
 
     // TODO: Move onto `Slave` struct and invert control, e.g. `slave.request_state(state, &client)`
