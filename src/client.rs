@@ -1,8 +1,9 @@
 use crate::{
     al_status::AlState,
-    client_inner::{ClientInternals, RequestState},
+    client_inner::ClientInternals,
     error::{Error, PduError},
     pdu::PduResponse,
+    pdu_loop::RequestState,
     register::RegisterAddress,
     slave::Slave,
     timer_factory::TimerFactory,
@@ -90,6 +91,7 @@ where
     // TODO: Proper error - there are a couple of unwraps in here
     // TODO: Pass packet buffer in? Make it configurable with a const generic? Use `MAX_PDU_DATA`?
     // TODO: Make some sort of split() method to ensure we can only ever have one tx/rx future running
+    // TODO: Make a nicer way of sending/updating packets without having to expose everything
     pub fn tx_rx_task(&self, device: &str) -> Result<impl Future<Output = ()>, std::io::Error> {
         let client_tx = self.client.clone();
         let client_rx = self.client.clone();
@@ -124,7 +126,7 @@ where
             loop {
                 match rx.next() {
                     Ok(packet) => {
-                        client_rx.parse_response_ethernet_packet(packet);
+                        client_rx.pdu_loop.parse_response_ethernet_packet(packet);
                     }
                     Err(e) => {
                         // If an error occurs, we can handle it here

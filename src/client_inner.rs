@@ -5,28 +5,20 @@ use crate::{
     command::Command,
     error::{Error, PduError},
     pdu::{CheckWorkingCounter, Pdu, PduResponse},
+    pdu_loop::{PduLoop, RequestState},
     register::RegisterAddress,
     sii::{SiiControl, SiiRequest},
     slave::Slave,
     timer_factory::TimerFactory,
-    PduData, PduRead, BASE_SLAVE_ADDR, ETHERCAT_ETHERTYPE, MASTER_ADDR,
+    PduData, PduRead, BASE_SLAVE_ADDR,
 };
 use core::{
     cell::{BorrowMutError, RefCell, RefMut},
     marker::PhantomData,
-    sync::atomic::{AtomicU8, Ordering},
-    task::{Poll, Waker},
+    task::Waker,
 };
 use futures::future::{select, Either};
 use packed_struct::PackedStruct;
-use smoltcp::wire::EthernetFrame;
-
-#[derive(Debug, PartialEq)]
-pub enum RequestState {
-    Created,
-    Waiting,
-    Done,
-}
 
 // TODO: Use atomic_refcell crate
 // TODO: Move core PDU tx/rx loop into own struct for better testing/fuzzing?
@@ -36,10 +28,8 @@ pub struct ClientInternals<
     const MAX_SLAVES: usize,
     TIMEOUT,
 > {
-    wakers: RefCell<[Option<Waker>; MAX_FRAMES]>,
-    frames: RefCell<[Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>,
-    send_waker: RefCell<Option<Waker>>,
-    idx: AtomicU8,
+    // TODO: un-pub
+    pub pdu_loop: PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     _timeout: PhantomData<TIMEOUT>,
     // TODO: un-pub
     pub slaves: RefCell<heapless::Vec<Slave, MAX_SLAVES>>,
@@ -63,10 +53,7 @@ where
         );
 
         Self {
-            wakers: RefCell::new([(); MAX_FRAMES].map(|_| None)),
-            frames: RefCell::new([(); MAX_FRAMES].map(|_| None)),
-            send_waker: RefCell::new(None),
-            idx: AtomicU8::new(0),
+            pdu_loop: PduLoop::new(),
             slaves: RefCell::new(heapless::Vec::new()),
             _timeout: PhantomData,
         }
@@ -176,8 +163,8 @@ where
     }
 
     pub fn set_send_waker(&self, waker: &Waker) {
-        if self.send_waker.borrow().is_none() {
-            self.send_waker.borrow_mut().replace(waker.clone());
+        if self.pdu_loop.send_waker.borrow().is_none() {
+            self.pdu_loop.send_waker.borrow_mut().replace(waker.clone());
         }
     }
 
@@ -185,7 +172,7 @@ where
         &self,
     ) -> Result<RefMut<'_, [Option<(RequestState, Pdu<MAX_PDU_DATA>)>; MAX_FRAMES]>, BorrowMutError>
     {
-        self.frames.try_borrow_mut()
+        self.pdu_loop.frames.try_borrow_mut()
     }
 
     // TODO: Move onto `Slave` struct and invert control, e.g. `slave.request_state(state, &client)`
@@ -248,113 +235,13 @@ where
         Ok(data)
     }
 
-    pub async fn pdu(
-        &self,
-        command: Command,
-        data: &[u8],
-        data_length: u16,
-    ) -> Result<Pdu<MAX_PDU_DATA>, PduError> {
-        // braces to ensure we don't hold the refcell across awaits
-        let idx = {
-            // TODO: Confirm Ordering enum
-            let idx = self.idx.fetch_add(1, Ordering::Release) % MAX_FRAMES as u8;
-
-            // We're receiving too fast or the receive buffer isn't long enough
-            if self.frames.borrow()[usize::from(idx)].is_some() {
-                return Err(PduError::IndexInUse);
-            }
-
-            let mut pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx);
-
-            pdu.data = data.try_into().map_err(|_| PduError::TooLong)?;
-
-            // TODO: Races
-            self.frames.borrow_mut()[usize::from(idx)] = Some((RequestState::Created, pdu));
-
-            if let Some(waker) = &*self.send_waker.borrow() {
-                waker.wake_by_ref()
-            }
-
-            usize::from(idx)
-        };
-
-        // MSRV: Use core::future::poll_fn when `future_poll_fn ` is stabilised
-        let res = futures_lite::future::poll_fn(|ctx| {
-            // TODO: Races
-            let mut frames = self.frames.borrow_mut();
-
-            let res = frames
-                .get_mut(idx)
-                .map(|frame| match frame {
-                    Some((RequestState::Done, _pdu)) => frame
-                        .take()
-                        .map(|(_state, pdu)| Poll::Ready(Ok(pdu)))
-                        // We shouldn't ever get here because we're already matching against
-                        // `Some()`, but the alternative is an `unwrap()` so let's not go there.
-                        .unwrap_or(Poll::Pending),
-                    _ => Poll::Pending,
-                })
-                .unwrap_or_else(|| Poll::Ready(Err(PduError::InvalidIndex(idx))));
-
-            self.wakers.borrow_mut()[usize::from(idx)] = Some(ctx.waker().clone());
-
-            res
-        });
-
-        // TODO: Configurable timeout
-        let timeout = TIMEOUT::timer(core::time::Duration::from_micros(30_000));
-
-        let res = match select(res, timeout).await {
-            Either::Left((res, _timeout)) => res,
-            Either::Right((_timeout, _res)) => return Err(PduError::Timeout),
-        };
-
-        res
-    }
-
-    // TODO: Return a result if index is out of bounds, or we don't have a waiting packet
-    pub fn parse_response_ethernet_packet(&self, raw_packet: &[u8]) {
-        let raw_packet = EthernetFrame::new_unchecked(raw_packet);
-
-        // Look for EtherCAT packets whilst ignoring broadcast packets sent from self
-        if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == MASTER_ADDR {
-            return ();
-        }
-
-        let (_rest, pdu) = Pdu::<MAX_PDU_DATA>::from_ethernet_payload::<nom::error::Error<&[u8]>>(
-            &raw_packet.payload(),
-        )
-        .expect("Packet parse");
-
-        let idx = pdu.index;
-
-        let waker = self.wakers.borrow_mut()[usize::from(idx)].take();
-
-        // Frame is ready; tell everyone about it
-        if let Some(waker) = waker {
-            // TODO: Borrow races
-            if let Some((state, existing_pdu)) = self.frames.borrow_mut()[usize::from(idx)].as_mut()
-            {
-                pdu.is_response_to(existing_pdu).unwrap();
-
-                *state = RequestState::Done;
-                *existing_pdu = pdu
-            } else {
-                // TODO: Result!
-                panic!("No waiting frame for response");
-            }
-
-            waker.wake()
-        }
-    }
-
     // TODO: Dedupe with write_service when refactoring allows
     async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, PduError>
     where
         T: PduRead,
         <T as PduRead>::Error: core::fmt::Debug,
     {
-        let pdu = self.pdu(command, &[], T::len().into()).await?;
+        let pdu = self.pdu_loop.pdu(command, &[], T::len().into()).await?;
 
         let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
             println!("{:?}", e);
@@ -370,7 +257,10 @@ where
         T: PduData,
         <T as PduRead>::Error: core::fmt::Debug,
     {
-        let pdu = self.pdu(command, value.as_slice(), T::len().into()).await?;
+        let pdu = self
+            .pdu_loop
+            .pdu(command, value.as_slice(), T::len().into())
+            .await?;
 
         let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
             println!("{:?}", e);
