@@ -102,7 +102,7 @@ where
             let mut pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx);
             pdu.data = data.try_into().map_err(|_| PduError::TooLong)?;
 
-            frame.create(pdu);
+            frame.create(pdu)?;
 
             // Tell the packet sender there is data ready to send
             match self.tx_waker.try_borrow() {
@@ -124,7 +124,7 @@ where
                 Err(e) => return Poll::Ready(Err(e)),
             };
 
-            frame.set_waker(ctx.waker());
+            frame.set_waker(ctx.waker())?;
 
             frame
                 .take_ready_data()

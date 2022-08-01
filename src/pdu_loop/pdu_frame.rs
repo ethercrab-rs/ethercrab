@@ -28,32 +28,54 @@ impl<const MAX_PDU_DATA: usize> Default for Frame<MAX_PDU_DATA> {
     }
 }
 
-// TODO: Typestates?
 impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
-    pub(crate) fn create(&mut self, pdu: Pdu<MAX_PDU_DATA>) {
+    pub(crate) fn create(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
+        if self.state != FrameState::None {
+            trace!("Expected {:?}, got {:?}", FrameState::None, self.state);
+            Err(PduError::InvalidFrameState)?;
+        }
+
         self.pdu = MaybeUninit::new(pdu);
         self.state = FrameState::Created;
+
+        Ok(())
     }
 
-    pub(crate) fn set_waker(&mut self, waker: &Waker) {
+    pub(crate) fn set_waker(&mut self, waker: &Waker) -> Result<(), PduError> {
+        if !matches!(
+            self.state,
+            FrameState::Created | FrameState::Waiting | FrameState::Done
+        ) {
+            trace!("Set waker in invalid state {:?}", self.state);
+            Err(PduError::InvalidFrameState)?;
+        }
+
+        // Setting a waker when the packet is already done makes no sense
+        if self.state == FrameState::Done {
+            return Ok(());
+        }
+
         self.waker = MaybeUninit::new(waker.clone());
+
+        Ok(())
     }
 
     pub(crate) fn wake_done(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
-        if self.state == FrameState::Waiting {
-            let waker = unsafe { self.waker.assume_init_read() };
-
-            pdu.is_response_to(unsafe { self.pdu.assume_init_ref() })?;
-
-            self.pdu = MaybeUninit::new(pdu);
-            self.state = FrameState::Done;
-
-            waker.wake();
-
-            Ok(())
-        } else {
-            Err(PduError::InvalidFrameState)
+        if self.state != FrameState::Waiting {
+            trace!("Expected {:?}, got {:?}", FrameState::Waiting, self.state);
+            Err(PduError::InvalidFrameState)?;
         }
+
+        let waker = unsafe { self.waker.assume_init_read() };
+
+        pdu.is_response_to(unsafe { self.pdu.assume_init_ref() })?;
+
+        self.pdu = MaybeUninit::new(pdu);
+        self.state = FrameState::Done;
+
+        waker.wake();
+
+        Ok(())
     }
 
     /// If there is response data ready, return the data and mark this frame as ready to be reused.
