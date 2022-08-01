@@ -1,7 +1,9 @@
 use crate::error::PduError;
 use crate::pdu::Pdu;
+use core::future::Future;
 use core::mem::MaybeUninit;
-use core::task::Waker;
+use core::pin::Pin;
+use core::task::{Context, Poll, Waker};
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum FrameState {
@@ -13,9 +15,9 @@ pub(crate) enum FrameState {
 
 #[derive(Debug)]
 pub(crate) struct Frame<const MAX_PDU_DATA: usize> {
-    pub(crate) state: FrameState,
-    pub(crate) waker: MaybeUninit<Waker>,
-    pub(crate) pdu: MaybeUninit<Pdu<MAX_PDU_DATA>>,
+    state: FrameState,
+    waker: MaybeUninit<Waker>,
+    pdu: MaybeUninit<Pdu<MAX_PDU_DATA>>,
 }
 
 impl<const MAX_PDU_DATA: usize> Default for Frame<MAX_PDU_DATA> {
@@ -29,33 +31,17 @@ impl<const MAX_PDU_DATA: usize> Default for Frame<MAX_PDU_DATA> {
 }
 
 impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
-    pub(crate) fn create(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
+    pub(crate) fn replace(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
         if self.state != FrameState::None {
             trace!("Expected {:?}, got {:?}", FrameState::None, self.state);
             Err(PduError::InvalidFrameState)?;
         }
 
-        self.pdu = MaybeUninit::new(pdu);
-        self.state = FrameState::Created;
-
-        Ok(())
-    }
-
-    pub(crate) fn set_waker(&mut self, waker: &Waker) -> Result<(), PduError> {
-        if !matches!(
-            self.state,
-            FrameState::Created | FrameState::Waiting | FrameState::Done
-        ) {
-            trace!("Set waker in invalid state {:?}", self.state);
-            Err(PduError::InvalidFrameState)?;
-        }
-
-        // Setting a waker when the packet is already done makes no sense
-        if self.state == FrameState::Done {
-            return Ok(());
-        }
-
-        self.waker = MaybeUninit::new(waker.clone());
+        *self = Self {
+            state: FrameState::Created,
+            pdu: MaybeUninit::new(pdu),
+            waker: MaybeUninit::uninit(),
+        };
 
         Ok(())
     }
@@ -78,10 +64,46 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         Ok(())
     }
 
-    /// If there is response data ready, return the data and mark this frame as ready to be reused.
-    pub(crate) fn take_ready_data(&mut self) -> Option<Pdu<MAX_PDU_DATA>> {
+    pub(crate) fn sendable<'a>(&'a mut self) -> Option<SendableFrame<'a, MAX_PDU_DATA>> {
+        if self.state == FrameState::Created {
+            Some(SendableFrame { frame: self })
+        } else {
+            None
+        }
+    }
+}
+
+/// A frame that is in a sendable state.
+pub struct SendableFrame<'a, const MAX_PDU_DATA: usize> {
+    frame: &'a mut Frame<MAX_PDU_DATA>,
+}
+
+impl<'a, const MAX_PDU_DATA: usize> SendableFrame<'a, MAX_PDU_DATA> {
+    pub(crate) fn mark_sent(&mut self) {
+        self.frame.state = FrameState::Waiting;
+    }
+
+    pub(crate) fn pdu(&self) -> &Pdu<MAX_PDU_DATA> {
+        // SAFETY: Because a `SendableFrame` can only be created if the frame is in a created state,
+        // we can assume the PDU has been set here.
+        unsafe { self.frame.pdu.assume_init_ref() }
+    }
+}
+
+impl<const MAX_PDU_DATA: usize> Future for Frame<MAX_PDU_DATA> {
+    type Output = Result<Pdu<MAX_PDU_DATA>, PduError>;
+
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.state {
-            // Response has been received and stored
+            FrameState::None => {
+                trace!("Frame future polled in None state");
+                Poll::Ready(Err(PduError::InvalidFrameState))
+            }
+            FrameState::Created | FrameState::Waiting => {
+                self.waker = MaybeUninit::new(ctx.waker().clone());
+
+                Poll::Pending
+            }
             FrameState::Done => {
                 // Clear frame state ready for reuse
                 self.state = FrameState::None;
@@ -89,10 +111,8 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
                 // Drop waker so it doesn't get woken again
                 unsafe { self.waker.assume_init_drop() };
 
-                Some(unsafe { self.pdu.assume_init_read() })
+                Poll::Ready(Ok(unsafe { self.pdu.assume_init_read() }))
             }
-            // Request hasn't been sent yet, or we're waiting for the response
-            _ => None,
         }
     }
 }

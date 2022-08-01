@@ -98,12 +98,9 @@ where
         let (mut tx, mut rx) = get_tx_rx(device)?;
 
         let tx_task = futures_lite::future::poll_fn::<(), _>(move |ctx| {
-            client_tx.pdu_loop.set_send_waker(&ctx.waker());
-
             client_tx
                 .pdu_loop
-                .send_frames_blocking(|pdu| {
-                    debug!("Send frame");
+                .send_frames_blocking(ctx.waker(), |pdu| {
                     let mut packet_buf = [0u8; 1536];
 
                     let packet = pdu.to_ethernet_frame(&mut packet_buf).unwrap();
@@ -132,6 +129,7 @@ where
         Ok(tx_task.race(rx_task))
     }
 
+    // TODO: Move all slave_idx methods onto a slave struct
     pub async fn read_eeprom(&self, slave_idx: u16, address: u16) -> Result<u32, Error> {
         self.client.read_eeprom(slave_idx, address).await
     }

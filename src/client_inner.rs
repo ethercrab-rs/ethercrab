@@ -16,8 +16,6 @@ use core::{cell::RefCell, marker::PhantomData};
 use futures::future::{select, Either};
 use packed_struct::PackedStruct;
 
-// TODO: Use atomic_refcell crate
-// TODO: Move core PDU tx/rx loop into own struct for better testing/fuzzing?
 pub struct ClientInternals<
     const MAX_FRAMES: usize,
     const MAX_PDU_DATA: usize,
@@ -191,10 +189,7 @@ where
                     .await?
                     .wkc(1, "SII busy wait")?;
 
-                debug!("Loop {:?}", control.busy);
-
                 if control.busy == false {
-                    info!("WE DID IT");
                     break Result::<(), Error>::Ok(());
                 }
 
