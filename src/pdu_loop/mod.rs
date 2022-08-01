@@ -8,7 +8,7 @@ use core::{
     cell::{RefCell, UnsafeCell},
     marker::PhantomData,
     sync::atomic::{AtomicU8, Ordering},
-    task::{Poll, Waker},
+    task::Waker,
 };
 use futures::future::{select, Either};
 use smoltcp::wire::EthernetFrame;
@@ -41,33 +41,34 @@ where
         }
     }
 
-    // TODO: Un-pub?
-    pub fn set_send_waker(&self, waker: &Waker) {
+    fn set_send_waker(&self, waker: &Waker) {
         if self.tx_waker.borrow().is_none() {
             self.tx_waker.borrow_mut().replace(waker.clone());
         }
     }
 
-    pub fn send_frames_blocking<F>(&self, mut send: F) -> Result<(), ()>
+    pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), ()>
     where
         F: FnMut(&Pdu<MAX_PDU_DATA>) -> Result<(), ()>,
     {
-        let sendable_frames = self.frames.iter().find_map(|frame| {
+        self.frames.iter().try_for_each(|frame| {
             let frame = unsafe { &mut *frame.get() };
 
-            if frame.state == pdu_frame::FrameState::Created {
-                Some(frame)
-            } else {
-                None
-            }
-        });
+            if let Some(ref mut frame) = frame.sendable() {
+                match send(frame.pdu()) {
+                    Ok(_) => {
+                        frame.mark_sent();
 
-        for frame in sendable_frames {
-            match send(unsafe { frame.pdu.assume_init_ref() }) {
-                Ok(_) => frame.state = pdu_frame::FrameState::Waiting,
-                Err(e) => return Err(e),
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                }
+            } else {
+                Ok(())
             }
-        }
+        })?;
+
+        self.set_send_waker(waker);
 
         Ok(())
     }
@@ -87,55 +88,29 @@ where
         data: &[u8],
         data_length: u16,
     ) -> Result<Pdu<MAX_PDU_DATA>, PduError> {
-        // Braces to ensure we don't hold the send waker refcell across awaits
-        let idx = {
-            let idx = self.idx.fetch_add(1, Ordering::Acquire) % MAX_FRAMES as u8;
+        let idx = self.idx.fetch_add(1, Ordering::Acquire) % MAX_FRAMES as u8;
 
-            let frame = self.frame(idx)?;
+        let frame = self.frame(idx)?;
 
-            // If a frame slot is in flight and the index wraps back around to it, we're
-            // sending/receiving too fast for the given buffer size.
-            if frame.state != pdu_frame::FrameState::None {
-                return Err(PduError::IndexInUse);
-            }
+        let mut pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx);
+        pdu.data = data.try_into().map_err(|_| PduError::TooLong)?;
 
-            let mut pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx);
-            pdu.data = data.try_into().map_err(|_| PduError::TooLong)?;
+        frame.replace(pdu)?;
 
-            frame.create(pdu)?;
-
-            // Tell the packet sender there is data ready to send
-            match self.tx_waker.try_borrow() {
-                Ok(waker) => {
-                    if let Some(waker) = &*waker {
-                        waker.wake_by_ref()
-                    }
+        // Tell the packet sender there is data ready to send
+        match self.tx_waker.try_borrow() {
+            Ok(waker) => {
+                if let Some(waker) = &*waker {
+                    waker.wake_by_ref()
                 }
-                Err(_) => warn!("Send waker is already borrowed"),
             }
-
-            idx
-        };
-
-        // MSRV: Use core::future::poll_fn when `future_poll_fn ` is stabilised
-        let res = futures_lite::future::poll_fn(|ctx| {
-            let frame = match self.frame(idx) {
-                Ok(frame) => frame,
-                Err(e) => return Poll::Ready(Err(e)),
-            };
-
-            frame.set_waker(ctx.waker())?;
-
-            frame
-                .take_ready_data()
-                .map(|data| Poll::Ready(Ok(data)))
-                .unwrap_or(Poll::Pending)
-        });
+            Err(_) => warn!("Send waker is already borrowed"),
+        }
 
         // TODO: Configurable timeout
         let timeout = TIMEOUT::timer(core::time::Duration::from_micros(30_000));
 
-        let res = match select(res, timeout).await {
+        let res = match select(frame, timeout).await {
             Either::Left((res, _timeout)) => res,
             Either::Right((_timeout, _res)) => return Err(PduError::Timeout),
         };
