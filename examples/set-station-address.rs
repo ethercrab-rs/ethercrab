@@ -1,14 +1,15 @@
 //! A small example to set the configured station address for each slave, as well as periodically
 //! log the AL Status register.
 
-use std::time::Duration;
-
 use async_ctrlc::CtrlC;
 use ethercrab::client::Client;
 use ethercrab::error::PduError;
 use ethercrab::register::RegisterAddress;
+use ethercrab::std::tx_rx_task;
 use futures_lite::FutureExt;
 use smol::LocalExecutor;
+use std::sync::Arc;
+use std::time::Duration;
 
 #[cfg(target_os = "windows")]
 // ASRock NIC
@@ -28,10 +29,10 @@ fn main() -> Result<(), PduError> {
     let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
 
     futures_lite::future::block_on(local_ex.run(ctrlc.race(async {
-        let client = Client::<16, 16, 16, smol::Timer>::new();
+        let client = Arc::new(Client::<16, 16, 16, smol::Timer>::new());
 
         local_ex
-            .spawn(client.tx_rx_task(INTERFACE).unwrap())
+            .spawn(tx_rx_task(INTERFACE, &client).unwrap())
             .detach();
 
         let (_res, num_slaves) = client.brd::<u8>(RegisterAddress::Type).await.unwrap();

@@ -7,7 +7,6 @@ pub mod al_control;
 pub mod al_status;
 pub mod al_status_code;
 pub mod client;
-pub mod client_inner;
 pub mod command;
 pub mod error;
 pub mod fmmu;
@@ -21,7 +20,9 @@ pub mod sync_manager_channel;
 pub mod timer_factory;
 pub mod vendors;
 
-// use pdu::{Pdu, PduParseError};
+#[cfg(feature = "std")]
+pub mod std;
+
 use core::array::TryFromSliceError;
 use core::str::Utf8Error;
 use smoltcp::wire::{EthernetAddress, EthernetProtocol};
