@@ -16,7 +16,7 @@ pub(crate) enum FrameState {
 #[derive(Debug)]
 pub(crate) struct Frame<const MAX_PDU_DATA: usize> {
     state: FrameState,
-    waker: MaybeUninit<Waker>,
+    waker: Option<Waker>,
     pdu: MaybeUninit<Pdu<MAX_PDU_DATA>>,
 }
 
@@ -24,7 +24,7 @@ impl<const MAX_PDU_DATA: usize> Default for Frame<MAX_PDU_DATA> {
     fn default() -> Self {
         Self {
             state: FrameState::None,
-            waker: MaybeUninit::uninit(),
+            waker: None,
             pdu: MaybeUninit::uninit(),
         }
     }
@@ -39,8 +39,8 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
 
         *self = Self {
             state: FrameState::Created,
+            waker: None,
             pdu: MaybeUninit::new(pdu),
-            waker: MaybeUninit::uninit(),
         };
 
         Ok(())
@@ -52,7 +52,14 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
             Err(PduError::InvalidFrameState)?;
         }
 
-        let waker = unsafe { self.waker.assume_init_read() };
+        let waker = self.waker.take().ok_or_else(|| {
+            error!(
+                "Attempted to wake frame #{} with no waker, possibly caused by timeout",
+                pdu.index()
+            );
+
+            PduError::InvalidFrameState
+        })?;
 
         pdu.is_response_to(unsafe { self.pdu.assume_init_ref() })?;
 
@@ -100,7 +107,7 @@ impl<const MAX_PDU_DATA: usize> Future for Frame<MAX_PDU_DATA> {
                 Poll::Ready(Err(PduError::InvalidFrameState))
             }
             FrameState::Created | FrameState::Waiting => {
-                self.waker = MaybeUninit::new(ctx.waker().clone());
+                self.waker = Some(ctx.waker().clone());
 
                 Poll::Pending
             }
@@ -109,7 +116,7 @@ impl<const MAX_PDU_DATA: usize> Future for Frame<MAX_PDU_DATA> {
                 self.state = FrameState::None;
 
                 // Drop waker so it doesn't get woken again
-                unsafe { self.waker.assume_init_drop() };
+                core::mem::drop(self.waker.take());
 
                 Poll::Ready(Ok(unsafe { self.pdu.assume_init_read() }))
             }
