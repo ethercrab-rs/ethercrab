@@ -6,7 +6,9 @@ use async_ctrlc::CtrlC;
 use ethercrab::al_status::AlState;
 use ethercrab::client::Client;
 use ethercrab::error::PduError;
+use ethercrab::mailbox::MailboxProtocols;
 use ethercrab::register::RegisterAddress;
+use ethercrab::sii::SiiCoding;
 use ethercrab::std::tx_rx_task;
 use futures_lite::FutureExt;
 use smol::LocalExecutor;
@@ -47,14 +49,29 @@ fn main() -> Result<(), PduError> {
                 .await
                 .expect(&format!("Slave {slave}"));
 
-            // Vendor ID
-            let vendor_id = client.read_eeprom(slave, 0x0008).await.unwrap();
+            let vendor_id = client
+                .read_eeprom_raw(slave, SiiCoding::VendorId)
+                .await
+                .unwrap();
 
             println!(
                 "Vendor ID for slave {}: {:#04x} ({})",
                 slave,
                 vendor_id,
                 ethercrab::vendors::vendor_name(vendor_id).unwrap_or("unknown vendor")
+            );
+
+            let supported_mailbox_protocols = client
+                .read_eeprom_raw(slave, SiiCoding::MailboxProtocol)
+                .await
+                .unwrap();
+
+            let supported_mailbox_protocols =
+                MailboxProtocols::from_bits(supported_mailbox_protocols as u16).unwrap();
+
+            println!(
+                "Supported mailbox protocols: {:?}",
+                supported_mailbox_protocols
             );
         }
     })));
