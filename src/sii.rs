@@ -107,6 +107,8 @@ impl SiiRequest {
 /// SII register address.
 ///
 /// Defined in ETG1000.6 Table 16
+#[derive(Debug, num_enum::IntoPrimitive)]
+#[repr(u16)]
 pub enum SiiCoding {
     /// PDI Control
     // Unsigned16
@@ -167,7 +169,7 @@ pub enum SiiCoding {
     /// Standard Send Mailbox Size
     // Unsigned16
     StandardSendMailboxSize = 0x001B,
-    /// Mailbox Protocol
+    /// Mailbox Protocol - returns a [`MailboxProtocols`](crate::mailbox::MailboxProtocols).
     // Unsigned16
     MailboxProtocol = 0x001C,
     /// Size
@@ -176,24 +178,4 @@ pub enum SiiCoding {
     /// Version
     // Unsigned16
     Version = 0x003F,
-}
-
-/// Mailbox category.
-///
-/// Defined in ETG1000.6 Table 18.
-// TODO: Move to mailbox module
-#[repr(u16)]
-pub enum MailboxProtocol {
-    /// ADS over EtherCAT (routing and parallel services)
-    Aoe = 0x0001,
-    /// Ethernet over EtherCAT (tunnelling of Data Link services)
-    Eoe = 0x0002,
-    /// CAN application protocol over EtherCAT (access to SDO)
-    Coe = 0x0004,
-    /// File Access over EtherCAT
-    Foe = 0x0008,
-    /// Servo Drive Profile over EtherCAT
-    Soe = 0x0010,
-    /// Vendor specific protocol over EtherCAT
-    Voe = 0x0020,
 }
