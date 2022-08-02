@@ -109,12 +109,10 @@ where
         // TODO: Configurable timeout
         let timeout = TIMEOUT::timer(core::time::Duration::from_micros(30_000));
 
-        let res = match select(frame, timeout).await {
+        match select(frame, timeout).await {
             Either::Left((res, _timeout)) => res,
-            Either::Right((_timeout, _res)) => return Err(PduError::Timeout),
-        };
-
-        res
+            Either::Right((_timeout, _res)) => Err(PduError::Timeout),
+        }
     }
 
     pub fn pdu_rx(&self, raw_packet: &[u8]) -> Result<(), PduError> {
