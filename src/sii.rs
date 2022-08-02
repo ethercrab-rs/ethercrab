@@ -104,6 +104,9 @@ impl SiiRequest {
     }
 }
 
+/// SII register address.
+///
+/// Defined in ETG1000.6 Table 16
 pub enum SiiCoding {
     /// PDI Control
     // Unsigned16
@@ -175,6 +178,9 @@ pub enum SiiCoding {
     Version = 0x003F,
 }
 
+/// Mailbox category.
+///
+/// Defined in ETG1000.6 Table 18.
 // TODO: Move to mailbox module
 #[repr(u16)]
 pub enum MailboxProtocol {
