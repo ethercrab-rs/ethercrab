@@ -105,6 +105,22 @@ impl<const N: usize> PduData for [u8; N] {
     }
 }
 
+impl PduRead for () {
+    const LEN: u16 = 0;
+
+    type Error = TryFromSliceError;
+
+    fn try_from_slice(_slice: &[u8]) -> Result<Self, Self::Error> {
+        Ok(())
+    }
+}
+
+impl PduData for () {
+    fn as_slice(&self) -> &[u8] {
+        &[]
+    }
+}
+
 impl<const N: usize> PduRead for heapless::String<N> {
     const LEN: u16 = N as u16;
 
