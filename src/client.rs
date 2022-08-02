@@ -156,8 +156,14 @@ where
         Err(Error::Timeout)
     }
 
-    // TODO: Move onto `Slave` struct and invert control, e.g. `slave.request_state(state, &client)`
-    pub async fn read_eeprom(&self, slave_idx: u16, eeprom_address: u16) -> Result<u32, Error> {
+    // TODO: Move onto `Slave` struct and invert control, e.g. `slave.read_eeprom(state, &client)`
+    pub async fn read_eeprom_raw(
+        &self,
+        slave_idx: u16,
+        eeprom_address: impl Into<u16>,
+    ) -> Result<u32, Error> {
+        let eeprom_address: u16 = eeprom_address.into();
+
         let slave_idx = usize::from(slave_idx);
 
         // TODO: Unwrap
