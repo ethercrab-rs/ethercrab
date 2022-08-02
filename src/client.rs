@@ -221,12 +221,12 @@ where
     {
         let pdu = self.pdu_loop.pdu_tx(command, &[], T::len().into()).await?;
 
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
+        let res = T::try_from_slice(pdu.data()).map_err(|e| {
             println!("{:?}", e);
             PduError::Decode
         })?;
 
-        Ok((res, pdu.working_counter))
+        Ok((res, pdu.working_counter()))
     }
 
     // TODO: Support different I and O types; some things can return different data
@@ -240,12 +240,9 @@ where
             .pdu_tx(command, value.as_slice(), T::len().into())
             .await?;
 
-        let res = T::try_from_slice(pdu.data.as_slice()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
+        let res = T::try_from_slice(pdu.data()).map_err(|_| PduError::Decode)?;
 
-        Ok((res, pdu.working_counter))
+        Ok((res, pdu.working_counter()))
     }
 
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, PduError>

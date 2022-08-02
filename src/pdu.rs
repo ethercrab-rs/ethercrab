@@ -43,26 +43,34 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 #[derive(Debug)]
 pub struct Pdu<const MAX_DATA: usize> {
     command: Command,
-    pub index: u8,
+    index: u8,
     flags: PduFlags,
     irq: u16,
-    pub data: heapless::Vec<u8, MAX_DATA>,
-    pub working_counter: u16,
+    data: heapless::Vec<u8, MAX_DATA>,
+    working_counter: u16,
 }
 
 impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
-    pub const fn new(command: Command, data_length: u16, index: u8) -> Self {
+    pub fn new(
+        command: Command,
+        data_length: u16,
+        index: u8,
+        data: &[u8],
+    ) -> Result<Self, PduError> {
         debug_assert!(MAX_DATA <= LEN_MASK as usize);
         debug_assert!(data_length as usize <= MAX_DATA);
 
-        Self {
+        // TODO: Is there a way I can do this without copying/cloning?
+        let data = heapless::Vec::from_slice(data).map_err(|_| PduError::TooLong)?;
+
+        Ok(Self {
             command,
             index,
             flags: PduFlags::with_len(data_length),
             irq: 0,
-            data: heapless::Vec::new(),
+            data,
             working_counter: 0,
-        }
+        })
     }
 
     fn as_bytes<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
@@ -184,6 +192,18 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         }
 
         Ok(())
+    }
+
+    pub fn index(&self) -> u8 {
+        self.index
+    }
+
+    pub(crate) fn data(&self) -> &[u8] {
+        self.data.as_slice()
+    }
+
+    pub(crate) fn working_counter(&self) -> u16 {
+        self.working_counter
     }
 }
 

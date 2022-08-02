@@ -50,6 +50,7 @@ where
 
     let mut packet_buf = [0u8; 1536];
 
+    // TODO: Unwraps
     let tx_task = futures_lite::future::poll_fn::<(), _>(move |ctx| {
         client_tx
             .pdu_loop
@@ -63,6 +64,7 @@ where
         Poll::Pending
     });
 
+    // TODO: Unwraps
     let rx_task = smol::unblock(move || {
         loop {
             match rx.next() {
