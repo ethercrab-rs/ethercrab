@@ -40,6 +40,8 @@ pub enum RegisterAddress {
 
     // u32 when reading, u16 when writing
     SiiData = 0x0508,
+
+    Sm0 = 0x0800,
 }
 
 impl From<RegisterAddress> for u16 {
