@@ -14,6 +14,8 @@ use ethercrab::sync_manager_channel::{Direction, OperationMode, SyncManagerChann
 use futures_lite::FutureExt;
 use packed_struct::PackedStruct;
 use smol::LocalExecutor;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,7 +27,7 @@ use std::time::Duration;
 // Silver USB NIC
 const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
 #[cfg(not(target_os = "windows"))]
-const INTERFACE: &str = "eth0";
+const INTERFACE: &str = "eth1";
 
 fn main() -> Result<(), PduError> {
     env_logger::init();
@@ -84,25 +86,18 @@ fn main() -> Result<(), PduError> {
                 .expect(&format!("Slave OP {slave}"));
         }
 
-        // let mut value = 0x00u8;
+        let mut value = Rc::new(RefCell::new(0x00u8));
 
-        // let value2 = value.clone();
+        let value2 = value.clone();
         let client2 = client.clone();
 
         // PD TX task (no RX because EL2004 is WO)
         local_ex
             .spawn(async move {
                 loop {
-                    // Second output
-                    // client2.lwr(0u32, 0b0000_0010).await.expect("Bad write");
+                    let v: u8 = *value2.borrow();
 
-                    // Debugging
-                    {
-                        let (_res, num_slaves) =
-                            client2.brd::<u8>(RegisterAddress::Type).await.unwrap();
-
-                        log::info!("Discovered {num_slaves} slaves");
-                    }
+                    client2.lwr(0u32, v).await.expect("Bad write");
 
                     // Cycle time
                     async_io::Timer::after(Duration::from_millis(2)).await;
@@ -110,7 +105,15 @@ fn main() -> Result<(), PduError> {
             })
             .detach();
 
-        async_io::Timer::after(Duration::from_millis(5000)).await;
+        loop {
+            if *value.borrow() == 0 {
+                *value.borrow_mut() = 0b0000_0010;
+            } else {
+                *value.borrow_mut() = 0;
+            }
+
+            async_io::Timer::after(Duration::from_millis(250)).await;
+        }
     })));
 
     Ok(())
