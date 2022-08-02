@@ -103,3 +103,91 @@ impl SiiRequest {
         buf
     }
 }
+
+pub enum SiiCoding {
+    /// PDI Control
+    // Unsigned16
+    PdiControl = 0x0000,
+    /// PDI Configuration
+    // Unsigned16
+    PdiConfiguration = 0x0001,
+    /// SyncImpulseLen
+    // Unsigned16
+    SyncImpulseLen = 0x0002,
+    /// PDI Configuration2
+    ///
+    /// Initialization value for PDI Configuration register R8 most significant word (0x152-0x153)
+    // Unsigned16
+    PdiConfiguration2 = 0x0003,
+    /// Configured Station Alias
+    // Unsigned16
+    ConfiguredStationAlias = 0x0004,
+    /// Checksum
+    // Unsigned16
+    Checksum = 0x0007,
+    /// Vendor ID
+    // Unsigned32
+    VendorId = 0x0008,
+    /// Product Code
+    // Unsigned32
+    ProductCode = 0x000A,
+    /// Revision Number
+    // Unsigned32
+    RevisionNumber = 0x000C,
+    /// Serial Number
+    // Unsigned32
+    SerialNumber = 0x000E,
+    /// Reserved
+    // BYTE
+    Reserved = 0x0010,
+    /// Bootstrap Receive Mailbox Offset
+    // Unsigned16
+    BootstrapReceiveMailboxOffset = 0x0014,
+    /// Bootstrap Receive Mailbox Size
+    // Unsigned16
+    BootstrapReceiveMailboxSize = 0x0015,
+    /// Bootstrap Send Mailbox Offset
+    // Unsigned16
+    BootstrapSendMailboxOffset = 0x0016,
+    /// Bootstrap Send Mailbox Size
+    // Unsigned16
+    BootstrapSendMailboxSize = 0x0017,
+    /// Standard Receive Mailbox Offset
+    // Unsigned16
+    StandardReceiveMailboxOffset = 0x0018,
+    /// Standard Receive Mailbox Size
+    // Unsigned16
+    StandardReceiveMailboxSize = 0x0019,
+    /// Standard Send Mailbox Offset
+    // Unsigned16
+    StandardSendMailboxOffset = 0x001A,
+    /// Standard Send Mailbox Size
+    // Unsigned16
+    StandardSendMailboxSize = 0x001B,
+    /// Mailbox Protocol
+    // Unsigned16
+    MailboxProtocol = 0x001C,
+    /// Size
+    // Unsigned16
+    Size = 0x003E,
+    /// Version
+    // Unsigned16
+    Version = 0x003F,
+}
+
+// TODO: Move to mailbox module
+#[repr(u16)]
+pub enum MailboxProtocol {
+    /// ADS over EtherCAT (routing and parallel services)
+    Aoe = 0x0001,
+    /// Ethernet over EtherCAT (tunnelling of Data Link services)
+    Eoe = 0x0002,
+    /// CAN application protocol over EtherCAT (access to SDO)
+    Coe = 0x0004,
+    /// File Access over EtherCAT
+    Foe = 0x0008,
+    /// Servo Drive Profile over EtherCAT
+    Soe = 0x0010,
+    /// Vendor specific protocol over EtherCAT
+    Voe = 0x0020,
+}
