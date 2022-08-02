@@ -92,8 +92,7 @@ where
 
         let frame = self.frame(idx)?;
 
-        let mut pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx);
-        pdu.data = data.try_into().map_err(|_| PduError::TooLong)?;
+        let pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx, data)?;
 
         frame.replace(pdu)?;
 
@@ -131,7 +130,7 @@ where
         )
         .map_err(|_| PduError::Parse)?;
 
-        self.frame(pdu.index)?.wake_done(pdu)?;
+        self.frame(pdu.index())?.wake_done(pdu)?;
 
         Ok(())
     }
