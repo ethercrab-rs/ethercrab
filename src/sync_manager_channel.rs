@@ -16,14 +16,14 @@ pub struct SyncManagerChannel {
     pub enable: Enable,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PackedStruct)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, PackedStruct)]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Control {
     // ---
     // First byte (little endian, so second index)
     // ---
     #[packed_field(bits = "8..=9", ty = "enum")]
-    pub buffer_type: OperationMode,
+    pub operation_mode: OperationMode,
     #[packed_field(bits = "10..=11", ty = "enum")]
     pub direction: Direction,
     #[packed_field(bits = "12")]
@@ -51,14 +51,14 @@ pub struct Control {
     pub write_buffer_open: bool,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PackedStruct)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, PackedStruct)]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Enable {
     // ---
     // First byte (little endian, so second index)
     // ---
     #[packed_field(bits = "8")]
-    pub channel_enabled: bool,
+    pub enable: bool,
     #[packed_field(bits = "9")]
     pub repeat: bool,
     // reserved4: u8
@@ -78,20 +78,24 @@ pub struct Enable {
     // pub _rest: u8,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PrimitiveEnum_u8)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, PrimitiveEnum_u8)]
 pub enum OperationMode {
+    #[default]
     Buffered = 0x00,
     Mailbox = 0x02,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PrimitiveEnum_u8)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, PrimitiveEnum_u8)]
 pub enum Direction {
+    #[default]
     MasterRead = 0x00,
     MasterWrite = 0x01,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PrimitiveEnum_u8)]
+// TODO: More informative names
+#[derive(Default, Copy, Clone, Debug, PartialEq, PrimitiveEnum_u8)]
 pub enum BufferState {
+    #[default]
     First = 0x00,
     Second = 0x01,
     Third = 0x02,
@@ -127,7 +131,7 @@ mod tests {
         assert_eq!(
             parsed,
             Control {
-                buffer_type: OperationMode::Mailbox,
+                operation_mode: OperationMode::Mailbox,
                 direction: Direction::MasterWrite,
                 ecat_event_enable: false,
                 dls_user_event_enable: true,
@@ -153,7 +157,7 @@ mod tests {
         assert_eq!(
             parsed,
             Enable {
-                channel_enabled: true,
+                enable: true,
                 repeat: false,
                 dc_event0w_busw: false,
                 dc_event0wlocw: false,
@@ -166,7 +170,7 @@ mod tests {
     #[test]
     fn encode_enable() {
         let raw = Enable {
-            channel_enabled: true,
+            enable: true,
             repeat: false,
             dc_event0w_busw: false,
             dc_event0wlocw: false,
@@ -202,7 +206,7 @@ mod tests {
                 physical_start_address: 0x1000,
                 length: 0x0080,
                 control: Control {
-                    buffer_type: OperationMode::Mailbox,
+                    operation_mode: OperationMode::Mailbox,
                     direction: Direction::MasterWrite,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
@@ -215,7 +219,7 @@ mod tests {
                     write_buffer_open: false,
                 },
                 enable: Enable {
-                    channel_enabled: true,
+                    enable: true,
                     repeat: false,
                     dc_event0w_busw: false,
                     dc_event0wlocw: false,

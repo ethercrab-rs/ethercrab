@@ -16,7 +16,7 @@ fn main() {
         physical_start_address: 0x1000,
         length: 0x0080,
         control: Control {
-            buffer_type: OperationMode::Mailbox,
+            operation_mode: OperationMode::Mailbox,
             direction: Direction::MasterWrite,
             ecat_event_enable: false,
             dls_user_event_enable: true,
@@ -29,7 +29,7 @@ fn main() {
             write_buffer_open: false,
         },
         enable: ethercrab::sync_manager_channel::Enable {
-            channel_enabled: true,
+            enable: true,
             repeat: false,
             dc_event0w_busw: false,
             dc_event0wlocw: false,
