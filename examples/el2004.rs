@@ -86,7 +86,7 @@ fn main() -> Result<(), PduError> {
                 .expect(&format!("Slave OP {slave}"));
         }
 
-        let mut value = Rc::new(RefCell::new(0x00u8));
+        let value = Rc::new(RefCell::new(0x00u8));
 
         let value2 = value.clone();
         let client2 = client.clone();
