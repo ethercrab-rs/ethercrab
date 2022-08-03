@@ -7,6 +7,7 @@ use async_ctrlc::CtrlC;
 use ethercrab::al_status::AlState;
 use ethercrab::client::Client;
 use ethercrab::error::PduError;
+use ethercrab::fmmu::Fmmu;
 use ethercrab::pdu::CheckWorkingCounter;
 use ethercrab::register::RegisterAddress;
 use ethercrab::std::tx_rx_task;
@@ -23,9 +24,9 @@ use std::time::Duration;
 // ASRock NIC
 // const INTERFACE: &str = "TODO";
 // USB NIC
-// const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
+const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
 // Silver USB NIC
-const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
+// const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
 #[cfg(not(target_os = "windows"))]
 const INTERFACE: &str = "eth1";
 
@@ -48,26 +49,54 @@ fn main() -> Result<(), PduError> {
 
         client.init().await.expect("Init");
 
-        let write_sm = SyncManagerChannel {
-            physical_start_address: 0x0000,
-            length: 1,
-            control: ethercrab::sync_manager_channel::Control {
-                operation_mode: OperationMode::Buffered,
-                direction: Direction::MasterWrite,
-                ..Default::default()
-            },
-            enable: ethercrab::sync_manager_channel::Enable {
-                enable: true,
-                ..Default::default()
-            },
-        };
+        {
+            // TODO: Read this from EEPROM
+            let write_sm = SyncManagerChannel {
+                physical_start_address: 0x0f00,
+                length: 1,
+                control: ethercrab::sync_manager_channel::Control {
+                    operation_mode: OperationMode::Buffered,
+                    direction: Direction::MasterWrite,
+                    watchdog_enable: true,
+                    ..Default::default()
+                },
+                enable: ethercrab::sync_manager_channel::Enable {
+                    enable: true,
+                    ..Default::default()
+                },
+            };
 
-        client
-            .fpwr(0x1001, RegisterAddress::Sm0, write_sm.pack().unwrap())
-            .await
-            .unwrap()
-            .wkc(1, "SM0")
-            .unwrap();
+            client
+                .fpwr(0x1001, RegisterAddress::Sm0, write_sm.pack().unwrap())
+                .await
+                .unwrap()
+                .wkc(1, "SM0")
+                .unwrap();
+        }
+
+        {
+            // TODO: Read this from EEPROM
+            let write_fmmu = Fmmu {
+                logical_start_address: 0x00000000,
+                length: 0x01,
+                logical_start_bit: 0x00,
+                logical_end_bit: 0x03,
+                physical_start_address: 0x0f00,
+                physical_start_bit: 0x0,
+                read_enable: false,
+                write_enable: true,
+                enable: true,
+                reserved_1: 0,
+                reserved_2: 0,
+            };
+
+            client
+                .fpwr(0x1001, RegisterAddress::Fmmu0, write_fmmu.pack().unwrap())
+                .await
+                .unwrap()
+                .wkc(1, "FMMU0")
+                .unwrap();
+        }
 
         for slave in 0..num_slaves {
             client
