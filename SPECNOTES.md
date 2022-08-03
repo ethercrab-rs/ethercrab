@@ -91,3 +91,68 @@ ETG1000.4 6.1.5.4 which lists this mapping lists DLS-user registers and their ad
 | DLS-user R1 | AL control     | `u8`  |
 | DLS-user R3 | AL status      | `u8`  |
 | DLS-user R6 | AL status code | `u16` |
+
+# SII (slave information interface) and/or EEPROM reads
+
+ETG1000.6 5.4 specifies SII field mappings
+
+ETG1000.4 8.2.5.2 specifies an EEPROM read flowchart
+
+ETG1000.4 6.4.3 specifies SII data fields for 0x0502, 0x0503
+
+# Process data
+
+Logical addressing is used for cyclic data - we can have up to 4GB of process data image (PDI) that
+is sent with LWR/LRD/LRW.
+
+ETG1000.3 4.8.4 Logical addressing, and further sections
+
+# Sync manager (SM) and FMMUs
+
+ETG1000.3 4.8.6 Sync manager introduction / ETG1000.4 6.7 Sync manager
+
+FMMUs are used to set up mappings into the PDI
+
+Sync managers also require configuration for the PDI to be used - by default SM2/SM3 are used for
+PDI IO. SM0 and SM1 are used for mailbox comms. ETG1000.4 Table 59 footnotes specify these usages,
+as shown in the tables below.
+
+The Sync Manager channels shall be used in the following way:
+
+| Channel | Usage                                                                                     |
+| ------- | ----------------------------------------------------------------------------------------- |
+| SM0     | mailbox write                                                                             |
+| SM1     | mailbox read                                                                              |
+| SM2     | process data write (may be used for process data read if no process data write supported) |
+| SM3     | process data read                                                                         |
+
+If mailbox is not supported, it shall be used in the following way:
+
+| Channel                | Usage                                                                                     |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| Sync Manager channel 0 | process data write (may be used for process data read if no process data write supported) |
+| Sync Manager channel 1 | process data read                                                                         |
+
+Multiple datagrams may be required if the PDI doesn't fit in one. This would be
+`max(ethernet frame payload, PDU_MAX_DATA)`.
+
+Supported mailbox protocols are at ETG1000.6 Table 18 and can be read from SII using index `0x001C`
+(ETG1000.6 Table 16):
+
+| Protocol | Value  | Description                                               |
+| -------- | ------ | --------------------------------------------------------- |
+| AoE      | 0x0001 | ADS over EtherCAT (routing and parallel services)         |
+| EoE      | 0x0002 | Ethernet over EtherCAT (tunnelling of Data Link services) |
+| CoE      | 0x0004 | CAN application protocol over EtherCAT (access to SDO)    |
+| FoE      | 0x0008 | File Access over EtherCAT                                 |
+| SoE      | 0x0010 | Servo Drive Profile over EtherCAT                         |
+| VoE      | 0x0020 | Vendor specific protocol over EtherCAT                    |
+
+Sync manager channel configurations are stored starting at `0x0800` - ETG1000.4 Table 59
+
+## EL2004 - a primitive slave
+
+Because we're assuming (TODO: Detect) a slave with no mailbox, I need to write SM0 and SM1. In SOEM
+they're defined as `EC_DEFAULTMBXSM0` (`0x00010026`) and `EC_DEFAULTMBXSM1` (`0x00010022`)
+
+SOEM does this around `ethercatconfig.c:587`.

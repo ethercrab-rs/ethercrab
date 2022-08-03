@@ -237,3 +237,21 @@ impl Client {
 > request pending to be sent"
 >
 > and then the client_task sends it
+
+# Cross platform logging
+
+Support `defmt` as well as `log` (no_std and std) with
+[this](https://github.com/embassy-rs/embassy/blob/master/embassy/src/fmt.rs)
+
+It has feature flags and macros to select between them.
+
+dirbaio
+[says](https://matrix.to/#/!yhYQWkYvbEWASqoKIM:matrix.org/$R8BYMVarPIRBZpuqOtkINc6p6KF2jUBpmXX4UNITYUQ?via=beeper.com&via=matrix.org&via=grusbv.com):
+
+> paste [this](https://github.com/embassy-rs/embassy/blob/master/embassy/src/fmt.rs) into your
+> crate, it allows using either `defmt` or `log` directly depending on Cargo features
+>
+> so you use `log` directly, you don't need a `defmt`->`log` adapter
+>
+> `defmt` needs linker hax to compile for linux targets, and doesn't compile for windows, mac, ios
+> targets at all
