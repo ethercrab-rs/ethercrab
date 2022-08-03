@@ -107,7 +107,8 @@ impl<const MAX_PDU_DATA: usize> Future for Frame<MAX_PDU_DATA> {
                 Poll::Ready(Err(PduError::InvalidFrameState))
             }
             FrameState::Created | FrameState::Waiting => {
-                self.waker = Some(ctx.waker().clone());
+                // NOTE: Drops previous waker
+                self.waker.replace(ctx.waker().clone());
 
                 Poll::Pending
             }
@@ -116,7 +117,7 @@ impl<const MAX_PDU_DATA: usize> Future for Frame<MAX_PDU_DATA> {
                 self.state = FrameState::None;
 
                 // Drop waker so it doesn't get woken again
-                core::mem::drop(self.waker.take());
+                self.waker.take();
 
                 Poll::Ready(Ok(unsafe { self.pdu.assume_init_read() }))
             }
