@@ -88,7 +88,7 @@ where
         data: &[u8],
         data_length: u16,
     ) -> Result<Pdu<MAX_PDU_DATA>, PduError> {
-        let idx = self.idx.fetch_add(1, Ordering::Acquire) % MAX_FRAMES as u8;
+        let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
         let frame = self.frame(idx)?;
 
