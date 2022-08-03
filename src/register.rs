@@ -41,7 +41,15 @@ pub enum RegisterAddress {
     // u32 when reading, u16 when writing
     SiiData = 0x0508,
 
+    Fmmu0 = 0x0600,
+    Fmmu1 = RegisterAddress::Fmmu0 as u16 + 0x10,
+    Fmmu2 = RegisterAddress::Fmmu1 as u16 + 0x10,
+    Fmmu3 = RegisterAddress::Fmmu2 as u16 + 0x10,
+
     Sm0 = 0x0800,
+    Sm1 = RegisterAddress::Sm0 as u16 + 0x8,
+    Sm2 = RegisterAddress::Sm1 as u16 + 0x8,
+    Sm3 = RegisterAddress::Sm2 as u16 + 0x8,
 }
 
 impl From<RegisterAddress> for u16 {

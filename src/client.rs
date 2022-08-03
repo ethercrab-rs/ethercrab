@@ -4,11 +4,13 @@ use crate::{
     al_status_code::AlStatusCode,
     command::Command,
     error::{Error, PduError},
+    fmmu::Fmmu,
     pdu::{CheckWorkingCounter, PduResponse},
     pdu_loop::PduLoop,
     register::RegisterAddress,
     sii::{SiiControl, SiiRequest},
     slave::Slave,
+    sync_manager_channel::SyncManagerChannel,
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR,
 };
@@ -64,8 +66,41 @@ where
             )
             .await?;
 
-            // TODO: Clear FMMUs
-            // TODO: Clear SMs
+            // Clear SMs
+            {
+                self.bwr(
+                    RegisterAddress::Sm0,
+                    SyncManagerChannel::default().pack().unwrap(),
+                )
+                .await?;
+                self.bwr(
+                    RegisterAddress::Sm1,
+                    SyncManagerChannel::default().pack().unwrap(),
+                )
+                .await?;
+                self.bwr(
+                    RegisterAddress::Sm2,
+                    SyncManagerChannel::default().pack().unwrap(),
+                )
+                .await?;
+                self.bwr(
+                    RegisterAddress::Sm3,
+                    SyncManagerChannel::default().pack().unwrap(),
+                )
+                .await?;
+            }
+
+            // Clear FMMUs
+            {
+                self.bwr(RegisterAddress::Fmmu0, Fmmu::default().pack().unwrap())
+                    .await?;
+                self.bwr(RegisterAddress::Fmmu1, Fmmu::default().pack().unwrap())
+                    .await?;
+                self.bwr(RegisterAddress::Fmmu2, Fmmu::default().pack().unwrap())
+                    .await?;
+                self.bwr(RegisterAddress::Fmmu3, Fmmu::default().pack().unwrap())
+                    .await?;
+            }
         }
 
         // Each slave increments working counter, so we can use it as a total count of slaves

@@ -3,7 +3,7 @@ use packed_struct::prelude::*;
 /// Sync manager channel.
 ///
 /// Defined in ETG1000.4 6.7.2
-#[derive(Copy, Clone, Debug, PartialEq, PackedStruct)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, PackedStruct)]
 #[packed_struct(size_bytes = "8", bit_numbering = "msb0", endian = "lsb")]
 pub struct SyncManagerChannel {
     #[packed_field(bits = "0..=15")]
