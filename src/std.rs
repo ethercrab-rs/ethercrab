@@ -69,7 +69,15 @@ where
         loop {
             match rx.next() {
                 Ok(packet) => {
-                    client_rx.pdu_loop.pdu_rx(packet).unwrap();
+                    client_rx
+                        .pdu_loop
+                        .pdu_rx(packet)
+                        .map_err(|e| {
+                            dbg!(packet.len(), packet);
+
+                            e
+                        })
+                        .expect("RX");
                 }
                 Err(e) => {
                     // If an error occurs, we can handle it here
