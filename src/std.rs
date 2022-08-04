@@ -73,7 +73,7 @@ where
                         .pdu_loop
                         .pdu_rx(packet)
                         .map_err(|e| {
-                            dbg!(packet.len(), packet);
+                            trace!("Packet len {}", packet.len());
 
                             e
                         })
