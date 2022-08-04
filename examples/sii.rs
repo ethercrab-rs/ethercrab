@@ -43,26 +43,25 @@ fn main() -> Result<(), PduError> {
 
         client.init().await.expect("Init");
 
-        for slave in 0..num_slaves {
-            client
-                .request_slave_state(0, AlState::PreOp)
-                .await
-                .expect(&format!("Slave {slave}"));
+        client
+            .request_slave_state(AlState::PreOp)
+            .await
+            .expect("Pre-op");
 
-            let vendor_id = client
-                .read_eeprom_raw(slave, SiiCoding::VendorId)
-                .await
-                .unwrap();
+        for slave_idx in 0..num_slaves {
+            let slave = client.slave_by_index(slave_idx).expect("Slave");
+
+            let vendor_id = slave.read_eeprom_raw(SiiCoding::VendorId).await.unwrap();
 
             println!(
                 "Vendor ID for slave {}: {:#04x} ({})",
-                slave,
+                slave_idx,
                 vendor_id,
                 ethercrab::vendors::vendor_name(vendor_id).unwrap_or("unknown vendor")
             );
 
-            let supported_mailbox_protocols = client
-                .read_eeprom_raw(slave, SiiCoding::MailboxProtocol)
+            let supported_mailbox_protocols = slave
+                .read_eeprom_raw(SiiCoding::MailboxProtocol)
                 .await
                 .unwrap();
 

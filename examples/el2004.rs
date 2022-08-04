@@ -98,22 +98,20 @@ fn main() -> Result<(), PduError> {
                 .unwrap();
         }
 
-        for slave in 0..num_slaves {
-            client
-                .request_slave_state(usize::from(slave), AlState::PreOp)
-                .await
-                .expect(&format!("Slave PRE-OP {slave}"));
+        client
+            .request_slave_state(AlState::PreOp)
+            .await
+            .expect(&format!("Slave PRE-OP"));
 
-            client
-                .request_slave_state(usize::from(slave), AlState::SafeOp)
-                .await
-                .expect(&format!("Slave SAFE-OP {slave}"));
+        client
+            .request_slave_state(AlState::SafeOp)
+            .await
+            .expect(&format!("Slave SAFE-OP"));
 
-            client
-                .request_slave_state(usize::from(slave), AlState::Op)
-                .await
-                .expect(&format!("Slave OP {slave}"));
-        }
+        client
+            .request_slave_state(AlState::Op)
+            .await
+            .expect(&format!("Slave OP"));
 
         let value = Rc::new(RefCell::new(0x00u8));
 

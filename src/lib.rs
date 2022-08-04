@@ -24,9 +24,12 @@ pub mod vendors;
 #[cfg(feature = "std")]
 pub mod std;
 
-use core::array::TryFromSliceError;
 use core::str::Utf8Error;
+use core::{array::TryFromSliceError, time::Duration};
+use error::Error;
+use futures::future::{select, Either};
 use smoltcp::wire::{EthernetAddress, EthernetProtocol};
+use timer_factory::TimerFactory;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 // TODO: Un-pub
@@ -148,4 +151,17 @@ impl<const N: usize> PduData for heapless::String<N> {
 pub enum VisibleStringError {
     Decode(Utf8Error),
     TooLong,
+}
+
+pub(crate) async fn timeout<TIMEOUT, O, F>(timeout: Duration, future: F) -> Result<O, Error>
+where
+    TIMEOUT: TimerFactory,
+    F: core::future::Future<Output = Result<O, Error>>,
+{
+    futures_lite::pin!(future);
+
+    match select(future, TIMEOUT::timer(timeout)).await {
+        Either::Right((_timeout, _res)) => Err(Error::Timeout),
+        Either::Left((res, _timeout)) => res,
+    }
 }
