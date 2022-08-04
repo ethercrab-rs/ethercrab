@@ -179,3 +179,34 @@ pub enum SiiCoding {
     // Unsigned16
     Version = 0x003F,
 }
+
+/// Defined in ETG1000.6 Table 17
+pub struct SiiCategory<const MAX_SII_DATA: usize> {
+    category: CategoryType,
+    data: heapless::Vec<u8, MAX_SII_DATA>,
+}
+
+// TODO: A way of reading the categories
+// TODO: A parse method where
+// - First u16: CategoryType
+// - Second u16: data len,
+// - Take data
+// Done
+
+/// Defined in ETG1000.6 Table 19
+#[derive(Debug, Copy, Clone, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
+#[repr(u16)]
+pub enum CategoryType {
+    Nop = 00,
+    // TODO: Device specific 01-09
+    Strings = 10,
+    DataTypes = 20,
+    General = 30,
+    Fmmu = 40,
+    SyncManager = 41,
+    TxPdo = 50,
+    RxPdo = 51,
+    DistributedClock = 60,
+    // TODO: Device specific 0x1000-0xfffe
+    End = 0xffff,
+}
