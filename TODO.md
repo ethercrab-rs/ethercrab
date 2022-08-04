@@ -21,7 +21,7 @@
   - Request state to op
 
 - [ ] Rename `std` feature to `alloc` and only use the latter.
-- [ ] Dedupe some of the code in all the service methods in client_inner
+- [x] Dedupe some of the code in all the service methods in client_inner
 - [x] SII read manufacturer
   - [x] General EEPROM read functionality
     - Clear SII errors
