@@ -9,7 +9,7 @@ use core::task::{Context, Poll, Waker};
 pub(crate) enum FrameState {
     None,
     Created,
-    Waiting,
+    Sending,
     Done,
 }
 
@@ -47,8 +47,8 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
     }
 
     pub(crate) fn wake_done(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
-        if self.state != FrameState::Waiting {
-            trace!("Expected {:?}, got {:?}", FrameState::Waiting, self.state);
+        if self.state != FrameState::Sending {
+            trace!("Expected {:?}, got {:?}", FrameState::Sending, self.state);
             Err(PduError::InvalidFrameState)?;
         }
 
@@ -86,8 +86,8 @@ pub struct SendableFrame<'a, const MAX_PDU_DATA: usize> {
 }
 
 impl<'a, const MAX_PDU_DATA: usize> SendableFrame<'a, MAX_PDU_DATA> {
-    pub(crate) fn mark_sent(&mut self) {
-        self.frame.state = FrameState::Waiting;
+    pub(crate) fn mark_sending(&mut self) {
+        self.frame.state = FrameState::Sending;
     }
 
     pub(crate) fn pdu(&self) -> &Pdu<MAX_PDU_DATA> {
@@ -106,7 +106,7 @@ impl<const MAX_PDU_DATA: usize> Future for Frame<MAX_PDU_DATA> {
                 trace!("Frame future polled in None state");
                 Poll::Ready(Err(PduError::InvalidFrameState))
             }
-            FrameState::Created | FrameState::Waiting => {
+            FrameState::Created | FrameState::Sending => {
                 // NOTE: Drops previous waker
                 self.waker.replace(ctx.waker().clone());
 
