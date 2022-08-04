@@ -1,21 +1,22 @@
 use crate::{
     al_control::AlControl,
     al_status::AlState,
-    al_status_code::AlStatusCode,
     command::Command,
     error::{Error, PduError},
     fmmu::Fmmu,
     pdu::{CheckWorkingCounter, PduResponse},
     pdu_loop::PduLoop,
     register::RegisterAddress,
-    sii::{SiiControl, SiiRequest},
-    slave::Slave,
+    slave::{Slave, SlaveRef},
     sync_manager_channel::SyncManagerChannel,
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR,
 };
-use core::{cell::RefCell, marker::PhantomData};
-use futures::future::{select, Either};
+use core::{
+    cell::{RefCell, UnsafeCell},
+    marker::PhantomData,
+    time::Duration,
+};
 use packed_struct::PackedStruct;
 
 pub struct Client<
@@ -27,8 +28,8 @@ pub struct Client<
     // TODO: un-pub
     pub pdu_loop: PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     _timeout: PhantomData<TIMEOUT>,
-    // TODO: un-pub
-    pub slaves: RefCell<heapless::Vec<Slave, MAX_SLAVES>>,
+    // TODO: UnsafeCell instead of RefCell?
+    slaves: UnsafeCell<heapless::Vec<RefCell<Slave>, MAX_SLAVES>>,
 }
 
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
@@ -42,20 +43,27 @@ where
     TIMEOUT: TimerFactory,
 {
     pub fn new() -> Self {
-        // MSRV: Make `N` a `u8` when `generic_const_exprs` is stablised
+        // MSRV: Make `MAX_FRAMES` a `u8` when `generic_const_exprs` is stablised
         assert!(
-            MAX_FRAMES < u8::MAX.into(),
+            MAX_FRAMES <= u8::MAX.into(),
             "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
+        );
+
+        // MSRV: Make `MAX_SLAVES` a `u16` when `generic_const_exprs` is stablised
+        assert!(
+            MAX_SLAVES <= u16::MAX.into(),
+            "Slave list may only contain up to u16::MAX slaves"
         );
 
         Self {
             pdu_loop: PduLoop::new(),
-            slaves: RefCell::new(heapless::Vec::new()),
+            slaves: UnsafeCell::new(heapless::Vec::new()),
             _timeout: PhantomData,
         }
     }
 
     /// Detect slaves and set their configured station addresses.
+    // TODO: Ability to pass in configs read from ESI files
     pub async fn init(&self) -> Result<(), Error> {
         // Reset everything
         {
@@ -67,6 +75,7 @@ where
             .await?;
 
             // Clear SMs
+            // TODO: Read EEPROM and iterate through clearing as many items as detected
             {
                 self.bwr(
                     RegisterAddress::Sm0,
@@ -91,6 +100,7 @@ where
             }
 
             // Clear FMMUs
+            // TODO: Read EEPROM and iterate through clearing as many items as detected
             {
                 self.bwr(RegisterAddress::Fmmu0, Fmmu::default().pack().unwrap())
                     .await?;
@@ -106,12 +116,12 @@ where
         // Each slave increments working counter, so we can use it as a total count of slaves
         let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
 
-        if usize::from(num_slaves) > self.slaves.borrow().capacity() {
+        if usize::from(num_slaves) > self.slaves().capacity() {
             return Err(Error::TooManySlaves);
         }
 
         // Make sure slave list is empty
-        self.slaves.borrow_mut().truncate(0);
+        self.slaves_mut().truncate(0);
 
         for slave_idx in 0..num_slaves {
             let address = BASE_SLAVE_ADDR + slave_idx;
@@ -129,129 +139,66 @@ where
                 .await?
                 .wkc(1, "get AL status")?;
 
-            // TODO: Unwrap
-            self.slaves
-                .borrow_mut()
-                .push(Slave::new(address, slave_state.state))
-                .unwrap();
+            self.slaves_mut()
+                .push(RefCell::new(Slave::new(address, slave_state.state)))
+                // NOTE: This shouldn't fail as we check for capacity above, but it's worth double
+                // checking.
+                .map_err(|_| Error::TooManySlaves)?;
         }
 
         Ok(())
     }
 
-    // TODO: Move onto `Slave` struct and invert control, e.g. `slave.request_state(state, &client)`
-    pub async fn request_slave_state(&self, slave_idx: usize, state: AlState) -> Result<(), Error> {
-        // TODO: Unwrap
-        // TODO: DRY into function
-        let address = self
-            .slaves
-            .try_borrow()?
-            .get(slave_idx)
-            .ok_or_else(|| Error::SlaveNotFound(slave_idx))?
-            .configured_address;
-
-        debug!("Set state {} for slave address {:#04x}", state, address);
-
-        // Send state request
-        self.fpwr(
-            address,
-            RegisterAddress::AlControl,
-            AlControl::new(state).pack().unwrap(),
-        )
-        .await?
-        .wkc(1, "AL control")?;
-
-        // TODO: Move these to consts/timeout config struct
-        let wait_ms = 200;
-        let delay_ms = 10;
-
-        // TODO: Make this a reusable function? Closure? Struct?
-        for _ in 0..(wait_ms / delay_ms) {
-            let status = self
-                .fprd::<AlControl>(address, RegisterAddress::AlStatus)
-                .await?
-                .wkc(1, "AL status")?;
-
-            if status.state == state {
-                return Ok(());
-            }
-
-            TIMEOUT::timer(core::time::Duration::from_millis(delay_ms)).await;
-        }
-
-        // TODO: Extract into separate method to get slave status code
-        {
-            let (status, _working_counter) = self
-                .fprd::<AlStatusCode>(address, RegisterAddress::AlStatusCode)
-                .await?;
-
-            println!("{}", status);
-        }
-
-        Err(Error::Timeout)
+    fn slaves(&self) -> &heapless::Vec<RefCell<Slave>, MAX_SLAVES> {
+        unsafe { &*self.slaves.get() as &heapless::Vec<RefCell<Slave>, MAX_SLAVES> }
     }
 
-    // TODO: Move onto `Slave` struct and invert control, e.g. `slave.read_eeprom(state, &client)`
-    pub async fn read_eeprom_raw(
-        &self,
-        slave_idx: u16,
-        eeprom_address: impl Into<u16>,
-    ) -> Result<u32, Error> {
-        let eeprom_address: u16 = eeprom_address.into();
+    fn slaves_mut(&self) -> &mut heapless::Vec<RefCell<Slave>, MAX_SLAVES> {
+        unsafe { &mut *self.slaves.get() as &mut heapless::Vec<RefCell<Slave>, MAX_SLAVES> }
+    }
 
-        let slave_idx = usize::from(slave_idx);
+    pub fn slave_by_index<'a>(
+        &'a self,
+        idx: u16,
+    ) -> Result<SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>, Error> {
+        let idx = usize::from(idx);
 
-        // TODO: Unwrap
-        // TODO: DRY into function
-        let slave_address = self
-            .slaves
-            .try_borrow()?
-            .get(slave_idx)
-            .ok_or_else(|| Error::SlaveNotFound(slave_idx))?
-            .configured_address;
+        let slave = self
+            .slaves()
+            .get(idx)
+            .ok_or_else(|| Error::SlaveNotFound(idx))?
+            .try_borrow_mut()
+            .map_err(|_| Error::Borrow)?;
 
-        // TODO: When moved onto slave, check error flags
+        Ok(SlaveRef::new(self, slave))
+    }
 
-        let setup = SiiRequest::read(eeprom_address);
+    pub async fn request_slave_state(&self, desired_state: AlState) -> Result<(), Error> {
+        let num_slaves = self.slaves().len();
 
-        // Set up an SII read. This writes the control word and the register word after it
-        self.fpwr(slave_address, RegisterAddress::SiiControl, setup.to_array())
-            .await?
-            .wkc(1, "SII read setup")?;
+        self.bwr(
+            RegisterAddress::AlControl,
+            AlControl::new(desired_state).pack().unwrap(),
+        )
+        .await?
+        .wkc(num_slaves as u16, "set all slaves state")?;
 
-        // TODO: Configurable timeout
-        let timeout = TIMEOUT::timer(core::time::Duration::from_millis(10));
-
-        // TODO: Make this a reusable function? Closure? Struct?
-        let res = async {
+        // TODO: Configurable timeout depending on current -> next states
+        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
             loop {
                 let control = self
-                    .fprd::<SiiControl>(slave_address, RegisterAddress::SiiControl)
+                    .brd::<AlControl>(RegisterAddress::AlControl)
                     .await?
-                    .wkc(1, "SII busy wait")?;
+                    .wkc(num_slaves as u16, "read all slaves state")?;
 
-                if control.busy == false {
+                if control.state == desired_state {
                     break Result::<(), Error>::Ok(());
                 }
 
-                // TODO: Configurable loop tick
-                TIMEOUT::timer(core::time::Duration::from_millis(1)).await;
+                TIMEOUT::timer(Duration::from_millis(10)).await;
             }
-        };
-
-        futures_lite::pin!(res);
-
-        match select(res, timeout).await {
-            Either::Right((_timeout, _res)) => return Err(Error::Timeout),
-            _ => (),
-        }
-
-        let data = self
-            .fprd::<u32>(slave_address, RegisterAddress::SiiData)
-            .await?
-            .wkc(1, "SII data")?;
-
-        Ok(data)
+        })
+        .await
     }
 
     // TODO: Dedupe with write_service when refactoring allows
