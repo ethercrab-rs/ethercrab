@@ -37,7 +37,7 @@ fn main() -> Result<(), PduError> {
     let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
 
     futures_lite::future::block_on(local_ex.run(ctrlc.race(async {
-        let client = Arc::new(Client::<128, 16, 16, smol::Timer>::new());
+        let client = Arc::new(Client::<16, 16, 16, smol::Timer>::new());
 
         local_ex
             .spawn(tx_rx_task(INTERFACE, &client).unwrap())
@@ -124,12 +124,7 @@ fn main() -> Result<(), PduError> {
         local_ex
             .spawn(async move {
                 loop {
-                    // let v: u8 = *value2.borrow();
-                    {
-                        *value.borrow_mut() += 1;
-                    }
-
-                    let v = *value.borrow();
+                    let v: u8 = *value2.borrow();
 
                     client2.lwr(0u32, v).await.expect("Bad write");
 
@@ -139,18 +134,14 @@ fn main() -> Result<(), PduError> {
             })
             .detach();
 
-        // loop {
-        //     if *value.borrow() == 0 {
-        //         *value.borrow_mut() = 0b0000_0010;
-        //     } else {
-        //         *value.borrow_mut() = 0;
-        //     }
-
-        //     async_io::Timer::after(Duration::from_millis(250)).await;
-        // }
-
         loop {
-            async_io::Timer::after(Duration::from_millis(10)).await;
+            if *value.borrow() == 0 {
+                *value.borrow_mut() = 0b0000_0010;
+            } else {
+                *value.borrow_mut() = 0;
+            }
+
+            async_io::Timer::after(Duration::from_millis(250)).await;
         }
     })));
 

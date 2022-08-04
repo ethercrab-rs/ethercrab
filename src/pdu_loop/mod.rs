@@ -47,39 +47,22 @@ where
         }
     }
 
-    // fn remove_send_waker(&self) {
-    //     self.tx_waker
-    //         .try_borrow_mut()
-    //         .expect("Waker already borrowed")
-    //         .take();
-    // }
-
     pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), ()>
     where
         F: FnMut(&Pdu<MAX_PDU_DATA>) -> Result<(), ()>,
     {
-        // self.remove_send_waker();
-
         self.frames.iter().try_for_each(|frame| {
             let frame = unsafe { &mut *frame.get() };
 
             if let Some(ref mut frame) = frame.sendable() {
-                trace!("Sending #{}", frame.pdu().index());
+                match send(frame.pdu()) {
+                    Ok(_) => {
+                        frame.mark_sent();
 
-                frame.mark_sent();
-
-                send(frame.pdu()).map(|_| {
-                    trace!("Sent #{}", frame.pdu().index());
-
-                    ()
-                })
-                // }) {
-                //     Ok(_) => {
-
-                //         Ok(())
-                //     }
-                //     Err(e) => Err(e),
-                // }
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                }
             } else {
                 Ok(())
             }
@@ -117,7 +100,6 @@ where
         match self.tx_waker.try_borrow() {
             Ok(waker) => {
                 if let Some(waker) = &*waker {
-                    trace!("Wake TX waker #{}", idx);
                     waker.wake_by_ref()
                 }
             }
@@ -145,8 +127,6 @@ where
             &raw_packet.payload(),
         )
         .map_err(|_| PduError::Parse)?;
-
-        trace!("Receive #{}", pdu.index());
 
         self.frame(pdu.index())?.wake_done(pdu)?;
 
