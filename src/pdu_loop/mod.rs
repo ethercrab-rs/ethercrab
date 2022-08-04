@@ -55,14 +55,9 @@ where
             let frame = unsafe { &mut *frame.get() };
 
             if let Some(ref mut frame) = frame.sendable() {
-                match send(frame.pdu()) {
-                    Ok(_) => {
-                        frame.mark_sent();
+                frame.mark_sending();
 
-                        Ok(())
-                    }
-                    Err(e) => Err(e),
-                }
+                send(frame.pdu())
             } else {
                 Ok(())
             }
