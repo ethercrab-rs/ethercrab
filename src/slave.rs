@@ -126,6 +126,8 @@ where
 
         crate::timeout::<TIMEOUT, _, _>(timeout, async {
             loop {
+                trace!("Busy loop");
+
                 let control = self
                     .client
                     .fprd::<SiiControl>(self.slave.configured_address, RegisterAddress::SiiControl)

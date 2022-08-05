@@ -22,7 +22,7 @@ use std::sync::Arc;
 // Silver USB NIC
 const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
 #[cfg(not(target_os = "windows"))]
-const INTERFACE: &str = "eth0";
+const INTERFACE: &str = "eth1";
 
 fn main() -> Result<(), PduError> {
     env_logger::init();
