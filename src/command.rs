@@ -1,8 +1,11 @@
 use cookie_factory::{gen_simple, GenError};
 use nom::{combinator::map, error::ParseError, sequence::pair, IResult};
 
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(Default, PartialEq, Debug, Copy, Clone)]
 pub enum Command {
+    #[default]
+    Nop,
+
     Aprd {
         /// Auto increment counter.
         address: u16,
@@ -59,6 +62,8 @@ pub enum Command {
 impl Command {
     pub const fn code(&self) -> CommandCode {
         match self {
+            Self::Nop => CommandCode::Nop,
+
             // Reads
             Self::Aprd { .. } => CommandCode::Aprd,
             Self::Fprd { .. } => CommandCode::Fprd,
@@ -79,6 +84,8 @@ impl Command {
         let buf = arr.as_mut_slice();
 
         match *self {
+            Command::Nop => gen_simple(cookie_factory::bytes::le_u32(0u32), buf),
+
             Command::Aprd { address, register }
             | Command::Apwr { address, register }
             | Command::Fprd { address, register }
@@ -98,9 +105,12 @@ impl Command {
 }
 
 /// Broadcast or configured station addressing.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, num_enum::TryFromPrimitive)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum CommandCode {
+    #[default]
+    Nop = 0x00,
+
     // Reads
     Aprd = 0x01,
     Fprd = 0x04,
@@ -123,6 +133,8 @@ impl CommandCode {
         use nom::number::complete::{le_u16, le_u32};
 
         match self {
+            Self::Nop => Ok((i, Command::Nop)),
+
             Self::Aprd => map(pair(le_u16, le_u16), |(address, register)| Command::Aprd {
                 address,
                 register,
