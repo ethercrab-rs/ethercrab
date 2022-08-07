@@ -111,6 +111,9 @@ where
                 self.bwr(RegisterAddress::Fmmu3, Fmmu::default().pack().unwrap())
                     .await?;
             }
+
+            // TODO: Store EEPROM read size (4 or 8 bytes) in slave on init - this is done by
+            // reading the EEPROM status and checking the read size flag
         }
 
         // Each slave increments working counter, so we can use it as a total count of slaves
