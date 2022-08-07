@@ -68,12 +68,12 @@ where
     let rx_task = smol::unblock(move || {
         loop {
             match rx.next() {
-                Ok(packet) => {
+                Ok(ethernet_frame) => {
                     client_rx
                         .pdu_loop
-                        .pdu_rx(packet)
+                        .pdu_rx(ethernet_frame)
                         .map_err(|e| {
-                            dbg!(packet.len(), packet);
+                            dbg!(ethernet_frame.len(), ethernet_frame);
 
                             e
                         })
