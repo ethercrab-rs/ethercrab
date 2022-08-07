@@ -40,7 +40,7 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Pdu<const MAX_DATA: usize> {
     command: Command,
     index: u8,
@@ -71,6 +71,17 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
             data,
             working_counter: 0,
         })
+    }
+
+    pub fn nop() -> Self {
+        Self {
+            command: Command::Nop,
+            index: 0,
+            flags: PduFlags::with_len(0),
+            irq: 0,
+            data: heapless::Vec::new(),
+            working_counter: 0,
+        }
     }
 
     fn as_bytes<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
@@ -207,7 +218,7 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     }
 }
 
-#[derive(Copy, Clone, Debug, PackedStruct, PartialEq)]
+#[derive(Default, Copy, Clone, Debug, PackedStruct, PartialEq)]
 #[packed_struct(size_bytes = "2", bit_numbering = "msb0", endian = "lsb")]
 pub struct PduFlags {
     /// Data length of this PDU.

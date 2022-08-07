@@ -1,7 +1,6 @@
 use crate::error::PduError;
 use crate::pdu::Pdu;
 use core::future::Future;
-use core::mem::MaybeUninit;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
@@ -17,7 +16,7 @@ pub(crate) enum FrameState {
 pub(crate) struct Frame<const MAX_PDU_DATA: usize> {
     state: FrameState,
     waker: Option<Waker>,
-    pdu: MaybeUninit<Pdu<MAX_PDU_DATA>>,
+    pdu: Pdu<MAX_PDU_DATA>,
 }
 
 impl<const MAX_PDU_DATA: usize> Default for Frame<MAX_PDU_DATA> {
@@ -25,7 +24,7 @@ impl<const MAX_PDU_DATA: usize> Default for Frame<MAX_PDU_DATA> {
         Self {
             state: FrameState::None,
             waker: None,
-            pdu: MaybeUninit::uninit(),
+            pdu: Pdu::nop(),
         }
     }
 }
@@ -40,7 +39,7 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         *self = Self {
             state: FrameState::Created,
             waker: None,
-            pdu: MaybeUninit::new(pdu),
+            pdu,
         };
 
         Ok(())
@@ -61,9 +60,9 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
             PduError::InvalidFrameState
         })?;
 
-        pdu.is_response_to(unsafe { self.pdu.assume_init_ref() })?;
+        pdu.is_response_to(&self.pdu)?;
 
-        self.pdu = MaybeUninit::new(pdu);
+        self.pdu = pdu;
         self.state = FrameState::Done;
 
         waker.wake();
@@ -91,9 +90,7 @@ impl<'a, const MAX_PDU_DATA: usize> SendableFrame<'a, MAX_PDU_DATA> {
     }
 
     pub(crate) fn pdu(&self) -> &Pdu<MAX_PDU_DATA> {
-        // SAFETY: Because a `SendableFrame` can only be created if the frame is in a created state,
-        // we can assume the PDU has been set here.
-        unsafe { self.frame.pdu.assume_init_ref() }
+        &self.frame.pdu
     }
 }
 
@@ -119,7 +116,7 @@ impl<const MAX_PDU_DATA: usize> Future for Frame<MAX_PDU_DATA> {
                 // Drop waker so it doesn't get woken again
                 self.waker.take();
 
-                Poll::Ready(Ok(unsafe { self.pdu.assume_init_read() }))
+                Poll::Ready(Ok(core::mem::take(&mut self.pdu)))
             }
         }
     }
