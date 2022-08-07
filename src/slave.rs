@@ -6,7 +6,7 @@ use crate::{
     error::Error,
     pdu::CheckWorkingCounter,
     register::RegisterAddress,
-    sii::{SiiControl, SiiRequest},
+    sii::{SiiControl, SiiReadSize, SiiRequest},
     timer_factory::TimerFactory,
 };
 use core::{cell::RefMut, time::Duration};
@@ -104,7 +104,14 @@ where
         }
     }
 
-    pub async fn read_eeprom_raw(&self, eeprom_address: impl Into<u16>) -> Result<u32, Error> {
+    // TODO: Add a method to read into a type, with a trait bound of "SiiDataRead" or something,
+    // mirroring how the `PduRead` trait works.
+
+    pub async fn read_eeprom_raw<'buf>(
+        &self,
+        eeprom_address: impl Into<u16>,
+        buf: &'buf mut [u8],
+    ) -> Result<&'buf [u8], Error> {
         let eeprom_address: u16 = eeprom_address.into();
 
         // TODO: Check EEPROM error flags
@@ -124,10 +131,8 @@ where
         // TODO: Configurable timeout
         let timeout = core::time::Duration::from_millis(10);
 
-        crate::timeout::<TIMEOUT, _, _>(timeout, async {
+        let read_size = crate::timeout::<TIMEOUT, _, _>(timeout, async {
             loop {
-                trace!("Busy loop");
-
                 let control = self
                     .client
                     .fprd::<SiiControl>(self.slave.configured_address, RegisterAddress::SiiControl)
@@ -135,7 +140,7 @@ where
                     .wkc(1, "SII busy wait")?;
 
                 if control.busy == false {
-                    break Result::<(), Error>::Ok(());
+                    break Ok(control.read_size);
                 }
 
                 // TODO: Configurable loop tick
@@ -144,11 +149,30 @@ where
         })
         .await?;
 
-        let data = self
-            .client
-            .fprd::<u32>(self.slave.configured_address, RegisterAddress::SiiData)
-            .await?
-            .wkc(1, "SII data")?;
+        let data = match read_size {
+            SiiReadSize::Octets4 => {
+                let data = self
+                    .client
+                    .fprd::<[u8; 4]>(self.slave.configured_address, RegisterAddress::SiiData)
+                    .await?
+                    .wkc(1, "SII data")?;
+
+                buf.copy_from_slice(&data);
+
+                &buf[0..4]
+            }
+            SiiReadSize::Octets8 => {
+                let data = self
+                    .client
+                    .fprd::<[u8; 8]>(self.slave.configured_address, RegisterAddress::SiiData)
+                    .await?
+                    .wkc(1, "SII data")?;
+
+                buf.copy_from_slice(&data);
+
+                &buf[0..8]
+            }
+        };
 
         Ok(data)
     }
