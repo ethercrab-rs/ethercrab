@@ -110,8 +110,8 @@ where
         }
     }
 
-    pub fn pdu_rx(&self, raw_packet: &[u8]) -> Result<(), PduError> {
-        let raw_packet = EthernetFrame::new_checked(raw_packet)?;
+    pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), PduError> {
+        let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self
         if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == MASTER_ADDR {
