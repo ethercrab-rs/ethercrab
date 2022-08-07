@@ -68,9 +68,12 @@ pub enum SiiAccess {
 
 #[derive(Debug, Copy, Clone, PartialEq, Default, PrimitiveEnum_u8)]
 pub enum SiiReadSize {
+    /// Read 4 octets at a time.
     #[default]
-    Bits4 = 0x00,
-    Bits8 = 0x01,
+    Octets4 = 0x00,
+
+    /// Read 8 octets at a time.
+    Octets8 = 0x01,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Default, PrimitiveEnum_u8)]
@@ -93,12 +96,13 @@ impl SiiRequest {
         }
     }
 
-    pub fn to_array(self) -> [u8; 4] {
-        let mut buf = [0u8; 4];
+    pub fn to_array(self) -> [u8; 6] {
+        let mut buf = [0u8; 6];
 
         self.control.pack_to_slice(&mut buf[0..2]).unwrap();
 
         buf[2..4].copy_from_slice(&self.address.to_le_bytes());
+        buf[4..6].copy_from_slice(&[0, 0]);
 
         buf
     }
@@ -194,10 +198,12 @@ pub struct SiiCategory<const MAX_SII_DATA: usize> {
 // Done
 
 /// Defined in ETG1000.6 Table 19
-#[derive(Debug, Copy, Clone, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
+)]
 #[repr(u16)]
 pub enum CategoryType {
-    Nop = 00,
+    Nop = 0x00,
     // TODO: Device specific 01-09
     Strings = 10,
     DataTypes = 20,
