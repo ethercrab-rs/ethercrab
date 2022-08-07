@@ -203,12 +203,15 @@ pub struct SiiCategory<const MAX_SII_DATA: usize> {
 )]
 #[repr(u16)]
 pub enum CategoryType {
-    Nop = 0x00,
-    // TODO: Device specific 01-09
+    Nop = 0,
+    #[num_enum(alternatives = [2,3,4,5,6,7,8,9])]
+    DeviceSpecific = 1,
     Strings = 10,
     DataTypes = 20,
     General = 30,
+    #[num_enum(alternatives = [42])]
     Fmmu = 40,
+    #[num_enum(alternatives = [43])]
     SyncManager = 41,
     TxPdo = 50,
     RxPdo = 51,

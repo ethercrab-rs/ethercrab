@@ -109,22 +109,29 @@ fn main() -> Result<(), PduError> {
                 data_len
             );
 
+            let mut data_addr = start;
+
+            // Next category starts after this one's data
+            start += data_len;
+
             if category_type == CategoryType::End {
                 break;
             }
 
             if category_type != CategoryType::Strings {
-                log::debug!("Ignoring category {:?}", category_type);
                 continue;
             }
 
             // We have strings at this point
             {
-                let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
+                let sl = el2004
+                    .read_eeprom_raw(data_addr, &mut chunk_buf)
+                    .await
+                    .unwrap();
                 // TODO: Why does 4 work but chunk length doesn't?
-                // start += chunk.len() as u16;
-                start += 4;
-                log::debug!("Read {start:#06x?} {:02x?}", sl);
+                // offset += chunk.len() as u16;
+                data_addr += 4;
+                log::debug!("Read {data_addr:#06x?} {:02x?}", sl);
 
                 // The first byte of the strings section is the number of strings contained within it
                 let (num_strings, buf) = sl.split_first().expect("Split first");
@@ -137,10 +144,13 @@ fn main() -> Result<(), PduError> {
 
                 for _ in 0..num_strings {
                     loop {
-                        let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
+                        let sl = el2004
+                            .read_eeprom_raw(data_addr, &mut chunk_buf)
+                            .await
+                            .unwrap();
                         // TODO: Why does 4 work but chunk length doesn't?
-                        // start += chunk.len() as u16;
-                        start += 4;
+                        // offset += chunk.len() as u16;
+                        data_addr += 4;
                         log::debug!("Read {start:#06x?} {:02x?}", sl);
                         buf.extend_from_slice(sl).expect("Buffer is full");
 
