@@ -7,7 +7,7 @@ use ethercrab::al_status::AlState;
 use ethercrab::client::Client;
 use ethercrab::error::PduError;
 use ethercrab::register::RegisterAddress;
-use ethercrab::sii::{CategoryType, SiiGeneral};
+use ethercrab::sii::{CategoryType, SiiCoding, SiiGeneral};
 use ethercrab::slave::SlaveRef;
 use ethercrab::std::tx_rx_task;
 use ethercrab::timer_factory::TimerFactory;
@@ -51,31 +51,18 @@ fn main() -> Result<(), PduError> {
             .await
             .expect("Pre-op");
 
-        // for slave_idx in 0..num_slaves {
-        //     let slave = client.slave_by_index(slave_idx).expect("Slave");
+        for slave_idx in 0..num_slaves {
+            let slave = client.slave_by_index(slave_idx).expect("Slave");
 
-        //     let vendor_id = slave.read_eeprom_raw(SiiCoding::VendorId).await.unwrap() as u32;
+            let vendor_id = slave.read_eeprom(SiiCoding::VendorId).await.unwrap();
 
-        //     println!(
-        //         "Vendor ID for slave {}: {:#04x} ({})",
-        //         slave_idx,
-        //         vendor_id,
-        //         ethercrab::vendors::vendor_name(vendor_id).unwrap_or("unknown vendor")
-        //     );
-
-        //     let supported_mailbox_protocols = slave
-        //         .read_eeprom_raw(SiiCoding::MailboxProtocol)
-        //         .await
-        //         .unwrap();
-
-        //     let supported_mailbox_protocols =
-        //         MailboxProtocols::from_bits(supported_mailbox_protocols as u16).unwrap();
-
-        //     println!(
-        //         "Supported mailbox protocols: {:?}",
-        //         supported_mailbox_protocols
-        //     );
-        // }
+            println!(
+                "Vendor ID for slave {}: {:#04x} ({})",
+                slave_idx,
+                vendor_id,
+                ethercrab::vendors::vendor_name(vendor_id).unwrap_or("unknown vendor")
+            );
+        }
 
         let el2004 = client.slave_by_index(1).unwrap();
 
