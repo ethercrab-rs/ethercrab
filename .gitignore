@@ -16,4 +16,3 @@ Cargo.lock
 /Cargo.lock
 /examples/*.pcapng
 /npcap-sdk-*
-eeprom-dump.bin
