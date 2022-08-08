@@ -6,8 +6,9 @@ use crate::{
     error::Error,
     pdu::CheckWorkingCounter,
     register::RegisterAddress,
-    sii::{SiiControl, SiiReadSize, SiiRequest},
+    sii::{SiiCoding, SiiControl, SiiReadSize, SiiRequest},
     timer_factory::TimerFactory,
+    PduRead,
 };
 use core::{cell::RefMut, time::Duration};
 use packed_struct::PackedStruct;
@@ -104,8 +105,22 @@ where
         }
     }
 
-    // TODO: Add a method to read into a type, with a trait bound of "SiiDataRead" or something,
-    // mirroring how the `PduRead` trait works.
+    // TODO: Make a new SiiRead trait instead of repurposing PduRead - some types can only be read
+    // from EEPROM.
+    pub async fn read_eeprom<T>(&self, eeprom_address: SiiCoding) -> Result<T, Error>
+    where
+        T: PduRead,
+    {
+        let eeprom_address = u16::from(eeprom_address);
+
+        let mut buf = [0u8; 8];
+
+        let buf = self.read_eeprom_raw(eeprom_address, &mut buf).await?;
+
+        let buf = buf.get(0..usize::from(T::LEN)).ok_or(Error::Decode)?;
+
+        T::try_from_slice(buf).map_err(|_| Error::Decode)
+    }
 
     pub async fn read_eeprom_raw<'buf>(
         &self,

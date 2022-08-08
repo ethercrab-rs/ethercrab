@@ -18,6 +18,8 @@ pub enum Error {
     SlaveNotFound(usize),
     // TODO: Remove from PduError
     Timeout,
+    // TODO: Dedupe with PduError
+    Decode,
 }
 
 impl From<BorrowError> for Error {
