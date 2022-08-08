@@ -1,5 +1,11 @@
 //! Slave Information Interface (SII).
 
+use nom::{
+    combinator::{map, map_opt, map_res},
+    number::complete::{le_i16, le_u16, le_u8},
+    IResult,
+};
+use num_enum::{FromPrimitive, TryFromPrimitive};
 use packed_struct::prelude::*;
 
 use crate::PduRead;
@@ -209,13 +215,152 @@ pub enum CategoryType {
     Strings = 10,
     DataTypes = 20,
     General = 30,
-    #[num_enum(alternatives = [42])]
     Fmmu = 40,
-    #[num_enum(alternatives = [43])]
     SyncManager = 41,
+    FmmuExtended = 42,
+    SyncUnit = 43,
     TxPdo = 50,
     RxPdo = 51,
     DistributedClock = 60,
     // TODO: Device specific 0x1000-0xfffe
     End = 0xffff,
+}
+
+/// ETG1000.6 Table 23
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
+)]
+#[repr(u8)]
+pub enum FmmuUsage {
+    #[num_enum(alternatives = [0xff])]
+    Unused = 0x00,
+    Outputs = 0x01,
+    Inputs = 0x02,
+    SyncManagerStatus = 0x03,
+}
+
+/// SII "General" category.
+///
+/// Defined in ETG1000.6 Table 21
+#[derive(Debug)]
+pub struct SiiGeneral {
+    group_string_idx: u8,
+    image_string_idx: u8,
+    order_string_idx: u8,
+    name_string_idx: u8,
+    // reserved: u8,
+    coe_details: CoeDetails,
+    foe_enabled: bool,
+    eoe_enabled: bool,
+    // Following 3 fields marked as reserved
+    // soe_channels: u8,
+    // ds402_channels: u8,
+    // sysman_class: u8,
+    flags: Flags,
+    /// EBus Current Consumption in mA.
+    ///
+    /// A negative Values means feeding in current feed in sets the available current value to the
+    /// given value
+    ebus_current: i16,
+    // reserved: u8,
+    ports: [PortStatus; 4],
+    /// defines the ESC memory address where the Identification ID is saved if Identification Method
+    /// [`IDENT_PHY_M`] is set.
+    physical_memory_addr: u16,
+    // reserved2: [u8; 12]
+}
+
+impl SiiGeneral {
+    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+        let (i, group_string_idx) = le_u8(i)?;
+        let (i, image_string_idx) = le_u8(i)?;
+        let (i, order_string_idx) = le_u8(i)?;
+        let (i, name_string_idx) = le_u8(i)?;
+        let (i, _reserved) = le_u8(i)?;
+        let (i, coe_details) = map_opt(le_u8, |raw| CoeDetails::from_bits(raw))(i)?;
+        let (i, foe_enabled) = map(le_u8, |num| num != 0)(i)?;
+        let (i, eoe_enabled) = map(le_u8, |num| num != 0)(i)?;
+
+        // Reserved, ignored
+        let (i, _soe_channels) = le_u8(i)?;
+        let (i, _ds402_channels) = le_u8(i)?;
+        let (i, _sysman_class) = le_u8(i)?;
+
+        let (i, flags) = map_opt(le_u8, |raw| Flags::from_bits(raw))(i)?;
+        let (i, ebus_current) = le_i16(i)?;
+
+        let (i, ports) = map(le_u16, |raw| {
+            let p1 = (raw >> 0) & 0x0f;
+            let p2 = (raw >> 4) & 0x0f;
+            let p3 = (raw >> 8) & 0x0f;
+            let p4 = (raw >> 12) & 0x0f;
+
+            [
+                PortStatus::from_primitive(p1 as u8),
+                PortStatus::from_primitive(p2 as u8),
+                PortStatus::from_primitive(p3 as u8),
+                PortStatus::from_primitive(p4 as u8),
+            ]
+        })(i)?;
+
+        // let (i, physical_memory_addr) = le_u16(i)?;
+        let physical_memory_addr = 0;
+
+        Ok((
+            i,
+            Self {
+                group_string_idx,
+                image_string_idx,
+                order_string_idx,
+                name_string_idx,
+                coe_details,
+                foe_enabled,
+                eoe_enabled,
+                flags,
+                ebus_current,
+                ports,
+                physical_memory_addr,
+            },
+        ))
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive)]
+#[repr(u8)]
+pub enum PortStatus {
+    #[default]
+    Unused = 0x00,
+    Mii = 0x01,
+    // TODO: Is this just a reserved value, not a port state?
+    Reserved = 0x02,
+    Ebus = 0x03,
+    FastHotConnect = 0x04,
+}
+
+bitflags::bitflags! {
+    pub struct Flags: u8 {
+        const ENABLE_SAFE_OP = 0x01;
+        const ENABLE_NOT_LRW = 0x02;
+        const MAILBOX_DLL = 0x04;
+        const IDENT_AL_STATUS = 0x08;
+        const IDENT_PHY_M = 0x10;
+
+    }
+}
+
+bitflags::bitflags! {
+    pub struct CoeDetails: u8 {
+        /// Bit 0: Enable SDO
+        const ENABLE_SDO = 0x01;
+        /// Bit 1: Enable SDO Info
+        const ENABLE_SDO_INFO = 0x02;
+        /// Bit 2: Enable PDO Assign
+        const ENABLE_PDO_ASSIGN = 0x04;
+        /// Bit 3: Enable PDO Configuration
+        const ENABLE_PDO_CONFIG = 0x08;
+        /// Bit 4: Enable Upload at startup
+        const ENABLE_STARTUP_UPLOAD = 0x10;
+        /// Bit 5: Enable SDO complete access
+        const ENABLE_COMPLETE_ACCESS = 0x20;
+    }
 }
