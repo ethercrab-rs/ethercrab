@@ -7,8 +7,10 @@ use ethercrab::al_status::AlState;
 use ethercrab::client::Client;
 use ethercrab::error::PduError;
 use ethercrab::register::RegisterAddress;
-use ethercrab::sii::CategoryType;
+use ethercrab::sii::{CategoryType, SiiGeneral};
+use ethercrab::slave::SlaveRef;
 use ethercrab::std::tx_rx_task;
+use ethercrab::timer_factory::TimerFactory;
 use futures_lite::FutureExt;
 use nom::multi::length_data;
 use nom::number::complete::le_u8;
@@ -109,76 +111,122 @@ fn main() -> Result<(), PduError> {
                 data_len
             );
 
-            let mut data_addr = start;
+            match category_type {
+                CategoryType::Strings => parse_strings(&el2004, start).await,
+                CategoryType::General => parse_general(&el2004, start, data_len).await,
+                CategoryType::End => {
+                    break;
+                }
+                _ => (),
+            }
 
             // Next category starts after this one's data
             start += data_len;
-
-            if category_type == CategoryType::End {
-                break;
-            }
-
-            if category_type != CategoryType::Strings {
-                continue;
-            }
-
-            // We have strings at this point
-            {
-                let sl = el2004
-                    .read_eeprom_raw(data_addr, &mut chunk_buf)
-                    .await
-                    .unwrap();
-                // TODO: Why does 4 work but chunk length doesn't?
-                // offset += chunk.len() as u16;
-                data_addr += 4;
-                log::debug!("Read {data_addr:#06x?} {:02x?}", sl);
-
-                // The first byte of the strings section is the number of strings contained within it
-                let (num_strings, buf) = sl.split_first().expect("Split first");
-                let num_strings = *num_strings;
-
-                log::info!("Found {num_strings} strings");
-
-                // Initialise the buffer with the remaining first read
-                let mut buf = heapless::Vec::<u8, 255>::from_slice(buf).unwrap();
-
-                for _ in 0..num_strings {
-                    loop {
-                        let sl = el2004
-                            .read_eeprom_raw(data_addr, &mut chunk_buf)
-                            .await
-                            .unwrap();
-                        // TODO: Why does 4 work but chunk length doesn't?
-                        // offset += chunk.len() as u16;
-                        data_addr += 4;
-                        log::debug!("Read {start:#06x?} {:02x?}", sl);
-                        buf.extend_from_slice(sl).expect("Buffer is full");
-
-                        let i = buf.as_slice();
-
-                        let i = match length_data::<_, _, (), _>(le_u8)(i) {
-                            Ok((i, string_data)) => {
-                                log::info!("{:?}", String::from_utf8_lossy(string_data));
-
-                                i
-                            }
-                            Err(e) => match e {
-                                nom::Err::Incomplete(_needed) => {
-                                    continue;
-                                }
-                                nom::Err::Error(e) => panic!("Error {e:?}"),
-                                nom::Err::Failure(e) => panic!("Fail {e:?}"),
-                            },
-                        };
-
-                        buf = heapless::Vec::from_slice(i).unwrap();
-
-                        break;
-                    }
-                }
-            }
         }
     })));
 
     Ok(())
+}
+
+async fn parse_strings<
+    'a,
+    const MAX_FRAMES: usize,
+    const MAX_PDU_DATA: usize,
+    const MAX_SLAVES: usize,
+    TIMEOUT,
+>(
+    el2004: &SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+    mut start: u16,
+) where
+    TIMEOUT: TimerFactory,
+{
+    let mut chunk_buf = [0u8; 8];
+
+    let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
+    // TODO: Why does 4 work but chunk length doesn't?
+    // offset += chunk.len() as u16;
+    start += 4;
+    log::debug!("Read {start:#06x?} {:02x?}", sl);
+
+    // The first byte of the strings section is the number of strings contained within it
+    let (num_strings, buf) = sl.split_first().expect("Split first");
+    let num_strings = *num_strings;
+
+    log::info!("Found {num_strings} strings");
+
+    // Initialise the buffer with the remaining first read
+    let mut buf = heapless::Vec::<u8, 255>::from_slice(buf).unwrap();
+
+    for _ in 0..num_strings {
+        // TODO: This loop needs splitting into a function which fills up a slice and returns it
+        loop {
+            let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
+            // TODO: Why does 4 work but chunk length doesn't?
+            // offset += chunk.len() as u16;
+            start += 4;
+            log::debug!("Read {start:#06x?} {:02x?}", sl);
+            buf.extend_from_slice(sl).expect("Buffer is full");
+
+            let i = buf.as_slice();
+
+            let i = match length_data::<_, _, (), _>(le_u8)(i) {
+                Ok((i, string_data)) => {
+                    log::info!("{:?}", String::from_utf8_lossy(string_data));
+
+                    i
+                }
+                Err(e) => match e {
+                    nom::Err::Incomplete(_needed) => {
+                        continue;
+                    }
+                    nom::Err::Error(e) => panic!("Error {e:?}"),
+                    nom::Err::Failure(e) => panic!("Fail {e:?}"),
+                },
+            };
+
+            buf = heapless::Vec::from_slice(i).unwrap();
+
+            break;
+        }
+    }
+}
+
+async fn parse_general<
+    'a,
+    const MAX_FRAMES: usize,
+    const MAX_PDU_DATA: usize,
+    const MAX_SLAVES: usize,
+    TIMEOUT,
+>(
+    el2004: &SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+    mut start: u16,
+    len: u16,
+) where
+    TIMEOUT: TimerFactory,
+{
+    let mut chunk_buf = [0u8; 8];
+
+    let len = usize::from(len);
+
+    // Chunks are read in multiples of 4 or 8 and we need at least 18 bytes
+    let mut buf = heapless::Vec::<u8, 24>::new();
+
+    // TODO: This loop needs splitting into a function which fills up a slice and returns it
+    let buf = loop {
+        let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
+        log::debug!("Read {start:#06x?} {:02x?}", sl);
+        // TODO: Why does 4 work but chunk length doesn't?
+        // offset += chunk.len() as u16;
+        start += 4;
+
+        buf.extend_from_slice(sl).expect("Buffer is full");
+
+        if buf.len() >= len {
+            break &buf[0..len];
+        }
+    };
+
+    let (_, general) = SiiGeneral::parse(buf).expect("General parse");
+
+    log::info!("General\n{:#?}", general);
 }
