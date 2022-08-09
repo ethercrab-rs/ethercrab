@@ -156,3 +156,20 @@ Because we're assuming (TODO: Detect) a slave with no mailbox, I need to write S
 they're defined as `EC_DEFAULTMBXSM0` (`0x00010026`) and `EC_DEFAULTMBXSM1` (`0x00010022`)
 
 SOEM does this around `ethercatconfig.c:587`.
+
+# Distributed clocks (DC)
+
+State machine (DCSM) described in ETG1000.4 8.2.7
+
+Relevant registers: P1 - P12, mentioned occasionally in ETG1000.4, e.g.
+
+> The DL-user time parameter contains the local time parameter DC user P1 to P12 for DL -user.
+
+The next note points to ETG1000.5 but the trail goes cold when searching it for `p1`. ETG1000.4
+mentions a bunch of `P*` numbers in Table 61.
+
+ETG1000.4 6.8 also mentions DC stuff
+
+ETG1000.4 Table 60 defines the DC stuff to start from address `0x0900`
+
+The EtherCAT poster describes the setups steps quite nicely.
