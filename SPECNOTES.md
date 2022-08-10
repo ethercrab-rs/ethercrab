@@ -100,6 +100,15 @@ ETG1000.4 8.2.5.2 specifies an EEPROM read flowchart
 
 ETG1000.4 6.4.3 specifies SII data fields for 0x0502, 0x0503
 
+According to 6.4.4:
+
+> The slave information interface address register contains the address in the slave information
+> interface which is accessed by the next read or write operation (by writing the slave info rmation
+> interface control/status register).
+
+This seems to imply that each EEPROM address returns 2 bytes of data, hence why my test code works
+with `start += 4` (half the chunk length)
+
 # Process data
 
 Logical addressing is used for cyclic data - we can have up to 4GB of process data image (PDI) that
