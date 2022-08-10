@@ -5,10 +5,44 @@ use nom::{
     number::complete::{le_i16, le_u16, le_u8},
     IResult,
 };
-use num_enum::{FromPrimitive, TryFromPrimitive};
+use num_enum::FromPrimitive;
 use packed_struct::prelude::*;
 
 use crate::PduRead;
+
+/// Defined in ETG1000.4 6.4.2
+#[derive(Debug, Copy, Clone, PartialEq, Default, PackedStruct)]
+#[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
+pub struct SiiAccessConfig {
+    // First byte, but second octet because little endian
+    #[packed_field(bits = "8")]
+    pub access_pdi: bool,
+    // #[packed_field(bits = "9..=15")]
+    // reserved7: u8,
+
+    // Second byte, but first octet because little endian
+    #[packed_field(bits = "0", ty = "enum")]
+    pub owner: SiiOwner,
+    #[packed_field(bits = "1")]
+    pub reset_access: bool,
+}
+
+impl PduRead for SiiAccessConfig {
+    const LEN: u16 = u16::LEN;
+
+    type Error = PackingError;
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        Self::unpack_from_slice(slice)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Default, PrimitiveEnum_u8)]
+pub enum SiiOwner {
+    #[default]
+    Dl = 0x00,
+    Pdi = 0x01,
+}
 
 /// Defined in ETG1000.4 6.4.3
 #[derive(Debug, Copy, Clone, PartialEq, Default, PackedStruct)]
