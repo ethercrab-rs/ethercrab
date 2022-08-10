@@ -33,6 +33,9 @@ pub enum RegisterAddress {
     AlStatusCode = 0x0134,
 
     // u16
+    SiiConfig = 0x0500,
+
+    // u16
     SiiControl = 0x0502,
 
     // u16
