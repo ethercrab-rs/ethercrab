@@ -130,9 +130,8 @@ async fn parse_strings<
     let mut chunk_buf = [0u8; 8];
 
     let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
-    // TODO: Why does 4 work but chunk length doesn't?
-    // offset += chunk.len() as u16;
-    start += 4;
+    // Each EEPROM address contains 2 bytes, so we need to step half as fast
+    start += sl.len() as u16 / 2;
     log::debug!("Read {start:#06x?} {:02x?}", sl);
 
     // The first byte of the strings section is the number of strings contained within it
@@ -148,9 +147,8 @@ async fn parse_strings<
         // TODO: This loop needs splitting into a function which fills up a slice and returns it
         loop {
             let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
-            // TODO: Why does 4 work but chunk length doesn't?
-            // offset += chunk.len() as u16;
-            start += 4;
+            // Each EEPROM address contains 2 bytes, so we need to step half as fast
+            start += sl.len() as u16 / 2;
             log::debug!("Read {start:#06x?} {:02x?}", sl);
             buf.extend_from_slice(sl).expect("Buffer is full");
 
@@ -202,9 +200,8 @@ async fn parse_general<
     let buf = loop {
         let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
         log::debug!("Read {start:#06x?} {:02x?}", sl);
-        // TODO: Why does 4 work but chunk length doesn't?
-        // offset += chunk.len() as u16;
-        start += 4;
+        // Each EEPROM address contains 2 bytes, so we need to step half as fast
+        start += sl.len() as u16 / 2;
 
         buf.extend_from_slice(sl).expect("Buffer is full");
 
