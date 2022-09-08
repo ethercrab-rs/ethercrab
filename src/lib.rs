@@ -26,8 +26,8 @@ pub mod std;
 
 use core::str::Utf8Error;
 use core::{array::TryFromSliceError, time::Duration};
+use embassy_futures::select::{select, Either};
 use error::Error;
-use futures::future::{select, Either};
 use smoltcp::wire::{EthernetAddress, EthernetProtocol};
 use timer_factory::TimerFactory;
 
@@ -161,7 +161,7 @@ where
     futures_lite::pin!(future);
 
     match select(future, TIMEOUT::timer(timeout)).await {
-        Either::Right((_timeout, _res)) => Err(Error::Timeout),
-        Either::Left((res, _timeout)) => res,
+        Either::First(res) => res,
+        Either::Second(_timeout) => Err(Error::Timeout),
     }
 }

@@ -205,7 +205,7 @@ where
     }
 
     // TODO: Dedupe with write_service when refactoring allows
-    async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, PduError>
+    async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
         <T as PduRead>::Error: core::fmt::Debug,
@@ -221,7 +221,7 @@ where
     }
 
     // TODO: Support different I and O types; some things can return different data
-    async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, PduError>
+    async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
         <T as PduRead>::Error: core::fmt::Debug,
@@ -236,7 +236,7 @@ where
         Ok((res, pdu.working_counter()))
     }
 
-    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, PduError>
+    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
         <T as PduRead>::Error: core::fmt::Debug,
@@ -250,11 +250,7 @@ where
     }
 
     /// Broadcast write.
-    pub async fn bwr<T>(
-        &self,
-        register: RegisterAddress,
-        value: T,
-    ) -> Result<PduResponse<T>, PduError>
+    pub async fn bwr<T>(&self, register: RegisterAddress, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
         <T as PduRead>::Error: core::fmt::Debug,
@@ -274,7 +270,7 @@ where
         &self,
         address: u16,
         register: RegisterAddress,
-    ) -> Result<PduResponse<T>, PduError>
+    ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
         <T as PduRead>::Error: core::fmt::Debug,
@@ -292,7 +288,7 @@ where
         address: u16,
         register: RegisterAddress,
         value: T,
-    ) -> Result<PduResponse<T>, PduError>
+    ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
         <T as PduRead>::Error: core::fmt::Debug,
@@ -312,7 +308,7 @@ where
         &self,
         address: u16,
         register: RegisterAddress,
-    ) -> Result<PduResponse<T>, PduError>
+    ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
         <T as PduRead>::Error: core::fmt::Debug,
@@ -330,7 +326,7 @@ where
         address: u16,
         register: RegisterAddress,
         value: T,
-    ) -> Result<PduResponse<T>, PduError>
+    ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
         <T as PduRead>::Error: core::fmt::Debug,
@@ -346,7 +342,7 @@ where
     }
 
     /// Logical write.
-    pub async fn lwr<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, PduError>
+    pub async fn lwr<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
         <T as PduRead>::Error: core::fmt::Debug,

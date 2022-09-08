@@ -117,9 +117,9 @@ where
 
         let buf = self.read_eeprom_raw(eeprom_address, &mut buf).await?;
 
-        let buf = buf.get(0..usize::from(T::LEN)).ok_or(Error::Decode)?;
+        let buf = buf.get(0..usize::from(T::LEN)).ok_or(Error::EepromDecode)?;
 
-        T::try_from_slice(buf).map_err(|_| Error::Decode)
+        T::try_from_slice(buf).map_err(|_| Error::EepromDecode)
     }
 
     pub async fn read_eeprom_raw<'buf>(

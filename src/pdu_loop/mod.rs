@@ -1,8 +1,12 @@
 mod pdu_frame;
 
 use crate::{
-    command::Command, error::PduError, pdu::Pdu, timer_factory::TimerFactory, ETHERCAT_ETHERTYPE,
-    MASTER_ADDR,
+    command::Command,
+    error::{Error, PduError},
+    pdu::Pdu,
+    timeout,
+    timer_factory::TimerFactory,
+    ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
     cell::{RefCell, UnsafeCell},
@@ -10,7 +14,6 @@ use core::{
     sync::atomic::{AtomicU8, Ordering},
     task::Waker,
 };
-use futures::future::{select, Either};
 use smoltcp::wire::EthernetFrame;
 
 pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
@@ -68,7 +71,7 @@ where
         Ok(())
     }
 
-    fn frame(&self, idx: u8) -> Result<&mut pdu_frame::Frame<MAX_PDU_DATA>, PduError> {
+    fn frame(&self, idx: u8) -> Result<&mut pdu_frame::Frame<MAX_PDU_DATA>, Error> {
         let req = self
             .frames
             .get(usize::from(idx))
@@ -83,7 +86,7 @@ where
         data: &[u8],
         // TODO: Send zeroes when reading instead of a length
         data_length: u16,
-    ) -> Result<Pdu<MAX_PDU_DATA>, PduError> {
+    ) -> Result<Pdu<MAX_PDU_DATA>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
         let frame = self.frame(idx)?;
@@ -103,15 +106,12 @@ where
         }
 
         // TODO: Configurable timeout
-        let timeout = TIMEOUT::timer(core::time::Duration::from_micros(30_000));
+        let timer = core::time::Duration::from_micros(30_000);
 
-        match select(frame, timeout).await {
-            Either::Left((res, _timeout)) => res,
-            Either::Right((_timeout, _res)) => Err(PduError::Timeout),
-        }
+        timeout::<TIMEOUT, _, _>(timer, frame).await
     }
 
-    pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), PduError> {
+    pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self

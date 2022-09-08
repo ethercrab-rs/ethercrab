@@ -1,4 +1,4 @@
-use crate::error::PduError;
+use crate::error::{Error, PduError};
 use crate::pdu::Pdu;
 use core::future::Future;
 use core::pin::Pin;
@@ -95,13 +95,13 @@ impl<'a, const MAX_PDU_DATA: usize> SendableFrame<'a, MAX_PDU_DATA> {
 }
 
 impl<const MAX_PDU_DATA: usize> Future for Frame<MAX_PDU_DATA> {
-    type Output = Result<Pdu<MAX_PDU_DATA>, PduError>;
+    type Output = Result<Pdu<MAX_PDU_DATA>, Error>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.state {
             FrameState::None => {
                 trace!("Frame future polled in None state");
-                Poll::Ready(Err(PduError::InvalidFrameState))
+                Poll::Ready(Err(Error::Pdu(PduError::InvalidFrameState)))
             }
             FrameState::Created | FrameState::Sending => {
                 // NOTE: Drops previous waker

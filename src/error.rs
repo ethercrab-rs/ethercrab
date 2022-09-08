@@ -18,8 +18,9 @@ pub enum Error {
     SlaveNotFound(usize),
     // TODO: Remove from PduError
     Timeout,
-    // TODO: Dedupe with PduError
-    Decode,
+
+    // TODO: Might need a nested enum for more EEPROM failure states.
+    EepromDecode,
 }
 
 impl From<BorrowError> for Error {
@@ -73,5 +74,11 @@ impl From<PduValidationError> for PduError {
 impl From<smoltcp::Error> for PduError {
     fn from(e: smoltcp::Error) -> Self {
         Self::Ethernet(e)
+    }
+}
+
+impl From<smoltcp::Error> for Error {
+    fn from(e: smoltcp::Error) -> Self {
+        Self::Pdu(e.into())
     }
 }
