@@ -10,3 +10,6 @@
 - [ ] Experiment with using `MaybeUninit` for wakers again
 - [ ] Find a way to split out the PDU TX/RX to ensure we only ever have one of them
 - [ ] Read FMMU and SM data from EEPROM
+- [x] Use [embassy-futures](https://crates.io/crates/embassy-futures) for some things instead of
+      smol or whatever I'm using now.
+- [ ] Experiment with `Cell::as_slice_of_cells`
