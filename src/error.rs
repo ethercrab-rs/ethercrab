@@ -21,6 +21,8 @@ pub enum Error {
 
     // TODO: Might need a nested enum for more EEPROM failure states.
     EepromDecode,
+    EepromSectionOverrun,
+    EepromNoCategory,
 }
 
 impl From<BorrowError> for Error {

@@ -1,7 +1,7 @@
 //! Slave Information Interface (SII).
 
 use nom::{
-    combinator::{map, map_opt, map_res},
+    combinator::{map, map_opt},
     number::complete::{le_i16, le_u16, le_u8},
     IResult,
 };
@@ -225,17 +225,17 @@ pub enum SiiCoding {
 }
 
 /// Defined in ETG1000.6 Table 17
-pub struct SiiCategory<const MAX_SII_DATA: usize> {
-    category: CategoryType,
-    data: heapless::Vec<u8, MAX_SII_DATA>,
+pub struct SiiCategory {
+    pub category: CategoryType,
+    pub start: u16,
+    pub len: u16,
 }
 
-// TODO: A way of reading the categories
-// TODO: A parse method where
-// - First u16: CategoryType
-// - Second u16: data len,
-// - Take data
-// Done
+impl SiiCategory {
+    pub fn end(&self) -> u16 {
+        self.start + self.len
+    }
+}
 
 /// Defined in ETG1000.6 Table 19
 #[derive(
@@ -277,11 +277,12 @@ pub enum FmmuUsage {
 ///
 /// Defined in ETG1000.6 Table 21
 #[derive(Debug)]
+#[allow(unused)]
 pub struct SiiGeneral {
     group_string_idx: u8,
     image_string_idx: u8,
     order_string_idx: u8,
-    name_string_idx: u8,
+    pub name_string_idx: u8,
     // reserved: u8,
     coe_details: CoeDetails,
     foe_enabled: bool,
