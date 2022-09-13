@@ -109,6 +109,25 @@ According to 6.4.4:
 This seems to imply that each EEPROM address returns 2 bytes of data, hence why my test code works
 with `start += 4` (half the chunk length)
 
+SII structure, addresses, etc defined in ETG1000.6 5.4 SII Coding
+
+## Read device name from EEPROM
+
+ETG1000.6 Table 20 footnote states:
+
+> NOTE 2: the first string is referenced by 1 and following, a string index of 0 refers to an empty
+> string
+
+- Read `NameIdx` (offset `0x0003`) from `General` category (ETG1000.6 5.4) into `value`
+- If `value` > 0, search through strings (ETG1000.6 Table 20 – Structure Category String):
+  - Find strings section start
+  - Find first string length, if `index` != `value`, move offset by said length and read next
+    string's length
+  - Repeat until `index` == `value` or offset > strings section length
+  - Read string into heapless::String
+  - Return `Some(s)`
+- Otherwise, return `None`
+
 # Process data
 
 Logical addressing is used for cyclic data - we can have up to 4GB of process data image (PDI) that

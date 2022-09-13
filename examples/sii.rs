@@ -143,7 +143,7 @@ async fn parse_strings<
     // Initialise the buffer with the remaining first read
     let mut buf = heapless::Vec::<u8, 255>::from_slice(buf).unwrap();
 
-    for _ in 0..num_strings {
+    for idx in 0..num_strings {
         // TODO: This loop needs splitting into a function which fills up a slice and returns it
         loop {
             let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
@@ -156,7 +156,12 @@ async fn parse_strings<
 
             let i = match length_data::<_, _, (), _>(le_u8)(i) {
                 Ok((i, string_data)) => {
-                    log::info!("{:?}", String::from_utf8_lossy(string_data));
+                    // Strings are 1-indexed. If a field elsewhere references a string index of 0, that indicates an empty string.
+                    log::info!(
+                        "String #{}: {:?}",
+                        idx + 1,
+                        String::from_utf8_lossy(string_data)
+                    );
 
                     i
                 }
