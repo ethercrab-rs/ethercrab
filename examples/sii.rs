@@ -68,11 +68,9 @@ fn main() -> Result<(), PduError> {
 
         let mut start = 0x0040u16;
 
-        let mut chunk_buf = [0u8; 8];
-
         loop {
             let category_type = el2004
-                .read_eeprom_raw(start, &mut chunk_buf)
+                .read_eeprom_raw(start)
                 .await
                 .map(|chunk| {
                     let category = u16::from_le_bytes(chunk[0..2].try_into().unwrap());
@@ -84,7 +82,7 @@ fn main() -> Result<(), PduError> {
             start += 1;
 
             let data_len = el2004
-                .read_eeprom_raw(start, &mut chunk_buf)
+                .read_eeprom_raw(start)
                 .await
                 .map(|chunk| u16::from_le_bytes(chunk[0..2].try_into().unwrap()))
                 .unwrap();
@@ -127,9 +125,7 @@ async fn parse_strings<
 ) where
     TIMEOUT: TimerFactory,
 {
-    let mut chunk_buf = [0u8; 8];
-
-    let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
+    let sl = el2004.read_eeprom_raw(start).await.unwrap();
     // Each EEPROM address contains 2 bytes, so we need to step half as fast
     start += sl.len() as u16 / 2;
     log::debug!("Read {start:#06x?} {:02x?}", sl);
@@ -146,17 +142,19 @@ async fn parse_strings<
     for idx in 0..num_strings {
         // TODO: This loop needs splitting into a function which fills up a slice and returns it
         loop {
-            let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
+            let sl = el2004.read_eeprom_raw(start).await.unwrap();
             // Each EEPROM address contains 2 bytes, so we need to step half as fast
             start += sl.len() as u16 / 2;
-            log::debug!("Read {start:#06x?} {:02x?}", sl);
-            buf.extend_from_slice(sl).expect("Buffer is full");
+            // log::debug!("Read {start:#06x?} {:02x?}", sl);
+            buf.extend_from_slice(sl.as_slice())
+                .expect("Buffer is full");
 
             let i = buf.as_slice();
 
             let i = match length_data::<_, _, (), _>(le_u8)(i) {
                 Ok((i, string_data)) => {
-                    // Strings are 1-indexed. If a field elsewhere references a string index of 0, that indicates an empty string.
+                    // Strings are 1-indexed. If a field elsewhere references a string index of 0,
+                    // that indicates an empty string.
                     log::info!(
                         "String #{}: {:?}",
                         idx + 1,
@@ -194,8 +192,6 @@ async fn parse_general<
 ) where
     TIMEOUT: TimerFactory,
 {
-    let mut chunk_buf = [0u8; 8];
-
     let len = usize::from(len);
 
     // Chunks are read in multiples of 4 or 8 and we need at least 18 bytes
@@ -203,12 +199,13 @@ async fn parse_general<
 
     // TODO: This loop needs splitting into a function which fills up a slice and returns it
     let buf = loop {
-        let sl = el2004.read_eeprom_raw(start, &mut chunk_buf).await.unwrap();
+        let sl = el2004.read_eeprom_raw(start).await.unwrap();
         log::debug!("Read {start:#06x?} {:02x?}", sl);
         // Each EEPROM address contains 2 bytes, so we need to step half as fast
         start += sl.len() as u16 / 2;
 
-        buf.extend_from_slice(sl).expect("Buffer is full");
+        buf.extend_from_slice(sl.as_slice())
+            .expect("Buffer is full");
 
         if buf.len() >= len {
             break &buf[0..len];
