@@ -9,14 +9,14 @@ pub fn get_tx_rx(
 ) -> Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>), std::io::Error> {
     let interfaces = datalink::interfaces();
 
-    dbg!(&interfaces);
+    // dbg!(&interfaces);
 
     let interface = interfaces
         .into_iter()
         .find(|interface| interface.name == device)
         .expect("Could not find interface");
 
-    dbg!(interface.mac);
+    // dbg!(interface.mac);
 
     let (tx, rx) = match datalink::channel(&interface, Default::default()) {
         Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
