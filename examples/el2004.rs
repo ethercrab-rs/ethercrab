@@ -13,6 +13,7 @@ use ethercrab::register::RegisterAddress;
 use ethercrab::std::tx_rx_task;
 use ethercrab::sync_manager_channel::{Direction, OperationMode, SyncManagerChannel};
 use futures_lite::FutureExt;
+use futures_lite::StreamExt;
 use packed_struct::PackedStruct;
 use smol::LocalExecutor;
 use std::cell::RefCell;
@@ -121,25 +122,26 @@ fn main() -> Result<(), PduError> {
         // PD TX task (no RX because EL2004 is WO)
         local_ex
             .spawn(async move {
-                loop {
+                // Cycle time
+                let mut interval = async_io::Timer::interval(Duration::from_millis(2));
+
+                while let Some(_) = interval.next().await {
                     let v: u8 = *value2.borrow();
 
                     client2.lwr(0u32, v).await.expect("Bad write");
-
-                    // Cycle time
-                    async_io::Timer::after(Duration::from_millis(2)).await;
                 }
             })
             .detach();
 
-        loop {
+        // Blink frequency
+        let mut interval = async_io::Timer::interval(Duration::from_millis(250));
+
+        while let Some(_) = interval.next().await {
             if *value.borrow() == 0 {
                 *value.borrow_mut() = 0b0000_0010;
             } else {
                 *value.borrow_mut() = 0;
             }
-
-            async_io::Timer::after(Duration::from_millis(250)).await;
         }
     })));
 
