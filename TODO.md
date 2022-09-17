@@ -13,3 +13,4 @@
 - [x] Use [embassy-futures](https://crates.io/crates/embassy-futures) for some things instead of
       smol or whatever I'm using now.
 - [ ] Optimise find string function to not use a buffer of 255 bytes on the stack
+- [ ] Distributed clocks
