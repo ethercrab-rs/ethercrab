@@ -1,0 +1,55 @@
+PS C:\Users\jamwa\Repositories\SOEM\build\test\win32\slaveinfo> .\slaveinfo.exe "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}"
+SOEM (Simple Open EtherCAT Master)
+Slaveinfo
+Starting slaveinfo
+ec_init on \\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB} succeeded.
+2 slaves found and configured.
+Calculated workcounter 6
+
+Slave:1
+ Name:LAN9252-EVB-HBI
+ Output size: 16bits
+ Input size: 48bits
+ State: 4
+ Delay: 0[ns]
+ Has DC: 1
+ DCParentport:0
+ Activeports:1.1.0.0
+ Configured address: 1001
+ Man: 00000009 ID: 00009252 Rev: 00000001
+ SM0 A:1000 L: 128 F:00010026 Type:1
+ SM1 A:1080 L: 128 F:00010022 Type:2
+ SM2 A:1100 L:   2 F:00010064 Type:3
+ SM3 A:1400 L:   6 F:00010020 Type:4
+ FMMU0 Ls:00000000 Ll:   2 Lsb:0 Leb:7 Ps:1100 Psb:0 Ty:02 Act:01
+ FMMU1 Ls:00000004 Ll:   6 Lsb:0 Leb:7 Ps:1400 Psb:0 Ty:01 Act:01
+ FMMUfunc 0:1 1:2 2:3 3:0
+ MBX length wr: 128 rd: 128 MBX protocols : 04
+ CoE details: 23 FoE details: 00 EoE details: 00 SoE details: 00
+ Ebus current: 0[mA]
+ only LRD/LWR:0
+
+Slave:2
+ Name:LAN9252-EVB-HBI
+ Output size: 16bits
+ Input size: 48bits
+ State: 4
+ Delay: 740[ns]
+ Has DC: 1
+ DCParentport:1
+ Activeports:1.0.0.0
+ Configured address: 1002
+ Man: 00000009 ID: 00009252 Rev: 00000001
+ SM0 A:1000 L: 128 F:00010026 Type:1
+ SM1 A:1080 L: 128 F:00010022 Type:2
+ SM2 A:1100 L:   2 F:00010064 Type:3
+ SM3 A:1400 L:   6 F:00010020 Type:4
+ FMMU0 Ls:00000002 Ll:   2 Lsb:0 Leb:7 Ps:1100 Psb:0 Ty:02 Act:01
+ FMMU1 Ls:0000000a Ll:   6 Lsb:0 Leb:7 Ps:1400 Psb:0 Ty:01 Act:01
+ FMMUfunc 0:1 1:2 2:3 3:0
+ MBX length wr: 128 rd: 128 MBX protocols : 04
+ CoE details: 23 FoE details: 00 EoE details: 00 SoE details: 00
+ Ebus current: 0[mA]
+ only LRD/LWR:0
+End slaveinfo, close socket
+End program
