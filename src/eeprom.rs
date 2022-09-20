@@ -1,11 +1,11 @@
 use core::str::FromStr;
 
 use crate::{
+    client::Client,
     error::Error,
     pdu::CheckWorkingCounter,
     register::RegisterAddress,
     sii::{CategoryType, SiiCategory, SiiCoding, SiiControl, SiiGeneral, SiiReadSize, SiiRequest},
-    slave::SlaveRef,
     timer_factory::TimerFactory,
     PduRead,
 };
@@ -21,7 +21,8 @@ pub struct Eeprom<
     const MAX_SLAVES: usize,
     TIMEOUT,
 > {
-    slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+    client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+    configured_address: u16,
 }
 
 impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
@@ -30,9 +31,13 @@ where
     TIMEOUT: TimerFactory,
 {
     pub(crate) fn new(
-        slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        configured_address: u16,
+        client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
     ) -> Self {
-        Self { slave }
+        Self {
+            client,
+            configured_address,
+        }
     }
 
     // TODO: Make a new SiiRead trait instead of repurposing PduRead - some types can only be read
@@ -66,10 +71,9 @@ where
         let setup = SiiRequest::read(eeprom_address);
 
         // Set up an SII read. This writes the control word and the register word after it
-        self.slave
-            .client
+        self.client
             .fpwr(
-                self.slave.slave.configured_address,
+                self.configured_address,
                 RegisterAddress::SiiControl,
                 setup.to_array(),
             )
@@ -82,12 +86,8 @@ where
         let read_size = crate::timeout::<TIMEOUT, _, _>(timeout, async {
             loop {
                 let control = self
-                    .slave
                     .client
-                    .fprd::<SiiControl>(
-                        self.slave.slave.configured_address,
-                        RegisterAddress::SiiControl,
-                    )
+                    .fprd::<SiiControl>(self.configured_address, RegisterAddress::SiiControl)
                     .await?
                     .wkc(1, "SII busy wait")?;
 
@@ -104,12 +104,8 @@ where
         let data = match read_size {
             SiiReadSize::Octets4 => {
                 let data = self
-                    .slave
                     .client
-                    .fprd::<[u8; 4]>(
-                        self.slave.slave.configured_address,
-                        RegisterAddress::SiiData,
-                    )
+                    .fprd::<[u8; 4]>(self.configured_address, RegisterAddress::SiiData)
                     .await?
                     .wkc(1, "SII data")?;
 
@@ -119,12 +115,8 @@ where
             }
             SiiReadSize::Octets8 => {
                 let data = self
-                    .slave
                     .client
-                    .fprd::<[u8; 8]>(
-                        self.slave.slave.configured_address,
-                        RegisterAddress::SiiData,
-                    )
+                    .fprd::<[u8; 8]>(self.configured_address, RegisterAddress::SiiData)
                     .await?
                     .wkc(1, "SII data")?;
 
