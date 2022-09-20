@@ -53,6 +53,8 @@ pub enum RegisterAddress {
     Sm1 = RegisterAddress::Sm0 as u16 + 0x8,
     Sm2 = RegisterAddress::Sm1 as u16 + 0x8,
     Sm3 = RegisterAddress::Sm2 as u16 + 0x8,
+
+    DcTimePort0 = 0x0900,
 }
 
 impl From<RegisterAddress> for u16 {
