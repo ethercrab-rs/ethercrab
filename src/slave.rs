@@ -100,6 +100,6 @@ where
 
     // TODO: Separate TIMEOUT for EEPROM specifically
     pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT> {
-        Eeprom::new(self)
+        Eeprom::new(self.slave.configured_address, self.client)
     }
 }
