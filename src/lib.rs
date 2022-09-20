@@ -8,6 +8,7 @@ pub mod al_status;
 pub mod al_status_code;
 pub mod client;
 pub mod command;
+pub mod eeprom;
 pub mod error;
 pub mod fmmu;
 pub mod frame;

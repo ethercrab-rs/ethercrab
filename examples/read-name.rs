@@ -41,7 +41,7 @@ fn main() -> Result<(), PduError> {
         for slave_idx in 0..num_slaves {
             let slave = client.slave_by_index(slave_idx).expect("Slave");
 
-            let name = slave.device_name::<64>().await.expect("Read name");
+            let name = slave.eeprom().device_name::<64>().await.expect("Read name");
 
             log::info!("Slave #{slave_idx} name: {name:?}");
         }
