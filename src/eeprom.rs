@@ -185,6 +185,7 @@ where
     /// string as per ETG1000.6 Table 20 footnote.
     // TODO: This is a pretty inefficient algorithm. Find a way to use only `N` bytes as well as
     // skipping ignored strings instead of reading them into the buffer.
+    // FIXME: Shitload of unwraps/panics/expects
     async fn find_string<const N: usize>(
         &self,
         search_index: u8,
