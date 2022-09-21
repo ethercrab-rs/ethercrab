@@ -16,7 +16,6 @@ pub mod mailbox;
 pub mod pdu;
 mod pdu_loop;
 pub mod register;
-pub mod sii;
 pub mod slave;
 pub mod sync_manager_channel;
 pub mod timer_factory;
