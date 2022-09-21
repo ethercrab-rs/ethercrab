@@ -154,7 +154,7 @@ where
                     .await?
                     .wkc(1, "SII data")?;
 
-                log::debug!("Read {:#04x?} {:02x?}", eeprom_address, data);
+                log::trace!("Read {:#04x?} {:02x?}", eeprom_address, data);
 
                 EepromRead::from(data)
             }
@@ -165,7 +165,7 @@ where
                     .await?
                     .wkc(1, "SII data")?;
 
-                log::debug!("Read {:#04x?} {:02x?}", eeprom_address, data);
+                log::trace!("Read {:#04x?} {:02x?}", eeprom_address, data);
 
                 EepromRead::from(data)
             }
@@ -197,7 +197,6 @@ where
         // TODO: This loop needs splitting into a function which fills up a slice and returns it
         let buf = loop {
             let sl = self.read_eeprom_raw(start).await.unwrap();
-            log::debug!("Read {start:#06x?} {:02x?}", sl);
             // Each EEPROM address contains 2 bytes, so we need to step half as fast
             start += sl.as_slice().len() as u16 / 2;
 
