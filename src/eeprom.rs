@@ -62,6 +62,149 @@ impl From<[u8; 8]> for EepromRead {
     }
 }
 
+struct EepromSectionReader<
+    'a,
+    const MAX_FRAMES: usize,
+    const MAX_PDU_DATA: usize,
+    const MAX_SLAVES: usize,
+    TIMEOUT,
+> {
+    start: u16,
+    len: u16,
+    byte_count: u16,
+    read: heapless::Deque<u8, 8>,
+    eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+    read_length: usize,
+}
+
+impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
+    EepromSectionReader<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
+where
+    TIMEOUT: TimerFactory,
+{
+    fn new(
+        eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        cat: SiiCategory,
+    ) -> Self {
+        Self {
+            eeprom,
+            start: cat.start,
+            // Category length is given in words (u16) but we're counting bytes here.
+            len: cat.len_words * 2,
+            byte_count: 0,
+            read: heapless::Deque::new(),
+            read_length: 0,
+        }
+    }
+
+    async fn next(&mut self) -> Result<Option<u8>, Error> {
+        if self.read.is_empty() {
+            let read = self.eeprom.read_eeprom_raw(self.start).await?;
+
+            let slice = read.as_slice();
+
+            self.read_length = slice.len();
+
+            for byte in slice.iter() {
+                self.read
+                    .push_back(*byte)
+                    .map_err(|_| Error::EepromSectionOverrun)?;
+            }
+
+            self.start += (self.read.len() / 2) as u16;
+        }
+
+        let result = self
+            .read
+            .pop_front()
+            .filter(|_| self.byte_count < self.len)
+            .map(|byte| {
+                self.byte_count += 1;
+
+                byte
+            });
+
+        Ok(result)
+    }
+
+    async fn skip(&mut self, skip: u16) -> Result<(), Error> {
+        // TODO: Optimise by calculating new skip address instead of just iterating through chunks
+        for _ in 0..skip {
+            self.next().await?;
+        }
+
+        Ok(())
+    }
+
+    async fn try_next(&mut self) -> Result<u8, Error> {
+        match self.next().await {
+            Ok(Some(value)) => Ok(value),
+            // TODO: New error type
+            Ok(None) => Err(Error::EepromSectionOverrun),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn take_vec<const N: usize>(&mut self) -> Result<Option<heapless::Vec<u8, N>>, Error> {
+        self.take_n_vec(N).await
+    }
+
+    async fn take_vec_exact<const N: usize>(&mut self) -> Result<heapless::Vec<u8, N>, Error> {
+        self.take_n_vec(N)
+            .await?
+            .ok_or_else(|| Error::EepromSectionUnderrun)
+    }
+
+    async fn take_n_vec_exact<const N: usize>(
+        &mut self,
+        len: usize,
+    ) -> Result<heapless::Vec<u8, N>, Error> {
+        self.take_n_vec(len)
+            .await?
+            .ok_or_else(|| Error::EepromSectionUnderrun)
+    }
+
+    /// Try to take `len` bytes, returning an error if the buffer length `N` is too small.
+    async fn take_n_vec<const N: usize>(
+        &mut self,
+        len: usize,
+    ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
+        let mut buf = heapless::Vec::new();
+
+        let mut count = 0;
+
+        log::trace!(
+            "Taking bytes from EEPROM start {}, len {}, N {}",
+            self.start,
+            len,
+            N
+        );
+
+        // TODO: Optimise by taking chunks instead of calling next().await until end conditions are satisfied
+        loop {
+            // We've collected the requested number of bytes
+            if count >= len {
+                break Ok(Some(buf));
+            }
+
+            // If buffer is full, we'd end up with truncated data, so error out.
+            if buf.is_full() {
+                break Err(Error::EepromSectionOverrun);
+            }
+
+            if let Some(byte) = self.next().await? {
+                // SAFETY: We check for buffer space using is_full above
+                unsafe { buf.push_unchecked(byte) };
+
+                count += 1;
+            } else {
+                // Not enough data to fill the buffer
+                break Ok(None);
+            }
+        }
+    }
+}
+
 pub struct Eeprom<
     'a,
     const MAX_FRAMES: usize,
@@ -194,27 +337,13 @@ where
             .await?
             .ok_or(Error::EepromNoCategory)?;
 
-        let len = usize::from(category.len);
-        let mut start = category.start;
+        let mut reader = EepromSectionReader::new(self, category);
 
-        // Chunks are read in multiples of 4 or 8 and we need at least 18 bytes
-        let mut buf = heapless::Vec::<u8, 24>::new();
+        let buf = reader
+            .take_vec_exact::<{ mem::size_of::<SiiGeneral>() }>()
+            .await?;
 
-        // TODO: This loop needs splitting into a function which fills up a slice and returns it
-        let buf = loop {
-            let sl = self.read_eeprom_raw(start).await.unwrap();
-            // Each EEPROM address contains 2 bytes, so we need to step half as fast
-            start += sl.as_slice().len() as u16 / 2;
-
-            buf.extend_from_slice(sl.as_slice())
-                .expect("Buffer is full");
-
-            if buf.len() >= len {
-                break &buf[0..len];
-            }
-        };
-
-        let (_, general) = SiiGeneral::parse(buf).expect("General parse");
+        let (_, general) = SiiGeneral::parse(&buf).expect("General parse");
 
         Ok(general)
     }
@@ -227,21 +356,13 @@ where
         let mut sync_managers = heapless::Vec::<_, 8>::new();
 
         if let Some(category) = category {
-            let len = usize::from(category.len);
-            let mut start = category.start;
-            let end = start + len as u16;
+            let mut reader = EepromSectionReader::new(self, category);
 
-            while start <= end {
-                let mut buf = heapless::Vec::<u8, 8>::new();
-
-                while buf.len() < 8 {
-                    let sl = self.read_eeprom_raw(start).await?;
-                    start += dbg!(sl.as_slice()).len() as u16;
-
-                    buf.extend_from_slice(sl.as_slice()).unwrap();
-                }
-
-                let (_, sm) = SyncManager::parse(&buf).unwrap();
+            while let Some(bytes) = reader
+                .take_vec::<{ mem::size_of::<SyncManager>() }>()
+                .await?
+            {
+                let (_, sm) = SyncManager::parse(&bytes).unwrap();
 
                 sync_managers.push(sm).unwrap();
             }
@@ -252,90 +373,48 @@ where
 
     // TODO: Define FMMU config struct and load from FMMU and FMMU_EX
 
-    /// Find a string by index.
-    ///
-    /// Note that SII string indices start at 1, not 0.
-    ///
-    /// Passing an index of 0 will return `None`, although the spec defines index 0 as an empty
-    /// string as per ETG1000.6 Table 20 footnote.
-    // TODO: This is a pretty inefficient algorithm. Find a way to use only `N` bytes as well as
-    // skipping ignored strings instead of reading them into the buffer.
-    // FIXME: Shitload of unwraps/panics/expects
     async fn find_string<const N: usize>(
         &self,
         search_index: u8,
     ) -> Result<Option<heapless::String<N>>, Error> {
+        // An index of zero in EtherCAT denotes an empty string.
         if search_index == 0 {
             return Ok(None);
         }
 
-        let pos = self
+        // Turn 1-based EtherCAT string indexing into normal 0-based.
+        let search_index = search_index - 1;
+
+        let category = self
             .find_eeprom_category_start(CategoryType::Strings)
             .await?;
 
-        if let Some(pos) = pos {
-            let mut start = pos.start;
+        if let Some(category) = category {
+            let mut reader = EepromSectionReader::new(self, category);
 
-            let read = self.read_eeprom_raw(start).await.unwrap();
+            let num_strings = reader.try_next().await?;
 
-            let sl = read.as_slice();
-
-            // Each EEPROM address contains 2 bytes, so we need to step half as fast
-            start += sl.len() as u16 / 2;
-
-            // The first byte of the strings section is the number of strings contained within it
-            let (num_strings, buf) = sl.split_first().expect("Split first");
-            let num_strings = *num_strings;
-
-            log::debug!("Found {num_strings} strings");
-
-            // Initialise the buffer with the remaining first read
-            // TODO: Use `{ N + 8 }` when generic_const_exprs is stabilised
-            let mut buf = heapless::Vec::<u8, 255>::from_slice(buf).unwrap();
-
-            for idx in 0..num_strings {
-                // TODO: DRY: This loop needs splitting into a function which fills up a slice and returns it
-                loop {
-                    let read = self.read_eeprom_raw(start).await.unwrap();
-                    let sl = read.as_slice();
-
-                    // Each EEPROM address contains 2 bytes, so we need to step half as fast
-                    start += sl.len() as u16 / 2;
-                    buf.extend_from_slice(sl).expect("Buffer is full");
-
-                    let i = buf.as_slice();
-
-                    let i = match length_data::<_, _, (), _>(le_u8)(i) {
-                        Ok((i, string_data)) => {
-                            if idx == search_index.saturating_sub(1) {
-                                let s = core::str::from_utf8(string_data)
-                                    .map_err(|_| Error::EepromDecode)?;
-
-                                let s = heapless::String::from_str(s)
-                                    .map_err(|_| Error::EepromDecode)?;
-
-                                return Ok(Some(s));
-                            }
-
-                            i
-                        }
-                        Err(e) => match e {
-                            nom::Err::Incomplete(_needed) => {
-                                continue;
-                            }
-                            nom::Err::Error(e) => panic!("Error {e:?}"),
-                            nom::Err::Failure(e) => panic!("Fail {e:?}"),
-                        },
-                    };
-
-                    buf = heapless::Vec::from_slice(i).unwrap();
-
-                    break;
-                }
+            if search_index > num_strings {
+                return Ok(None);
             }
 
-            // TODO: Index out of bounds error
-            Err(Error::EepromDecode)
+            for _ in 0..search_index {
+                let string_len = reader.try_next().await?;
+
+                reader.skip(u16::from(string_len)).await?;
+            }
+
+            let string_len = reader.try_next().await?;
+
+            let bytes = reader
+                .take_n_vec_exact::<N>(usize::from(string_len))
+                .await?;
+
+            let s = core::str::from_utf8(&bytes).map_err(|_| Error::EepromDecode)?;
+
+            let s = heapless::String::<N>::from_str(s).map_err(|_| Error::EepromDecode)?;
+
+            Ok(Some(s))
         } else {
             Ok(None)
         }
@@ -377,7 +456,7 @@ where
                     break Ok(Some(SiiCategory {
                         category: cat,
                         start,
-                        len: data_len,
+                        len_words: data_len,
                     }))
                 }
                 CategoryType::End => break Ok(None),

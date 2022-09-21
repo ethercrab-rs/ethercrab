@@ -23,6 +23,7 @@ pub enum Error {
     EepromDecode,
     EepromSectionOverrun,
     EepromNoCategory,
+    EepromSectionUnderrun,
 }
 
 impl From<BorrowError> for Error {
