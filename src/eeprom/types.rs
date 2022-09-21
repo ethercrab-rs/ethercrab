@@ -1,5 +1,6 @@
 //! Slave Information Interface (SII).
 
+use crate::PduRead;
 use nom::{
     combinator::{map, map_opt},
     number::complete::{le_i16, le_u16, le_u8},
@@ -8,7 +9,8 @@ use nom::{
 use num_enum::FromPrimitive;
 use packed_struct::prelude::*;
 
-use crate::PduRead;
+pub const TX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
+pub const RX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1600..=0x17ff;
 
 /// Defined in ETG1000.4 6.4.2
 #[derive(Debug, Copy, Clone, PartialEq, Default, PackedStruct)]
@@ -467,14 +469,14 @@ enum SyncManagerType {
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
 #[derive(Debug, Clone)]
 pub struct Pdo {
-    index: u16,
-    num_entries: u8,
+    pub(crate) index: u16,
+    pub(crate) num_entries: u8,
     sync_manager: u8,
     dc_sync: u8,
     /// Index into EEPROM Strings section for PDO name.
     name_string_idx: u8,
     flags: PdoFlags,
-    entries: heapless::Vec<PdoEntry, 8>,
+    pub(crate) entries: heapless::Vec<PdoEntry, 8>,
 }
 
 impl Pdo {
@@ -506,9 +508,33 @@ pub struct PdoEntry {
     index: u16,
     sub_index: u16,
     name_string_idx: u8,
+    /// Index in CoE object dictionary.
     data_type: u8,
     data_length_bits: u8,
     flags: u16,
+}
+
+impl PdoEntry {
+    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+        let (i, index) = le_u16(i)?;
+        let (i, sub_index) = le_u16(i)?;
+        let (i, name_string_idx) = le_u8(i)?;
+        let (i, data_type) = le_u8(i)?;
+        let (i, data_length_bits) = le_u8(i)?;
+        let (i, flags) = le_u16(i)?;
+
+        Ok((
+            i,
+            Self {
+                index,
+                sub_index,
+                name_string_idx,
+                data_type,
+                data_length_bits,
+                flags,
+            },
+        ))
+    }
 }
 
 bitflags::bitflags! {
