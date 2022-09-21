@@ -228,12 +228,14 @@ pub enum SiiCoding {
 pub struct SiiCategory {
     pub category: CategoryType,
     pub start: u16,
-    pub len: u16,
+
+    /// Category length in words (`u16`)
+    pub len_words: u16,
 }
 
 impl SiiCategory {
     pub fn end(&self) -> u16 {
-        self.start + self.len
+        self.start + self.len_words
     }
 }
 
