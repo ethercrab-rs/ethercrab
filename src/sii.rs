@@ -475,6 +475,30 @@ pub struct Pdo {
     entries: heapless::Vec<PdoEntry, 8>,
 }
 
+impl Pdo {
+    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+        let (i, index) = le_u16(i)?;
+        let (i, num_entries) = le_u8(i)?;
+        let (i, sync_manager) = le_u8(i)?;
+        let (i, dc_sync) = le_u8(i)?;
+        let (i, name_string_idx) = le_u8(i)?;
+        let (i, flags) = map_opt(le_u16, |byte| PdoFlags::from_bits(byte))(i)?;
+
+        Ok((
+            i,
+            Self {
+                index,
+                num_entries,
+                sync_manager,
+                dc_sync,
+                name_string_idx,
+                flags,
+                entries: heapless::Vec::new(),
+            },
+        ))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PdoEntry {
     index: u16,
