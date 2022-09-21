@@ -6,12 +6,16 @@ use crate::{
     fmmu::Fmmu,
     pdu::CheckWorkingCounter,
     register::RegisterAddress,
-    sii::{CategoryType, SiiCategory, SiiCoding, SiiControl, SiiGeneral, SiiReadSize, SiiRequest},
+    sii::{
+        CategoryType, SiiCategory, SiiCoding, SiiControl, SiiGeneral, SiiReadSize, SiiRequest,
+        SyncManager,
+    },
     timer_factory::TimerFactory,
     PduRead,
 };
 use nom::multi::length_data;
 use nom::number::complete::le_u8;
+use pcap::sendqueue::Sync;
 
 const SII_FIRST_SECTION_START: u16 = 0x0040u16;
 
@@ -86,6 +90,7 @@ where
 
     // TODO: Make a new SiiRead trait instead of repurposing PduRead - some types can only be read
     // from EEPROM.
+    // TODO: EEPROM-specific error type
     pub async fn read_eeprom<T>(&self, eeprom_address: SiiCoding) -> Result<T, Error>
     where
         T: PduRead,
@@ -105,6 +110,7 @@ where
         T::try_from_slice(buf).map_err(|_| Error::EepromDecode)
     }
 
+    // TODO: Un-pub
     pub async fn read_eeprom_raw(
         &self,
         eeprom_address: impl Into<u16>,
@@ -211,6 +217,37 @@ where
         let (_, general) = SiiGeneral::parse(buf).expect("General parse");
 
         Ok(general)
+    }
+
+    pub async fn load_sync_manager(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
+        let category = self
+            .find_eeprom_category_start(CategoryType::SyncManager)
+            .await?;
+
+        let mut sync_managers = heapless::Vec::<_, 8>::new();
+
+        if let Some(category) = category {
+            let len = usize::from(category.len);
+            let mut start = category.start;
+            let end = start + len as u16;
+
+            while start <= end {
+                let mut buf = heapless::Vec::<u8, 8>::new();
+
+                while buf.len() < 8 {
+                    let sl = self.read_eeprom_raw(start).await?;
+                    start += dbg!(sl.as_slice()).len() as u16;
+
+                    buf.extend_from_slice(sl.as_slice()).unwrap();
+                }
+
+                let (_, sm) = SyncManager::parse(&buf).unwrap();
+
+                sync_managers.push(sm).unwrap();
+            }
+        }
+
+        Ok(sync_managers)
     }
 
     // TODO: Define FMMU config struct and load from FMMU and FMMU_EX
