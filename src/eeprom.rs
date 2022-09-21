@@ -1,8 +1,9 @@
-use core::str::FromStr;
+use core::{fmt, str::FromStr};
 
 use crate::{
     client::Client,
     error::Error,
+    fmmu::Fmmu,
     pdu::CheckWorkingCounter,
     register::RegisterAddress,
     sii::{CategoryType, SiiCategory, SiiCoding, SiiControl, SiiGeneral, SiiReadSize, SiiRequest},
@@ -13,6 +14,49 @@ use nom::multi::length_data;
 use nom::number::complete::le_u8;
 
 const SII_FIRST_SECTION_START: u16 = 0x0040u16;
+
+enum EepromRead {
+    Bytes4([u8; 4]),
+    Bytes8([u8; 8]),
+}
+
+impl EepromRead {
+    fn as_slice(&self) -> &[u8] {
+        match self {
+            EepromRead::Bytes4(arr) => arr.as_slice(),
+            EepromRead::Bytes8(arr) => arr.as_slice(),
+        }
+    }
+
+    fn bytes4(&self) -> [u8; 4] {
+        match self {
+            EepromRead::Bytes4(arr) => *arr,
+            // TODO: Use `array_chunks` or similar method when stabilised.
+            EepromRead::Bytes8(arr) => [arr[0], arr[1], arr[2], arr[3]],
+        }
+    }
+}
+
+impl fmt::Debug for EepromRead {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Bytes4(arg0) => write!(f, "{:02x?}", arg0),
+            Self::Bytes8(arg0) => write!(f, "{:02x?}", arg0),
+        }
+    }
+}
+
+impl From<[u8; 4]> for EepromRead {
+    fn from(arr: [u8; 4]) -> Self {
+        Self::Bytes4(arr)
+    }
+}
+
+impl From<[u8; 8]> for EepromRead {
+    fn from(arr: [u8; 8]) -> Self {
+        Self::Bytes8(arr)
+    }
+}
 
 pub struct Eeprom<
     'a,
@@ -53,17 +97,18 @@ where
 
         let buf = self.read_eeprom_raw(eeprom_address).await?;
 
-        let buf = buf.get(0..usize::from(T::LEN)).ok_or(Error::EepromDecode)?;
+        let buf = buf
+            .as_slice()
+            .get(0..usize::from(T::LEN))
+            .ok_or(Error::EepromDecode)?;
 
         T::try_from_slice(buf).map_err(|_| Error::EepromDecode)
     }
 
-    // TODO: This only ever returns 4 or 8 byte reads. Can we just return an enum instead of writing
-    // into a buffer? Then a method to turn it into an array of N bytes or a slice.
     pub async fn read_eeprom_raw(
         &self,
         eeprom_address: impl Into<u16>,
-    ) -> Result<heapless::Vec<u8, 8>, Error> {
+    ) -> Result<EepromRead, Error> {
         let eeprom_address: u16 = eeprom_address.into();
 
         // TODO: Check EEPROM error flags
@@ -111,7 +156,7 @@ where
 
                 log::debug!("Read {:#04x?} {:02x?}", eeprom_address, data);
 
-                heapless::Vec::from_slice(&data)
+                EepromRead::from(data)
             }
             SiiReadSize::Octets8 => {
                 let data = self
@@ -122,11 +167,11 @@ where
 
                 log::debug!("Read {:#04x?} {:02x?}", eeprom_address, data);
 
-                heapless::Vec::from_slice(&data)
+                EepromRead::from(data)
             }
         };
 
-        data.map_err(|_| Error::EepromDecode)
+        Ok(data)
     }
 
     pub async fn device_name<const N: usize>(&self) -> Result<Option<heapless::String<N>>, Error> {
@@ -154,7 +199,7 @@ where
             let sl = self.read_eeprom_raw(start).await.unwrap();
             log::debug!("Read {start:#06x?} {:02x?}", sl);
             // Each EEPROM address contains 2 bytes, so we need to step half as fast
-            start += sl.len() as u16 / 2;
+            start += sl.as_slice().len() as u16 / 2;
 
             buf.extend_from_slice(sl.as_slice())
                 .expect("Buffer is full");
@@ -168,6 +213,8 @@ where
 
         Ok(general)
     }
+
+    // TODO: Define FMMU config struct and load from FMMU and FMMU_EX
 
     /// Find a string by index.
     ///
@@ -193,7 +240,10 @@ where
         if let Some(pos) = pos {
             let mut start = pos.start;
 
-            let sl = self.read_eeprom_raw(start).await.unwrap();
+            let read = self.read_eeprom_raw(start).await.unwrap();
+
+            let sl = read.as_slice();
+
             // Each EEPROM address contains 2 bytes, so we need to step half as fast
             start += sl.len() as u16 / 2;
 
@@ -210,11 +260,12 @@ where
             for idx in 0..num_strings {
                 // TODO: DRY: This loop needs splitting into a function which fills up a slice and returns it
                 loop {
-                    let sl = self.read_eeprom_raw(start).await.unwrap();
+                    let read = self.read_eeprom_raw(start).await.unwrap();
+                    let sl = read.as_slice();
+
                     // Each EEPROM address contains 2 bytes, so we need to step half as fast
                     start += sl.len() as u16 / 2;
-                    buf.extend_from_slice(sl.as_slice())
-                        .expect("Buffer is full");
+                    buf.extend_from_slice(sl).expect("Buffer is full");
 
                     let i = buf.as_slice();
 
@@ -262,24 +313,20 @@ where
 
         loop {
             // First address, returns 2 bytes, contains the category type.
-            let (category_type, data_len) = self
-                .read_eeprom_raw(start)
-                .await
-                .map(|chunk| {
-                    // SAFETY: `chunk` is always at least 4 bytes long, so the below unwraps and
-                    // array indexes are safe.
-                    let category = u16::from_le_bytes(chunk[0..2].try_into().unwrap());
-                    let len = u16::from_le_bytes(chunk[2..4].try_into().unwrap());
+            let (category_type, data_len) = self.read_eeprom_raw(start).await.map(|chunk| {
+                let chunk = chunk.bytes4();
 
-                    (
-                        CategoryType::try_from(category).unwrap_or(CategoryType::Nop),
-                        len,
-                    )
-                })
-                // FIXME
-                .unwrap();
+                // TODO: Use array_chunks or similar method when stabilised
+                let category = u16::from_le_bytes([chunk[0], chunk[1]]);
+                let len = u16::from_le_bytes([chunk[2], chunk[3]]);
 
-            // Two header bytes
+                (
+                    CategoryType::try_from(category).unwrap_or(CategoryType::Nop),
+                    len,
+                )
+            })?;
+
+            // Position after header
             start += 2;
 
             log::debug!(
