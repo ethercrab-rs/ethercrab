@@ -54,7 +54,11 @@ fn main() -> Result<(), PduError> {
         for slave_idx in 0..num_slaves {
             let slave = client.slave_by_index(slave_idx).expect("Slave");
 
-            let vendor_id = slave.read_eeprom(SiiCoding::VendorId).await.unwrap();
+            let vendor_id = slave
+                .eeprom()
+                .read_eeprom(SiiCoding::VendorId)
+                .await
+                .unwrap();
 
             println!(
                 "Vendor ID for slave {}: {:#04x} ({})",
@@ -70,10 +74,11 @@ fn main() -> Result<(), PduError> {
 
         loop {
             let category_type = el2004
+                .eeprom()
                 .read_eeprom_raw(start)
                 .await
                 .map(|chunk| {
-                    let category = u16::from_le_bytes(chunk[0..2].try_into().unwrap());
+                    let category = u16::from_le_bytes(chunk.as_slice()[0..2].try_into().unwrap());
 
                     CategoryType::try_from(category).unwrap_or(CategoryType::Nop)
                 })
@@ -82,9 +87,10 @@ fn main() -> Result<(), PduError> {
             start += 1;
 
             let data_len = el2004
+                .eeprom()
                 .read_eeprom_raw(start)
                 .await
-                .map(|chunk| u16::from_le_bytes(chunk[0..2].try_into().unwrap()))
+                .map(|chunk| u16::from_le_bytes(chunk.as_slice()[0..2].try_into().unwrap()))
                 .unwrap();
 
             start += 1;
@@ -125,7 +131,8 @@ async fn parse_strings<
 ) where
     TIMEOUT: TimerFactory,
 {
-    let sl = el2004.read_eeprom_raw(start).await.unwrap();
+    let read = el2004.eeprom().read_eeprom_raw(start).await.unwrap();
+    let sl = read.as_slice();
     // Each EEPROM address contains 2 bytes, so we need to step half as fast
     start += sl.len() as u16 / 2;
     log::debug!("Read {start:#06x?} {:02x?}", sl);
@@ -142,12 +149,12 @@ async fn parse_strings<
     for idx in 0..num_strings {
         // TODO: This loop needs splitting into a function which fills up a slice and returns it
         loop {
-            let sl = el2004.read_eeprom_raw(start).await.unwrap();
+            let read = el2004.eeprom().read_eeprom_raw(start).await.unwrap();
+            let sl = read.as_slice();
             // Each EEPROM address contains 2 bytes, so we need to step half as fast
             start += sl.len() as u16 / 2;
             // log::debug!("Read {start:#06x?} {:02x?}", sl);
-            buf.extend_from_slice(sl.as_slice())
-                .expect("Buffer is full");
+            buf.extend_from_slice(sl).expect("Buffer is full");
 
             let i = buf.as_slice();
 
@@ -199,13 +206,13 @@ async fn parse_general<
 
     // TODO: This loop needs splitting into a function which fills up a slice and returns it
     let buf = loop {
-        let sl = el2004.read_eeprom_raw(start).await.unwrap();
+        let read = el2004.eeprom().read_eeprom_raw(start).await.unwrap();
+        let sl = read.as_slice();
         log::debug!("Read {start:#06x?} {:02x?}", sl);
         // Each EEPROM address contains 2 bytes, so we need to step half as fast
         start += sl.len() as u16 / 2;
 
-        buf.extend_from_slice(sl.as_slice())
-            .expect("Buffer is full");
+        buf.extend_from_slice(sl).expect("Buffer is full");
 
         if buf.len() >= len {
             break &buf[0..len];
