@@ -1,21 +1,21 @@
-mod reader;
-mod types;
+use core::{fmt, mem, str::FromStr};
 
 use crate::{
     client::Client,
-    eeprom::{
-        reader::EepromSectionReader,
-        types::{
-            CategoryType, Pdo, PdoEntry, SiiCategory, SiiControl, SiiGeneral, SiiReadSize,
-            SiiRequest, SyncManager, RX_PDO_RANGE, TX_PDO_RANGE,
-        },
-    },
     error::Error,
+    fmmu::Fmmu,
     pdu::CheckWorkingCounter,
     register::RegisterAddress,
+    sii::{
+        CategoryType, SiiCategory, SiiCoding, SiiControl, SiiGeneral, SiiReadSize, SiiRequest,
+        SyncManager,
+    },
     timer_factory::TimerFactory,
+    PduRead,
 };
-use core::{fmt, mem, ops::RangeInclusive, str::FromStr};
+use nom::multi::length_data;
+use nom::number::complete::le_u8;
+use pcap::sendqueue::Sync;
 
 const SII_FIRST_SECTION_START: u16 = 0x0040u16;
 
@@ -62,6 +62,149 @@ impl From<[u8; 8]> for EepromRead {
     }
 }
 
+struct EepromSectionReader<
+    'a,
+    const MAX_FRAMES: usize,
+    const MAX_PDU_DATA: usize,
+    const MAX_SLAVES: usize,
+    TIMEOUT,
+> {
+    start: u16,
+    len: u16,
+    byte_count: u16,
+    read: heapless::Deque<u8, 8>,
+    eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+    read_length: usize,
+}
+
+impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
+    EepromSectionReader<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
+where
+    TIMEOUT: TimerFactory,
+{
+    fn new(
+        eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        cat: SiiCategory,
+    ) -> Self {
+        Self {
+            eeprom,
+            start: cat.start,
+            // Category length is given in words (u16) but we're counting bytes here.
+            len: cat.len_words * 2,
+            byte_count: 0,
+            read: heapless::Deque::new(),
+            read_length: 0,
+        }
+    }
+
+    async fn next(&mut self) -> Result<Option<u8>, Error> {
+        if self.read.is_empty() {
+            let read = self.eeprom.read_eeprom_raw(self.start).await?;
+
+            let slice = read.as_slice();
+
+            self.read_length = slice.len();
+
+            for byte in slice.iter() {
+                self.read
+                    .push_back(*byte)
+                    .map_err(|_| Error::EepromSectionOverrun)?;
+            }
+
+            self.start += (self.read.len() / 2) as u16;
+        }
+
+        let result = self
+            .read
+            .pop_front()
+            .filter(|_| self.byte_count < self.len)
+            .map(|byte| {
+                self.byte_count += 1;
+
+                byte
+            });
+
+        Ok(result)
+    }
+
+    async fn skip(&mut self, skip: u16) -> Result<(), Error> {
+        // TODO: Optimise by calculating new skip address instead of just iterating through chunks
+        for _ in 0..skip {
+            self.next().await?;
+        }
+
+        Ok(())
+    }
+
+    async fn try_next(&mut self) -> Result<u8, Error> {
+        match self.next().await {
+            Ok(Some(value)) => Ok(value),
+            // TODO: New error type
+            Ok(None) => Err(Error::EepromSectionOverrun),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn take_vec<const N: usize>(&mut self) -> Result<Option<heapless::Vec<u8, N>>, Error> {
+        self.take_n_vec(N).await
+    }
+
+    async fn take_vec_exact<const N: usize>(&mut self) -> Result<heapless::Vec<u8, N>, Error> {
+        self.take_n_vec(N)
+            .await?
+            .ok_or_else(|| Error::EepromSectionUnderrun)
+    }
+
+    async fn take_n_vec_exact<const N: usize>(
+        &mut self,
+        len: usize,
+    ) -> Result<heapless::Vec<u8, N>, Error> {
+        self.take_n_vec(len)
+            .await?
+            .ok_or_else(|| Error::EepromSectionUnderrun)
+    }
+
+    /// Try to take `len` bytes, returning an error if the buffer length `N` is too small.
+    async fn take_n_vec<const N: usize>(
+        &mut self,
+        len: usize,
+    ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
+        let mut buf = heapless::Vec::new();
+
+        let mut count = 0;
+
+        log::trace!(
+            "Taking bytes from EEPROM start {}, len {}, N {}",
+            self.start,
+            len,
+            N
+        );
+
+        // TODO: Optimise by taking chunks instead of calling next().await until end conditions are satisfied
+        loop {
+            // We've collected the requested number of bytes
+            if count >= len {
+                break Ok(Some(buf));
+            }
+
+            // If buffer is full, we'd end up with truncated data, so error out.
+            if buf.is_full() {
+                break Err(Error::EepromSectionOverrun);
+            }
+
+            if let Some(byte) = self.next().await? {
+                // SAFETY: We check for buffer space using is_full above
+                unsafe { buf.push_unchecked(byte) };
+
+                count += 1;
+            } else {
+                // Not enough data to fill the buffer
+                break Ok(None);
+            }
+        }
+    }
+}
+
 pub struct Eeprom<
     'a,
     const MAX_FRAMES: usize,
@@ -88,7 +231,33 @@ where
         }
     }
 
-    async fn read_eeprom_raw(&self, eeprom_address: impl Into<u16>) -> Result<EepromRead, Error> {
+    // TODO: Make a new SiiRead trait instead of repurposing PduRead - some types can only be read
+    // from EEPROM.
+    // TODO: EEPROM-specific error type
+    pub async fn read_eeprom<T>(&self, eeprom_address: SiiCoding) -> Result<T, Error>
+    where
+        T: PduRead,
+    {
+        // TODO: Make this a const condition when possible
+        debug_assert!(T::LEN <= 8);
+
+        let eeprom_address = u16::from(eeprom_address);
+
+        let buf = self.read_eeprom_raw(eeprom_address).await?;
+
+        let buf = buf
+            .as_slice()
+            .get(0..usize::from(T::LEN))
+            .ok_or(Error::EepromDecode)?;
+
+        T::try_from_slice(buf).map_err(|_| Error::EepromDecode)
+    }
+
+    // TODO: Un-pub
+    pub async fn read_eeprom_raw(
+        &self,
+        eeprom_address: impl Into<u16>,
+    ) -> Result<EepromRead, Error> {
         let eeprom_address: u16 = eeprom_address.into();
 
         // TODO: Check EEPROM error flags
@@ -202,64 +371,7 @@ where
         Ok(sync_managers)
     }
 
-    async fn pdos(
-        &self,
-        category: CategoryType,
-        valid_range: RangeInclusive<u16>,
-    ) -> Result<heapless::Vec<Pdo, 8>, Error> {
-        let category = self.find_eeprom_category_start(category).await?;
-
-        let mut pdos = heapless::Vec::new();
-
-        if let Some(category) = category {
-            let mut reader = EepromSectionReader::new(self, category);
-
-            let mut pdo = reader.take_n_vec_exact::<10>(10).await.and_then(|bytes| {
-                let (_, pdo) = Pdo::parse(&bytes).map_err(|e| {
-                    log::error!("PDO: {}", e);
-
-                    Error::EepromDecode
-                })?;
-
-                log::debug!("Range {:?} value {}", valid_range, pdo.index);
-
-                if !valid_range.contains(&pdo.index) {
-                    Err(Error::EepromDecode)
-                } else {
-                    Ok(pdo)
-                }
-            })?;
-
-            for _ in 0..pdo.num_entries {
-                let entry = reader
-                    .take_n_vec_exact::<{ mem::size_of::<PdoEntry>() }>(mem::size_of::<PdoEntry>())
-                    .await
-                    .and_then(|bytes| {
-                        let (_, entry) = PdoEntry::parse(&bytes).map_err(|e| {
-                            log::error!("PDO entry: {}", e);
-
-                            Error::EepromDecode
-                        })?;
-
-                        Ok(entry)
-                    })?;
-
-                pdo.entries.push(entry).map_err(|_| Error::Capacity)?;
-            }
-
-            pdos.push(pdo).map_err(|_| Error::Capacity)?;
-        }
-
-        Ok(pdos)
-    }
-
-    pub async fn txpdos(&self) -> Result<heapless::Vec<Pdo, 8>, Error> {
-        self.pdos(CategoryType::TxPdo, TX_PDO_RANGE).await
-    }
-
-    pub async fn rxpdos(&self) -> Result<heapless::Vec<Pdo, 8>, Error> {
-        self.pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
-    }
+    // TODO: Define FMMU config struct and load from FMMU and FMMU_EX
 
     async fn find_string<const N: usize>(
         &self,

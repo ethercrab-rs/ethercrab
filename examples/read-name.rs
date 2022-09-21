@@ -51,9 +51,8 @@ fn main() -> Result<(), PduError> {
 
             log::info!("Slave #{slave_idx} name: {name:?}");
 
-            let sm = slave.eeprom().sync_managers().await.expect("SM load");
-
-            dbg!(sm);
+            dbg!(slave.eeprom().txpdos().await.expect("Load TXPDO"));
+            dbg!(slave.eeprom().rxpdos().await.expect("Load RXPDO"));
         }
     })));
 
