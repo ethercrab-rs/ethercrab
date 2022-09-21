@@ -276,7 +276,7 @@ pub enum FmmuUsage {
 /// SII "General" category.
 ///
 /// Defined in ETG1000.6 Table 21
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(unused)]
 pub struct SiiGeneral {
     group_string_idx: u8,
@@ -400,7 +400,7 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SyncManager {
     start_addr: u16,
     length: u16,
@@ -446,7 +446,7 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default, num_enum::FromPrimitive)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, num_enum::FromPrimitive)]
 #[repr(u8)]
 enum SyncManagerType {
     /// Not used or unknown.
@@ -460,4 +460,62 @@ enum SyncManagerType {
     ProcessDataOut = 0x03,
     /// Used for process data inputs.
     ProcessDataIn = 0x04,
+}
+
+/// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
+#[derive(Debug, Clone)]
+pub struct Pdo {
+    index: u16,
+    num_entries: u8,
+    sync_manager: u8,
+    dc_sync: u8,
+    /// Index into EEPROM Strings section for PDO name.
+    name_string_idx: u8,
+    flags: PdoFlags,
+    entries: heapless::Vec<PdoEntry, 8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PdoEntry {
+    index: u16,
+    sub_index: u16,
+    name_string_idx: u8,
+    data_type: u8,
+    data_length_bits: u8,
+    flags: u16,
+}
+
+bitflags::bitflags! {
+    pub struct PdoFlags: u16 {
+        /// PdoMandatory [Esi:RTxPdo@Mandatory]
+        const PDO_MANDATORY = 0x0001;
+        /// PdoDefault [Esi:RTxPdo@Sm]
+        const PDO_DEFAULT = 0x0002;
+        /// Reserved (PdoOversample)
+        const PDO_OVERSAMPLE = 0x0004;
+        /// PdoFixedContent [Esi:RTxPdo@Fixed]
+        const PDO_FIXED_CONTENT = 0x0010;
+        /// PdoVirtualContent [Esi:RTxPdo@Virtual]
+        const PDO_VIRTUAL_CONTENT = 0x0020;
+        /// Reserved (PdoDownloadAnyway)
+        const PDO_DOWNLOAD_ANYWAY = 0x0040;
+        /// Reserved (PdoFromModule)
+        const PDO_FROM_MODULE = 0x0080;
+        /// PdoModuleAlign [Esi:Slots:ModulePdoGroup@Alignment]
+        const PDO_MODULE_ALIGN = 0x0100;
+        /// PdoDependOnSlot [Esi:RTxPdo:Index@DependOnSlot]
+        const PDO_DEPEND_ON_SLOT = 0x0200;
+        /// PdoDependOnSlotGroup [Esi:RTxPdo:Index@DependOnSlotGroup]
+        const PDO_DEPEND_ON_SLOT_GROUP = 0x0400;
+        /// PdoOverwrittenByModule [Esi:RTxPdo@OverwrittenByModule]
+        const PDO_OVERWRITTEN_BY_MODULE = 0x0800;
+        /// Reserved (PdoConfigurable)
+        const PDO_CONFIGURABLE = 0x1000;
+        /// Reserved (PdoAutoPdoName)
+        const PDO_AUTO_PDO_NAME = 0x2000;
+        /// Reserved (PdoDisAutoExclude)
+        const PDO_DIS_AUTO_EXCLUDE = 0x4000;
+        /// Reserved (PdoWritable)
+        const PDO_WRITABLE = 0x8000;
+    }
 }
