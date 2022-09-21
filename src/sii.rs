@@ -399,3 +399,65 @@ bitflags::bitflags! {
         const ENABLE_COMPLETE_ACCESS = 0x20;
     }
 }
+
+#[derive(Debug, Copy, Clone)]
+pub struct SyncManager {
+    start_addr: u16,
+    length: u16,
+    // TODO: Look up in Esi: DeviceType:Sm:ControlByte
+    control: u8,
+    enable: SyncManagerEnable,
+    usage_type: SyncManagerType,
+}
+
+impl SyncManager {
+    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+        let (i, start_addr) = le_u16(i)?;
+        let (i, length) = le_u16(i)?;
+        let (i, control) = le_u8(i)?;
+        // Ignored
+        let (i, _status) = le_u8(i)?;
+        let (i, enable) = map_opt(le_u8, |byte| SyncManagerEnable::from_bits(byte))(i)?;
+        let (i, usage_type) = map(le_u8, |byte| SyncManagerType::from_primitive(byte))(i)?;
+
+        Ok((
+            i,
+            Self {
+                start_addr,
+                length,
+                control,
+                enable,
+                usage_type,
+            },
+        ))
+    }
+}
+
+bitflags::bitflags! {
+    pub struct SyncManagerEnable: u8 {
+        /// Bit 0: enable.
+        const ENABLE = 0x01;
+        /// Bit 1: fixed content (info for config tool –SyncMan has fixed content).
+        const IS_FIXED = 0x02;
+        /// Bit 2: virtual SyncManager (virtual SyncMan – no hardware resource used).
+        const IS_VIRTUAL = 0x04;
+        /// Bit 3: opOnly (SyncMan should be enabled only in OP state).
+        const OP_ONLY = 0x08;
+    }
+}
+
+#[derive(Debug, Copy, Clone, Default, num_enum::FromPrimitive)]
+#[repr(u8)]
+enum SyncManagerType {
+    /// Not used or unknown.
+    #[default]
+    Unknown = 0x00,
+    /// Used for mailbox out.
+    MailboxOut = 0x01,
+    /// Used for mailbox in.
+    MailboxIn = 0x02,
+    /// Used for process data outputs.
+    ProcessDataOut = 0x03,
+    /// Used for process data inputs.
+    ProcessDataIn = 0x04,
+}
