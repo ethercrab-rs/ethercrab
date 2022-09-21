@@ -1,4 +1,4 @@
-use core::{fmt, str::FromStr};
+use core::{fmt, mem, str::FromStr};
 
 use crate::{
     client::Client,
@@ -181,14 +181,14 @@ where
     }
 
     pub async fn device_name<const N: usize>(&self) -> Result<Option<heapless::String<N>>, Error> {
-        let general = self.load_eeprom_general().await?;
+        let general = self.general().await?;
 
         let name_idx = general.name_string_idx;
 
         self.find_string(name_idx).await
     }
 
-    async fn load_eeprom_general(&self) -> Result<SiiGeneral, Error> {
+    async fn general(&self) -> Result<SiiGeneral, Error> {
         let category = self
             .find_eeprom_category_start(CategoryType::General)
             .await?
@@ -219,7 +219,7 @@ where
         Ok(general)
     }
 
-    pub async fn load_sync_manager(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
+    pub async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
         let category = self
             .find_eeprom_category_start(CategoryType::SyncManager)
             .await?;
