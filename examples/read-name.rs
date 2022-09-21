@@ -1,6 +1,7 @@
 //! Read all detexted device names using SII.
 
 use async_ctrlc::CtrlC;
+use ethercrab::al_status::AlState;
 use ethercrab::client::Client;
 use ethercrab::error::PduError;
 use ethercrab::register::RegisterAddress;
@@ -39,11 +40,20 @@ fn main() -> Result<(), PduError> {
         client.init().await.expect("Init");
 
         for slave_idx in 0..num_slaves {
+            client
+                .request_slave_state(AlState::Init)
+                .await
+                .expect("INIT");
+
             let slave = client.slave_by_index(slave_idx).expect("Slave");
 
             let name = slave.eeprom().device_name::<64>().await.expect("Read name");
 
             log::info!("Slave #{slave_idx} name: {name:?}");
+
+            let sm = slave.eeprom().sync_managers().await.expect("SM load");
+
+            dbg!(sm);
         }
     })));
 
