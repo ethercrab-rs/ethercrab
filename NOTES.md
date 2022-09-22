@@ -45,7 +45,13 @@ Go to `Online` tab of any device
     endif()
   ```
 
-- `nmake` only works in the "Visual Studio Powershell" or whatever, not vanilla powershell.
+- `nmake` only works in the "Visual Studio Powershell" or whatever, not vanilla powershell:
+  - Open "Developer PowerShell for VS 2022" from the start menu
+  - Follow instructions in SOEM readme:
+    - `mkdir build`
+    - `cd build`
+    - `cmake .. -G "NMake Makefiles"`
+    - `nmake`
 
 # Windows and L2 sockets
 
@@ -255,3 +261,29 @@ dirbaio
 >
 > `defmt` needs linker hax to compile for linux targets, and doesn't compile for windows, mac, ios
 > targets at all
+
+# EEPROM read abstraction
+
+EEPROM is word-based, but I want to read bytes so let's make an abstraction:
+
+- EEPROM section iterator
+- Start address as u16
+- Length limit
+- next().await gives me a byte at a time
+  - Read 4/8 byte chunk, split off the first element until error, then increment address by chunk
+    len / 2 and read another chunk
+- skip(n) takes number of BYTES to skip
+  - next u16 read address = current byte address / 2
+  - replace chunk
+  - if n is odd, call next() once to discard initial byte
+- take_vec()
+  - while vec can be pushed AND address is less than start + len, next().await
+  - return vec on push error
+  - Can be optimised with chunked pushes:
+    - Read chunk, increment byte counter by chunk len, address by chunk len /2
+    - Check remaining bytes in section and clip chunk
+    - If chunk len is 0, return buffer, else:
+    - Write chunk into return buffer
+      - If write fails,
+        - If we have space left, push partial chunk
+        - Return buffer

@@ -201,3 +201,15 @@ ETG1000.4 6.8 also mentions DC stuff
 ETG1000.4 Table 60 defines the DC stuff to start from address `0x0900`
 
 The EtherCAT poster describes the setups steps quite nicely.
+
+# Reading config from EEPROM
+
+## Sync managers
+
+Looking through SOEM, it retrieves the sync manager data length from the `TXPDO`/`RXPDO` sections.
+It keeps a list of both and references them through field 0x0003 (`SyncM`) in ETG2010 Table 14.
+
+SOEM does a bunch of PDO config in `ecx_siiPDO`. Sync manager length is set from `eepPDO.SMbitsize`
+in `ecx_map_sii`.
+
+SOEM reads TXPDOs and RXPDOs into the same array. See `ecx_map_sii`, `Isize`/`Osize`.
