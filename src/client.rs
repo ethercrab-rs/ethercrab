@@ -212,10 +212,7 @@ where
     {
         let pdu = self.pdu_loop.pdu_tx(command, &[], T::len().into()).await?;
 
-        let res = T::try_from_slice(pdu.data()).map_err(|e| {
-            println!("{:?}", e);
-            PduError::Decode
-        })?;
+        let res = T::try_from_slice(pdu.data()).map_err(|e| PduError::Decode)?;
 
         Ok((res, pdu.working_counter()))
     }
