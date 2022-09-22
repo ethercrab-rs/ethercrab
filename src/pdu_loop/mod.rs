@@ -75,7 +75,7 @@ where
         let req = self
             .frames
             .get(usize::from(idx))
-            .ok_or_else(|| PduError::InvalidIndex(idx))?;
+            .ok_or(PduError::InvalidIndex(idx))?;
 
         Ok(unsafe { &mut *req.get() })
     }
@@ -120,7 +120,7 @@ where
         }
 
         let (_rest, pdu) = Pdu::<MAX_PDU_DATA>::from_ethernet_payload::<nom::error::Error<&[u8]>>(
-            &raw_packet.payload(),
+            raw_packet.payload(),
         )
         .map_err(|_| PduError::Parse)?;
 

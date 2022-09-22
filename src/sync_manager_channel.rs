@@ -3,7 +3,7 @@ use packed_struct::prelude::*;
 /// Sync manager channel.
 ///
 /// Defined in ETG1000.4 6.7.2
-#[derive(Default, Copy, Clone, Debug, PartialEq, PackedStruct)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "8", bit_numbering = "msb0", endian = "lsb")]
 pub struct SyncManagerChannel {
     #[packed_field(bits = "0..=15")]
@@ -18,7 +18,7 @@ pub struct SyncManagerChannel {
     pub enable: Enable,
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, PackedStruct)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Control {
     #[packed_field(bits = "0..=1", ty = "enum")]
@@ -34,7 +34,7 @@ pub struct Control {
     // reserved1: bool
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, PackedStruct)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Status {
     #[packed_field(bits = "0")]
@@ -52,7 +52,7 @@ pub struct Status {
     pub write_buffer_open: bool,
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, PackedStruct)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Enable {
     // ---
@@ -79,14 +79,14 @@ pub struct Enable {
     // pub _rest: u8,
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, PrimitiveEnum_u8)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
 pub enum OperationMode {
     #[default]
     Buffered = 0x00,
     Mailbox = 0x02,
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, PrimitiveEnum_u8)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
 pub enum Direction {
     #[default]
     MasterRead = 0x00,
@@ -94,7 +94,7 @@ pub enum Direction {
 }
 
 // TODO: More informative names
-#[derive(Default, Copy, Clone, Debug, PartialEq, PrimitiveEnum_u8)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
 pub enum BufferState {
     #[default]
     First = 0x00,

@@ -13,7 +13,7 @@ pub const TX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
 pub const RX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1600..=0x17ff;
 
 /// Defined in ETG1000.4 6.4.2
-#[derive(Debug, Copy, Clone, PartialEq, Default, PackedStruct)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PackedStruct)]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 pub struct SiiAccessConfig {
     // First byte, but second octet because little endian
@@ -39,7 +39,7 @@ impl PduRead for SiiAccessConfig {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
 pub enum SiiOwner {
     #[default]
     Dl = 0x00,
@@ -47,7 +47,7 @@ pub enum SiiOwner {
 }
 
 /// Defined in ETG1000.4 6.4.3
-#[derive(Debug, Copy, Clone, PartialEq, Default, PackedStruct)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PackedStruct)]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 pub struct SiiControl {
     // First byte, but second octet because little endian
@@ -101,14 +101,14 @@ impl PduRead for SiiControl {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
 pub enum SiiAccess {
     #[default]
     ReadOnly = 0x00,
     ReadWrite = 0x01,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
 pub enum SiiReadSize {
     /// Read 4 octets at a time.
     #[default]
@@ -118,7 +118,7 @@ pub enum SiiReadSize {
     Octets8 = 0x01,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
 pub enum SiiAddressSize {
     #[default]
     U8 = 0x00,
@@ -138,7 +138,7 @@ impl SiiRequest {
         }
     }
 
-    pub fn to_array(self) -> [u8; 6] {
+    pub fn as_array(&self) -> [u8; 6] {
         let mut buf = [0u8; 6];
 
         self.control.pack_to_slice(&mut buf[0..2]).unwrap();
@@ -275,7 +275,7 @@ pub enum FmmuUsage {
 /// SII "General" category.
 ///
 /// Defined in ETG1000.6 Table 21
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 #[allow(unused)]
 pub struct SiiGeneral {
     group_string_idx: u8,
@@ -311,7 +311,7 @@ impl SiiGeneral {
         let (i, order_string_idx) = le_u8(i)?;
         let (i, name_string_idx) = le_u8(i)?;
         let (i, _reserved) = le_u8(i)?;
-        let (i, coe_details) = map_opt(le_u8, |raw| CoeDetails::from_bits(raw))(i)?;
+        let (i, coe_details) = map_opt(le_u8, CoeDetails::from_bits)(i)?;
         let (i, foe_enabled) = map(le_u8, |num| num != 0)(i)?;
         let (i, eoe_enabled) = map(le_u8, |num| num != 0)(i)?;
 
@@ -320,11 +320,11 @@ impl SiiGeneral {
         let (i, _ds402_channels) = le_u8(i)?;
         let (i, _sysman_class) = le_u8(i)?;
 
-        let (i, flags) = map_opt(le_u8, |raw| Flags::from_bits(raw))(i)?;
+        let (i, flags) = map_opt(le_u8, Flags::from_bits)(i)?;
         let (i, ebus_current) = le_i16(i)?;
 
         let (i, ports) = map(le_u16, |raw| {
-            let p1 = (raw >> 0) & 0x0f;
+            let p1 = raw & 0x0f;
             let p2 = (raw >> 4) & 0x0f;
             let p3 = (raw >> 8) & 0x0f;
             let p4 = (raw >> 12) & 0x0f;
@@ -399,7 +399,7 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SyncManager {
     start_addr: u16,
     length: u16,
@@ -418,8 +418,8 @@ impl SyncManager {
         // Ignored
         let (i, _status) = le_u8(i)?;
 
-        let (i, enable) = map_opt(le_u8, |byte| SyncManagerEnable::from_bits(byte))(i)?;
-        let (i, usage_type) = map(le_u8, |byte| SyncManagerType::from_primitive(byte))(i)?;
+        let (i, enable) = map_opt(le_u8, SyncManagerEnable::from_bits)(i)?;
+        let (i, usage_type) = map(le_u8, SyncManagerType::from_primitive)(i)?;
 
         Ok((
             i,
@@ -447,7 +447,7 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default, PartialEq, num_enum::FromPrimitive)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, num_enum::FromPrimitive)]
 #[repr(u8)]
 enum SyncManagerType {
     /// Not used or unknown.
@@ -485,7 +485,7 @@ impl Pdo {
         let (i, sync_manager) = le_u8(i)?;
         let (i, dc_sync) = le_u8(i)?;
         let (i, name_string_idx) = le_u8(i)?;
-        let (i, flags) = map_opt(le_u16, |byte| PdoFlags::from_bits(byte))(i)?;
+        let (i, flags) = map_opt(le_u16, PdoFlags::from_bits)(i)?;
 
         Ok((
             i,

@@ -1,7 +1,7 @@
 use cookie_factory::{gen_simple, GenError};
 use nom::{combinator::map, error::ParseError, sequence::pair, IResult};
 
-#[derive(Default, PartialEq, Debug, Copy, Clone)]
+#[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
 pub enum Command {
     #[default]
     Nop,

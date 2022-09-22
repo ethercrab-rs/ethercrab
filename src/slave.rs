@@ -50,10 +50,12 @@ where
             state, self.slave.configured_address
         );
 
+        let addr = self.slave.configured_address;
+
         // Send state request
         self.client
             .fpwr(
-                self.slave.configured_address,
+                addr,
                 RegisterAddress::AlControl,
                 AlControl::new(state).pack().unwrap(),
             )
@@ -64,7 +66,7 @@ where
             loop {
                 let status = self
                     .client
-                    .fprd::<AlControl>(self.slave.configured_address, RegisterAddress::AlStatus)
+                    .fprd::<AlControl>(addr, RegisterAddress::AlStatus)
                     .await?
                     .wkc(1, "AL status")?;
 
@@ -83,10 +85,7 @@ where
                 {
                     let (status, _working_counter) = self
                         .client
-                        .fprd::<AlStatusCode>(
-                            self.slave.configured_address,
-                            RegisterAddress::AlStatusCode,
-                        )
+                        .fprd::<AlStatusCode>(addr, RegisterAddress::AlStatusCode)
                         .await?;
 
                     debug!("Slave status code: {}", status);

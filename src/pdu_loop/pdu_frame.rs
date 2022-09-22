@@ -70,7 +70,7 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         Ok(())
     }
 
-    pub(crate) fn sendable<'a>(&'a mut self) -> Option<SendableFrame<'a, MAX_PDU_DATA>> {
+    pub(crate) fn sendable(&mut self) -> Option<SendableFrame<'_, MAX_PDU_DATA>> {
         if self.state == FrameState::Created {
             Some(SendableFrame { frame: self })
         } else {

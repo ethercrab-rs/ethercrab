@@ -31,14 +31,13 @@ pub fn get_tx_rx(
 // TODO: Proper error - there are a couple of unwraps in here
 // TODO: Make some sort of split() method to ensure we can only ever have one tx/rx future running
 pub fn tx_rx_task<
-    'a,
     const MAX_FRAMES: usize,
     const MAX_PDU_DATA: usize,
     const MAX_SLAVES: usize,
     TIMEOUT,
 >(
     device: &str,
-    client: &'a Arc<Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>>,
+    client: &Arc<Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>>,
 ) -> Result<impl Future<Output = ()>, std::io::Error>
 where
     TIMEOUT: TimerFactory + Send + 'static,
