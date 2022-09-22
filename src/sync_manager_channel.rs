@@ -10,32 +10,33 @@ pub struct SyncManagerChannel {
     pub physical_start_address: u16,
     #[packed_field(bits = "16..=31")]
     pub length: u16,
-    #[packed_field(bits = "32..=47", element_size_bytes = "2")]
+    #[packed_field(bits = "32..=39")]
     pub control: Control,
+    #[packed_field(bits = "40..=47")]
+    pub status: Status,
     #[packed_field(bits = "48..=63", element_size_bytes = "2")]
     pub enable: Enable,
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, PackedStruct)]
-#[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
+#[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Control {
-    // ---
-    // First byte (little endian, so second index)
-    // ---
-    #[packed_field(bits = "8..=9", ty = "enum")]
+    #[packed_field(bits = "0..=1", ty = "enum")]
     pub operation_mode: OperationMode,
-    #[packed_field(bits = "10..=11", ty = "enum")]
+    #[packed_field(bits = "2..=3", ty = "enum")]
     pub direction: Direction,
-    #[packed_field(bits = "12")]
+    #[packed_field(bits = "4")]
     pub ecat_event_enable: bool,
-    #[packed_field(bits = "13")]
+    #[packed_field(bits = "5")]
     pub dls_user_event_enable: bool,
-    #[packed_field(bits = "14")]
+    #[packed_field(bits = "6")]
     pub watchdog_enable: bool,
     // reserved1: bool
-    // ---
-    // Second byte (little endian, so first index)
-    // ---
+}
+
+#[derive(Default, Copy, Clone, Debug, PartialEq, PackedStruct)]
+#[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
+pub struct Status {
     #[packed_field(bits = "0")]
     pub has_write_event: bool,
     #[packed_field(bits = "1")]
@@ -124,7 +125,7 @@ mod tests {
     fn decode_control() {
         // Fields are little endian
         // Taken from `soem-single-lan9252.pcap`
-        let raw = [0x26, 0x00];
+        let raw = [0x26];
 
         let parsed = Control::unpack_from_slice(&raw).unwrap();
 
@@ -136,13 +137,7 @@ mod tests {
                 ecat_event_enable: false,
                 dls_user_event_enable: true,
                 watchdog_enable: false,
-                has_write_event: false,
-                has_read_event: false,
-                mailbox_full: false,
-                buffer_state: BufferState::First,
-                read_buffer_open: false,
-                write_buffer_open: false,
-            }
+            },
         )
     }
 
@@ -193,7 +188,9 @@ mod tests {
             // Length
             0x80, 0x00, //
             // Control
-            0x26, 0x00, //
+            0x26, //
+            // Status
+            0x00, //
             // Enable
             0x01, 0x00,
         ];
@@ -211,6 +208,8 @@ mod tests {
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
+                },
+                status: Status {
                     has_write_event: false,
                     has_read_event: false,
                     mailbox_full: false,
