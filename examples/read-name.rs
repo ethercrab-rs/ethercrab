@@ -51,8 +51,8 @@ fn main() -> Result<(), PduError> {
 
             log::info!("Slave #{slave_idx} name: {name:?}");
 
-            dbg!(slave.eeprom().txpdos().await.expect("Load TXPDO"));
-            dbg!(slave.eeprom().rxpdos().await.expect("Load RXPDO"));
+            dbg!(slave.eeprom().sync_managers().await.expect("SM"));
+            dbg!(slave.eeprom().fmmus().await.expect("FMMU"));
         }
     })));
 
