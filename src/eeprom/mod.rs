@@ -102,7 +102,7 @@ where
             .fpwr(
                 self.configured_address,
                 RegisterAddress::SiiControl,
-                setup.to_array(),
+                setup.as_array(),
             )
             .await?
             .wkc(1, "SII read setup")?;
@@ -118,7 +118,7 @@ where
                     .await?
                     .wkc(1, "SII busy wait")?;
 
-                if control.busy == false {
+                if !control.busy {
                     break Ok(control.read_size);
                 }
 

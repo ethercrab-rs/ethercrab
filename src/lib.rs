@@ -73,6 +73,8 @@ macro_rules! impl_pdudata {
                 // SAFETY: Copied from `safe-transmute` crate so I'm assuming...
                 // SAFETY: EtherCAT is little-endian on the wire, so this will ONLY work on
                 // little-endian targets, hence the `compile_error!()` above.
+                // Clippy: "error: found a count of bytes instead of a count of elements of `T`"
+                #[allow(clippy::size_of_in_element_count)]
                 unsafe {
                     core::slice::from_raw_parts(
                         self as *const Self as *const u8,
@@ -133,7 +135,7 @@ impl<const N: usize> PduRead for heapless::String<N> {
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         let mut out = heapless::String::new();
 
-        out.push_str(core::str::from_utf8(slice).map_err(|e| VisibleStringError::Decode(e))?)
+        out.push_str(core::str::from_utf8(slice).map_err(VisibleStringError::Decode)?)
             .map_err(|_| VisibleStringError::TooLong)?;
 
         Ok(out)
