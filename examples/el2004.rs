@@ -61,6 +61,7 @@ fn main() -> Result<(), PduError> {
                     watchdog_enable: true,
                     ..Default::default()
                 },
+                status: Default::default(),
                 enable: ethercrab::sync_manager_channel::Enable {
                     enable: true,
                     ..Default::default()
