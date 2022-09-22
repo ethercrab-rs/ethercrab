@@ -1,13 +1,15 @@
 mod reader;
 mod types;
 
+use num_enum::TryFromPrimitive;
+
 use crate::{
     client::Client,
     eeprom::{
         reader::EepromSectionReader,
         types::{
-            CategoryType, Pdo, PdoEntry, SiiCategory, SiiControl, SiiGeneral, SiiReadSize,
-            SiiRequest, SyncManager, RX_PDO_RANGE, TX_PDO_RANGE,
+            CategoryType, FmmuUsage, Pdo, PdoEntry, SiiCategory, SiiControl, SiiGeneral,
+            SiiReadSize, SiiRequest, SyncManager, RX_PDO_RANGE, TX_PDO_RANGE,
         },
     },
     error::Error,
@@ -189,10 +191,7 @@ where
         if let Some(category) = category {
             let mut reader = EepromSectionReader::new(self, category);
 
-            while let Some(bytes) = reader
-                .take_vec::<{ mem::size_of::<SyncManager>() }>()
-                .await?
-            {
+            while let Some(bytes) = reader.take_vec::<8>().await? {
                 let (_, sm) = SyncManager::parse(&bytes).unwrap();
 
                 sync_managers.push(sm).unwrap();
@@ -200,6 +199,29 @@ where
         }
 
         Ok(sync_managers)
+    }
+
+    pub async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 8>, Error> {
+        let category = self.find_eeprom_category_start(CategoryType::Fmmu).await?;
+
+        let mut fmmus = heapless::Vec::<_, 8>::new();
+
+        if let Some(category) = category {
+            // Each FMMU is one byte, but categories have a length in words, so *2 is required.
+            let num_fmmus = category.len_words * 2;
+
+            let mut reader = EepromSectionReader::new(self, category);
+
+            for _ in 0..num_fmmus {
+                let byte = reader.try_next().await?;
+
+                let fmmu = FmmuUsage::try_from_primitive(byte).map_err(|_| Error::EepromDecode)?;
+
+                fmmus.push(fmmu).map_err(|_| Error::Capacity)?;
+            }
+        }
+
+        Ok(fmmus)
     }
 
     async fn pdos(

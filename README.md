@@ -6,6 +6,10 @@ EtherCrab is looking for sponsors! I (@jamwaffles) am developing EtherCrab in my
 currently no fulltime income, so if you want a safe, performant Rust EtherCat master please consider
 becoming a sponsor!
 
+## MSRV
+
+The MSRV for EtherCrab is 1.64.
+
 ## Current goals
 
 - [x] Become a member of the
@@ -34,6 +38,7 @@ These may change at any time.
       [casette](https://lib.rs/crates/cassette) or [nb-executor](https://lib.rs/crates/nb-executor).
 - [ ] Integration with LinuxCNC as a HAL component.
 - [ ] A multiplatform configuration/debugging/management GUI
+- [ ] Loading slave configurations from ESI XML files
 
 ## Sponsors
 
