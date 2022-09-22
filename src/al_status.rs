@@ -10,6 +10,7 @@ use packed_struct::prelude::*;
     Copy,
     Clone,
     PartialEq,
+    Eq,
     PrimitiveEnum,
     num_enum::TryFromPrimitive,
     num_enum::IntoPrimitive,

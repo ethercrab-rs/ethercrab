@@ -218,7 +218,7 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     }
 }
 
-#[derive(Default, Copy, Clone, Debug, PackedStruct, PartialEq)]
+#[derive(Default, Copy, Clone, Debug, PackedStruct, PartialEq, Eq)]
 #[packed_struct(size_bytes = "2", bit_numbering = "msb0", endian = "lsb")]
 pub struct PduFlags {
     /// Data length of this PDU.

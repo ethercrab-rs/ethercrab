@@ -96,7 +96,7 @@ impl PduData for PortDescriptors {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PrimitiveEnum_u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PrimitiveEnum_u8)]
 #[repr(u8)]
 pub enum PortType {
     NotImplemented = 0x00u8,

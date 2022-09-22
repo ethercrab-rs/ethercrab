@@ -11,7 +11,7 @@ pub fn vendor_name(search_id: u32) -> Option<&'static str> {
 }
 
 /// EtherCAT vendor ID and name list.
-pub const ETHERCAT_VENDORS: &[(u32, &'static str)] = &[
+pub const ETHERCAT_VENDORS: &[(u32, &str)] = &[
     (0x00000001, "EtherCAT Technology Group"),
     (0x00000002, "Beckhoff Automation GmbH & Co. KG"),
     (0x00000003, "Scuola Superiore S. Anna"),

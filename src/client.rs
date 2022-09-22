@@ -160,16 +160,16 @@ where
         unsafe { &mut *self.slaves.get() as &mut heapless::Vec<RefCell<Slave>, MAX_SLAVES> }
     }
 
-    pub fn slave_by_index<'a>(
-        &'a self,
+    pub fn slave_by_index(
+        &self,
         idx: u16,
-    ) -> Result<SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>, Error> {
+    ) -> Result<SlaveRef<'_, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>, Error> {
         let idx = usize::from(idx);
 
         let slave = self
             .slaves()
             .get(idx)
-            .ok_or_else(|| Error::SlaveNotFound(idx))?
+            .ok_or(Error::SlaveNotFound(idx))?
             .try_borrow_mut()
             .map_err(|_| Error::Borrow)?;
 
@@ -210,7 +210,7 @@ where
         T: PduRead,
         <T as PduRead>::Error: core::fmt::Debug,
     {
-        let pdu = self.pdu_loop.pdu_tx(command, &[], T::len().into()).await?;
+        let pdu = self.pdu_loop.pdu_tx(command, &[], T::len()).await?;
 
         let res = T::try_from_slice(pdu.data()).map_err(|_e| PduError::Decode)?;
 
@@ -225,7 +225,7 @@ where
     {
         let pdu = self
             .pdu_loop
-            .pdu_tx(command, value.as_slice(), T::len().into())
+            .pdu_tx(command, value.as_slice(), T::len())
             .await?;
 
         let res = T::try_from_slice(pdu.data()).map_err(|_| PduError::Decode)?;

@@ -1,7 +1,7 @@
 use packed_struct::prelude::*;
 
 /// ETG1000.4 Table 56 – Fieldbus memory management unit (FMMU) entity.
-#[derive(Default, Copy, Clone, Debug, PackedStruct, PartialEq)]
+#[derive(Default, Copy, Clone, Debug, PackedStruct, PartialEq, Eq)]
 #[packed_struct(bit_numbering = "msb0", endian = "lsb")]
 pub struct Fmmu {
     /// This parameter shall contain the start address in octets in the logical memory area of the memory translation.
