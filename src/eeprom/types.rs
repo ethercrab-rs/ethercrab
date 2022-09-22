@@ -235,12 +235,6 @@ pub struct SiiCategory {
     pub len_words: u16,
 }
 
-impl SiiCategory {
-    pub fn end(&self) -> u16 {
-        self.start + self.len_words
-    }
-}
-
 /// Defined in ETG1000.6 Table 19
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
@@ -468,6 +462,8 @@ enum SyncManagerType {
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
 #[derive(Debug, Clone)]
+// TODO: Remove
+#[allow(unused)]
 pub struct Pdo {
     pub(crate) index: u16,
     pub(crate) num_entries: u8,
@@ -504,6 +500,8 @@ impl Pdo {
 }
 
 #[derive(Debug, Clone)]
+// TODO: Remove
+#[allow(unused)]
 pub struct PdoEntry {
     index: u16,
     sub_index: u16,
