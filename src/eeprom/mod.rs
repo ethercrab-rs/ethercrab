@@ -332,7 +332,7 @@ where
             // Position after header
             start += 2;
 
-            log::debug!(
+            log::trace!(
                 "Found category {:?}, data starts at {start:#06x?}, length {:#04x?} ({}) bytes",
                 category_type,
                 data_len,
