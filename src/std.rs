@@ -49,7 +49,7 @@ where
     let (mut tx, mut rx) = get_tx_rx(device)?;
 
     // TODO: Unwraps
-    let tx_task = futures_lite::future::poll_fn::<(), _>(move |ctx| {
+    let tx_task = core::future::poll_fn::<(), _>(move |ctx| {
         client_tx
             .pdu_loop
             .send_frames_blocking(ctx.waker(), |pdu| {
