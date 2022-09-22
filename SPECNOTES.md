@@ -213,3 +213,7 @@ SOEM does a bunch of PDO config in `ecx_siiPDO`. Sync manager length is set from
 in `ecx_map_sii`.
 
 SOEM reads TXPDOs and RXPDOs into the same array. See `ecx_map_sii`, `Isize`/`Osize`.
+
+SM control byte mentioned in ETG2010 Table 11 corresponds to `Sm/@ControlByte` (p96) in ETG2000,
+which then points to addres 0x0800 + 0x0004, i.e. ETG1000.4 Table 58, starting from `Buffer type`
+row.
