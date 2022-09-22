@@ -1,8 +1,8 @@
 //! Slave Information Interface (SII).
 
-use crate::PduRead;
+use crate::{sync_manager_channel, PduRead};
 use nom::{
-    combinator::{map, map_opt},
+    combinator::{map, map_opt, map_res},
     number::complete::{le_i16, le_u16, le_u8},
     IResult,
 };
@@ -227,6 +227,7 @@ pub enum SiiCoding {
 }
 
 /// Defined in ETG1000.6 Table 17
+#[derive(Debug)]
 pub struct SiiCategory {
     pub category: CategoryType,
     pub start: u16,
@@ -402,8 +403,7 @@ bitflags::bitflags! {
 pub struct SyncManager {
     start_addr: u16,
     length: u16,
-    // TODO: Look up in Esi: DeviceType:Sm:ControlByte
-    control: u8,
+    control: sync_manager_channel::Control,
     enable: SyncManagerEnable,
     usage_type: SyncManagerType,
 }
@@ -412,9 +412,12 @@ impl SyncManager {
     pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, start_addr) = le_u16(i)?;
         let (i, length) = le_u16(i)?;
-        let (i, control) = le_u8(i)?;
+        let (i, control) =
+            map_res(le_u8, |byte| sync_manager_channel::Control::unpack(&[byte]))(i)?;
+
         // Ignored
         let (i, _status) = le_u8(i)?;
+
         let (i, enable) = map_opt(le_u8, |byte| SyncManagerEnable::from_bits(byte))(i)?;
         let (i, usage_type) = map(le_u8, |byte| SyncManagerType::from_primitive(byte))(i)?;
 
