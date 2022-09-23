@@ -128,15 +128,23 @@ where
         let sync_managers = self.eeprom().sync_managers().await?;
 
         if let Some(write_sm) = sync_managers.get(index) {
-            let pdo_config = rx_pdos
+            let bit_len = rx_pdos
                 .iter()
-                .find(|pdo| usize::from(pdo.sync_manager) == index)
-                .ok_or(Error::Other)?;
+                .filter(|pdo| usize::from(pdo.sync_manager) == index)
+                .flat_map(|pdo| {
+                    pdo.entries
+                        .iter()
+                        .map(|entry| u16::from(entry.data_length_bits))
+                })
+                .sum::<u16>();
+
+            log::debug!("Sync manager {index} has bit length {bit_len}");
+
+            // TODO: What happens if bit_len is zero?
 
             let config = SyncManagerChannel {
                 physical_start_address: write_sm.start_addr,
-                // TODO: Figure out what to do if there is more than one entry (or zero)
-                length: u16::from(pdo_config.entries[0].data_length_bits),
+                length: u16::from(bit_len),
                 control: write_sm.control,
                 status: Default::default(),
                 enable: sync_manager_channel::Enable {
@@ -151,10 +159,14 @@ where
         }
     }
 
+    // TODO: Because bit/byte offsets are cumulative, the slave config needs to be controlled by
+    // `Client`, or at least have the base offsets fed into it.
     pub async fn configure_from_eeprom(&self) -> Result<(), Error> {
         // TODO: Check if mailbox is supported or not; autoconfig is different if it is.
 
         let rx_pdos = self.eeprom().rxpdos().await?;
+
+        dbg!(&rx_pdos);
 
         if let Some(tx_config) = self.sync_manager_config(0, &rx_pdos).await? {
             self.client
