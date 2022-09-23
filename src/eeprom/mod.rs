@@ -236,40 +236,40 @@ where
         if let Some(category) = category {
             let mut reader = EepromSectionReader::new(self, category);
 
-            let mut pdo = reader.take_n_vec_exact::<10>(10).await.and_then(|bytes| {
-                let (_, pdo) = Pdo::parse(&bytes).map_err(|e| {
+            // TODO: Define a trait that gives the number of bytes to take to parse the type.
+            while let Some(pdo) = reader.take_n_vec::<8>(8).await? {
+                let (i, mut pdo) = Pdo::parse(&pdo).map_err(|e| {
                     log::error!("PDO: {}", e);
 
                     Error::EepromDecode
                 })?;
 
+                assert_eq!(i.len(), 0);
+
                 log::debug!("Range {:?} value {}", valid_range, pdo.index);
 
                 if !valid_range.contains(&pdo.index) {
-                    Err(Error::EepromDecode)
-                } else {
-                    Ok(pdo)
+                    return Err(Error::EepromDecode);
                 }
-            })?;
 
-            for _ in 0..pdo.num_entries {
-                let entry = reader
-                    .take_n_vec_exact::<{ mem::size_of::<PdoEntry>() }>(mem::size_of::<PdoEntry>())
-                    .await
-                    .and_then(|bytes| {
-                        let (_, entry) = PdoEntry::parse(&bytes).map_err(|e| {
+                for _ in 0..pdo.num_entries {
+                    let entry = reader.take_n_vec_exact::<8>(8).await.and_then(|bytes| {
+                        let (i, entry) = PdoEntry::parse(&bytes).map_err(|e| {
                             log::error!("PDO entry: {}", e);
 
                             Error::EepromDecode
                         })?;
 
+                        assert_eq!(i.len(), 0);
+
                         Ok(entry)
                     })?;
 
-                pdo.entries.push(entry).map_err(|_| Error::Capacity)?;
-            }
+                    pdo.entries.push(entry).map_err(|_| Error::Capacity)?;
+                }
 
-            pdos.push(pdo).map_err(|_| Error::Capacity)?;
+                pdos.push(pdo).map_err(|_| Error::Capacity)?;
+            }
         }
 
         Ok(pdos)
