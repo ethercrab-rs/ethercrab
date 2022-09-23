@@ -275,10 +275,12 @@ where
         Ok(pdos)
     }
 
+    /// Transmit PDOs (from device's perspective) - inputs
     pub async fn txpdos(&self) -> Result<heapless::Vec<Pdo, 8>, Error> {
         self.pdos(CategoryType::TxPdo, TX_PDO_RANGE).await
     }
 
+    /// Receive PDOs (from device's perspective) - outputs
     pub async fn rxpdos(&self) -> Result<heapless::Vec<Pdo, 8>, Error> {
         self.pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
     }
