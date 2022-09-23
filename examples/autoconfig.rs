@@ -3,7 +3,7 @@
 use async_ctrlc::CtrlC;
 use ethercrab::al_status::AlState;
 use ethercrab::client::Client;
-use ethercrab::error::PduError;
+use ethercrab::error::{Error, PduError};
 use ethercrab::fmmu::Fmmu;
 use ethercrab::pdu::CheckWorkingCounter;
 use ethercrab::register::RegisterAddress;
@@ -28,7 +28,7 @@ const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
 #[cfg(not(target_os = "windows"))]
 const INTERFACE: &str = "eth1";
 
-async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), PduError> {
+async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let client = Arc::new(Client::<16, 16, 16, smol::Timer>::new());
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
@@ -40,28 +40,35 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), PduError> {
     client.init().await.expect("Init");
 
     {
-        // TODO: Read this from EEPROM
-        let write_sm = SyncManagerChannel {
-            physical_start_address: 0x0f00,
-            length: 1,
-            control: ethercrab::sync_manager_channel::Control {
-                operation_mode: OperationMode::Buffered,
-                direction: Direction::MasterWrite,
-                watchdog_enable: true,
-                ..Default::default()
-            },
-            enable: ethercrab::sync_manager_channel::Enable {
-                enable: true,
-                ..Default::default()
-            },
-        };
+        for idx in 0..num_slaves {
+            let slave = client.slave_by_index(idx)?;
 
-        client
-            .fpwr(0x1001, RegisterAddress::Sm0, write_sm.pack().unwrap())
-            .await
-            .unwrap()
-            .wkc(1, "SM0")
-            .unwrap();
+            slave.configure_from_eeprom().await?;
+        }
+
+        // // TODO: Read this from EEPROM
+        // let write_sm = SyncManagerChannel {
+        //     physical_start_address: 0x0f00,
+        //     length: 1,
+        //     control: ethercrab::sync_manager_channel::Control {
+        //         operation_mode: OperationMode::Buffered,
+        //         direction: Direction::MasterWrite,
+        //         watchdog_enable: true,
+        //         ..Default::default()
+        //     },
+        //     status: ethercrab::sync_manager_channel::Status::default(),
+        //     enable: ethercrab::sync_manager_channel::Enable {
+        //         enable: true,
+        //         ..Default::default()
+        //     },
+        // };
+
+        // client
+        //     .fpwr(0x1001, RegisterAddress::Sm0, write_sm.pack().unwrap())
+        //     .await
+        //     .unwrap()
+        //     .wkc(1, "SM0")
+        //     .unwrap();
     }
 
     {
@@ -134,7 +141,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), PduError> {
     Ok(())
 }
 
-fn main() -> Result<(), PduError> {
+fn main() -> Result<(), Error> {
     env_logger::init();
     let local_ex = LocalExecutor::new();
 

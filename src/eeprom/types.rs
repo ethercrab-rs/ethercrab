@@ -1,6 +1,9 @@
 //! Slave Information Interface (SII).
 
-use crate::{sync_manager_channel, PduRead};
+use crate::{
+    sync_manager_channel::{self, SyncManagerChannel},
+    PduRead,
+};
 use nom::{
     combinator::{map, map_opt, map_res},
     number::complete::{le_i16, le_u16, le_u8},
@@ -401,11 +404,11 @@ bitflags::bitflags! {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SyncManager {
-    start_addr: u16,
-    length: u16,
-    control: sync_manager_channel::Control,
-    enable: SyncManagerEnable,
-    usage_type: SyncManagerType,
+    pub(crate) start_addr: u16,
+    pub(crate) length: u16,
+    pub(crate) control: sync_manager_channel::Control,
+    pub(crate) enable: SyncManagerEnable,
+    pub(crate) usage_type: SyncManagerType,
 }
 
 impl SyncManager {
@@ -449,7 +452,7 @@ bitflags::bitflags! {
 
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, num_enum::FromPrimitive)]
 #[repr(u8)]
-enum SyncManagerType {
+pub enum SyncManagerType {
     /// Not used or unknown.
     #[default]
     Unknown = 0x00,
@@ -470,7 +473,8 @@ enum SyncManagerType {
 pub struct Pdo {
     pub(crate) index: u16,
     pub(crate) num_entries: u8,
-    sync_manager: u8,
+    // TODO: Un-pub
+    pub sync_manager: u8,
     dc_sync: u8,
     /// Index into EEPROM Strings section for PDO name.
     name_string_idx: u8,
@@ -511,7 +515,8 @@ pub struct PdoEntry {
     name_string_idx: u8,
     /// Index in CoE object dictionary.
     data_type: u8,
-    data_length_bits: u8,
+    // TODO: Un-pub
+    pub(crate) data_length_bits: u8,
     flags: u16,
 }
 
