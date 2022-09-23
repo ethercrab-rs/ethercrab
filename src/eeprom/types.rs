@@ -511,7 +511,7 @@ impl Pdo {
 #[allow(unused)]
 pub struct PdoEntry {
     index: u16,
-    sub_index: u16,
+    sub_index: u8,
     name_string_idx: u8,
     /// Index in CoE object dictionary.
     data_type: u8,
@@ -521,9 +521,10 @@ pub struct PdoEntry {
 }
 
 impl PdoEntry {
+    // TODO: `all_consuming`, and for all other `parse()` methods
     pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, index) = le_u16(i)?;
-        let (i, sub_index) = le_u16(i)?;
+        let (i, sub_index) = le_u8(i)?;
         let (i, name_string_idx) = le_u8(i)?;
         let (i, data_type) = le_u8(i)?;
         let (i, data_length_bits) = le_u8(i)?;
