@@ -1,7 +1,6 @@
 mod reader;
-mod types;
-
-use num_enum::TryFromPrimitive;
+// TODO: Un-pub
+pub mod types;
 
 use crate::{
     client::Client,
@@ -18,6 +17,7 @@ use crate::{
     timer_factory::TimerFactory,
 };
 use core::{fmt, mem, ops::RangeInclusive, str::FromStr};
+use num_enum::TryFromPrimitive;
 
 const SII_FIRST_SECTION_START: u16 = 0x0040u16;
 
