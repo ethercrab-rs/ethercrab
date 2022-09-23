@@ -26,6 +26,7 @@ pub enum Error {
     EepromSectionUnderrun,
     /// A fixed size array was not large enough to hold a given item.
     Capacity,
+    Other,
 }
 
 impl From<BorrowError> for Error {
