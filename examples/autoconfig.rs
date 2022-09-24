@@ -7,6 +7,7 @@ use ethercrab::error::{Error, PduError};
 use ethercrab::fmmu::Fmmu;
 use ethercrab::pdu::CheckWorkingCounter;
 use ethercrab::register::RegisterAddress;
+use ethercrab::slave::MappingOffset;
 use ethercrab::std::tx_rx_task;
 use ethercrab::sync_manager_channel::{Direction, OperationMode, SyncManagerChannel};
 use futures_lite::FutureExt;
@@ -39,60 +40,15 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     client.init().await.expect("Init");
 
-    {
-        for idx in 0..num_slaves {
-            let slave = client.slave_by_index(idx)?;
+    // TODO: Move into client. This struct/loop shouldn't be public
+    let mut offset = MappingOffset::default();
 
-            slave.configure_from_eeprom().await?;
-        }
+    for idx in 0..num_slaves {
+        let slave = client.slave_by_index(idx)?;
 
-        // // TODO: Read this from EEPROM
-        // let write_sm = SyncManagerChannel {
-        //     physical_start_address: 0x0f00,
-        //     length: 1,
-        //     control: ethercrab::sync_manager_channel::Control {
-        //         operation_mode: OperationMode::Buffered,
-        //         direction: Direction::MasterWrite,
-        //         watchdog_enable: true,
-        //         ..Default::default()
-        //     },
-        //     status: ethercrab::sync_manager_channel::Status::default(),
-        //     enable: ethercrab::sync_manager_channel::Enable {
-        //         enable: true,
-        //         ..Default::default()
-        //     },
-        // };
+        offset = slave.configure_from_eeprom(offset).await?;
 
-        // client
-        //     .fpwr(0x1001, RegisterAddress::Sm0, write_sm.pack().unwrap())
-        //     .await
-        //     .unwrap()
-        //     .wkc(1, "SM0")
-        //     .unwrap();
-    }
-
-    {
-        // TODO: Read this from EEPROM
-        let write_fmmu = Fmmu {
-            logical_start_address: 0x00000000,
-            length: 0x01,
-            logical_start_bit: 0x00,
-            logical_end_bit: 0x03,
-            physical_start_address: 0x0f00,
-            physical_start_bit: 0x0,
-            read_enable: false,
-            write_enable: true,
-            enable: true,
-            reserved_1: 0,
-            reserved_2: 0,
-        };
-
-        client
-            .fpwr(0x1001, RegisterAddress::Fmmu0, write_fmmu.pack().unwrap())
-            .await
-            .unwrap()
-            .wkc(1, "FMMU0")
-            .unwrap();
+        log::info!("Slave {idx} configured");
     }
 
     client
@@ -129,14 +85,10 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     .detach();
 
     // Blink frequency
-    let mut interval = async_io::Timer::interval(Duration::from_millis(250));
+    let mut interval = async_io::Timer::interval(Duration::from_millis(50));
 
     while let Some(_) = interval.next().await {
-        if *value.borrow() == 0 {
-            *value.borrow_mut() = 0b0000_0010;
-        } else {
-            *value.borrow_mut() = 0;
-        }
+        *value.borrow_mut() += 1;
     }
     Ok(())
 }
