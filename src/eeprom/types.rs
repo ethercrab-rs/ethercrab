@@ -1,6 +1,7 @@
 //! Slave Information Interface (SII).
 
 use crate::{
+    base_data_types::PrimitiveDataType,
     sync_manager_channel::{self, SyncManagerChannel},
     PduRead,
 };
@@ -9,7 +10,7 @@ use nom::{
     number::complete::{le_i16, le_u16, le_u8},
     IResult,
 };
-use num_enum::FromPrimitive;
+use num_enum::{FromPrimitive, TryFromPrimitive};
 use packed_struct::prelude::*;
 
 pub const TX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
@@ -513,8 +514,8 @@ pub struct PdoEntry {
     index: u16,
     sub_index: u8,
     name_string_idx: u8,
-    /// Index in CoE object dictionary.
-    data_type: u8,
+    // See page 103 of ETG2000
+    data_type: PrimitiveDataType,
     // TODO: Un-pub
     pub(crate) data_length_bits: u8,
     flags: u16,
@@ -526,7 +527,7 @@ impl PdoEntry {
         let (i, index) = le_u16(i)?;
         let (i, sub_index) = le_u8(i)?;
         let (i, name_string_idx) = le_u8(i)?;
-        let (i, data_type) = le_u8(i)?;
+        let (i, data_type) = map_res(le_u8, PrimitiveDataType::try_from_primitive)(i)?;
         let (i, data_length_bits) = le_u8(i)?;
         let (i, flags) = le_u16(i)?;
 
