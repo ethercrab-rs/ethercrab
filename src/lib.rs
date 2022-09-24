@@ -6,6 +6,7 @@ pub(crate) mod log;
 pub mod al_control;
 pub mod al_status;
 pub mod al_status_code;
+pub mod base_data_types;
 pub mod client;
 pub mod command;
 pub mod eeprom;
