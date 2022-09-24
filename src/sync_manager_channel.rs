@@ -9,7 +9,7 @@ pub struct SyncManagerChannel {
     #[packed_field(bits = "0..=15")]
     pub physical_start_address: u16,
     #[packed_field(bits = "16..=31")]
-    pub length: u16,
+    pub length_bytes: u16,
     #[packed_field(bits = "32..=39")]
     pub control: Control,
     #[packed_field(bits = "40..=47")]
@@ -201,7 +201,7 @@ mod tests {
             parsed,
             SyncManagerChannel {
                 physical_start_address: 0x1000,
-                length: 0x0080,
+                length_bytes: 0x0080,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
                     direction: Direction::MasterWrite,
