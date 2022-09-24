@@ -54,7 +54,7 @@ fn main() -> Result<(), PduError> {
             // TODO: Read this from EEPROM
             let write_sm = SyncManagerChannel {
                 physical_start_address: 0x0f00,
-                length: 1,
+                length_bytes: 1,
                 control: ethercrab::sync_manager_channel::Control {
                     operation_mode: OperationMode::Buffered,
                     direction: Direction::MasterWrite,
@@ -80,7 +80,7 @@ fn main() -> Result<(), PduError> {
             // TODO: Read this from EEPROM
             let write_fmmu = Fmmu {
                 logical_start_address: 0x00000000,
-                length: 0x01,
+                length_bytes: 0x01,
                 logical_start_bit: 0x00,
                 logical_end_bit: 0x03,
                 physical_start_address: 0x0f00,
