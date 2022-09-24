@@ -8,6 +8,7 @@ use crate::{
         Eeprom,
     },
     error::Error,
+    fmmu::Fmmu,
     pdu::CheckWorkingCounter,
     register::RegisterAddress,
     sync_manager_channel::{self, SyncManagerChannel},
@@ -120,13 +121,24 @@ where
         Eeprom::new(self.slave.configured_address, self.client)
     }
 
-    async fn sync_manager_config(
+    pub async fn configure_from_eeprom(
         &self,
-        index: usize,
-        rx_pdos: &[Pdo],
-    ) -> Result<Option<SyncManagerChannel>, Error> {
+        offset: MappingOffset,
+    ) -> Result<MappingOffset, Error> {
+        // TODO: Check if mailbox is supported or not; autoconfig is different if it is.
+
+        // RX from the perspective of the slave device
+        let rx_pdos = self.eeprom().rxpdos().await?;
+
         let sync_managers = self.eeprom().sync_managers().await?;
 
+        // dbg!(&rx_pdos);
+
+        // TODO: No fixed index
+        let index = 0;
+
+        // NOTE: Fixed index of zero is an output SM if mailbox is not supported
+        // TODO: In light of this, use `eeprom().fmmus()` to decide what op mode each SM/FMMU should have
         if let Some(write_sm) = sync_managers.get(index) {
             let bit_len = rx_pdos
                 .iter()
@@ -138,13 +150,15 @@ where
                 })
                 .sum::<u16>();
 
+            let byte_len = u16::from((bit_len + 7) / 8);
+
             log::debug!("Sync manager {index} has bit length {bit_len}");
 
             // TODO: What happens if bit_len is zero?
 
-            let config = SyncManagerChannel {
+            let tx_config = SyncManagerChannel {
                 physical_start_address: write_sm.start_addr,
-                length: u16::from(bit_len),
+                length_bytes: byte_len,
                 control: write_sm.control,
                 status: Default::default(),
                 enable: sync_manager_channel::Enable {
@@ -153,22 +167,22 @@ where
                 },
             };
 
-            Ok(Some(config))
-        } else {
-            Ok(None)
-        }
-    }
+            let fmmu_config = Fmmu {
+                logical_start_address: offset.start_address,
+                length_bytes: tx_config.length_bytes,
+                logical_start_bit: offset.start_bit,
+                logical_end_bit: offset.end_bit(bit_len),
+                physical_start_address: tx_config.physical_start_address,
+                physical_start_bit: 0x0,
+                read_enable: false,
+                write_enable: true,
+                enable: true,
+                reserved_1: 0,
+                reserved_2: 0,
+            };
 
-    // TODO: Because bit/byte offsets are cumulative, the slave config needs to be controlled by
-    // `Client`, or at least have the base offsets fed into it.
-    pub async fn configure_from_eeprom(&self) -> Result<(), Error> {
-        // TODO: Check if mailbox is supported or not; autoconfig is different if it is.
+            dbg!(fmmu_config);
 
-        let rx_pdos = self.eeprom().rxpdos().await?;
-
-        dbg!(&rx_pdos);
-
-        if let Some(tx_config) = self.sync_manager_config(0, &rx_pdos).await? {
             self.client
                 .fpwr(
                     self.slave.configured_address,
@@ -177,8 +191,141 @@ where
                 )
                 .await?
                 .wkc(1, "SM0")?;
-        }
 
-        Ok(())
+            self.client
+                .fpwr(
+                    self.slave.configured_address,
+                    RegisterAddress::Fmmu0,
+                    fmmu_config.pack().unwrap(),
+                )
+                .await?
+                .wkc(1, "FMMU0")?;
+
+            Ok(offset.increment(bit_len))
+        } else {
+            Ok(offset)
+        }
+    }
+}
+
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+pub struct MappingOffset {
+    start_address: u32,
+    start_bit: u8,
+}
+
+impl MappingOffset {
+    /// Increment, calculating values for _next_ mapping when the struct is read after increment.
+    fn increment(self, bits: u16) -> Self {
+        let mut inc_bytes = bits / 8;
+        let inc_bits = bits % 8;
+
+        // Bit count overflows a byte, so move into the next byte's bits by incrementing the byte
+        // index one more.
+        let start_bit = if u16::from(self.start_bit) + inc_bits >= 8 {
+            inc_bytes += 1;
+
+            ((u16::from(self.start_bit) + inc_bits) % 8) as u8
+        } else {
+            self.start_bit + inc_bits as u8
+        };
+
+        Self {
+            start_address: self.start_address + u32::from(inc_bytes),
+            start_bit,
+        }
+    }
+
+    /// Compute end bit 0-7 in the final byte of the mapped PDI section.
+    fn end_bit(self, bits: u16) -> u8 {
+        // SAFETY: The modulos here and in `increment` mean that all value can comfortably fit in a
+        // u8, so all the `as` and non-checked `+` here are fine.
+
+        let bits = (bits.saturating_sub(1) % 8) as u8;
+
+        let end = self.start_bit + bits % 8;
+
+        end
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simulate_2_el2004() {
+        let input = MappingOffset::default();
+
+        let input = input.increment(4);
+
+        assert_eq!(
+            input,
+            MappingOffset {
+                start_address: 0,
+                start_bit: 4
+            }
+        );
+
+        let input = input.increment(4);
+
+        assert_eq!(
+            input,
+            MappingOffset {
+                start_address: 1,
+                start_bit: 0
+            }
+        );
+    }
+
+    #[test]
+    fn end_bit() {
+        let input = MappingOffset::default();
+
+        assert_eq!(input.end_bit(4), 3);
+
+        let input = input.increment(4);
+
+        assert_eq!(input.end_bit(4), 7);
+
+        let input = input.increment(4);
+
+        assert_eq!(input.end_bit(4), 3);
+    }
+
+    #[test]
+    fn zero_length_end_bit() {
+        let input = MappingOffset::default();
+
+        assert_eq!(input.end_bit(0), 0);
+
+        let input = input.increment(4);
+
+        assert_eq!(input.end_bit(0), 4);
+    }
+
+    #[test]
+    fn cross_boundary() {
+        let input = MappingOffset::default();
+
+        let input = input.increment(6);
+
+        assert_eq!(
+            input,
+            MappingOffset {
+                start_address: 0,
+                start_bit: 6
+            }
+        );
+
+        let input = input.increment(6);
+
+        assert_eq!(
+            input,
+            MappingOffset {
+                start_address: 1,
+                start_bit: 4
+            }
+        );
     }
 }
