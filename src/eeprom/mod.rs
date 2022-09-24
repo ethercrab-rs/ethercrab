@@ -201,10 +201,11 @@ where
         Ok(sync_managers)
     }
 
-    pub async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 8>, Error> {
+    pub async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
         let category = self.find_eeprom_category_start(CategoryType::Fmmu).await?;
 
-        let mut fmmus = heapless::Vec::<_, 8>::new();
+        // ETG100.4 6.6.1 states there may be up to 16 FMMUs
+        let mut fmmus = heapless::Vec::<_, 16>::new();
 
         if let Some(category) = category {
             // Each FMMU is one byte, but categories have a length in words, so *2 is required.
