@@ -10,7 +10,7 @@ use std::{mem::size_of, path::PathBuf};
 fn main() {
     let data = Fmmu {
         logical_start_address: 0,
-        length: 1,
+        length_bytes: 1,
         logical_start_bit: 0,
         logical_end_bit: 3,
         physical_start_address: 0x1000,

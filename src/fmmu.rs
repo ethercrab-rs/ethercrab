@@ -9,7 +9,7 @@ pub struct Fmmu {
     pub logical_start_address: u32,
 
     #[packed_field(bytes = "4..=5")]
-    pub length: u16,
+    pub length_bytes: u16,
 
     #[packed_field(bytes = "6", size_bits = "3")]
     pub logical_start_bit: u8,
@@ -81,7 +81,7 @@ mod tests {
             fmmu,
             Fmmu {
                 logical_start_address: 0,
-                length: 1,
+                length_bytes: 1,
                 logical_start_bit: 0,
                 logical_end_bit: 3,
                 physical_start_address: 0x1000,

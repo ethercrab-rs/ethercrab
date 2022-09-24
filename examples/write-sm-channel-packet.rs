@@ -14,7 +14,7 @@ use std::{mem::size_of, path::PathBuf};
 fn main() {
     let data = SyncManagerChannel {
         physical_start_address: 0x1000,
-        length: 0x0080,
+        length_bytes: 0x0080,
         control: Control {
             operation_mode: OperationMode::Mailbox,
             direction: Direction::MasterWrite,
