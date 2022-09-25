@@ -346,4 +346,13 @@ where
     {
         self.write_service(Command::Lwr { address }, value).await
     }
+
+    /// Logical read/write.
+    pub async fn lrw<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
+    where
+        T: PduData,
+        <T as PduRead>::Error: core::fmt::Debug,
+    {
+        self.write_service(Command::Lrw { address }, value).await
+    }
 }
