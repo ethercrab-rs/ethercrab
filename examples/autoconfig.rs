@@ -1,18 +1,17 @@
 //! Read slave configuration from EEPROM and automatically apply it.
+//!
+//! PDI is hardcoded to two bytes to support 2x EL2004 output modules and 1x EL1004 input module in
+//! that order.
 
 use async_ctrlc::CtrlC;
 use ethercrab::al_status::AlState;
 use ethercrab::client::Client;
-use ethercrab::error::{Error, PduError};
-use ethercrab::fmmu::Fmmu;
-use ethercrab::pdu::CheckWorkingCounter;
+use ethercrab::error::Error;
 use ethercrab::register::RegisterAddress;
 use ethercrab::slave::MappingOffset;
 use ethercrab::std::tx_rx_task;
-use ethercrab::sync_manager_channel::{Direction, OperationMode, SyncManagerChannel};
 use futures_lite::FutureExt;
 use futures_lite::StreamExt;
-use packed_struct::PackedStruct;
 use smol::LocalExecutor;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -47,9 +46,9 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         let slave = client.slave_by_index(idx)?;
 
         offset = slave.configure_from_eeprom(offset).await?;
-
-        log::info!("Slave {idx} configured");
     }
+
+    log::info!("Slaves configured. PDI size {:?}", offset);
 
     client
         .request_slave_state(AlState::PreOp)
@@ -66,30 +65,56 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         .await
         .expect(&format!("Slave OP"));
 
-    let value = Rc::new(RefCell::new(0x00u8));
+    // RX-only PDI, second byte contains 4 input state bits
+    {
+        let value = Rc::new(RefCell::new([0u8; 2]));
 
-    let value2 = value.clone();
-    let client2 = client.clone();
+        let value2 = value.clone();
+        let client2 = client.clone();
 
-    // PD TX task (no RX because EL2004 is WO)
-    ex.spawn(async move {
-        // Cycle time
-        let mut interval = async_io::Timer::interval(Duration::from_millis(2));
+        ex.spawn(async move {
+            // Cycle time
+            let mut interval = async_io::Timer::interval(Duration::from_millis(2));
 
-        while let Some(_) = interval.next().await {
-            let v: u8 = *value2.borrow();
+            while let Some(_) = interval.next().await {
+                let v = *value2.borrow();
 
-            client2.lwr(0u32, v).await.expect("Bad write");
-        }
-    })
-    .detach();
+                let read = client2.lrw(0u32, v).await.expect("Bad write");
 
-    // Blink frequency
-    let mut interval = async_io::Timer::interval(Duration::from_millis(50));
-
-    while let Some(_) = interval.next().await {
-        *value.borrow_mut() += 1;
+                dbg!(read.0);
+            }
+        })
+        .await;
     }
+
+    // TX-only PDI
+    // {
+    //     let value = Rc::new(RefCell::new(0x00u8));
+
+    //     let value2 = value.clone();
+    //     let client2 = client.clone();
+
+    //     // PD TX task (no RX because EL2004 is WO)
+    //     ex.spawn(async move {
+    //         // Cycle time
+    //         let mut interval = async_io::Timer::interval(Duration::from_millis(2));
+
+    //         while let Some(_) = interval.next().await {
+    //             let v: u8 = *value2.borrow();
+
+    //             client2.lwr(0u32, v).await.expect("Bad write");
+    //         }
+    //     })
+    //     .detach();
+
+    //     // Blink frequency
+    //     let mut interval = async_io::Timer::interval(Duration::from_millis(50));
+
+    //     while let Some(_) = interval.next().await {
+    //         *value.borrow_mut() += 1;
+    //     }
+    // }
+
     Ok(())
 }
 

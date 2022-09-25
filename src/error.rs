@@ -41,6 +41,7 @@ pub enum Capacity {
     Fmmu,
     SyncManager,
     PdoEntry,
+    FmmuEx,
 }
 
 #[derive(Debug)]

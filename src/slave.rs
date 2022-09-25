@@ -4,7 +4,8 @@ use crate::{
     al_status_code::AlStatusCode,
     client::Client,
     eeprom::{
-        types::{Pdo, SyncManagerEnable},
+        self,
+        types::{FmmuUsage, Pdo, SyncManagerEnable, SyncManagerType},
         Eeprom,
     },
     error::Error,
@@ -123,88 +124,123 @@ where
 
     pub async fn configure_from_eeprom(
         &self,
-        offset: MappingOffset,
+        mut offset: MappingOffset,
     ) -> Result<MappingOffset, Error> {
         // TODO: Check if mailbox is supported or not; autoconfig is different if it is.
 
         // RX from the perspective of the slave device
         let rx_pdos = self.eeprom().rxpdos().await?;
+        let tx_pdos = self.eeprom().txpdos().await?;
 
         let sync_managers = self.eeprom().sync_managers().await?;
+        let fmmu_usage = self.eeprom().fmmus().await?;
+        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
+        // dbg!(&sync_managers);
         // dbg!(&rx_pdos);
+        // dbg!(&fmmu_usage);
 
-        // TODO: No fixed index
-        let index = 0;
+        // TODO: Actually set this up. Could we use some nice typestates to only expose mailbox
+        // methods on slaves that support them? Probably not, right? Cos we need to keep lists of
+        // slaves somewhere.
+        let has_mailbox = sync_managers.iter().any(|sm| {
+            matches!(
+                sm.usage_type,
+                SyncManagerType::MailboxIn | SyncManagerType::MailboxOut
+            )
+        });
 
-        // NOTE: Fixed index of zero is an output SM if mailbox is not supported
-        // TODO: In light of this, use `eeprom().fmmus()` to decide what op mode each SM/FMMU should have
-        if let Some(write_sm) = sync_managers.get(index) {
-            let bit_len = rx_pdos
-                .iter()
-                .filter(|pdo| usize::from(pdo.sync_manager) == index)
-                .flat_map(|pdo| {
-                    pdo.entries
-                        .iter()
-                        .map(|entry| u16::from(entry.data_length_bits))
+        for (fmmu_index, usage) in fmmu_usage.iter().enumerate() {
+            let sync_manager_index = fmmu_sm_mappings
+                .get(fmmu_index)
+                .map(|mapping| *mapping)
+                .unwrap_or(eeprom::types::Fmmu {
+                    sync_manager: fmmu_index as u8,
                 })
-                .sum::<u16>();
+                .sync_manager;
 
-            let byte_len = u16::from((bit_len + 7) / 8);
+            // dbg!(fmmu_index, sync_manager_index);
 
-            log::debug!("Sync manager {index} has bit length {bit_len}");
+            match usage {
+                FmmuUsage::Unused => continue,
+                FmmuUsage::Outputs | FmmuUsage::Inputs => {
+                    // TODO: error type
+                    let sync_manager = sync_managers
+                        .get(usize::from(sync_manager_index))
+                        .ok_or(Error::Other)?;
 
-            // TODO: What happens if bit_len is zero?
+                    let pdos = if *usage == FmmuUsage::Outputs {
+                        &rx_pdos
+                    } else {
+                        &tx_pdos
+                    };
 
-            let tx_config = SyncManagerChannel {
-                physical_start_address: write_sm.start_addr,
-                length_bytes: byte_len,
-                control: write_sm.control,
-                status: Default::default(),
-                enable: sync_manager_channel::Enable {
-                    enable: write_sm.enable.contains(SyncManagerEnable::ENABLE),
-                    ..Default::default()
-                },
-            };
+                    let bit_len = pdos
+                        .iter()
+                        .filter(|pdo| pdo.sync_manager == sync_manager_index)
+                        .flat_map(|pdo| {
+                            pdo.entries
+                                .iter()
+                                .map(|entry| u16::from(entry.data_length_bits))
+                        })
+                        .sum::<u16>();
 
-            let fmmu_config = Fmmu {
-                logical_start_address: offset.start_address,
-                length_bytes: tx_config.length_bytes,
-                logical_start_bit: offset.start_bit,
-                logical_end_bit: offset.end_bit(bit_len),
-                physical_start_address: tx_config.physical_start_address,
-                physical_start_bit: 0x0,
-                read_enable: false,
-                write_enable: true,
-                enable: true,
-                reserved_1: 0,
-                reserved_2: 0,
-            };
+                    let byte_len = u16::from((bit_len + 7) / 8);
 
-            dbg!(fmmu_config);
+                    log::trace!("Sync manager {sync_manager_index} has bit length {bit_len}");
 
-            self.client
-                .fpwr(
-                    self.slave.configured_address,
-                    RegisterAddress::Sm0,
-                    tx_config.pack().unwrap(),
-                )
-                .await?
-                .wkc(1, "SM0")?;
+                    // TODO: What happens if bit_len is zero?
 
-            self.client
-                .fpwr(
-                    self.slave.configured_address,
-                    RegisterAddress::Fmmu0,
-                    fmmu_config.pack().unwrap(),
-                )
-                .await?
-                .wkc(1, "FMMU0")?;
+                    let tx_config = SyncManagerChannel {
+                        physical_start_address: sync_manager.start_addr,
+                        length_bytes: byte_len,
+                        control: sync_manager.control,
+                        status: Default::default(),
+                        enable: sync_manager_channel::Enable {
+                            enable: sync_manager.enable.contains(SyncManagerEnable::ENABLE),
+                            ..Default::default()
+                        },
+                    };
 
-            Ok(offset.increment(bit_len))
-        } else {
-            Ok(offset)
+                    let fmmu_config = Fmmu {
+                        logical_start_address: offset.start_address,
+                        length_bytes: tx_config.length_bytes,
+                        logical_start_bit: offset.start_bit,
+                        logical_end_bit: offset.end_bit(bit_len),
+                        physical_start_address: tx_config.physical_start_address,
+                        physical_start_bit: 0x0,
+                        read_enable: *usage == FmmuUsage::Inputs,
+                        write_enable: *usage == FmmuUsage::Outputs,
+                        enable: true,
+                        reserved_1: 0,
+                        reserved_2: 0,
+                    };
+
+                    self.client
+                        .fpwr(
+                            self.slave.configured_address,
+                            RegisterAddress::sync_manager(sync_manager_index),
+                            tx_config.pack().unwrap(),
+                        )
+                        .await?
+                        .wkc(1, "SM")?;
+
+                    self.client
+                        .fpwr(
+                            self.slave.configured_address,
+                            RegisterAddress::fmmu(fmmu_index as u8),
+                            fmmu_config.pack().unwrap(),
+                        )
+                        .await?
+                        .wkc(1, "FMMU")?;
+
+                    offset = offset.increment(bit_len);
+                }
+                FmmuUsage::SyncManagerStatus => log::debug!("SM status FMMU TODO"),
+            }
         }
+
+        Ok(offset)
     }
 }
 
@@ -247,11 +283,28 @@ impl MappingOffset {
 
         end
     }
+
+    fn size_bytes(self) -> usize {
+        let size = self.start_address + (u32::from(self.start_bit) + 7) / 8;
+
+        size as usize
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn size_bytes() {
+        // E.g. 2x EL2004, 1x EL1004
+        let input = MappingOffset::default()
+            .increment(4)
+            .increment(4)
+            .increment(4);
+
+        assert_eq!(input.size_bytes(), 2);
+    }
 
     #[test]
     fn simulate_2_el2004() {

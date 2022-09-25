@@ -278,6 +278,26 @@ pub enum FmmuUsage {
     SyncManagerStatus = 0x03,
 }
 
+/// ETG1020 Table 10 "FMMU_EX"
+///
+/// NOTE: Most fields defined are discarded from this struct as they are unused in Ethercrab.
+// TODO: Rename to avoid conflict with crate::fmmu::Fmmu
+#[derive(Debug, Copy, Clone)]
+pub struct Fmmu {
+    /// Sync manager index.
+    pub sync_manager: u8,
+}
+
+impl Fmmu {
+    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+        let (i, _before) = le_u8(i)?;
+        let (i, sync_manager) = le_u8(i)?;
+        let (i, _after) = le_u8(i)?;
+
+        Ok((i, Self { sync_manager }))
+    }
+}
+
 /// SII "General" category.
 ///
 /// Defined in ETG1000.6 Table 21
