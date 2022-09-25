@@ -11,7 +11,7 @@ use crate::{
             SiiReadSize, SiiRequest, SyncManager, RX_PDO_RANGE, TX_PDO_RANGE,
         },
     },
-    error::Error,
+    error::{Capacity, Error},
     pdu::CheckWorkingCounter,
     register::RegisterAddress,
     timer_factory::TimerFactory,
@@ -194,7 +194,9 @@ where
             while let Some(bytes) = reader.take_vec::<8>().await? {
                 let (_, sm) = SyncManager::parse(&bytes).unwrap();
 
-                sync_managers.push(sm).unwrap();
+                sync_managers
+                    .push(sm)
+                    .map_err(|_| Error::Capacity(Capacity::SyncManager))?;
             }
         }
 
@@ -218,7 +220,9 @@ where
 
                 let fmmu = FmmuUsage::try_from_primitive(byte).map_err(|_| Error::EepromDecode)?;
 
-                fmmus.push(fmmu).map_err(|_| Error::Capacity)?;
+                fmmus
+                    .push(fmmu)
+                    .map_err(|_| Error::Capacity(Capacity::Fmmu))?;
             }
         }
 
@@ -229,7 +233,7 @@ where
         &self,
         category: CategoryType,
         valid_range: RangeInclusive<u16>,
-    ) -> Result<heapless::Vec<Pdo, 8>, Error> {
+    ) -> Result<heapless::Vec<Pdo, 16>, Error> {
         let category = self.find_eeprom_category_start(category).await?;
 
         let mut pdos = heapless::Vec::new();
@@ -245,6 +249,7 @@ where
                     Error::EepromDecode
                 })?;
 
+                // TODO: nom's all_consuming; no extra bytes should remain
                 assert_eq!(i.len(), 0);
 
                 log::debug!("Range {:?} value {}", valid_range, pdo.index);
@@ -261,15 +266,18 @@ where
                             Error::EepromDecode
                         })?;
 
+                        // TODO: nom's all_consuming; no extra bytes should remain
                         assert_eq!(i.len(), 0);
 
                         Ok(entry)
                     })?;
 
-                    pdo.entries.push(entry).map_err(|_| Error::Capacity)?;
+                    pdo.entries
+                        .push(entry)
+                        .map_err(|_| Error::Capacity(Capacity::PdoEntry))?;
                 }
 
-                pdos.push(pdo).map_err(|_| Error::Capacity)?;
+                pdos.push(pdo).map_err(|_| Error::Capacity(Capacity::Pdo))?;
             }
         }
 
@@ -277,12 +285,12 @@ where
     }
 
     /// Transmit PDOs (from device's perspective) - inputs
-    pub async fn txpdos(&self) -> Result<heapless::Vec<Pdo, 8>, Error> {
+    pub async fn txpdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
         self.pdos(CategoryType::TxPdo, TX_PDO_RANGE).await
     }
 
     /// Receive PDOs (from device's perspective) - outputs
-    pub async fn rxpdos(&self) -> Result<heapless::Vec<Pdo, 8>, Error> {
+    pub async fn rxpdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
         self.pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
     }
 

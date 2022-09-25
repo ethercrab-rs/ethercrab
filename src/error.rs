@@ -25,7 +25,7 @@ pub enum Error {
     EepromNoCategory,
     EepromSectionUnderrun,
     /// A fixed size array was not large enough to hold a given item.
-    Capacity,
+    Capacity(Capacity),
     Other,
 }
 
@@ -33,6 +33,14 @@ impl From<BorrowError> for Error {
     fn from(_: BorrowError) -> Self {
         Self::Borrow
     }
+}
+
+#[derive(Debug)]
+pub enum Capacity {
+    Pdo,
+    Fmmu,
+    SyncManager,
+    PdoEntry,
 }
 
 #[derive(Debug)]
