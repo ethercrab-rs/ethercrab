@@ -19,6 +19,8 @@ use crate::{
 use core::{fmt, mem, ops::RangeInclusive, str::FromStr};
 use num_enum::TryFromPrimitive;
 
+use self::types::Fmmu;
+
 const SII_FIRST_SECTION_START: u16 = 0x0040u16;
 
 enum EepromRead {
@@ -229,6 +231,28 @@ where
         Ok(fmmus)
     }
 
+    pub async fn fmmu_mappings(&self) -> Result<heapless::Vec<Fmmu, 16>, Error> {
+        let category = self
+            .find_eeprom_category_start(CategoryType::FmmuExtended)
+            .await?;
+
+        let mut mappings = heapless::Vec::<_, 16>::new();
+
+        if let Some(category) = category {
+            let mut reader = EepromSectionReader::new(self, category);
+
+            while let Some(bytes) = reader.take_vec::<3>().await? {
+                let (_, fmmu) = Fmmu::parse(&bytes).unwrap();
+
+                mappings
+                    .push(fmmu)
+                    .map_err(|_| Error::Capacity(Capacity::FmmuEx))?;
+            }
+        }
+
+        Ok(mappings)
+    }
+
     async fn pdos(
         &self,
         category: CategoryType,
@@ -252,7 +276,7 @@ where
                 // TODO: nom's all_consuming; no extra bytes should remain
                 assert_eq!(i.len(), 0);
 
-                log::debug!("Range {:?} value {}", valid_range, pdo.index);
+                log::trace!("Range {:?} value {}", valid_range, pdo.index);
 
                 if !valid_range.contains(&pdo.index) {
                     return Err(Error::EepromDecode);
