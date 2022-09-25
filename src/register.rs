@@ -63,6 +63,28 @@ impl From<RegisterAddress> for u16 {
     }
 }
 
+impl RegisterAddress {
+    pub fn fmmu(index: u8) -> Self {
+        match index {
+            0 => Self::Fmmu0,
+            1 => Self::Fmmu1,
+            2 => Self::Fmmu2,
+            3 => Self::Fmmu3,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn sync_manager(index: u8) -> Self {
+        match index {
+            0 => Self::Sm0,
+            1 => Self::Sm1,
+            2 => Self::Sm2,
+            3 => Self::Sm3,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Debug, PackedStruct)]
 #[packed_struct(bit_numbering = "msb0")]
 pub struct PortDescriptors {
