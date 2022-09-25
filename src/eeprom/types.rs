@@ -4,6 +4,7 @@ use core::fmt;
 
 use crate::{
     base_data_types::PrimitiveDataType,
+    mailbox::MailboxProtocols,
     sync_manager_channel::{self, SyncManagerChannel},
     PduRead,
 };
@@ -158,7 +159,7 @@ impl SiiRequest {
 
 /// SII register address.
 ///
-/// Defined in ETG1000.6 Table 16
+/// Defined in ETG1000.6 Table 16 or ETG2010 Table 2
 #[derive(Debug, num_enum::IntoPrimitive)]
 #[repr(u16)]
 pub enum SiiCoding {
@@ -425,13 +426,25 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct SyncManager {
     pub(crate) start_addr: u16,
     pub(crate) length: u16,
     pub(crate) control: sync_manager_channel::Control,
     pub(crate) enable: SyncManagerEnable,
     pub(crate) usage_type: SyncManagerType,
+}
+
+impl fmt::Debug for SyncManager {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SyncManager")
+            .field("start_addr", &format_args!("{:#06x}", self.start_addr))
+            .field("length", &format_args!("{:#06x}", self.length))
+            .field("control", &self.control)
+            .field("enable", &self.enable)
+            .field("usage_type", &self.usage_type)
+            .finish()
+    }
 }
 
 impl SyncManager {
@@ -626,5 +639,51 @@ bitflags::bitflags! {
         const PDO_DIS_AUTO_EXCLUDE = 0x4000;
         /// Reserved (PdoWritable)
         const PDO_WRITABLE = 0x8000;
+    }
+}
+
+#[derive(Clone)]
+pub struct MailboxConfig {
+    pub receive_offset: u16,
+    pub receive_size: u16,
+    pub send_offset: u16,
+    pub send_size: u16,
+    pub protocol: MailboxProtocols,
+}
+
+impl fmt::Debug for MailboxConfig {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("MailboxConfig")
+            .field(
+                "receive_offset",
+                &format_args!("{:#06x}", self.receive_offset),
+            )
+            .field("receive_size", &format_args!("{:#06x}", self.receive_size))
+            .field("send_offset", &format_args!("{:#06x}", self.send_offset))
+            .field("send_size", &format_args!("{:#06x}", self.send_size))
+            .field("protocol", &self.protocol)
+            .finish()
+    }
+}
+
+impl MailboxConfig {
+    // TODO: `all_consuming`, and for all other `parse()` methods
+    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+        let (i, receive_offset) = le_u16(i)?;
+        let (i, receive_size) = le_u16(i)?;
+        let (i, send_offset) = le_u16(i)?;
+        let (i, send_size) = le_u16(i)?;
+        let (i, protocol) = map_opt(le_u16, MailboxProtocols::from_bits)(i)?;
+
+        Ok((
+            i,
+            Self {
+                receive_offset,
+                receive_size,
+                send_offset,
+                send_size,
+                protocol,
+            },
+        ))
     }
 }
