@@ -1,5 +1,7 @@
 //! Slave Information Interface (SII).
 
+use core::fmt;
+
 use crate::{
     base_data_types::PrimitiveDataType,
     sync_manager_channel::{self, SyncManagerChannel},
@@ -468,7 +470,7 @@ pub enum SyncManagerType {
 }
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 // TODO: Remove
 #[allow(unused)]
 pub struct Pdo {
@@ -480,7 +482,21 @@ pub struct Pdo {
     /// Index into EEPROM Strings section for PDO name.
     name_string_idx: u8,
     flags: PdoFlags,
-    pub(crate) entries: heapless::Vec<PdoEntry, 8>,
+    pub(crate) entries: heapless::Vec<PdoEntry, 16>,
+}
+
+impl fmt::Debug for Pdo {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Pdo")
+            .field("index", &format_args!("{:#06x}", self.index))
+            .field("num_entries", &self.num_entries)
+            .field("sync_manager", &self.sync_manager)
+            .field("dc_sync", &self.dc_sync)
+            .field("name_string_idx", &self.name_string_idx)
+            .field("flags", &self.flags)
+            .field("entries", &self.entries)
+            .finish()
+    }
 }
 
 impl Pdo {
@@ -507,7 +523,7 @@ impl Pdo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 // TODO: Remove
 #[allow(unused)]
 pub struct PdoEntry {
@@ -519,6 +535,19 @@ pub struct PdoEntry {
     // TODO: Un-pub
     pub(crate) data_length_bits: u8,
     flags: u16,
+}
+
+impl fmt::Debug for PdoEntry {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PdoEntry")
+            .field("index", &format_args!("{:#06x}", self.index))
+            .field("sub_index", &self.sub_index)
+            .field("name_string_idx", &self.name_string_idx)
+            .field("data_type", &self.data_type)
+            .field("data_length_bits", &self.data_length_bits)
+            .field("flags", &self.flags)
+            .finish()
+    }
 }
 
 impl PdoEntry {
