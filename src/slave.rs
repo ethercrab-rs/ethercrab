@@ -5,7 +5,7 @@ use crate::{
     client::Client,
     eeprom::{
         self,
-        types::{FmmuUsage, Pdo, SyncManagerEnable, SyncManagerType},
+        types::{FmmuUsage, MailboxConfig, Pdo, SyncManagerEnable, SyncManagerType},
         Eeprom,
     },
     error::Error,
@@ -133,12 +133,13 @@ where
         let tx_pdos = self.eeprom().txpdos().await?;
 
         let sync_managers = self.eeprom().sync_managers().await?;
-        let fmmu_usage = self.eeprom().fmmus().await?;
+        // let fmmu_usage = self.eeprom().fmmus().await?;
         let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
-        // dbg!(&sync_managers);
-        // dbg!(&rx_pdos);
-        // dbg!(&fmmu_usage);
+        log::trace!("rx_pdos {:#?}", rx_pdos);
+        log::trace!("tx_pdos {:#?}", rx_pdos);
+        log::trace!("sync_managers {:#?}", sync_managers);
+        log::trace!("fmmu_sm_mappings {:#?}", fmmu_sm_mappings);
 
         // TODO: Actually set this up. Could we use some nice typestates to only expose mailbox
         // methods on slaves that support them? Probably not, right? Cos we need to keep lists of
@@ -150,26 +151,34 @@ where
             )
         });
 
-        for (fmmu_index, usage) in fmmu_usage.iter().enumerate() {
-            let sync_manager_index = fmmu_sm_mappings
-                .get(fmmu_index)
-                .map(|mapping| *mapping)
-                .unwrap_or(eeprom::types::Fmmu {
-                    sync_manager: fmmu_index as u8,
-                })
-                .sync_manager;
+        for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
+            let sync_manager_index = sync_manager_index as u8;
 
-            // dbg!(fmmu_index, sync_manager_index);
+            match sync_manager.usage_type {
+                SyncManagerType::Unknown => continue,
+                SyncManagerType::MailboxOut | SyncManagerType::MailboxIn => {
+                    let sm_config = SyncManagerChannel {
+                        physical_start_address: sync_manager.start_addr,
+                        length_bytes: sync_manager.length,
+                        control: sync_manager.control,
+                        status: Default::default(),
+                        enable: sync_manager_channel::Enable {
+                            enable: sync_manager.enable.contains(SyncManagerEnable::ENABLE),
+                            ..Default::default()
+                        },
+                    };
 
-            match usage {
-                FmmuUsage::Unused => continue,
-                FmmuUsage::Outputs | FmmuUsage::Inputs => {
-                    // TODO: error type
-                    let sync_manager = sync_managers
-                        .get(usize::from(sync_manager_index))
-                        .ok_or(Error::Other)?;
-
-                    let pdos = if *usage == FmmuUsage::Outputs {
+                    self.client
+                        .fpwr(
+                            self.slave.configured_address,
+                            RegisterAddress::sync_manager(sync_manager_index),
+                            sm_config.pack().unwrap(),
+                        )
+                        .await?
+                        .wkc(1, "SM")?;
+                }
+                SyncManagerType::ProcessDataOut | SyncManagerType::ProcessDataIn => {
+                    let pdos = if sync_manager.usage_type == SyncManagerType::ProcessDataOut {
                         &rx_pdos
                     } else {
                         &tx_pdos
@@ -187,11 +196,18 @@ where
 
                     let byte_len = u16::from((bit_len + 7) / 8);
 
-                    log::trace!("Sync manager {sync_manager_index} has bit length {bit_len}");
+                    log::trace!(
+                        "Sync manager {sync_manager_index} ({:?}) has bit length {bit_len}",
+                        sync_manager.usage_type
+                    );
 
-                    // TODO: What happens if bit_len is zero?
+                    let fmmu_index = fmmu_sm_mappings
+                        .iter()
+                        .find(|fmmu| fmmu.sync_manager == sync_manager_index)
+                        .map(|fmmu| fmmu.sync_manager)
+                        .unwrap_or(sync_manager_index);
 
-                    let tx_config = SyncManagerChannel {
+                    let sm_config = SyncManagerChannel {
                         physical_start_address: sync_manager.start_addr,
                         length_bytes: byte_len,
                         control: sync_manager.control,
@@ -204,13 +220,13 @@ where
 
                     let fmmu_config = Fmmu {
                         logical_start_address: offset.start_address,
-                        length_bytes: tx_config.length_bytes,
+                        length_bytes: sm_config.length_bytes,
                         logical_start_bit: offset.start_bit,
                         logical_end_bit: offset.end_bit(bit_len),
-                        physical_start_address: tx_config.physical_start_address,
+                        physical_start_address: sm_config.physical_start_address,
                         physical_start_bit: 0x0,
-                        read_enable: *usage == FmmuUsage::Inputs,
-                        write_enable: *usage == FmmuUsage::Outputs,
+                        read_enable: sync_manager.usage_type == SyncManagerType::ProcessDataIn,
+                        write_enable: sync_manager.usage_type == SyncManagerType::ProcessDataOut,
                         enable: true,
                         reserved_1: 0,
                         reserved_2: 0,
@@ -220,15 +236,16 @@ where
                         .fpwr(
                             self.slave.configured_address,
                             RegisterAddress::sync_manager(sync_manager_index),
-                            tx_config.pack().unwrap(),
+                            sm_config.pack().unwrap(),
                         )
                         .await?
                         .wkc(1, "SM")?;
 
+                    // TODO: Maybe I need to set this in PRE-OP? It's failing on the AKD currently.
                     self.client
                         .fpwr(
                             self.slave.configured_address,
-                            RegisterAddress::fmmu(fmmu_index as u8),
+                            RegisterAddress::fmmu(fmmu_index),
                             fmmu_config.pack().unwrap(),
                         )
                         .await?
@@ -236,7 +253,6 @@ where
 
                     offset = offset.increment(bit_len);
                 }
-                FmmuUsage::SyncManagerStatus => log::debug!("SM status FMMU TODO"),
             }
         }
 

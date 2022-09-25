@@ -65,27 +65,27 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         .await
         .expect(&format!("Slave OP"));
 
-    // RX-only PDI, second byte contains 4 input state bits
-    {
-        let value = Rc::new(RefCell::new([0u8; 2]));
+    // // RX-only PDI, second byte contains 4 input state bits
+    // {
+    //     let value = Rc::new(RefCell::new([0u8; 2]));
 
-        let value2 = value.clone();
-        let client2 = client.clone();
+    //     let value2 = value.clone();
+    //     let client2 = client.clone();
 
-        ex.spawn(async move {
-            // Cycle time
-            let mut interval = async_io::Timer::interval(Duration::from_millis(2));
+    //     ex.spawn(async move {
+    //         // Cycle time
+    //         let mut interval = async_io::Timer::interval(Duration::from_millis(2));
 
-            while let Some(_) = interval.next().await {
-                let v = *value2.borrow();
+    //         while let Some(_) = interval.next().await {
+    //             let v = *value2.borrow();
 
-                let read = client2.lrw(0u32, v).await.expect("Bad write");
+    //             let read = client2.lrw(0u32, v).await.expect("Bad write");
 
-                dbg!(read.0);
-            }
-        })
-        .await;
-    }
+    //             dbg!(read.0);
+    //         }
+    //     })
+    //     .await;
+    // }
 
     // TX-only PDI
     // {

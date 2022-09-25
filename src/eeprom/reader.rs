@@ -4,6 +4,8 @@ use crate::{
     timer_factory::TimerFactory,
 };
 
+use super::types::SiiCoding;
+
 pub struct EepromSectionReader<
     'a,
     const MAX_FRAMES: usize,
@@ -33,6 +35,31 @@ where
             start: cat.start,
             // Category length is given in words (u16) but we're counting bytes here.
             len: cat.len_words * 2,
+            byte_count: 0,
+            read: heapless::Deque::new(),
+            read_length: 0,
+        }
+    }
+
+    pub fn mailbox_config_section(
+        eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+    ) -> Self {
+        Self::start_at(
+            eeprom,
+            u16::from(SiiCoding::StandardReceiveMailboxOffset),
+            5,
+        )
+    }
+
+    fn start_at(
+        eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        start: u16,
+        len_words: u16,
+    ) -> Self {
+        Self {
+            eeprom,
+            start,
+            len: len_words * 2,
             byte_count: 0,
             read: heapless::Deque::new(),
             read_length: 0,
