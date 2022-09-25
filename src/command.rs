@@ -57,6 +57,11 @@ pub enum Command {
         /// Logical address.
         address: u32,
     },
+
+    Lrw {
+        /// Logical address.
+        address: u32,
+    },
 }
 
 impl Command {
@@ -75,6 +80,9 @@ impl Command {
             Self::Apwr { .. } => CommandCode::Apwr,
             Self::Fpwr { .. } => CommandCode::Fpwr,
             Self::Lwr { .. } => CommandCode::Lwr,
+
+            // Read/writes
+            Self::Lrw { .. } => CommandCode::Lrw,
         }
     }
 
@@ -95,7 +103,7 @@ impl Command {
                 let buf = gen_simple(cookie_factory::bytes::le_u16(address), buf)?;
                 gen_simple(cookie_factory::bytes::le_u16(register), buf)
             }
-            Command::Lrd { address } | Command::Lwr { address } => {
+            Command::Lrd { address } | Command::Lwr { address } | Command::Lrw { address } => {
                 gen_simple(cookie_factory::bytes::le_u32(address), buf)
             }
         }?;
@@ -122,6 +130,9 @@ pub enum CommandCode {
     Apwr = 0x02,
     Fpwr = 0x05,
     Lwr = 0x0B,
+
+    // Read/writes
+    Lrw = 0x0c,
 }
 
 impl CommandCode {
@@ -162,6 +173,8 @@ impl CommandCode {
                 register,
             })(i),
             Self::Lwr => map(le_u32, |address| Command::Lwr { address })(i),
+
+            Self::Lrw => map(le_u32, |address| Command::Lrw { address })(i),
         }
     }
 }
