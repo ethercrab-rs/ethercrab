@@ -86,6 +86,8 @@ where
         configured_address: u16,
         client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
     ) -> Self {
+        // TODO: Read SiiControl (0x502) for 4 or 8 byte reads and set flag
+
         Self {
             client,
             configured_address,
@@ -95,9 +97,33 @@ where
     async fn read_eeprom_raw(&self, eeprom_address: impl Into<u16>) -> Result<EepromRead, Error> {
         let eeprom_address: u16 = eeprom_address.into();
 
-        // TODO: Check EEPROM error flags
+        let status = self
+            .client
+            .fprd::<SiiControl>(self.configured_address, RegisterAddress::SiiControl)
+            .await?
+            .wkc(1, "EEPROM status read")?;
+
+        log::trace!("EEPROM status {status:#?}");
+
+        TIMEOUT::timer(core::time::Duration::from_millis(10)).await;
+
+        // Clear errors
+        if status.has_error() {
+            log::trace!("Resetting EEPROM error flags");
+
+            self.client
+                .fpwr(
+                    self.configured_address,
+                    RegisterAddress::SiiControl,
+                    status.error_reset().as_array(),
+                )
+                .await?
+                .wkc(1, "Reset errors")?;
+        }
 
         let setup = SiiRequest::read(eeprom_address);
+
+        log::trace!("EEPROM setup {setup:#?}");
 
         // Set up an SII read. This writes the control word and the register word after it
         self.client
@@ -130,6 +156,7 @@ where
         })
         .await?;
 
+        // TODO: Always return 8 bytes, just do two reads if returned read size is 4 octets
         let data = match read_size {
             SiiReadSize::Octets4 => {
                 let data = self

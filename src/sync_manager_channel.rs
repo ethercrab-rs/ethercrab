@@ -1,9 +1,11 @@
+use core::fmt;
+
 use packed_struct::prelude::*;
 
 /// Sync manager channel.
 ///
 /// Defined in ETG1000.4 6.7.2
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
+#[derive(Default, Copy, Clone, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "8", bit_numbering = "msb0", endian = "lsb")]
 pub struct SyncManagerChannel {
     #[packed_field(bits = "0..=15")]
@@ -16,6 +18,21 @@ pub struct SyncManagerChannel {
     pub status: Status,
     #[packed_field(bits = "48..=63", element_size_bytes = "2")]
     pub enable: Enable,
+}
+
+impl fmt::Debug for SyncManagerChannel {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SyncManagerChannel")
+            .field(
+                "physical_start_address",
+                &format_args!("{:#06x}", self.physical_start_address),
+            )
+            .field("length_bytes", &self.length_bytes)
+            .field("control", &self.control)
+            .field("status", &self.status)
+            .field("enable", &self.enable)
+            .finish()
+    }
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]

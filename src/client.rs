@@ -187,7 +187,7 @@ where
         .wkc(num_slaves as u16, "set all slaves state")?;
 
         // TODO: Configurable timeout depending on current -> next states
-        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
+        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(5000), async {
             loop {
                 let control = self
                     .brd::<AlControl>(RegisterAddress::AlControl)

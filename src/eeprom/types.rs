@@ -6,7 +6,7 @@ use crate::{
     base_data_types::PrimitiveDataType,
     mailbox::MailboxProtocols,
     sync_manager_channel::{self, SyncManagerChannel},
-    PduRead,
+    PduData, PduRead,
 };
 use nom::{
     combinator::{map, map_opt, map_res},
@@ -90,11 +90,29 @@ pub struct SiiControl {
 }
 
 impl SiiControl {
+    pub fn has_error(&self) -> bool {
+        self.checksum_error || self.device_info_error || self.command_error || self.write_error
+    }
+
+    pub fn error_reset(self) -> Self {
+        Self {
+            checksum_error: false,
+            device_info_error: false,
+            command_error: false,
+            write_error: false,
+            ..self
+        }
+    }
+
     fn read() -> Self {
         Self {
             read: true,
             ..Default::default()
         }
+    }
+
+    pub fn as_array(&self) -> [u8; 2] {
+        self.pack().unwrap()
     }
 }
 
@@ -135,6 +153,15 @@ pub enum SiiAddressSize {
 pub struct SiiRequest {
     control: SiiControl,
     address: u16,
+}
+
+impl fmt::Debug for SiiRequest {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SiiRequest")
+            .field("control", &self.control)
+            .field("address", &format_args!("{:#06x}", self.address))
+            .finish()
+    }
 }
 
 impl SiiRequest {
@@ -496,10 +523,10 @@ pub enum SyncManagerType {
     MailboxOut = 0x01,
     /// Used for mailbox in.
     MailboxIn = 0x02,
-    /// Used for process data outputs.
-    ProcessDataOut = 0x03,
-    /// Used for process data inputs.
-    ProcessDataIn = 0x04,
+    /// Used for process data outputs from master.
+    ProcessDataWrite = 0x03,
+    /// Used for process data inputs to master.
+    ProcessDataRead = 0x04,
 }
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
