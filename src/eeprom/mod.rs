@@ -126,6 +126,8 @@ where
         log::trace!("EEPROM setup {setup:#?}");
 
         // Set up an SII read. This writes the control word and the register word after it
+        // TODO: Move working counter check into `fpwr`, etc, methods. Consider either removing
+        // context strings or using defmt or something to avoid bloat.
         self.client
             .fpwr(
                 self.configured_address,
