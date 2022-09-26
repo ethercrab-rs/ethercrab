@@ -122,40 +122,39 @@ where
         Eeprom::new(self.slave.configured_address, self.client)
     }
 
-    pub async fn configure_from_eeprom(
-        &self,
-        mut offset: MappingOffset,
-    ) -> Result<MappingOffset, Error> {
+    /// Configuration performed in `INIT` state.
+    pub async fn configure_from_eeprom_init(&self) -> Result<(), Error> {
         // TODO: Check if mailbox is supported or not; autoconfig is different if it is.
 
-        // RX from the perspective of the slave device
-        let rx_pdos = self.eeprom().rxpdos().await?;
-        let tx_pdos = self.eeprom().txpdos().await?;
+        // TODO: Cleanup; only force EEPROM into normal mode
+        {
+            let stuff = self
+                .client
+                .fprd::<u16>(self.configured_address, RegisterAddress::SiiConfig)
+                .await?
+                .wkc(1, "debug read")?;
+
+            log::info!("CHECK {:016b}", stuff);
+
+            // Force owner away from PDI so we can read it over the EtherCAT DL.
+            self.client
+                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 2)
+                .await?
+                .wkc(1, "debug write")?;
+            self.client
+                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 0)
+                .await?
+                .wkc(1, "debug write 2")?;
+        }
 
         let sync_managers = self.eeprom().sync_managers().await?;
-        // let fmmu_usage = self.eeprom().fmmus().await?;
-        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
-        log::trace!("rx_pdos {:#?}", rx_pdos);
-        log::trace!("tx_pdos {:#?}", rx_pdos);
         log::trace!("sync_managers {:#?}", sync_managers);
-        log::trace!("fmmu_sm_mappings {:#?}", fmmu_sm_mappings);
-
-        // TODO: Actually set this up. Could we use some nice typestates to only expose mailbox
-        // methods on slaves that support them? Probably not, right? Cos we need to keep lists of
-        // slaves somewhere.
-        let has_mailbox = sync_managers.iter().any(|sm| {
-            matches!(
-                sm.usage_type,
-                SyncManagerType::MailboxIn | SyncManagerType::MailboxOut
-            )
-        });
 
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
 
             match sync_manager.usage_type {
-                SyncManagerType::Unknown => continue,
                 SyncManagerType::MailboxOut | SyncManagerType::MailboxIn => {
                     let sm_config = SyncManagerChannel {
                         physical_start_address: sync_manager.start_addr,
@@ -175,10 +174,86 @@ where
                             sm_config.pack().unwrap(),
                         )
                         .await?
-                        .wkc(1, "SM")?;
+                        .wkc(1, "Mailbox SM")?;
+
+                    log::debug!("SM{sync_manager_index} {:#?}", sm_config);
                 }
-                SyncManagerType::ProcessDataOut | SyncManagerType::ProcessDataIn => {
-                    let pdos = if sync_manager.usage_type == SyncManagerType::ProcessDataOut {
+                _ => continue,
+            }
+        }
+
+        // TODO: Cleanup; according to SOEM "some slaves need eeprom available to PDI in init->preop transition"
+        {
+            // Force EEPROM into PDI mode for some slaves.
+            self.client
+                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 1)
+                .await?
+                .wkc(1, "debug write")?;
+
+            let stuff = self
+                .client
+                .fprd::<u16>(self.configured_address, RegisterAddress::SiiConfig)
+                .await?
+                .wkc(1, "debug read")?;
+
+            log::info!("CHECK2 {:016b}", stuff);
+
+            self.request_slave_state(AlState::PreOp).await?;
+        }
+
+        Ok(())
+    }
+
+    // TODO: PO2SO callback for configuring SDOs
+    // TODO: Lots of dedupe with configure_from_eeprom_init
+    /// Configure slave in `PRE-OP` state.
+    pub async fn configure_from_eeprom_preop(
+        &self,
+        mut offset: MappingOffset,
+    ) -> Result<MappingOffset, Error> {
+        // Force EEPROM back into master mode.
+        // Looks like SOEM set it to PDI just for INIT -> PRE-OP transition, then sets it back to
+        // master again during the next EEPROM read.
+        {
+            let stuff = self
+                .client
+                .fprd::<u16>(self.configured_address, RegisterAddress::SiiConfig)
+                .await?
+                .wkc(1, "debug read")?;
+
+            log::info!("CHECK {:016b}", stuff);
+
+            // Force owner away from PDI to master mode so we can read it over the EtherCAT DL.
+            self.client
+                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 2)
+                .await?
+                .wkc(1, "debug write")?;
+            self.client
+                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 0)
+                .await?
+                .wkc(1, "debug write 2")?;
+        }
+
+        log::error!("HERE1");
+        // RX from the perspective of the slave device
+        let rx_pdos = self.eeprom().rxpdos().await?;
+        log::error!("HERE2");
+        let tx_pdos = self.eeprom().txpdos().await?;
+        log::error!("HERE3");
+
+        let sync_managers = self.eeprom().sync_managers().await?;
+        log::error!("HERE4");
+        let fmmu_usage = self.eeprom().fmmus().await?;
+        log::error!("HERE5");
+        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
+        log::error!("HERE6");
+
+        for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
+            let sync_manager_index = sync_manager_index as u8;
+
+            match sync_manager.usage_type {
+                SyncManagerType::ProcessDataWrite | SyncManagerType::ProcessDataRead => {
+                    let pdos = if sync_manager.usage_type == SyncManagerType::ProcessDataWrite {
                         &rx_pdos
                     } else {
                         &tx_pdos
@@ -196,16 +271,30 @@ where
 
                     let byte_len = u16::from((bit_len + 7) / 8);
 
-                    log::trace!(
-                        "Sync manager {sync_manager_index} ({:?}) has bit length {bit_len}",
-                        sync_manager.usage_type
-                    );
-
+                    // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
+                    // to looking through FMMU usage list and picking out the appropriate kind
+                    // (Inputs, Outputs)
                     let fmmu_index = fmmu_sm_mappings
                         .iter()
                         .find(|fmmu| fmmu.sync_manager == sync_manager_index)
                         .map(|fmmu| fmmu.sync_manager)
-                        .unwrap_or(sync_manager_index);
+                        .or_else(|| {
+                            log::trace!("Could not find FMMU for PDO SM{sync_manager_index}");
+
+                            fmmu_usage
+                                .iter()
+                                .position(|usage| match (sync_manager.usage_type, usage) {
+                                    (SyncManagerType::ProcessDataWrite, FmmuUsage::Outputs) => true,
+                                    (SyncManagerType::ProcessDataRead, FmmuUsage::Inputs) => true,
+                                    _ => false,
+                                })
+                                .map(|idx| {
+                                    log::trace!("Using fallback FMMU FMMU{idx}");
+
+                                    idx as u8
+                                })
+                        })
+                        .ok_or(Error::Other)?;
 
                     let sm_config = SyncManagerChannel {
                         physical_start_address: sync_manager.start_addr,
@@ -218,6 +307,8 @@ where
                         },
                     };
 
+                    log::debug!("SM{sync_manager_index} {:#?}", sm_config);
+
                     let fmmu_config = Fmmu {
                         logical_start_address: offset.start_address,
                         length_bytes: sm_config.length_bytes,
@@ -225,12 +316,14 @@ where
                         logical_end_bit: offset.end_bit(bit_len),
                         physical_start_address: sm_config.physical_start_address,
                         physical_start_bit: 0x0,
-                        read_enable: sync_manager.usage_type == SyncManagerType::ProcessDataIn,
-                        write_enable: sync_manager.usage_type == SyncManagerType::ProcessDataOut,
+                        read_enable: sync_manager.usage_type == SyncManagerType::ProcessDataRead,
+                        write_enable: sync_manager.usage_type == SyncManagerType::ProcessDataWrite,
                         enable: true,
                         reserved_1: 0,
                         reserved_2: 0,
                     };
+
+                    log::debug!("FMMU{fmmu_index} {:#?}", fmmu_config);
 
                     self.client
                         .fpwr(
@@ -239,9 +332,8 @@ where
                             sm_config.pack().unwrap(),
                         )
                         .await?
-                        .wkc(1, "SM")?;
+                        .wkc(1, "PDI SM")?;
 
-                    // TODO: Maybe I need to set this in PRE-OP? It's failing on the AKD currently.
                     self.client
                         .fpwr(
                             self.slave.configured_address,
@@ -249,11 +341,31 @@ where
                             fmmu_config.pack().unwrap(),
                         )
                         .await?
-                        .wkc(1, "FMMU")?;
+                        .wkc(1, "PDI FMMU")?;
 
                     offset = offset.increment(bit_len);
                 }
+                _ => continue,
             }
+        }
+
+        // Put EEPROM into PDI mode again
+        // TODO: Figure out why I need this beyond "SOEM does it too"
+        {
+            self.client
+                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 1)
+                .await?
+                .wkc(1, "debug write")?;
+
+            let stuff = self
+                .client
+                .fprd::<u16>(self.configured_address, RegisterAddress::SiiConfig)
+                .await?
+                .wkc(1, "debug read")?;
+
+            log::info!("CHECK2 {:016b}", stuff);
+
+            self.request_slave_state(AlState::SafeOp).await?;
         }
 
         Ok(offset)
