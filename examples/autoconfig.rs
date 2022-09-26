@@ -4,9 +4,12 @@
 //! that order.
 
 use async_ctrlc::CtrlC;
+use ethercrab::al_control::AlControl;
 use ethercrab::al_status::AlState;
+use ethercrab::al_status_code::AlStatusCode;
 use ethercrab::client::Client;
 use ethercrab::error::Error;
+use ethercrab::pdu::CheckWorkingCounter;
 use ethercrab::register::RegisterAddress;
 use ethercrab::slave::MappingOffset;
 use ethercrab::std::tx_rx_task;
@@ -39,31 +42,54 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     client.init().await.expect("Init");
 
-    // TODO: Move into client. This struct/loop shouldn't be public
-    let mut offset = MappingOffset::default();
+    // TODO: Move into client. This stuff shouldn't be public
+    {
+        for idx in 0..num_slaves {
+            let slave = client.slave_by_index(idx)?;
 
-    for idx in 0..num_slaves {
-        let slave = client.slave_by_index(idx)?;
+            slave.configure_from_eeprom_init().await?;
+        }
 
-        offset = slave.configure_from_eeprom(offset).await?;
+        log::info!("Slaves configured in INIT, moved to PRE-OP");
+
+        let mut offset = MappingOffset::default();
+
+        for idx in 0..num_slaves {
+            let slave = client.slave_by_index(idx)?;
+
+            offset = slave.configure_from_eeprom_preop(offset).await?;
+        }
+
+        log::info!("Slaves configured. PDI size {:?}", offset);
     }
 
-    log::info!("Slaves configured. PDI size {:?}", offset);
+    log::debug!("Moving slaves to OP...");
 
-    client
-        .request_slave_state(AlState::PreOp)
-        .await
-        .expect(&format!("Slave PRE-OP"));
+    match client.request_slave_state(AlState::Op).await {
+        Ok(it) => it,
+        Err(err) => {
+            for idx in 0..num_slaves {
+                let slave = client.slave_by_index(idx)?;
 
-    client
-        .request_slave_state(AlState::SafeOp)
-        .await
-        .expect(&format!("Slave SAFE-OP"));
+                let status = client
+                    .fprd::<AlControl>(slave.configured_address, RegisterAddress::AlStatus)
+                    .await?
+                    .wkc(1, "AL Status")?;
+                let code = client
+                    .fprd::<AlStatusCode>(slave.configured_address, RegisterAddress::AlStatusCode)
+                    .await?
+                    .wkc(1, "AL Status Code")?;
 
-    client
-        .request_slave_state(AlState::Op)
-        .await
-        .expect(&format!("Slave OP"));
+                log::error!("Slave {idx} failed to transition to OP: {status:?} ({code})");
+            }
+
+            return Err(err);
+        }
+    };
+
+    log::info!("Slaves moved to OP state");
+
+    async_io::Timer::after(Duration::from_millis(100)).await;
 
     // // RX-only PDI, second byte contains 4 input state bits
     // {
@@ -87,7 +113,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     //     .await;
     // }
 
-    // TX-only PDI
+    // // TX-only PDI
     // {
     //     let value = Rc::new(RefCell::new(0x00u8));
 

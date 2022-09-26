@@ -1,7 +1,9 @@
+use core::fmt;
+
 use packed_struct::prelude::*;
 
 /// ETG1000.4 Table 56 – Fieldbus memory management unit (FMMU) entity.
-#[derive(Default, Copy, Clone, Debug, PackedStruct, PartialEq, Eq)]
+#[derive(Default, Copy, Clone, PackedStruct, PartialEq, Eq)]
 #[packed_struct(bit_numbering = "msb0", endian = "lsb")]
 pub struct Fmmu {
     /// This parameter shall contain the start address in octets in the logical memory area of the memory translation.
@@ -37,6 +39,30 @@ pub struct Fmmu {
 
     pub reserved_1: u8,
     pub reserved_2: u16,
+}
+
+impl fmt::Debug for Fmmu {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Fmmu")
+            .field(
+                "logical_start_address",
+                &format_args!("{:#06x}", self.logical_start_address),
+            )
+            .field("length_bytes", &self.length_bytes)
+            .field("logical_start_bit", &self.logical_start_bit)
+            .field("logical_end_bit", &self.logical_end_bit)
+            .field(
+                "physical_start_address",
+                &format_args!("{:#06x}", self.physical_start_address),
+            )
+            .field("physical_start_bit", &self.physical_start_bit)
+            .field("read_enable", &self.read_enable)
+            .field("write_enable", &self.write_enable)
+            .field("enable", &self.enable)
+            .field("reserved_1", &self.reserved_1)
+            .field("reserved_2", &self.reserved_2)
+            .finish()
+    }
 }
 
 #[cfg(test)]
