@@ -5,6 +5,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum PrimitiveDataType {
+    Unknown = 0x00,
+
     /// Boolean, bit, on or off.
     Bool = 0x01,
     /// A single byte.
