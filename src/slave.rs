@@ -10,10 +10,11 @@ use crate::{
     },
     error::Error,
     fmmu::Fmmu,
-    pdu::CheckWorkingCounter,
+    pdu::{CheckWorkingCounter, PduResponse},
     register::RegisterAddress,
     sync_manager_channel::{self, SyncManagerChannel},
     timer_factory::TimerFactory,
+    PduData, PduRead,
 };
 use core::{cell::RefMut, time::Duration};
 use packed_struct::PackedStruct;
@@ -64,31 +65,56 @@ where
         }
     }
 
+    /// A wrapper around an FPRD service to this slave's configured address.
+    pub(crate) async fn read<T>(
+        &self,
+        register: RegisterAddress,
+        context: &'static str,
+    ) -> Result<T, Error>
+    where
+        T: PduRead,
+    {
+        self.client
+            .fprd(self.configured_address, register)
+            .await?
+            .wkc(1, context)
+    }
+
+    /// A wrapper around an FPWR service to this slave's configured address.
+    pub(crate) async fn write<T>(
+        &self,
+        register: RegisterAddress,
+        value: T,
+        context: &'static str,
+    ) -> Result<T, Error>
+    where
+        T: PduData,
+    {
+        self.client
+            .fpwr(self.configured_address, register, value)
+            .await?
+            .wkc(1, context)
+    }
+
     pub async fn request_slave_state(&self, state: AlState) -> Result<(), Error> {
         debug!(
             "Set state {} for slave address {:#04x}",
             state, self.slave.configured_address
         );
 
-        let addr = self.slave.configured_address;
-
         // Send state request
-        self.client
-            .fpwr(
-                addr,
-                RegisterAddress::AlControl,
-                AlControl::new(state).pack().unwrap(),
-            )
-            .await?
-            .wkc(1, "AL control")?;
+        self.write(
+            RegisterAddress::AlControl,
+            AlControl::new(state).pack().unwrap(),
+            "AL control",
+        )
+        .await?;
 
         let res = crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
             loop {
                 let status = self
-                    .client
-                    .fprd::<AlControl>(addr, RegisterAddress::AlStatus)
-                    .await?
-                    .wkc(1, "AL status")?;
+                    .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
+                    .await?;
 
                 if status.state == state {
                     break Result::<(), _>::Ok(());
@@ -103,9 +129,8 @@ where
             Err(Error::Timeout) => {
                 // TODO: Extract into separate method to get slave status code
                 {
-                    let (status, _working_counter) = self
-                        .client
-                        .fprd::<AlStatusCode>(addr, RegisterAddress::AlStatusCode)
+                    let status = self
+                        .read::<AlStatusCode>(RegisterAddress::AlStatusCode, "Read AL status")
                         .await?;
 
                     debug!("Slave status code: {}", status);
@@ -119,7 +144,7 @@ where
 
     // TODO: Separate TIMEOUT for EEPROM specifically
     pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT> {
-        Eeprom::new(self.slave.configured_address, self.client)
+        Eeprom::new(&self)
     }
 
     /// Configuration performed in `INIT` state.
@@ -129,22 +154,16 @@ where
         // TODO: Cleanup; only force EEPROM into normal mode
         {
             let stuff = self
-                .client
-                .fprd::<u16>(self.configured_address, RegisterAddress::SiiConfig)
-                .await?
-                .wkc(1, "debug read")?;
+                .read::<u16>(RegisterAddress::SiiConfig, "debug read")
+                .await?;
 
             log::info!("CHECK {:016b}", stuff);
 
             // Force owner away from PDI so we can read it over the EtherCAT DL.
-            self.client
-                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 2)
-                .await?
-                .wkc(1, "debug write")?;
-            self.client
-                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 0)
-                .await?
-                .wkc(1, "debug write 2")?;
+            self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
+                .await?;
+            self.write::<u16>(RegisterAddress::SiiConfig, 0, "debug write 2")
+                .await?;
         }
 
         let sync_managers = self.eeprom().sync_managers().await?;
@@ -167,14 +186,12 @@ where
                         },
                     };
 
-                    self.client
-                        .fpwr(
-                            self.slave.configured_address,
-                            RegisterAddress::sync_manager(sync_manager_index),
-                            sm_config.pack().unwrap(),
-                        )
-                        .await?
-                        .wkc(1, "Mailbox SM")?;
+                    self.write(
+                        RegisterAddress::sync_manager(sync_manager_index),
+                        sm_config.pack().unwrap(),
+                        "Mailbox SM",
+                    )
+                    .await?;
 
                     log::debug!("SM{sync_manager_index} {:#?}", sm_config);
                 }
@@ -185,16 +202,12 @@ where
         // TODO: Cleanup; according to SOEM "some slaves need eeprom available to PDI in init->preop transition"
         {
             // Force EEPROM into PDI mode for some slaves.
-            self.client
-                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 1)
-                .await?
-                .wkc(1, "debug write")?;
+            self.write::<u16>(RegisterAddress::SiiConfig, 1, "debug write")
+                .await?;
 
             let stuff = self
-                .client
-                .fprd::<u16>(self.configured_address, RegisterAddress::SiiConfig)
-                .await?
-                .wkc(1, "debug read")?;
+                .read::<u16>(RegisterAddress::SiiConfig, "debug read")
+                .await?;
 
             log::info!("CHECK2 {:016b}", stuff);
 
@@ -216,37 +229,25 @@ where
         // master again during the next EEPROM read.
         {
             let stuff = self
-                .client
-                .fprd::<u16>(self.configured_address, RegisterAddress::SiiConfig)
-                .await?
-                .wkc(1, "debug read")?;
+                .read::<u16>(RegisterAddress::SiiConfig, "debug read")
+                .await?;
 
             log::info!("CHECK {:016b}", stuff);
 
             // Force owner away from PDI to master mode so we can read it over the EtherCAT DL.
-            self.client
-                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 2)
-                .await?
-                .wkc(1, "debug write")?;
-            self.client
-                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 0)
-                .await?
-                .wkc(1, "debug write 2")?;
+            self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
+                .await?;
+            self.write::<u16>(RegisterAddress::SiiConfig, 0, "debug write 2")
+                .await?;
         }
 
-        log::error!("HERE1");
         // RX from the perspective of the slave device
         let rx_pdos = self.eeprom().rxpdos().await?;
-        log::error!("HERE2");
         let tx_pdos = self.eeprom().txpdos().await?;
-        log::error!("HERE3");
 
         let sync_managers = self.eeprom().sync_managers().await?;
-        log::error!("HERE4");
         let fmmu_usage = self.eeprom().fmmus().await?;
-        log::error!("HERE5");
         let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
-        log::error!("HERE6");
 
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
@@ -325,23 +326,19 @@ where
 
                     log::debug!("FMMU{fmmu_index} {:#?}", fmmu_config);
 
-                    self.client
-                        .fpwr(
-                            self.slave.configured_address,
-                            RegisterAddress::sync_manager(sync_manager_index),
-                            sm_config.pack().unwrap(),
-                        )
-                        .await?
-                        .wkc(1, "PDI SM")?;
+                    self.write(
+                        RegisterAddress::sync_manager(sync_manager_index),
+                        sm_config.pack().unwrap(),
+                        "PDI SM",
+                    )
+                    .await?;
 
-                    self.client
-                        .fpwr(
-                            self.slave.configured_address,
-                            RegisterAddress::fmmu(fmmu_index),
-                            fmmu_config.pack().unwrap(),
-                        )
-                        .await?
-                        .wkc(1, "PDI FMMU")?;
+                    self.write(
+                        RegisterAddress::fmmu(fmmu_index),
+                        fmmu_config.pack().unwrap(),
+                        "PDI FMMU",
+                    )
+                    .await?;
 
                     offset = offset.increment(bit_len);
                 }
@@ -352,16 +349,12 @@ where
         // Put EEPROM into PDI mode again
         // TODO: Figure out why I need this beyond "SOEM does it too"
         {
-            self.client
-                .fpwr::<u16>(self.configured_address, RegisterAddress::SiiConfig, 1)
-                .await?
-                .wkc(1, "debug write")?;
+            self.write::<u16>(RegisterAddress::SiiConfig, 1, "debug write")
+                .await?;
 
             let stuff = self
-                .client
-                .fprd::<u16>(self.configured_address, RegisterAddress::SiiConfig)
-                .await?
-                .wkc(1, "debug read")?;
+                .read::<u16>(RegisterAddress::SiiConfig, "debug read")
+                .await?;
 
             log::info!("CHECK2 {:016b}", stuff);
 
