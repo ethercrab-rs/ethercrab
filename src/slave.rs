@@ -42,8 +42,6 @@ pub struct SlaveRef<
 > {
     pub(crate) client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
     pub(crate) slave: RefMut<'a, Slave>,
-    // DELETEME
-    pub configured_address: u16,
 }
 
 impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
@@ -55,13 +53,7 @@ where
         client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
         slave: RefMut<'a, Slave>,
     ) -> Self {
-        let configured_address = slave.configured_address;
-
-        Self {
-            client,
-            slave,
-            configured_address,
-        }
+        Self { client, slave }
     }
 
     /// A wrapper around an FPRD service to this slave's configured address.
@@ -74,7 +66,7 @@ where
         T: PduRead,
     {
         self.client
-            .fprd(self.configured_address, register)
+            .fprd(self.slave.configured_address, register)
             .await?
             .wkc(1, context)
     }
@@ -90,7 +82,7 @@ where
         T: PduData,
     {
         self.client
-            .fpwr(self.configured_address, register, value)
+            .fpwr(self.slave.configured_address, register, value)
             .await?
             .wkc(1, context)
     }
@@ -126,19 +118,26 @@ where
 
         match res {
             Err(Error::Timeout) => {
-                // TODO: Extract into separate method to get slave status code
-                {
-                    let status = self
-                        .read::<AlStatusCode>(RegisterAddress::AlStatusCode, "Read AL status")
-                        .await?;
+                let (_, code) = self.status().await?;
 
-                    debug!("Slave status code: {}", status);
-                }
+                debug!("Slave status code: {}", code);
 
                 Err(Error::Timeout)
             }
             other => other,
         }
+    }
+
+    pub async fn status(&self) -> Result<(AlControl, AlStatusCode), Error> {
+        let status = self
+            .read::<AlControl>(RegisterAddress::AlStatus, "AL Status")
+            .await?;
+
+        let code = self
+            .read::<AlStatusCode>(RegisterAddress::AlStatusCode, "AL Status Code")
+            .await?;
+
+        Ok((status, code))
     }
 
     // TODO: Separate TIMEOUT for EEPROM specifically
