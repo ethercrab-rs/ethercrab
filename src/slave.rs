@@ -4,13 +4,12 @@ use crate::{
     al_status_code::AlStatusCode,
     client::Client,
     eeprom::{
-        self,
-        types::{FmmuUsage, MailboxConfig, Pdo, SyncManagerEnable, SyncManagerType},
+        types::{FmmuUsage, SyncManagerEnable, SyncManagerType},
         Eeprom,
     },
     error::Error,
     fmmu::Fmmu,
-    pdu::{CheckWorkingCounter, PduResponse},
+    pdu::CheckWorkingCounter,
     register::RegisterAddress,
     sync_manager_channel::{self, SyncManagerChannel},
     timer_factory::TimerFactory,
@@ -400,9 +399,7 @@ impl MappingOffset {
 
         let bits = (bits.saturating_sub(1) % 8) as u8;
 
-        let end = self.start_bit + bits % 8;
-
-        end
+        self.start_bit + bits % 8
     }
 
     fn size_bytes(self) -> usize {
