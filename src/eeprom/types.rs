@@ -33,7 +33,7 @@ pub struct SiiAccessConfig {
     #[packed_field(bits = "0", ty = "enum")]
     pub owner: SiiOwner,
     #[packed_field(bits = "1")]
-    pub reset_access: bool,
+    pub lock: bool,
 }
 
 impl PduRead for SiiAccessConfig {
@@ -48,8 +48,12 @@ impl PduRead for SiiAccessConfig {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
 pub enum SiiOwner {
+    /// EEPROM access rights are assigned to PDI during state change from Init to PreOp, Init to
+    /// Boot and while in Boot
     #[default]
     Dl = 0x00,
+
+    /// EEPROM access rights are assigned to PDI in all states except Init
     Pdi = 0x01,
 }
 

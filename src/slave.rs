@@ -4,7 +4,7 @@ use crate::{
     al_status_code::AlStatusCode,
     client::Client,
     eeprom::{
-        types::{FmmuUsage, SyncManagerEnable, SyncManagerType},
+        types::{FmmuUsage, SiiOwner, SyncManagerEnable, SyncManagerType},
         Eeprom,
     },
     error::Error,
@@ -145,24 +145,18 @@ where
         Eeprom::new(&self)
     }
 
+    async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
+        self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
+            .await?;
+        self.write::<u16>(RegisterAddress::SiiConfig, mode as u16, "debug write 2")
+            .await?;
+
+        Ok(())
+    }
+
     /// Configuration performed in `INIT` state.
     pub async fn configure_from_eeprom_init(&self) -> Result<(), Error> {
-        // TODO: Check if mailbox is supported or not; autoconfig is different if it is.
-
-        // TODO: Cleanup; only force EEPROM into normal mode
-        {
-            let stuff = self
-                .read::<u16>(RegisterAddress::SiiConfig, "debug read")
-                .await?;
-
-            log::info!("CHECK {:016b}", stuff);
-
-            // Force owner away from PDI so we can read it over the EtherCAT DL.
-            self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
-                .await?;
-            self.write::<u16>(RegisterAddress::SiiConfig, 0, "debug write 2")
-                .await?;
-        }
+        self.set_eeprom_mode(SiiOwner::Dl).await?;
 
         let sync_managers = self.eeprom().sync_managers().await?;
 
@@ -197,20 +191,11 @@ where
             }
         }
 
-        // TODO: Cleanup; according to SOEM "some slaves need eeprom available to PDI in init->preop transition"
-        {
-            // Force EEPROM into PDI mode for some slaves.
-            self.write::<u16>(RegisterAddress::SiiConfig, 1, "debug write")
-                .await?;
+        // Some slaves must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
+        // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
+        self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
-            let stuff = self
-                .read::<u16>(RegisterAddress::SiiConfig, "debug read")
-                .await?;
-
-            log::info!("CHECK2 {:016b}", stuff);
-
-            self.request_slave_state(AlState::PreOp).await?;
-        }
+        self.request_slave_state(AlState::PreOp).await?;
 
         Ok(())
     }
@@ -222,22 +207,9 @@ where
         &self,
         mut offset: MappingOffset,
     ) -> Result<MappingOffset, Error> {
-        // Force EEPROM back into master mode.
-        // Looks like SOEM set it to PDI just for INIT -> PRE-OP transition, then sets it back to
-        // master again during the next EEPROM read.
-        {
-            let stuff = self
-                .read::<u16>(RegisterAddress::SiiConfig, "debug read")
-                .await?;
-
-            log::info!("CHECK {:016b}", stuff);
-
-            // Force owner away from PDI to master mode so we can read it over the EtherCAT DL.
-            self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
-                .await?;
-            self.write::<u16>(RegisterAddress::SiiConfig, 0, "debug write 2")
-                .await?;
-        }
+        // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
+        // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
+        self.set_eeprom_mode(SiiOwner::Dl).await?;
 
         // RX from the perspective of the slave device
         let rx_pdos = self.eeprom().rxpdos().await?;
@@ -344,20 +316,8 @@ where
             }
         }
 
-        // Put EEPROM into PDI mode again
-        // TODO: Figure out why I need this beyond "SOEM does it too"
-        {
-            self.write::<u16>(RegisterAddress::SiiConfig, 1, "debug write")
-                .await?;
-
-            let stuff = self
-                .read::<u16>(RegisterAddress::SiiConfig, "debug read")
-                .await?;
-
-            log::info!("CHECK2 {:016b}", stuff);
-
-            self.request_slave_state(AlState::SafeOp).await?;
-        }
+        // Restore EEPROM mode
+        self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
         Ok(offset)
     }
