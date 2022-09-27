@@ -3,7 +3,6 @@ mod reader;
 pub mod types;
 
 use crate::{
-    client::Client,
     eeprom::{
         reader::EepromSectionReader,
         types::{
@@ -12,7 +11,6 @@ use crate::{
         },
     },
     error::{Capacity, Error},
-    pdu::CheckWorkingCounter,
     register::RegisterAddress,
     slave::SlaveRef,
     timer_factory::TimerFactory,
@@ -20,7 +18,7 @@ use crate::{
 use core::{mem, ops::RangeInclusive, str::FromStr};
 use num_enum::TryFromPrimitive;
 
-use self::types::{Fmmu, MailboxConfig};
+use self::types::Fmmu;
 
 const SII_FIRST_SECTION_START: u16 = 0x0040u16;
 
@@ -194,17 +192,6 @@ where
         let (_, general) = SiiGeneral::parse(&buf).expect("General parse");
 
         Ok(general)
-    }
-
-    // TODO: Can I delete this and MailboxConfig? I'm reading the mailbox config from the sync manager EEPROM anyway
-    pub async fn mailbox_config(&self) -> Result<MailboxConfig, Error> {
-        let mut reader = EepromSectionReader::mailbox_config_section(self);
-
-        let buf = reader.take_vec_exact::<10>().await?;
-
-        let (_, config) = MailboxConfig::parse(&buf).map_err(|_| Error::EepromDecode)?;
-
-        Ok(config)
     }
 
     pub async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
