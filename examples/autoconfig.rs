@@ -71,14 +71,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             for idx in 0..num_slaves {
                 let slave = client.slave_by_index(idx)?;
 
-                let status = client
-                    .fprd::<AlControl>(slave.configured_address, RegisterAddress::AlStatus)
-                    .await?
-                    .wkc(1, "AL Status")?;
-                let code = client
-                    .fprd::<AlStatusCode>(slave.configured_address, RegisterAddress::AlStatusCode)
-                    .await?
-                    .wkc(1, "AL Status Code")?;
+                let (status, code) = slave.status().await?;
 
                 log::error!("Slave {idx} failed to transition to OP: {status:?} ({code})");
             }
