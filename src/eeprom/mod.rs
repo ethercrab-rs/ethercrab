@@ -16,55 +16,12 @@ use crate::{
     register::RegisterAddress,
     timer_factory::TimerFactory,
 };
-use core::{fmt, mem, ops::RangeInclusive, str::FromStr};
+use core::{mem, ops::RangeInclusive, str::FromStr};
 use num_enum::TryFromPrimitive;
 
-use self::types::{Fmmu, MailboxConfig, SiiCoding};
+use self::types::{Fmmu, MailboxConfig};
 
 const SII_FIRST_SECTION_START: u16 = 0x0040u16;
-
-enum EepromRead {
-    Bytes4([u8; 4]),
-    Bytes8([u8; 8]),
-}
-
-impl EepromRead {
-    fn as_slice(&self) -> &[u8] {
-        match self {
-            EepromRead::Bytes4(arr) => arr.as_slice(),
-            EepromRead::Bytes8(arr) => arr.as_slice(),
-        }
-    }
-
-    fn bytes4(&self) -> [u8; 4] {
-        match self {
-            EepromRead::Bytes4(arr) => *arr,
-            // TODO: Use `array_chunks` or similar method when stabilised.
-            EepromRead::Bytes8(arr) => [arr[0], arr[1], arr[2], arr[3]],
-        }
-    }
-}
-
-impl fmt::Debug for EepromRead {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Bytes4(arg0) => write!(f, "{:02x?}", arg0),
-            Self::Bytes8(arg0) => write!(f, "{:02x?}", arg0),
-        }
-    }
-}
-
-impl From<[u8; 4]> for EepromRead {
-    fn from(arr: [u8; 4]) -> Self {
-        Self::Bytes4(arr)
-    }
-}
-
-impl From<[u8; 8]> for EepromRead {
-    fn from(arr: [u8; 8]) -> Self {
-        Self::Bytes8(arr)
-    }
-}
 
 pub struct Eeprom<
     'a,
@@ -94,7 +51,7 @@ where
         }
     }
 
-    async fn read_eeprom_raw(&self, eeprom_address: impl Into<u16>) -> Result<EepromRead, Error> {
+    async fn read_eeprom_raw(&self, eeprom_address: impl Into<u16>) -> Result<[u8; 8], Error> {
         let eeprom_address: u16 = eeprom_address.into();
 
         let status = self
@@ -125,6 +82,9 @@ where
 
         log::trace!("EEPROM setup {setup:#?}");
 
+        // TODO: Configurable timeout
+        let timeout = core::time::Duration::from_millis(10);
+
         // Set up an SII read. This writes the control word and the register word after it
         // TODO: Move working counter check into `fpwr`, etc, methods. Consider either removing
         // context strings or using defmt or something to avoid bloat.
@@ -137,10 +97,7 @@ where
             .await?
             .wkc(1, "SII read setup")?;
 
-        // TODO: Configurable timeout
-        let timeout = core::time::Duration::from_millis(10);
-
-        let read_size = crate::timeout::<TIMEOUT, _, _>(timeout, async {
+        crate::timeout::<TIMEOUT, _, _>(timeout, async {
             loop {
                 let control = self
                     .client
@@ -149,7 +106,7 @@ where
                     .wkc(1, "SII busy wait")?;
 
                 if !control.busy {
-                    break Ok(control.read_size);
+                    break Ok(());
                 }
 
                 // TODO: Configurable loop tick
@@ -159,30 +116,73 @@ where
         .await?;
 
         // TODO: Always return 8 bytes, just do two reads if returned read size is 4 octets
-        let data = match read_size {
+        let data = match status.read_size {
             SiiReadSize::Octets4 => {
-                let data = self
+                log::error!("4 byte read");
+
+                let chunk1 = self
                     .client
                     .fprd::<[u8; 4]>(self.configured_address, RegisterAddress::SiiData)
                     .await?
-                    .wkc(1, "SII data")?;
+                    .wkc(1, "SII data 1")?;
 
-                log::trace!("Read {:#04x?} {:02x?}", eeprom_address, data);
+                // Move on to next chunk
+                {
+                    // NOTE: We must compute offset in 16 bit words, not bytes, hence the divide by 2
+                    let setup = SiiRequest::read(eeprom_address + (chunk1.len() / 2) as u16);
 
-                EepromRead::from(data)
-            }
-            SiiReadSize::Octets8 => {
-                let data = self
+                    self.client
+                        .fpwr(
+                            self.configured_address,
+                            RegisterAddress::SiiControl,
+                            setup.as_array(),
+                        )
+                        .await?
+                        .wkc(1, "SII read setup")?;
+
+                    crate::timeout::<TIMEOUT, _, _>(timeout, async {
+                        loop {
+                            let control = self
+                                .client
+                                .fprd::<SiiControl>(
+                                    self.configured_address,
+                                    RegisterAddress::SiiControl,
+                                )
+                                .await?
+                                .wkc(1, "SII busy wait")?;
+
+                            if !control.busy {
+                                break Ok(());
+                            }
+
+                            // TODO: Configurable loop tick
+                            TIMEOUT::timer(core::time::Duration::from_millis(1)).await;
+                        }
+                    })
+                    .await?;
+                }
+
+                let chunk2 = self
                     .client
-                    .fprd::<[u8; 8]>(self.configured_address, RegisterAddress::SiiData)
+                    .fprd::<[u8; 4]>(self.configured_address, RegisterAddress::SiiData)
                     .await?
-                    .wkc(1, "SII data")?;
+                    .wkc(1, "SII data 2")?;
 
-                log::trace!("Read {:#04x?} {:02x?}", eeprom_address, data);
+                let mut data = [0u8; 8];
 
-                EepromRead::from(data)
+                data[0..4].copy_from_slice(&chunk1);
+                data[4..8].copy_from_slice(&chunk2);
+
+                data
             }
+            SiiReadSize::Octets8 => self
+                .client
+                .fprd::<[u8; 8]>(self.configured_address, RegisterAddress::SiiData)
+                .await?
+                .wkc(1, "SII data")?,
         };
+
+        log::trace!("Read {:#04x?} {:02x?}", eeprom_address, data);
 
         Ok(data)
     }
@@ -414,8 +414,6 @@ where
         loop {
             // First address, returns 2 bytes, contains the category type.
             let (category_type, data_len) = self.read_eeprom_raw(start).await.map(|chunk| {
-                let chunk = chunk.bytes4();
-
                 // TODO: Use array_chunks or similar method when stabilised
                 let category = u16::from_le_bytes([chunk[0], chunk[1]]);
                 let len = u16::from_le_bytes([chunk[2], chunk[3]]);
