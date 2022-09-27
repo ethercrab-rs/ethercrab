@@ -208,7 +208,6 @@ where
     async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: core::fmt::Debug,
     {
         let pdu = self.pdu_loop.pdu_tx(command, &[], T::len()).await?;
 
@@ -221,7 +220,6 @@ where
     async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: core::fmt::Debug,
     {
         let pdu = self
             .pdu_loop
@@ -236,7 +234,6 @@ where
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.read_service(Command::Brd {
             // Address is always zero when sent from master
@@ -250,7 +247,6 @@ where
     pub async fn bwr<T>(&self, register: RegisterAddress, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.write_service(
             Command::Bwr {
@@ -270,7 +266,6 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.read_service(Command::Aprd {
             address: 0u16.wrapping_sub(address),
@@ -288,7 +283,6 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.write_service(
             Command::Apwr {
@@ -308,7 +302,6 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.read_service(Command::Fprd {
             address,
@@ -326,7 +319,6 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.write_service(
             Command::Fpwr {
@@ -342,7 +334,6 @@ where
     pub async fn lwr<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.write_service(Command::Lwr { address }, value).await
     }
@@ -351,7 +342,6 @@ where
     pub async fn lrw<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: core::fmt::Debug,
     {
         self.write_service(Command::Lrw { address }, value).await
     }
