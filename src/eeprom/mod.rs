@@ -40,8 +40,6 @@ where
     pub(crate) fn new(
         slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
     ) -> Self {
-        // TODO: Read SiiControl (0x502) for 4 or 8 byte reads and set flag
-
         Self { slave }
     }
 
