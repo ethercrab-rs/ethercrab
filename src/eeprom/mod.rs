@@ -17,8 +17,9 @@ use crate::{
 };
 use core::{mem, ops::RangeInclusive, str::FromStr};
 use num_enum::TryFromPrimitive;
+use packed_struct::PackedStructSlice;
 
-use self::types::Fmmu;
+use self::types::{Fmmu, SiiAccessConfig};
 
 const SII_FIRST_SECTION_START: u16 = 0x0040u16;
 
@@ -51,10 +52,6 @@ where
             .read::<SiiControl>(RegisterAddress::SiiControl, "Read SII control")
             .await?;
 
-        log::trace!("EEPROM status {status:#?}");
-
-        TIMEOUT::timer(core::time::Duration::from_millis(10)).await;
-
         // Clear errors
         if status.has_error() {
             log::trace!("Resetting EEPROM error flags");
@@ -69,8 +66,6 @@ where
         }
 
         let setup = SiiRequest::read(eeprom_address);
-
-        log::trace!("EEPROM setup {setup:#?}");
 
         // TODO: Configurable timeout
         let timeout = core::time::Duration::from_millis(10);
@@ -165,6 +160,12 @@ where
         log::trace!("Read {:#04x?} {:02x?}", eeprom_address, data);
 
         Ok(data)
+    }
+
+    pub async fn access(&self) -> Result<SiiAccessConfig, Error> {
+        let data = self.read_eeprom_raw(0u16).await?;
+
+        SiiAccessConfig::unpack_from_slice(&data[0..2]).map_err(|_| Error::EepromDecode)
     }
 
     pub async fn device_name<const N: usize>(&self) -> Result<Option<heapless::String<N>>, Error> {
