@@ -5,8 +5,8 @@ use core::fmt;
 use crate::{
     base_data_types::PrimitiveDataType,
     mailbox::MailboxProtocols,
-    sync_manager_channel::{self, SyncManagerChannel},
-    PduData, PduRead,
+    sync_manager_channel::{self},
+    PduRead,
 };
 use nom::{
     combinator::{map, map_opt, map_res},
