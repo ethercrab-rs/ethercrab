@@ -14,6 +14,7 @@ use crate::{
     error::{Capacity, Error},
     pdu::CheckWorkingCounter,
     register::RegisterAddress,
+    slave::SlaveRef,
     timer_factory::TimerFactory,
 };
 use core::{mem, ops::RangeInclusive, str::FromStr};
@@ -30,8 +31,7 @@ pub struct Eeprom<
     const MAX_SLAVES: usize,
     TIMEOUT,
 > {
-    client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
-    configured_address: u16,
+    slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
 }
 
 impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
@@ -40,25 +40,20 @@ where
     TIMEOUT: TimerFactory,
 {
     pub(crate) fn new(
-        configured_address: u16,
-        client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
     ) -> Self {
         // TODO: Read SiiControl (0x502) for 4 or 8 byte reads and set flag
 
-        Self {
-            client,
-            configured_address,
-        }
+        Self { slave }
     }
 
     async fn read_eeprom_raw(&self, eeprom_address: impl Into<u16>) -> Result<[u8; 8], Error> {
         let eeprom_address: u16 = eeprom_address.into();
 
         let status = self
-            .client
-            .fprd::<SiiControl>(self.configured_address, RegisterAddress::SiiControl)
-            .await?
-            .wkc(1, "EEPROM status read")?;
+            .slave
+            .read::<SiiControl>(RegisterAddress::SiiControl, "Read SII control")
+            .await?;
 
         log::trace!("EEPROM status {status:#?}");
 
@@ -68,14 +63,13 @@ where
         if status.has_error() {
             log::trace!("Resetting EEPROM error flags");
 
-            self.client
-                .fpwr(
-                    self.configured_address,
+            self.slave
+                .write(
                     RegisterAddress::SiiControl,
                     status.error_reset().as_array(),
+                    "Reset errors",
                 )
-                .await?
-                .wkc(1, "Reset errors")?;
+                .await?;
         }
 
         let setup = SiiRequest::read(eeprom_address);
@@ -88,22 +82,20 @@ where
         // Set up an SII read. This writes the control word and the register word after it
         // TODO: Move working counter check into `fpwr`, etc, methods. Consider either removing
         // context strings or using defmt or something to avoid bloat.
-        self.client
-            .fpwr(
-                self.configured_address,
+        self.slave
+            .write(
                 RegisterAddress::SiiControl,
                 setup.as_array(),
+                "SII read setup",
             )
-            .await?
-            .wkc(1, "SII read setup")?;
+            .await?;
 
         crate::timeout::<TIMEOUT, _, _>(timeout, async {
             loop {
                 let control = self
-                    .client
-                    .fprd::<SiiControl>(self.configured_address, RegisterAddress::SiiControl)
-                    .await?
-                    .wkc(1, "SII busy wait")?;
+                    .slave
+                    .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
+                    .await?;
 
                 if !control.busy {
                     break Ok(());
@@ -118,38 +110,31 @@ where
         // TODO: Always return 8 bytes, just do two reads if returned read size is 4 octets
         let data = match status.read_size {
             SiiReadSize::Octets4 => {
-                log::error!("4 byte read");
-
                 let chunk1 = self
-                    .client
-                    .fprd::<[u8; 4]>(self.configured_address, RegisterAddress::SiiData)
-                    .await?
-                    .wkc(1, "SII data 1")?;
+                    .slave
+                    .read::<[u8; 4]>(RegisterAddress::SiiData, "Read SII data")
+                    .await?;
 
                 // Move on to next chunk
+                // TODO: DRY this with the first occurrence above
                 {
                     // NOTE: We must compute offset in 16 bit words, not bytes, hence the divide by 2
                     let setup = SiiRequest::read(eeprom_address + (chunk1.len() / 2) as u16);
 
-                    self.client
-                        .fpwr(
-                            self.configured_address,
+                    self.slave
+                        .write(
                             RegisterAddress::SiiControl,
                             setup.as_array(),
+                            "SII read setup",
                         )
-                        .await?
-                        .wkc(1, "SII read setup")?;
+                        .await?;
 
                     crate::timeout::<TIMEOUT, _, _>(timeout, async {
                         loop {
                             let control = self
-                                .client
-                                .fprd::<SiiControl>(
-                                    self.configured_address,
-                                    RegisterAddress::SiiControl,
-                                )
-                                .await?
-                                .wkc(1, "SII busy wait")?;
+                                .slave
+                                .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
+                                .await?;
 
                             if !control.busy {
                                 break Ok(());
@@ -163,10 +148,9 @@ where
                 }
 
                 let chunk2 = self
-                    .client
-                    .fprd::<[u8; 4]>(self.configured_address, RegisterAddress::SiiData)
-                    .await?
-                    .wkc(1, "SII data 2")?;
+                    .slave
+                    .read::<[u8; 4]>(RegisterAddress::SiiData, "SII data 2")
+                    .await?;
 
                 let mut data = [0u8; 8];
 
@@ -175,11 +159,11 @@ where
 
                 data
             }
-            SiiReadSize::Octets8 => self
-                .client
-                .fprd::<[u8; 8]>(self.configured_address, RegisterAddress::SiiData)
-                .await?
-                .wkc(1, "SII data")?,
+            SiiReadSize::Octets8 => {
+                self.slave
+                    .read::<[u8; 8]>(RegisterAddress::SiiData, "SII data")
+                    .await?
+            }
         };
 
         log::trace!("Read {:#04x?} {:02x?}", eeprom_address, data);
