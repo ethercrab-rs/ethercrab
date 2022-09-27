@@ -49,6 +49,8 @@ hardware to ensure best compatibility.
 
 - [@nealsjoe](https://twitter.com/nealsjoe) generously donated an EK1100 with several IO modules for
   testing with.
+- [Trisk Bio](https://triskbio.com/) generously donated some additional Beckhoff modules and some
+  optical ethernet gear.
 
 ## License
 
