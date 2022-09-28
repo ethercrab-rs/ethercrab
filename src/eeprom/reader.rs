@@ -12,6 +12,7 @@ pub struct EepromSectionReader<
     TIMEOUT,
 > {
     start: u16,
+    /// Category length in bytes.
     len: u16,
     byte_count: u16,
     read: heapless::Deque<u8, 8>,
