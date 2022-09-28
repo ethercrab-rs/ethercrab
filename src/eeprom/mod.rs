@@ -2,7 +2,7 @@ mod reader;
 // TODO: Un-pub
 pub mod types;
 
-use self::types::{Fmmu, SiiAccessConfig};
+use self::types::Fmmu;
 use crate::{
     eeprom::{
         reader::EepromSectionReader,
@@ -18,9 +18,10 @@ use crate::{
 };
 use core::{mem, ops::RangeInclusive, str::FromStr};
 use num_enum::TryFromPrimitive;
-use packed_struct::PackedStructSlice;
 
-const SII_FIRST_SECTION_START: u16 = 0x0040u16;
+/// The address of the first proper category, positioned after the fixed fields defined in ETG2010
+/// Table 2.
+const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 
 pub struct Eeprom<
     'a,
@@ -43,9 +44,7 @@ where
         Self { slave }
     }
 
-    async fn read_eeprom_raw(&self, eeprom_address: impl Into<u16>) -> Result<[u8; 8], Error> {
-        let eeprom_address: u16 = eeprom_address.into();
-
+    async fn read_eeprom_raw(&self, eeprom_address: u16) -> Result<[u8; 8], Error> {
         let status = self
             .slave
             .read::<SiiControl>(RegisterAddress::SiiControl, "Read SII control")
@@ -64,41 +63,21 @@ where
                 .await?;
         }
 
-        let setup = SiiRequest::read(eeprom_address);
-
-        // TODO: Configurable timeout
-        let timeout = core::time::Duration::from_millis(10);
-
         // Set up an SII read. This writes the control word and the register word after it
         // TODO: Move working counter check into `fpwr`, etc, methods. Consider either removing
         // context strings or using defmt or something to avoid bloat.
         self.slave
             .write(
                 RegisterAddress::SiiControl,
-                setup.as_array(),
+                SiiRequest::read(eeprom_address).as_array(),
                 "SII read setup",
             )
             .await?;
 
-        crate::timeout::<TIMEOUT, _, _>(timeout, async {
-            loop {
-                let control = self
-                    .slave
-                    .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
-                    .await?;
+        self.wait().await?;
 
-                if !control.busy {
-                    break Ok(());
-                }
-
-                // TODO: Configurable loop tick
-                TIMEOUT::timer(core::time::Duration::from_millis(1)).await;
-            }
-        })
-        .await?;
-
-        // TODO: Always return 8 bytes, just do two reads if returned read size is 4 octets
         let data = match status.read_size {
+            // If slave uses 4 octet reads, do two reads so we can always return a chunk of 8 bytes
             SiiReadSize::Octets4 => {
                 let chunk1 = self
                     .slave
@@ -106,7 +85,6 @@ where
                     .await?;
 
                 // Move on to next chunk
-                // TODO: DRY this with the first occurrence above
                 {
                     // NOTE: We must compute offset in 16 bit words, not bytes, hence the divide by 2
                     let setup = SiiRequest::read(eeprom_address + (chunk1.len() / 2) as u16);
@@ -119,22 +97,7 @@ where
                         )
                         .await?;
 
-                    crate::timeout::<TIMEOUT, _, _>(timeout, async {
-                        loop {
-                            let control = self
-                                .slave
-                                .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
-                                .await?;
-
-                            if !control.busy {
-                                break Ok(());
-                            }
-
-                            // TODO: Configurable loop tick
-                            TIMEOUT::timer(core::time::Duration::from_millis(1)).await;
-                        }
-                    })
-                    .await?;
+                    self.wait().await?;
                 }
 
                 let chunk2 = self
@@ -161,10 +124,27 @@ where
         Ok(data)
     }
 
-    pub async fn access(&self) -> Result<SiiAccessConfig, Error> {
-        let data = self.read_eeprom_raw(0u16).await?;
+    /// Wait for EEPROM read or write operation to finish and clear the busy flag.
+    async fn wait(&self) -> Result<(), Error> {
+        // TODO: Configurable timeout
+        let timeout = core::time::Duration::from_millis(10);
 
-        SiiAccessConfig::unpack_from_slice(&data[0..2]).map_err(|_| Error::EepromDecode)
+        crate::timeout::<TIMEOUT, _, _>(timeout, async {
+            loop {
+                let control = self
+                    .slave
+                    .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
+                    .await?;
+
+                if !control.busy {
+                    break Ok(());
+                }
+
+                // TODO: Configurable loop tick
+                TIMEOUT::timer(core::time::Duration::from_millis(1)).await;
+            }
+        })
+        .await
     }
 
     pub async fn device_name<const N: usize>(&self) -> Result<Option<heapless::String<N>>, Error> {
@@ -348,7 +328,7 @@ where
         category: CategoryType,
     ) -> Result<Option<EepromSectionReader<'_, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>>, Error>
     {
-        let mut start = SII_FIRST_SECTION_START;
+        let mut start = SII_FIRST_CATEGORY_START;
 
         loop {
             let chunk = self.read_eeprom_raw(start).await?;

@@ -19,33 +19,6 @@ use packed_struct::prelude::*;
 pub const TX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
 pub const RX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1600..=0x17ff;
 
-/// Defined in ETG1000.4 6.4.2
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PackedStruct)]
-#[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
-pub struct SiiAccessConfig {
-    // First byte, but second octet because little endian
-    #[packed_field(bits = "8")]
-    pub access_pdi: bool,
-    // #[packed_field(bits = "9..=15")]
-    // reserved7: u8,
-
-    // Second byte, but first octet because little endian
-    #[packed_field(bits = "0", ty = "enum")]
-    pub owner: SiiOwner,
-    #[packed_field(bits = "1")]
-    pub lock: bool,
-}
-
-impl PduRead for SiiAccessConfig {
-    const LEN: u16 = u16::LEN;
-
-    type Error = PackingError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
 pub enum SiiOwner {
     /// EEPROM access rights are assigned to PDI during state change from Init to PreOp, Init to
