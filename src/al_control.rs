@@ -10,10 +10,6 @@ pub struct AlControl {
     pub acknowledge: bool,
     #[packed_field(bits = "13")]
     pub id_request: bool,
-
-    // Required, but AL control must write 2 bytes to be valid
-    #[packed_field(bytes = "0")]
-    _reserved: u8,
 }
 
 impl AlControl {
@@ -22,7 +18,6 @@ impl AlControl {
             state,
             acknowledge: true,
             id_request: false,
-            _reserved: 0,
         }
     }
 
@@ -55,11 +50,30 @@ mod tests {
             state: AlState::SafeOp,
             acknowledge: true,
             id_request: false,
-            _reserved: 0,
         };
 
         let packed = value.pack().unwrap();
 
-        assert_eq!(packed, [0x00, 0x04 | 0x10]);
+        assert_eq!(packed, [0x04 | 0x10, 0x00]);
+    }
+
+    #[test]
+    fn unpack() {
+        let value = AlControl {
+            state: AlState::SafeOp,
+            acknowledge: true,
+            id_request: false,
+        };
+
+        let parsed = AlControl::unpack_from_slice(&[0x04 | 0x10, 0x00]).unwrap();
+
+        assert_eq!(value, parsed);
+    }
+
+    #[test]
+    fn unpack_short() {
+        let parsed = AlControl::unpack_from_slice(&[0x04 | 0x10]);
+
+        assert!(parsed.is_err());
     }
 }

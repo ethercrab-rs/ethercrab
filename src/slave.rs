@@ -293,8 +293,6 @@ where
                         read_enable: sync_manager.usage_type == SyncManagerType::ProcessDataRead,
                         write_enable: sync_manager.usage_type == SyncManagerType::ProcessDataWrite,
                         enable: true,
-                        reserved_1: 0,
-                        reserved_2: 0,
                     };
 
                     self.write(

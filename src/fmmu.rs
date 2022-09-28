@@ -4,7 +4,7 @@ use packed_struct::prelude::*;
 
 /// ETG1000.4 Table 56 – Fieldbus memory management unit (FMMU) entity.
 #[derive(Default, Copy, Clone, PackedStruct, PartialEq, Eq)]
-#[packed_struct(bit_numbering = "msb0", endian = "lsb")]
+#[packed_struct(bit_numbering = "msb0", endian = "lsb", size_bytes = "16")]
 pub struct Fmmu {
     /// This parameter shall contain the start address in octets in the logical memory area of the memory translation.
     #[packed_field(bytes = "0..=3")]
@@ -36,9 +36,9 @@ pub struct Fmmu {
     // 12th byte, last bit
     #[packed_field(bits = "103")]
     pub enable: bool,
-
-    pub reserved_1: u8,
-    pub reserved_2: u16,
+    // Encoded in `size_bytes` attribute of `packed_struct`.
+    // pub reserved_1: u8,
+    // pub reserved_2: u16,
 }
 
 impl fmt::Debug for Fmmu {
@@ -59,8 +59,6 @@ impl fmt::Debug for Fmmu {
             .field("read_enable", &self.read_enable)
             .field("write_enable", &self.write_enable)
             .field("enable", &self.enable)
-            .field("reserved_1", &self.reserved_1)
-            .field("reserved_2", &self.reserved_2)
             .finish()
     }
 }
@@ -73,7 +71,7 @@ mod tests {
     #[test]
     fn size() {
         // Unpacked size
-        assert_eq!(mem::size_of::<Fmmu>(), 20);
+        assert_eq!(mem::size_of::<Fmmu>(), 16);
         // Packed size
         assert_eq!(Fmmu::packed_bytes_size(None).unwrap(), 16);
     }
@@ -115,8 +113,6 @@ mod tests {
                 read_enable: true,
                 write_enable: false,
                 enable: true,
-                reserved_1: 0x00,
-                reserved_2: 0x0000
             }
         )
     }

@@ -73,7 +73,6 @@ impl FrameHeader {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
@@ -99,13 +98,14 @@ mod tests {
 
     #[test]
     fn parse() {
-        let raw = &[0b0001_0000, 0b0010_1000];
+        // Header from packet #39, soem-slaveinfo-ek1100-only.pcapng
+        let raw = &[0x3c, 0x10];
 
         let (rest, header) = FrameHeader::parse::<'_, nom::error::Error<_>>(raw).unwrap();
 
         assert_eq!(rest, &[]);
 
-        assert_eq!(header.payload_len(), 0x28);
+        assert_eq!(header.payload_len(), 0x3c);
         assert_eq!(header.protocol_type(), ProtocolType::DlPdu);
     }
 }
