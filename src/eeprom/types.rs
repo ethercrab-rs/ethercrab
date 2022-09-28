@@ -275,11 +275,10 @@ pub struct SiiCategory {
 }
 
 /// Defined in ETG1000.6 Table 19
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
 #[repr(u16)]
 pub enum CategoryType {
+    #[num_enum(default)]
     Nop = 0,
     #[num_enum(alternatives = [2,3,4,5,6,7,8,9])]
     DeviceSpecific = 1,

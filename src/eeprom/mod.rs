@@ -2,6 +2,7 @@ mod reader;
 // TODO: Un-pub
 pub mod types;
 
+use self::types::{Fmmu, SiiAccessConfig};
 use crate::{
     eeprom::{
         reader::EepromSectionReader,
@@ -18,8 +19,6 @@ use crate::{
 use core::{mem, ops::RangeInclusive, str::FromStr};
 use num_enum::TryFromPrimitive;
 use packed_struct::PackedStructSlice;
-
-use self::types::{Fmmu, SiiAccessConfig};
 
 const SII_FIRST_SECTION_START: u16 = 0x0040u16;
 
@@ -177,12 +176,10 @@ where
     }
 
     async fn general(&self) -> Result<SiiGeneral, Error> {
-        let category = self
-            .find_eeprom_category_start(CategoryType::General)
+        let mut reader = self
+            .find_category(CategoryType::General)
             .await?
             .ok_or(Error::EepromNoCategory)?;
-
-        let mut reader = EepromSectionReader::new(self, category);
 
         let buf = reader
             .take_vec_exact::<{ mem::size_of::<SiiGeneral>() }>()
@@ -194,15 +191,9 @@ where
     }
 
     pub async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
-        let category = self
-            .find_eeprom_category_start(CategoryType::SyncManager)
-            .await?;
-
         let mut sync_managers = heapless::Vec::<_, 8>::new();
 
-        if let Some(category) = category {
-            let mut reader = EepromSectionReader::new(self, category);
-
+        if let Some(mut reader) = self.find_category(CategoryType::SyncManager).await? {
             while let Some(bytes) = reader.take_vec::<8>().await? {
                 let (_, sm) = SyncManager::parse(&bytes).unwrap();
 
@@ -216,20 +207,13 @@ where
     }
 
     pub async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
-        let category = self.find_eeprom_category_start(CategoryType::Fmmu).await?;
+        let category = self.find_category(CategoryType::Fmmu).await?;
 
         // ETG100.4 6.6.1 states there may be up to 16 FMMUs
         let mut fmmus = heapless::Vec::<_, 16>::new();
 
-        if let Some(category) = category {
-            // Each FMMU is one byte, but categories have a length in words, so *2 is required.
-            let num_fmmus = category.len_words * 2;
-
-            let mut reader = EepromSectionReader::new(self, category);
-
-            for _ in 0..num_fmmus {
-                let byte = reader.try_next().await?;
-
+        if let Some(mut reader) = category {
+            while let Some(byte) = reader.next().await? {
                 let fmmu = FmmuUsage::try_from_primitive(byte).map_err(|_| Error::EepromDecode)?;
 
                 fmmus
@@ -242,15 +226,9 @@ where
     }
 
     pub async fn fmmu_mappings(&self) -> Result<heapless::Vec<Fmmu, 16>, Error> {
-        let category = self
-            .find_eeprom_category_start(CategoryType::FmmuExtended)
-            .await?;
-
         let mut mappings = heapless::Vec::<_, 16>::new();
 
-        if let Some(category) = category {
-            let mut reader = EepromSectionReader::new(self, category);
-
+        if let Some(mut reader) = self.find_category(CategoryType::FmmuExtended).await? {
             while let Some(bytes) = reader.take_vec::<3>().await? {
                 let (_, fmmu) = Fmmu::parse(&bytes).unwrap();
 
@@ -268,13 +246,9 @@ where
         category: CategoryType,
         valid_range: RangeInclusive<u16>,
     ) -> Result<heapless::Vec<Pdo, 16>, Error> {
-        let category = self.find_eeprom_category_start(category).await?;
-
         let mut pdos = heapless::Vec::new();
 
-        if let Some(category) = category {
-            let mut reader = EepromSectionReader::new(self, category);
-
+        if let Some(mut reader) = self.find_category(category).await? {
             // TODO: Define a trait that gives the number of bytes to take to parse the type.
             while let Some(pdo) = reader.take_n_vec::<8>(8).await? {
                 let (i, mut pdo) = Pdo::parse(&pdo).map_err(|e| {
@@ -340,13 +314,7 @@ where
         // Turn 1-based EtherCAT string indexing into normal 0-based.
         let search_index = search_index - 1;
 
-        let category = self
-            .find_eeprom_category_start(CategoryType::Strings)
-            .await?;
-
-        if let Some(category) = category {
-            let mut reader = EepromSectionReader::new(self, category);
-
+        if let Some(mut reader) = self.find_category(CategoryType::Strings).await? {
             let num_strings = reader.try_next().await?;
 
             if search_index > num_strings {
@@ -375,42 +343,39 @@ where
         }
     }
 
-    async fn find_eeprom_category_start(
+    async fn find_category(
         &self,
         category: CategoryType,
-    ) -> Result<Option<SiiCategory>, Error> {
+    ) -> Result<Option<EepromSectionReader<'_, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>>, Error>
+    {
         let mut start = SII_FIRST_SECTION_START;
 
         loop {
-            // First address, returns 2 bytes, contains the category type.
-            let (category_type, data_len) = self.read_eeprom_raw(start).await.map(|chunk| {
-                // TODO: Use array_chunks or similar method when stabilised
-                let category = u16::from_le_bytes([chunk[0], chunk[1]]);
-                let len = u16::from_le_bytes([chunk[2], chunk[3]]);
+            let chunk = self.read_eeprom_raw(start).await?;
 
-                (
-                    CategoryType::try_from(category).unwrap_or(CategoryType::Nop),
-                    len,
-                )
-            })?;
+            let category_type =
+                CategoryType::from(u16::from_le_bytes(chunk[0..2].try_into().unwrap()));
+            let data_len = u16::from_le_bytes(chunk[2..4].try_into().unwrap());
 
             // Position after header
             start += 2;
 
             log::trace!(
-                "Found category {:?}, data starts at {start:#06x?}, length {:#04x?} ({}) bytes",
-                category_type,
+                "Found category {category_type:?}, data starts at {start:#06x?}, length {:#04x?} ({}) bytes",
                 data_len,
                 data_len
             );
 
             match category_type {
                 cat if cat == category => {
-                    break Ok(Some(SiiCategory {
-                        category: cat,
-                        start,
-                        len_words: data_len,
-                    }))
+                    break Ok(Some(EepromSectionReader::new(
+                        self,
+                        SiiCategory {
+                            category: cat,
+                            start,
+                            len_words: data_len,
+                        },
+                    )))
                 }
                 CategoryType::End => break Ok(None),
                 _ => (),
