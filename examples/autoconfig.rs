@@ -4,20 +4,14 @@
 //! that order.
 
 use async_ctrlc::CtrlC;
-use ethercrab::al_control::AlControl;
 use ethercrab::al_status::AlState;
-use ethercrab::al_status_code::AlStatusCode;
 use ethercrab::client::Client;
 use ethercrab::error::Error;
-use ethercrab::pdu::CheckWorkingCounter;
 use ethercrab::register::RegisterAddress;
 use ethercrab::slave::MappingOffset;
 use ethercrab::std::tx_rx_task;
 use futures_lite::FutureExt;
-use futures_lite::StreamExt;
 use smol::LocalExecutor;
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
