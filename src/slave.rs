@@ -4,7 +4,7 @@ use crate::{
     al_status_code::AlStatusCode,
     client::Client,
     eeprom::{
-        types::{FmmuUsage, SiiOwner, SyncManagerEnable, SyncManagerType},
+        types::{FmmuUsage, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType},
         Eeprom,
     },
     error::Error,
@@ -154,6 +154,38 @@ where
         Ok(())
     }
 
+    async fn write_sm_config(
+        &self,
+        sync_manager_index: u8,
+        sync_manager: &SyncManager,
+    ) -> Result<SyncManagerChannel, Error> {
+        let sm_config = SyncManagerChannel {
+            physical_start_address: sync_manager.start_addr,
+            length_bytes: sync_manager.length,
+            control: sync_manager.control,
+            status: Default::default(),
+            enable: sync_manager_channel::Enable {
+                enable: sync_manager.enable.contains(SyncManagerEnable::ENABLE),
+                ..Default::default()
+            },
+        };
+
+        self.write(
+            RegisterAddress::sync_manager(sync_manager_index),
+            sm_config.pack().unwrap(),
+            "Mailbox SM",
+        )
+        .await?;
+
+        log::debug!(
+            "Slave {:#06x} SM{sync_manager_index}: {:#?}",
+            self.slave.configured_address,
+            sm_config
+        );
+
+        Ok(sm_config)
+    }
+
     /// Configuration performed in `INIT` state.
     pub async fn configure_from_eeprom_init(&self) -> Result<(), Error> {
         self.set_eeprom_mode(SiiOwner::Dl).await?;
@@ -165,27 +197,11 @@ where
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
 
+            // Mailboxes are configured in INIT state
             match sync_manager.usage_type {
                 SyncManagerType::MailboxOut | SyncManagerType::MailboxIn => {
-                    let sm_config = SyncManagerChannel {
-                        physical_start_address: sync_manager.start_addr,
-                        length_bytes: sync_manager.length,
-                        control: sync_manager.control,
-                        status: Default::default(),
-                        enable: sync_manager_channel::Enable {
-                            enable: sync_manager.enable.contains(SyncManagerEnable::ENABLE),
-                            ..Default::default()
-                        },
-                    };
-
-                    self.write(
-                        RegisterAddress::sync_manager(sync_manager_index),
-                        sm_config.pack().unwrap(),
-                        "Mailbox SM",
-                    )
-                    .await?;
-
-                    log::debug!("SM{sync_manager_index} {:#?}", sm_config);
+                    self.write_sm_config(sync_manager_index, sync_manager)
+                        .await?;
                 }
                 _ => continue,
             }
@@ -208,7 +224,8 @@ where
         mut offset: MappingOffset,
     ) -> Result<MappingOffset, Error> {
         // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
-        // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
+        // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
+        // to master mode here, now that the transition is complete.
         self.set_eeprom_mode(SiiOwner::Dl).await?;
 
         // RX from the perspective of the slave device
@@ -222,6 +239,7 @@ where
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
 
+            // PDOs are configured in PRE-OP state
             match sync_manager.usage_type {
                 SyncManagerType::ProcessDataWrite | SyncManagerType::ProcessDataRead => {
                     let pdos = if sync_manager.usage_type == SyncManagerType::ProcessDataWrite {
@@ -232,15 +250,9 @@ where
 
                     let bit_len = pdos
                         .iter()
-                        .filter(|pdo| pdo.sync_manager == sync_manager_index)
-                        .flat_map(|pdo| {
-                            pdo.entries
-                                .iter()
-                                .map(|entry| u16::from(entry.data_length_bits))
-                        })
-                        .sum::<u16>();
-
-                    let byte_len = u16::from((bit_len + 7) / 8);
+                        .find(|pdo| pdo.sync_manager == sync_manager_index)
+                        .map(|pdo| pdo.bit_len())
+                        .unwrap_or(0);
 
                     // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
                     // to looking through FMMU usage list and picking out the appropriate kind
@@ -267,18 +279,9 @@ where
                         })
                         .ok_or(Error::Other)?;
 
-                    let sm_config = SyncManagerChannel {
-                        physical_start_address: sync_manager.start_addr,
-                        length_bytes: byte_len,
-                        control: sync_manager.control,
-                        status: Default::default(),
-                        enable: sync_manager_channel::Enable {
-                            enable: sync_manager.enable.contains(SyncManagerEnable::ENABLE),
-                            ..Default::default()
-                        },
-                    };
-
-                    log::debug!("SM{sync_manager_index} {:#?}", sm_config);
+                    let sm_config = self
+                        .write_sm_config(sync_manager_index, sync_manager)
+                        .await?;
 
                     let fmmu_config = Fmmu {
                         logical_start_address: offset.start_address,
@@ -294,21 +297,18 @@ where
                         reserved_2: 0,
                     };
 
-                    log::debug!("FMMU{fmmu_index} {:#?}", fmmu_config);
-
-                    self.write(
-                        RegisterAddress::sync_manager(sync_manager_index),
-                        sm_config.pack().unwrap(),
-                        "PDI SM",
-                    )
-                    .await?;
-
                     self.write(
                         RegisterAddress::fmmu(fmmu_index),
                         fmmu_config.pack().unwrap(),
                         "PDI FMMU",
                     )
                     .await?;
+
+                    log::debug!(
+                        "Slave {:#06x} FMMU{fmmu_index}: {:#?}",
+                        self.slave.configured_address,
+                        fmmu_config
+                    );
 
                     offset = offset.increment(bit_len);
                 }
@@ -323,6 +323,8 @@ where
     }
 }
 
+/// An accumulator that stores the bit and byte offsets in the PDI so slave IO data can be packed
+/// and mapped to/from the PDI using FMMUs.
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 pub struct MappingOffset {
     start_address: u32,
