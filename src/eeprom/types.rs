@@ -585,6 +585,15 @@ impl Pdo {
             },
         ))
     }
+
+    /// Compute the total bit length of this PDO by iterating over and summing the bit length of
+    /// each entry contained within.
+    pub fn bit_len(&self) -> u16 {
+        self.entries
+            .iter()
+            .map(|entry| u16::from(entry.data_length_bits))
+            .sum()
+    }
 }
 
 #[derive(Clone)]
