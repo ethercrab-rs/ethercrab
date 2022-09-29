@@ -47,7 +47,6 @@ pub struct SiiControl {
     pub address_type: SiiAddressSize,
 
     // Second byte, but first octet because little endian
-    // TODO: Replace with bitflags struct?
     #[packed_field(bits = "0")]
     pub read: bool,
     #[packed_field(bits = "1")]
@@ -285,14 +284,13 @@ pub enum FmmuUsage {
 /// ETG1020 Table 10 "FMMU_EX"
 ///
 /// NOTE: Most fields defined are discarded from this struct as they are unused in Ethercrab.
-// TODO: Rename to avoid conflict with crate::fmmu::Fmmu
 #[derive(Debug, Copy, Clone)]
-pub struct Fmmu {
+pub struct FmmuEx {
     /// Sync manager index.
     pub sync_manager: u8,
 }
 
-impl Fmmu {
+impl FmmuEx {
     pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, _before) = le_u8(i)?;
         let (i, sync_manager) = le_u8(i)?;
@@ -507,13 +505,10 @@ pub enum SyncManagerType {
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
 #[derive(Clone)]
-// TODO: Remove
-#[allow(unused)]
 pub struct Pdo {
     pub(crate) index: u16,
     pub(crate) num_entries: u8,
-    // TODO: Un-pub
-    pub sync_manager: u8,
+    pub(crate) sync_manager: u8,
     dc_sync: u8,
     /// Index into EEPROM Strings section for PDO name.
     name_string_idx: u8,
@@ -569,16 +564,13 @@ impl Pdo {
 }
 
 #[derive(Clone)]
-// TODO: Remove
-#[allow(unused)]
 pub struct PdoEntry {
     index: u16,
     sub_index: u8,
     name_string_idx: u8,
     // See page 103 of ETG2000
     data_type: PrimitiveDataType,
-    // TODO: Un-pub
-    pub(crate) data_length_bits: u8,
+    data_length_bits: u8,
     flags: u16,
 }
 

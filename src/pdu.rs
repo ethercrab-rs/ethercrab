@@ -122,8 +122,7 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     pub fn to_ethernet_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8], PduError> {
         let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.frame_buf_len());
 
-        // TODO: Return result if it's not long enough
-        let buf = &mut buf[0..ethernet_len];
+        let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
 
         let mut ethernet_frame = EthernetFrame::new_checked(buf).map_err(PduError::CreateFrame)?;
 

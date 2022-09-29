@@ -2,7 +2,7 @@ mod reader;
 // TODO: Un-pub
 pub mod types;
 
-use self::types::Fmmu;
+use self::types::FmmuEx;
 use crate::{
     eeprom::{
         reader::EepromSectionReader,
@@ -64,8 +64,8 @@ where
         }
 
         // Set up an SII read. This writes the control word and the register word after it
-        // TODO: Move working counter check into `fpwr`, etc, methods. Consider either removing
-        // context strings or using defmt or something to avoid bloat.
+        // TODO: Consider either removing context strings or using defmt or something to avoid
+        // bloat.
         self.slave
             .write(
                 RegisterAddress::SiiControl,
@@ -205,12 +205,12 @@ where
         Ok(fmmus)
     }
 
-    pub async fn fmmu_mappings(&self) -> Result<heapless::Vec<Fmmu, 16>, Error> {
+    pub async fn fmmu_mappings(&self) -> Result<heapless::Vec<FmmuEx, 16>, Error> {
         let mut mappings = heapless::Vec::<_, 16>::new();
 
         if let Some(mut reader) = self.find_category(CategoryType::FmmuExtended).await? {
             while let Some(bytes) = reader.take_vec::<3>().await? {
-                let (_, fmmu) = Fmmu::parse(&bytes).unwrap();
+                let (_, fmmu) = FmmuEx::parse(&bytes).unwrap();
 
                 mappings
                     .push(fmmu)

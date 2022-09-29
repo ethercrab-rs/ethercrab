@@ -28,7 +28,6 @@ impl TryFrom<u8> for ProtocolType {
     }
 }
 
-// TODO: Represent different behaviours with different typestates?
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct FrameHeader(pub u16);
