@@ -9,8 +9,10 @@
   - [x] Read name in chunks of however many bytes and form into a displayable string
 - [ ] Experiment with using `MaybeUninit` for wakers again
 - [ ] Find a way to split out the PDU TX/RX to ensure we only ever have one of them
-- [ ] Read FMMU and SM data from EEPROM
+- [x] Read FMMU and SM data from EEPROM
 - [x] Use [embassy-futures](https://crates.io/crates/embassy-futures) for some things instead of
       smol or whatever I'm using now.
-- [ ] Optimise find string function to not use a buffer of 255 bytes on the stack
+- [x] Optimise find string function to not use a buffer of 255 bytes on the stack
 - [ ] Distributed clocks
+- [ ] Find a way of storing PDUs in a single buffer instead of using a bunch of `heapless::Vec`s
+- [ ] Byte-align each slave's PDI access for better safety
