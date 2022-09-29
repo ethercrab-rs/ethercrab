@@ -86,7 +86,6 @@ where
         &self,
         command: Command,
         data: &[u8],
-        // TODO: Send zeroes when reading instead of a length
         data_length: u16,
     ) -> Result<Pdu<MAX_PDU_DATA>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;

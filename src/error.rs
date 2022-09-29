@@ -19,7 +19,7 @@ pub enum Error {
     // TODO: Remove from PduError
     Timeout,
 
-    // TODO: Might need a nested enum for more EEPROM failure states.
+    // TODO: Nested enum for more EEPROM failure states.
     EepromDecode,
     EepromSectionOverrun,
     EepromNoCategory,
