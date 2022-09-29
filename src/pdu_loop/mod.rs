@@ -17,6 +17,8 @@ use core::{
 use smoltcp::wire::EthernetFrame;
 
 pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+    // TODO: Can we have a single buffer that gives out variable length slices instead of wasting
+    // space with lots of potentially huge PDUs?
     frames: [UnsafeCell<pdu_frame::Frame<MAX_PDU_DATA>>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: RefCell<Option<Waker>>,
