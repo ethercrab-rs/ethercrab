@@ -8,7 +8,7 @@ use core::sync::atomic::{AtomicU8, Ordering};
 use core::task::Poll;
 use core::task::Waker;
 use ethercrab::command::Command;
-use ethercrab::frame_header::FrameError;
+use ethercrab::frame::FrameError;
 use ethercrab::pdu::Pdu;
 use ethercrab::register::RegisterAddress;
 use ethercrab::{PduData, ETHERCAT_ETHERTYPE, MASTER_ADDR};

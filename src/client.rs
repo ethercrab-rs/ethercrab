@@ -4,7 +4,7 @@ use crate::{
     command::Command,
     error::{Error, PduError},
     fmmu::Fmmu,
-    pdu_loop::pdu::{CheckWorkingCounter, PduResponse},
+    pdu::{CheckWorkingCounter, PduResponse},
     pdu_loop::PduLoop,
     register::RegisterAddress,
     slave::{Slave, SlaveRef},
