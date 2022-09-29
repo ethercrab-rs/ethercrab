@@ -1,4 +1,4 @@
-//! An EtherCAT frame header.
+//! An EtherCAT frame.
 
 use crate::LEN_MASK;
 use nom::{

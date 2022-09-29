@@ -49,12 +49,14 @@ where
 
     // TODO: Unwraps
     let tx_task = core::future::poll_fn::<(), _>(move |ctx| {
-        let mut packet_buf = [0u8; 1536];
-
         client_tx
             .pdu_loop
-            .send_frames_blocking(ctx.waker(), &mut packet_buf, |frame| {
-                tx.send_to(frame, None).unwrap().map_err(|_| ())
+            .send_frames_blocking(ctx.waker(), |pdu| {
+                let mut packet_buf = [0u8; 1536];
+
+                let packet = pdu.to_ethernet_frame(&mut packet_buf).unwrap();
+
+                tx.send_to(packet, None).unwrap().map_err(|_| ())
             })
             .unwrap();
 
