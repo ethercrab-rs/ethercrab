@@ -1,15 +1,14 @@
 use crate::{
     command::{Command, CommandCode},
     error::{Error, PduError, PduValidationError},
-    frame::FrameHeader,
-    ETHERCAT_ETHERTYPE, LEN_MASK, MASTER_ADDR,
+    pdu_loop::frame_header::FrameHeader,
+    LEN_MASK,
 };
 use cookie_factory::{
     bytes::{le_u16, le_u8},
     combinator::slice,
     gen_simple, GenError,
 };
-use core::mem;
 use nom::{
     bytes::complete::take,
     combinator::map_res,
@@ -18,7 +17,8 @@ use nom::{
 };
 use num_enum::TryFromPrimitiveError;
 use packed_struct::prelude::*;
-use smoltcp::wire::{EthernetAddress, EthernetFrame};
+
+use super::frame::FramePayload;
 
 pub type PduResponse<T> = (T, u16);
 
@@ -84,62 +84,11 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         }
     }
 
-    fn as_bytes<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
-        // Order is VITAL here
-        let buf = gen_simple(le_u8(self.command.code() as u8), buf)?;
-        let buf = gen_simple(le_u8(self.index), buf)?;
-
-        // Write address and register data
-        let buf = gen_simple(slice(self.command.address()?), buf)?;
-
-        let buf = gen_simple(le_u16(u16::from_le_bytes(self.flags.pack().unwrap())), buf)?;
-        let buf = gen_simple(le_u16(self.irq), buf)?;
-        let buf = gen_simple(slice(&self.data), buf)?;
-        // Working counter is always zero when sending
-        let buf = gen_simple(le_u16(0u16), buf)?;
-
-        Ok(buf)
-    }
-
-    /// Compute the number of bytes required to store the PDU payload and metadata.
-    const fn buf_len(&self) -> usize {
-        // TODO: Add unit test to stop regressions
-        MAX_DATA + 12
-    }
-
     /// Compute the number of bytes required to store the PDU payload, metadata and EtherCAT frame
     /// header data.
     pub fn frame_buf_len(&self) -> usize {
-        let size = self.buf_len() + mem::size_of::<FrameHeader>();
-
-        // TODO: Move to unit test
-        assert_eq!(size, MAX_DATA + 14);
-
-        size
-    }
-
-    /// Write an ethernet frame into `buf`, returning the used portion of the buffer.
-    pub fn to_ethernet_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8], PduError> {
-        let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.frame_buf_len());
-
-        let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
-
-        let mut ethernet_frame = EthernetFrame::new_checked(buf).map_err(PduError::CreateFrame)?;
-
-        ethernet_frame.set_src_addr(MASTER_ADDR);
-        ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
-        ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
-
-        let header = FrameHeader::pdu(self.buf_len());
-
-        let buf = ethernet_frame.payload_mut();
-
-        let buf = gen_simple(le_u16(header.0), buf).map_err(PduError::Encode)?;
-        let _buf = self.as_bytes(buf).map_err(PduError::Encode)?;
-
-        let buf = ethernet_frame.into_inner();
-
-        Ok(buf)
+        // +2 bytes for frame header
+        self.len() + 2
     }
 
     /// Create an EtherCAT frame from an Ethernet II frame's payload.
@@ -186,7 +135,45 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         ))
     }
 
-    pub fn is_response_to(&self, request_pdu: &Self) -> Result<(), PduValidationError> {
+    pub(crate) fn data(&self) -> &[u8] {
+        self.data.as_slice()
+    }
+
+    pub fn index(&self) -> u8 {
+        self.index
+    }
+
+    pub(crate) fn working_counter(&self) -> u16 {
+        self.working_counter
+    }
+}
+
+impl<const MAX_DATA: usize> FramePayload for Pdu<MAX_DATA> {
+    fn as_bytes<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], GenError> {
+        // Order is VITAL here
+        let buf = gen_simple(le_u8(self.command.code() as u8), buf)?;
+        let buf = gen_simple(le_u8(self.index), buf)?;
+
+        // Write address and register data
+        let buf = gen_simple(slice(self.command.address()?), buf)?;
+
+        let buf = gen_simple(le_u16(u16::from_le_bytes(self.flags.pack().unwrap())), buf)?;
+        let buf = gen_simple(le_u16(self.irq), buf)?;
+        let buf = gen_simple(slice(&self.data), buf)?;
+        // Working counter is always zero when sending
+        let buf = gen_simple(le_u16(0u16), buf)?;
+
+        Ok(buf)
+    }
+
+    fn len(&self) -> usize {
+        // TODO: Unit test to make sure the magic number 12 stays correct
+        // TODO: Why does the program cresh when I use data.len()?
+        // self.data.len() + 12
+        MAX_DATA + 12
+    }
+
+    fn is_response_to(&self, request_pdu: &Self) -> Result<(), PduValidationError> {
         if request_pdu.index != self.index {
             return Err(PduValidationError::IndexMismatch {
                 sent: request_pdu.command,
@@ -204,16 +191,8 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         Ok(())
     }
 
-    pub fn index(&self) -> u8 {
-        self.index
-    }
-
-    pub(crate) fn data(&self) -> &[u8] {
-        self.data.as_slice()
-    }
-
-    pub(crate) fn working_counter(&self) -> u16 {
-        self.working_counter
+    fn index(&self) -> u8 {
+        Pdu::index(self)
     }
 }
 

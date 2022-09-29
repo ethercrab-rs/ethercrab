@@ -1,9 +1,11 @@
-mod pdu_frame;
+mod frame;
+mod frame_header;
+pub mod pdu;
 
+use crate::pdu_loop::pdu::Pdu;
 use crate::{
     command::Command,
     error::{Error, PduError},
-    pdu::Pdu,
     timeout,
     timer_factory::TimerFactory,
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
@@ -19,7 +21,7 @@ use smoltcp::wire::EthernetFrame;
 pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: Can we have a single buffer that gives out variable length slices instead of wasting
     // space with lots of potentially huge PDUs?
-    frames: [UnsafeCell<pdu_frame::Frame<MAX_PDU_DATA>>; MAX_FRAMES],
+    frames: [UnsafeCell<frame::Frame<Pdu<MAX_PDU_DATA>>>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: RefCell<Option<Waker>>,
     /// EtherCAT frame index.
@@ -39,7 +41,7 @@ where
 {
     pub fn new() -> Self {
         Self {
-            frames: [(); MAX_FRAMES].map(|_| UnsafeCell::new(pdu_frame::Frame::default())),
+            frames: [(); MAX_FRAMES].map(|_| UnsafeCell::new(frame::Frame::default())),
             tx_waker: RefCell::new(None),
             idx: AtomicU8::new(0),
             _timeout: PhantomData,
@@ -52,9 +54,14 @@ where
         }
     }
 
-    pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), ()>
+    pub fn send_frames_blocking<F>(
+        &self,
+        waker: &Waker,
+        packet_buf: &mut [u8],
+        mut send: F,
+    ) -> Result<(), Error>
     where
-        F: FnMut(&Pdu<MAX_PDU_DATA>) -> Result<(), ()>,
+        F: FnMut(&[u8]) -> Result<(), ()>,
     {
         self.frames.iter().try_for_each(|frame| {
             let frame = unsafe { &mut *frame.get() };
@@ -62,7 +69,9 @@ where
             if let Some(ref mut frame) = frame.sendable() {
                 frame.mark_sending();
 
-                send(frame.pdu())
+                let frame = frame.write_ethernet_frame(packet_buf)?;
+
+                send(frame).map_err(|_| Error::Send)
             } else {
                 Ok(())
             }
@@ -73,7 +82,7 @@ where
         Ok(())
     }
 
-    fn frame(&self, idx: u8) -> Result<&mut pdu_frame::Frame<MAX_PDU_DATA>, Error> {
+    fn pdu_frame(&self, idx: u8) -> Result<&mut frame::Frame<Pdu<MAX_PDU_DATA>>, Error> {
         let req = self
             .frames
             .get(usize::from(idx))
@@ -90,7 +99,7 @@ where
     ) -> Result<Pdu<MAX_PDU_DATA>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
-        let frame = self.frame(idx)?;
+        let frame = self.pdu_frame(idx)?;
 
         let pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx, data)?;
 
@@ -125,7 +134,7 @@ where
         )
         .map_err(|_| PduError::Parse)?;
 
-        self.frame(pdu.index())?.wake_done(pdu)?;
+        self.pdu_frame(pdu.index())?.wake_done(pdu)?;
 
         Ok(())
     }

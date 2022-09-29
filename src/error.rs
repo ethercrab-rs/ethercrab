@@ -1,6 +1,5 @@
-use core::cell::BorrowError;
-
 use crate::command::Command;
+use core::cell::BorrowError;
 
 #[derive(Debug)]
 pub enum Error {
@@ -27,6 +26,7 @@ pub enum Error {
     /// A fixed size array was not large enough to hold a given item.
     Capacity(Capacity),
     Other,
+    Send,
 }
 
 impl From<BorrowError> for Error {
