@@ -33,9 +33,8 @@ use smoltcp::wire::{EthernetAddress, EthernetProtocol};
 use timer_factory::TimerFactory;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
-// TODO: Un-pub
-pub const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
-pub const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
+const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
+const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
 
 const BASE_SLAVE_ADDR: u16 = 0x1000;
 

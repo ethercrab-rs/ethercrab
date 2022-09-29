@@ -12,8 +12,7 @@ chrono = "0.4.19"
 libc = "0.2.126"
 mac_address = "1.1.3"
 pcap = "0.10.1"
-# TODO: No default features
-smoltcp = "0.8.1"
+smoltcp = { version = "0.8.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet" ] }
 pnet = { version = "0.31.0", features = ["std"] }
 nom = "7.1.1"
 packed_struct = { version = "0.10.0", default-features = false }
