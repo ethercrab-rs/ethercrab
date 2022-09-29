@@ -1,7 +1,7 @@
 use crate::{
     command::{Command, CommandCode},
     error::{Error, PduError, PduValidationError},
-    frame::FrameHeader,
+    pdu_loop::frame_header::FrameHeader,
     ETHERCAT_ETHERTYPE, LEN_MASK, MASTER_ADDR,
 };
 use cookie_factory::{
