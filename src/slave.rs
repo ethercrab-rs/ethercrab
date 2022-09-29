@@ -9,7 +9,7 @@ use crate::{
     },
     error::Error,
     fmmu::Fmmu,
-    pdu::CheckWorkingCounter,
+    pdu_loop::pdu::CheckWorkingCounter,
     register::RegisterAddress,
     sync_manager_channel::{self, SyncManagerChannel},
     timer_factory::TimerFactory,
