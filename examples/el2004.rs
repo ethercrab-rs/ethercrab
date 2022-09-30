@@ -88,8 +88,6 @@ fn main() -> Result<(), PduError> {
                 read_enable: false,
                 write_enable: true,
                 enable: true,
-                reserved_1: 0,
-                reserved_2: 0,
             };
 
             client
