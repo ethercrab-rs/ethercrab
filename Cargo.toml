@@ -7,35 +7,27 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytemuck = { version = "1.9.1", features = ["derive", "min_const_generics", "bytemuck_derive"], default-features = false }
-chrono = "0.4.19"
-libc = "0.2.126"
-mac_address = "1.1.3"
-pcap = "0.10.1"
-smoltcp = { version = "0.8.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet" ] }
-pnet = { version = "0.31.0", features = ["std"] }
-nom = "7.1.1"
-packed_struct = { version = "0.10.0", default-features = false }
-cookie-factory = { version = "0.3.2", default-features = false }
-heapless = "0.7.14"
-bbqueue = "0.5.1"
-futures-lite = { version = "1.12.0", default-features = false }
-parking_lot = { version = "0.12.1", features = ["deadlock_detection"] }
-async-ctrlc = "1.2.0"
-futures = { version = "0.3.21", default-features = false }
-num_enum = { version = "0.5.7", default-features = false }
-tui = "0.19.0"
-crossterm = "0.25.0"
-log = "0.4.17"
-tui-logger = "0.8.0"
-defmt = "0.3.2"
-env_logger = "0.9.0"
 bitflags = "1.3.2"
-smol = "1.2.5"
+cookie-factory = { version = "0.3.2", default-features = false }
+defmt = "0.3.2"
 embassy-futures = "0.1.0"
+heapless = "0.7.14"
+log = "0.4.17"
+# TODO: No default features
+nom = "7.1.1"
+num_enum = { version = "0.5.7", default-features = false }
+packed_struct = { version = "0.10.0", default-features = false }
+pnet = { version = "0.31.0", features = ["std"] }
+smol = "1.2.5"
+smoltcp = { version = "0.8.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet" ] }
 
 [dev-dependencies]
+async-ctrlc = "1.2.0"
 async-io = "1.6.0"
+env_logger = "0.9.0"
+futures-lite = { version = "1.12.0", default-features = false }
+tui = "0.19.0"
+tui-logger = "0.8.0"
 
 [features]
 default = ["std"]
