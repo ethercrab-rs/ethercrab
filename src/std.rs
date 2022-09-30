@@ -1,6 +1,6 @@
 use crate::{client::Client, timer_factory::TimerFactory};
 use core::{future::Future, task::Poll};
-use futures_lite::FutureExt;
+use embassy_futures::select;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use std::sync::Arc;
 
@@ -38,7 +38,7 @@ pub fn tx_rx_task<
 >(
     device: &str,
     client: &Arc<Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>>,
-) -> Result<impl Future<Output = ()>, std::io::Error>
+) -> Result<impl Future<Output = embassy_futures::select::Either<(), ()>>, std::io::Error>
 where
     TIMEOUT: TimerFactory + Send + 'static,
 {
@@ -86,5 +86,5 @@ where
         }
     });
 
-    Ok(tx_task.race(rx_task))
+    Ok(select::select(tx_task, rx_task))
 }
