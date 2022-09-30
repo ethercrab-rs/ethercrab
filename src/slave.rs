@@ -186,14 +186,56 @@ where
         Ok(sm_config)
     }
 
-    /// Configuration performed in `INIT` state.
-    pub async fn configure_from_eeprom_init(&self) -> Result<(), Error> {
-        self.set_eeprom_mode(SiiOwner::Dl).await?;
+    // TODO: PO2SO callback for configuring SDOs
+    /// Configure slave from EEPROM configuration. Once complete, the slave will be in PRE-OP state
+    /// and can be transitioned into SAFE-OP and beyond with [`request_slave_state`].
+    ///
+    /// The slave must be in INIT state before calling this method.
+    pub async fn configure_from_eeprom(
+        &self,
+        offset: MappingOffset,
+    ) -> Result<MappingOffset, Error> {
+        // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
+        // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
+        // to master mode here, now that the transition is complete.
+        self.set_eeprom_mode(SiiOwner::Master).await?;
+
+        // RX from the perspective of the slave device
+        let rx_pdos = self.eeprom().rxpdos().await?;
+        let tx_pdos = self.eeprom().txpdos().await?;
 
         let sync_managers = self.eeprom().sync_managers().await?;
+        let fmmu_usage = self.eeprom().fmmus().await?;
+        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
-        log::trace!("sync_managers {:#?}", sync_managers);
+        // Mailboxes must be configured in INIT state
+        self.configure_mailboxes(&sync_managers).await?;
 
+        // Some slaves must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
+        // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
+        self.set_eeprom_mode(SiiOwner::Pdi).await?;
+
+        self.request_slave_state(AlState::PreOp).await?;
+
+        // PDOs must be configurd in PRE-OP state
+        let offset = self
+            .configure_pdos(
+                &sync_managers,
+                &rx_pdos,
+                &tx_pdos,
+                &fmmu_sm_mappings,
+                &fmmu_usage,
+                offset,
+            )
+            .await?;
+
+        // Restore EEPROM mode
+        self.set_eeprom_mode(SiiOwner::Pdi).await?;
+
+        Ok(offset)
+    }
+
+    async fn configure_mailboxes(&self, sync_managers: &[SyncManager]) -> Result<(), Error> {
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
 
@@ -207,35 +249,19 @@ where
             }
         }
 
-        // Some slaves must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
-        // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
-        self.set_eeprom_mode(SiiOwner::Pdi).await?;
-
-        self.request_slave_state(AlState::PreOp).await?;
-
         Ok(())
     }
 
-    // TODO: PO2SO callback for configuring SDOs
-    // TODO: Lots of dedupe with configure_from_eeprom_init
-    /// Configure slave in `PRE-OP` state.
-    pub async fn configure_from_eeprom_preop(
+    /// Configure SM and FMMU mappings for TX and RX PDOs.
+    async fn configure_pdos(
         &self,
+        sync_managers: &[SyncManager],
+        rx_pdos: &[crate::eeprom::types::Pdo],
+        tx_pdos: &[crate::eeprom::types::Pdo],
+        fmmu_sm_mappings: &[crate::eeprom::types::FmmuEx],
+        fmmu_usage: &[FmmuUsage],
         mut offset: MappingOffset,
     ) -> Result<MappingOffset, Error> {
-        // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
-        // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
-        // to master mode here, now that the transition is complete.
-        self.set_eeprom_mode(SiiOwner::Dl).await?;
-
-        // RX from the perspective of the slave device
-        let rx_pdos = self.eeprom().rxpdos().await?;
-        let tx_pdos = self.eeprom().txpdos().await?;
-
-        let sync_managers = self.eeprom().sync_managers().await?;
-        let fmmu_usage = self.eeprom().fmmus().await?;
-        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
-
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
 
@@ -313,9 +339,6 @@ where
                 _ => continue,
             }
         }
-
-        // Restore EEPROM mode
-        self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
         Ok(offset)
     }
