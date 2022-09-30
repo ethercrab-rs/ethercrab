@@ -158,10 +158,12 @@ where
         &self,
         sync_manager_index: u8,
         sync_manager: &SyncManager,
+        length_bytes: u16,
     ) -> Result<SyncManagerChannel, Error> {
         let sm_config = SyncManagerChannel {
             physical_start_address: sync_manager.start_addr,
-            length_bytes: sync_manager.length,
+            // Bit length, rounded up to the nearest byte
+            length_bytes,
             control: sync_manager.control,
             status: Default::default(),
             enable: sync_manager_channel::Enable {
@@ -173,7 +175,7 @@ where
         self.write(
             RegisterAddress::sync_manager(sync_manager_index),
             sm_config.pack().unwrap(),
-            "Mailbox SM",
+            "SM config",
         )
         .await?;
 
@@ -276,9 +278,9 @@ where
 
                     let bit_len = pdos
                         .iter()
-                        .find(|pdo| pdo.sync_manager == sync_manager_index)
+                        .filter(|pdo| pdo.sync_manager == sync_manager_index)
                         .map(|pdo| pdo.bit_len())
-                        .unwrap_or(0);
+                        .sum();
 
                     // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
                     // to looking through FMMU usage list and picking out the appropriate kind
@@ -306,7 +308,7 @@ where
                         .ok_or(Error::Other)?;
 
                     let sm_config = self
-                        .write_sm_config(sync_manager_index, sync_manager)
+                        .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
                         .await?;
 
                     let fmmu_config = Fmmu {
