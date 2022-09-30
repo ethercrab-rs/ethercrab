@@ -46,7 +46,7 @@ impl fmt::Debug for Fmmu {
         f.debug_struct("Fmmu")
             .field(
                 "logical_start_address",
-                &format_args!("{:#06x}", self.logical_start_address),
+                &format_args!("{:#010x}", self.logical_start_address),
             )
             .field("length_bytes", &self.length_bytes)
             .field("logical_start_bit", &self.logical_start_bit)
