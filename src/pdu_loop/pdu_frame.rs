@@ -1,5 +1,5 @@
 use crate::error::{Error, PduError};
-use crate::pdu::Pdu;
+use crate::pdu_loop::pdu::Pdu;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
