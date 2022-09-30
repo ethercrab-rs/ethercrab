@@ -69,6 +69,11 @@ mod tests {
     use core::mem;
 
     #[test]
+    fn default_is_zero() {
+        assert_eq!(Fmmu::default().pack().unwrap(), [0u8; 16]);
+    }
+
+    #[test]
     fn size() {
         // Unpacked size
         assert_eq!(mem::size_of::<Fmmu>(), 16);

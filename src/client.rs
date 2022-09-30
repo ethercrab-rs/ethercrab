@@ -3,11 +3,9 @@ use crate::{
     al_status::AlState,
     command::Command,
     error::{Error, PduError},
-    fmmu::Fmmu,
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
-    slave::{Slave, SlaveRef},
-    sync_manager_channel::SyncManagerChannel,
+    slave::{MappingOffset, Slave, SlaveRef},
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR,
 };
@@ -61,59 +59,46 @@ where
         }
     }
 
-    /// Detect slaves and set their configured station addresses.
-    // TODO: Ability to pass in configs read from ESI files
-    pub async fn init(&self) -> Result<(), Error> {
-        // Reset everything
-        {
-            // Reset slaves to init
-            self.bwr(
-                RegisterAddress::AlControl,
-                AlControl::reset().pack().unwrap(),
+    /// Write zeroes to every slave's memory in chunks of [`MAX_PDU_DATA`].
+    async fn blank_memory(&self, start: impl Into<u16>, len: u16) -> Result<(), Error> {
+        let start: u16 = start.into();
+        let step = MAX_PDU_DATA;
+        let range = start..(start + len);
+
+        for chunk_start in range.step_by(step) {
+            self.write_service(
+                Command::Bwr {
+                    address: 0,
+                    register: chunk_start,
+                },
+                [0u8; MAX_PDU_DATA],
             )
             .await?;
-
-            // Clear SMs
-            // TODO: Read EEPROM and iterate through clearing as many items as detected
-            {
-                self.bwr(
-                    RegisterAddress::Sm0,
-                    SyncManagerChannel::default().pack().unwrap(),
-                )
-                .await?;
-                self.bwr(
-                    RegisterAddress::Sm1,
-                    SyncManagerChannel::default().pack().unwrap(),
-                )
-                .await?;
-                self.bwr(
-                    RegisterAddress::Sm2,
-                    SyncManagerChannel::default().pack().unwrap(),
-                )
-                .await?;
-                self.bwr(
-                    RegisterAddress::Sm3,
-                    SyncManagerChannel::default().pack().unwrap(),
-                )
-                .await?;
-            }
-
-            // Clear FMMUs
-            // TODO: Read EEPROM and iterate through clearing as many items as detected
-            {
-                self.bwr(RegisterAddress::Fmmu0, Fmmu::default().pack().unwrap())
-                    .await?;
-                self.bwr(RegisterAddress::Fmmu1, Fmmu::default().pack().unwrap())
-                    .await?;
-                self.bwr(RegisterAddress::Fmmu2, Fmmu::default().pack().unwrap())
-                    .await?;
-                self.bwr(RegisterAddress::Fmmu3, Fmmu::default().pack().unwrap())
-                    .await?;
-            }
-
-            // TODO: Store EEPROM read size (4 or 8 bytes) in slave on init - this is done by
-            // reading the EEPROM status and checking the read size flag
         }
+
+        Ok(())
+    }
+
+    async fn reset_slaves(&self) -> Result<(), Error> {
+        // Reset slaves to init
+        self.bwr(
+            RegisterAddress::AlControl,
+            AlControl::reset().pack().unwrap(),
+        )
+        .await?;
+
+        // Clear FMMUs. FMMU memory section is 0xff (255) bytes long - see ETG1000.4 Table 57
+        self.blank_memory(RegisterAddress::Fmmu0, 0xff).await?;
+
+        // Clear SMs. SM memory section is 0x7f bytes long - see ETG1000.4 Table 59
+        self.blank_memory(RegisterAddress::Sm0, 0x7f).await?;
+
+        Ok(())
+    }
+
+    /// Detect slaves and set their configured station addresses.
+    pub async fn init(&self) -> Result<(), Error> {
+        self.reset_slaves().await?;
 
         // Each slave increments working counter, so we can use it as a total count of slaves
         let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
@@ -125,6 +110,7 @@ where
         // Make sure slave list is empty
         self.slaves_mut().truncate(0);
 
+        // Set configured address for all discovered slaves
         for slave_idx in 0..num_slaves {
             let address = BASE_SLAVE_ADDR + slave_idx;
 
@@ -147,6 +133,18 @@ where
                 // checking.
                 .map_err(|_| Error::TooManySlaves)?;
         }
+
+        let mut offset = MappingOffset::default();
+
+        // Initialise each slave from EEPROM
+        for idx in 0..num_slaves {
+            offset = self
+                .slave_by_index(idx)?
+                .configure_from_eeprom(offset)
+                .await?
+        }
+
+        self.wait_for_state(AlState::PreOp).await?;
 
         Ok(())
     }
@@ -175,6 +173,7 @@ where
         Ok(SlaveRef::new(self, slave))
     }
 
+    /// Request the same state for all slaves.
     pub async fn request_slave_state(&self, desired_state: AlState) -> Result<(), Error> {
         let num_slaves = self.slaves().len();
 
@@ -184,6 +183,12 @@ where
         )
         .await?
         .wkc(num_slaves as u16, "set all slaves state")?;
+
+        self.wait_for_state(desired_state).await
+    }
+
+    pub async fn wait_for_state(&self, desired_state: AlState) -> Result<(), Error> {
+        let num_slaves = self.slaves().len();
 
         // TODO: Configurable timeout depending on current -> next states
         crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(5000), async {

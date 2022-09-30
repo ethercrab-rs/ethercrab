@@ -8,10 +8,12 @@ use ethercrab::al_status::AlState;
 use ethercrab::client::Client;
 use ethercrab::error::Error;
 use ethercrab::register::RegisterAddress;
-use ethercrab::slave::MappingOffset;
 use ethercrab::std::tx_rx_task;
+use futures_lite::stream::StreamExt;
 use futures_lite::FutureExt;
 use smol::LocalExecutor;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -37,19 +39,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Discovered {num_slaves} slaves");
 
     client.init().await.expect("Init");
-
-    // TODO: Move into client. This stuff shouldn't be public
-    {
-        let mut offset = MappingOffset::default();
-
-        for idx in 0..num_slaves {
-            let slave = client.slave_by_index(idx)?;
-
-            offset = slave.configure_from_eeprom(offset).await?;
-        }
-
-        log::info!("Slaves configured. PDI size {:?}", offset);
-    }
 
     log::debug!("Moving slaves to OP...");
 
@@ -94,33 +83,33 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     //     .await;
     // }
 
-    // // TX-only PDI
-    // {
-    //     let value = Rc::new(RefCell::new(0x00u8));
+    // TX-only PDI
+    {
+        let value = Rc::new(RefCell::new(0x00u8));
 
-    //     let value2 = value.clone();
-    //     let client2 = client.clone();
+        let value2 = value.clone();
+        let client2 = client.clone();
 
-    //     // PD TX task (no RX because EL2004 is WO)
-    //     ex.spawn(async move {
-    //         // Cycle time
-    //         let mut interval = async_io::Timer::interval(Duration::from_millis(2));
+        // PD TX task (no RX because EL2004 is WO)
+        ex.spawn(async move {
+            // Cycle time
+            let mut interval = async_io::Timer::interval(Duration::from_millis(2));
 
-    //         while let Some(_) = interval.next().await {
-    //             let v: u8 = *value2.borrow();
+            while let Some(_) = interval.next().await {
+                let v: u8 = *value2.borrow();
 
-    //             client2.lwr(0u32, v).await.expect("Bad write");
-    //         }
-    //     })
-    //     .detach();
+                client2.lwr(0u32, v).await.expect("Bad write");
+            }
+        })
+        .detach();
 
-    //     // Blink frequency
-    //     let mut interval = async_io::Timer::interval(Duration::from_millis(50));
+        // Blink frequency
+        let mut interval = async_io::Timer::interval(Duration::from_millis(50));
 
-    //     while let Some(_) = interval.next().await {
-    //         *value.borrow_mut() += 1;
-    //     }
-    // }
+        while let Some(_) = interval.next().await {
+            *value.borrow_mut() += 1;
+        }
+    }
 
     Ok(())
 }

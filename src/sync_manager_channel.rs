@@ -125,6 +125,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_is_zero() {
+        assert_eq!(SyncManagerChannel::default().pack().unwrap(), [0u8; 8]);
+    }
+
+    #[test]
     fn size() {
         // Packed size
         assert_eq!(SyncManagerChannel::packed_bytes_size(None).unwrap(), 8);
