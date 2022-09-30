@@ -493,10 +493,10 @@ pub enum SyncManagerType {
     /// Not used or unknown.
     #[default]
     Unknown = 0x00,
-    /// Used for mailbox out.
-    MailboxOut = 0x01,
-    /// Used for mailbox in.
-    MailboxIn = 0x02,
+    /// Used for writing into the slave.
+    MailboxWrite = 0x01,
+    /// Used for reading from the slave.
+    MailboxRead = 0x02,
     /// Used for process data outputs from master.
     ProcessDataWrite = 0x03,
     /// Used for process data inputs to master.
@@ -648,24 +648,38 @@ bitflags::bitflags! {
 
 #[derive(Clone)]
 pub struct MailboxConfig {
-    pub receive_offset: u16,
-    pub receive_size: u16,
-    pub send_offset: u16,
-    pub send_size: u16,
-    pub protocol: MailboxProtocols,
+    /// Master to slave receive mailbox address offset.
+    pub slave_receive_offset: u16,
+    /// Master to slave receive mailbox size.
+    pub slave_receive_size: u16,
+    /// Slave to master send mailbox address offset.
+    pub slave_send_offset: u16,
+    /// Slave to master send mailbox size.
+    pub slave_send_size: u16,
+    /// Mailbox protocols supported by the slave device.
+    pub supported_protocols: MailboxProtocols,
 }
 
 impl fmt::Debug for MailboxConfig {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("MailboxConfig")
             .field(
-                "receive_offset",
-                &format_args!("{:#06x}", self.receive_offset),
+                "slave_receive_offset",
+                &format_args!("{:#06x}", self.slave_receive_offset),
             )
-            .field("receive_size", &format_args!("{:#06x}", self.receive_size))
-            .field("send_offset", &format_args!("{:#06x}", self.send_offset))
-            .field("send_size", &format_args!("{:#06x}", self.send_size))
-            .field("protocol", &self.protocol)
+            .field(
+                "slave_receive_size",
+                &format_args!("{:#06x}", self.slave_receive_size),
+            )
+            .field(
+                "slave_send_offset",
+                &format_args!("{:#06x}", self.slave_send_offset),
+            )
+            .field(
+                "slave_send_size",
+                &format_args!("{:#06x}", self.slave_send_size),
+            )
+            .field("supported_protocols", &self.supported_protocols)
             .finish()
     }
 }
@@ -677,16 +691,16 @@ impl MailboxConfig {
         let (i, receive_size) = le_u16(i)?;
         let (i, send_offset) = le_u16(i)?;
         let (i, send_size) = le_u16(i)?;
-        let (i, protocol) = map_opt(le_u16, MailboxProtocols::from_bits)(i)?;
+        let (i, supported_protocols) = map_opt(le_u16, MailboxProtocols::from_bits)(i)?;
 
         Ok((
             i,
             Self {
-                receive_offset,
-                receive_size,
-                send_offset,
-                send_size,
-                protocol,
+                slave_receive_offset: receive_offset,
+                slave_receive_size: receive_size,
+                slave_send_offset: send_offset,
+                slave_send_size: send_size,
+                supported_protocols,
             },
         ))
     }

@@ -238,14 +238,28 @@ where
     }
 
     async fn configure_mailboxes(&self, sync_managers: &[SyncManager]) -> Result<(), Error> {
+        let mailbox_config = self.eeprom().mailbox_config().await?;
+
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
 
             // Mailboxes are configured in INIT state
             match sync_manager.usage_type {
-                SyncManagerType::MailboxOut | SyncManagerType::MailboxIn => {
-                    self.write_sm_config(sync_manager_index, sync_manager)
-                        .await?;
+                SyncManagerType::MailboxWrite => {
+                    self.write_sm_config(
+                        sync_manager_index,
+                        sync_manager,
+                        mailbox_config.slave_receive_size,
+                    )
+                    .await?;
+                }
+                SyncManagerType::MailboxRead => {
+                    self.write_sm_config(
+                        sync_manager_index,
+                        sync_manager,
+                        mailbox_config.slave_send_size,
+                    )
+                    .await?;
                 }
                 _ => continue,
             }
