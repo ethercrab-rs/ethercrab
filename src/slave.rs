@@ -101,7 +101,7 @@ where
         )
         .await?;
 
-        let res = crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
+        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
             loop {
                 let status = self
                     .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
@@ -114,18 +114,7 @@ where
                 TIMEOUT::timer(Duration::from_millis(10)).await;
             }
         })
-        .await;
-
-        match res {
-            Err(Error::Timeout) => {
-                let (_, code) = self.status().await?;
-
-                debug!("Slave status code: {}", code);
-
-                Err(Error::Timeout)
-            }
-            other => other,
-        }
+        .await
     }
 
     pub async fn status(&self) -> Result<(AlControl, AlStatusCode), Error> {
