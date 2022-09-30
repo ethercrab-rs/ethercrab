@@ -16,7 +16,7 @@ log = "0.4.17"
 nom = { version = "7.1.1", default-features = false }
 num_enum = { version = "0.5.7", default-features = false }
 packed_struct = { version = "0.10.0", default-features = false }
-pnet = { version = "0.31.0", features = ["std"] }
+pnet = { version = "0.31.0", features = ["std"], optional = true }
 smol = "1.2.5"
 smoltcp = { version = "0.8.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet" ] }
 
@@ -31,4 +31,4 @@ tui-logger = "0.8.0"
 [features]
 default = ["std"]
 # TODO: Can we rename this to `alloc` and stop using `std` completely? `alloc` has `Arc`...
-std = []
+std = ["pnet"]
