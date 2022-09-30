@@ -612,6 +612,7 @@ impl PdoEntry {
 }
 
 bitflags::bitflags! {
+    /// Defined in ETG2010 Table 14 offset 0x0006.
     pub struct PdoFlags: u16 {
         /// PdoMandatory [Esi:RTxPdo@Mandatory]
         const PDO_MANDATORY = 0x0001;
@@ -658,6 +659,13 @@ pub struct MailboxConfig {
     pub slave_send_size: u16,
     /// Mailbox protocols supported by the slave device.
     pub supported_protocols: MailboxProtocols,
+}
+
+impl MailboxConfig {
+    pub fn has_mailbox(&self) -> bool {
+        !self.supported_protocols.is_empty() && self.slave_receive_size > 0
+            || self.slave_send_size > 0
+    }
 }
 
 impl fmt::Debug for MailboxConfig {
