@@ -41,10 +41,7 @@ fn main() -> Result<(), PduError> {
 
         client.init().await.expect("Init");
 
-        client
-            .request_slave_state(AlState::PreOp)
-            .await
-            .expect(&format!("Slave {slave}"));
+        client.request_slave_state(AlState::PreOp).await.unwrap();
     })));
 
     Ok(())
