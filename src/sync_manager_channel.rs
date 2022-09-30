@@ -27,7 +27,7 @@ impl fmt::Debug for SyncManagerChannel {
                 "physical_start_address",
                 &format_args!("{:#06x}", self.physical_start_address),
             )
-            .field("length_bytes", &self.length_bytes)
+            .field("length_bytes", &format_args!("{:#06x}", self.length_bytes))
             .field("control", &self.control)
             .field("status", &self.status)
             .field("enable", &self.enable)
