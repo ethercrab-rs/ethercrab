@@ -30,5 +30,4 @@ tui-logger = "0.8.0"
 
 [features]
 default = ["std"]
-# TODO: Can we rename this to `alloc` and stop using `std` completely? `alloc` has `Arc`...
 std = ["pnet"]
