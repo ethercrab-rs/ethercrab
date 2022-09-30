@@ -16,3 +16,5 @@
 - [ ] Distributed clocks
 - [ ] Find a way of storing PDUs in a single buffer instead of using a bunch of `heapless::Vec`s
 - [ ] Byte-align each slave's PDI access for better safety
+- [ ] Mailbox support for SDOs
+  - [ ] Get and store mailbox lengths from EEPROM `Standard Receive Mailbox Offset `, etc, `0x0018`
