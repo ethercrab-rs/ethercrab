@@ -199,6 +199,12 @@ where
         let fmmu_usage = self.eeprom().fmmus().await?;
         let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
+        log::debug!(
+            "Slave {:#06x} PDOs for outputs: {:#?}",
+            self.slave.configured_address,
+            rx_pdos
+        );
+
         // Mailboxes must be configured in INIT state
         self.configure_mailboxes(&sync_managers).await?;
 
@@ -228,6 +234,21 @@ where
 
     async fn configure_mailboxes(&self, sync_managers: &[SyncManager]) -> Result<(), Error> {
         let mailbox_config = self.eeprom().mailbox_config().await?;
+
+        log::trace!(
+            "Slave {:#06x} Mailbox configuration: {:#?}",
+            self.slave.configured_address,
+            mailbox_config
+        );
+
+        if !mailbox_config.has_mailbox() {
+            log::trace!(
+                "Slave {:#06x} has no valid mailbox configuration",
+                self.slave.configured_address
+            );
+
+            return Ok(());
+        }
 
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
