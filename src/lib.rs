@@ -27,7 +27,6 @@ pub mod eeprom;
 pub mod error;
 pub mod fmmu;
 pub mod mailbox;
-pub mod pdu;
 mod pdu_loop;
 pub mod register;
 pub mod slave;
@@ -44,6 +43,9 @@ use embassy_futures::select::{select, Either};
 use error::Error;
 use smoltcp::wire::{EthernetAddress, EthernetProtocol};
 use timer_factory::TimerFactory;
+
+// TODO: Remove, or make a "low_level" module to allow inner access to services
+pub use pdu_loop::CheckWorkingCounter;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
