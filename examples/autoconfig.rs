@@ -40,20 +40,12 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     // TODO: Move into client. This stuff shouldn't be public
     {
-        for idx in 0..num_slaves {
-            let slave = client.slave_by_index(idx)?;
-
-            slave.configure_from_eeprom_init().await?;
-        }
-
-        log::info!("Slaves configured in INIT, moved to PRE-OP");
-
         let mut offset = MappingOffset::default();
 
         for idx in 0..num_slaves {
             let slave = client.slave_by_index(idx)?;
 
-            offset = slave.configure_from_eeprom_preop(offset).await?;
+            offset = slave.configure_from_eeprom(offset).await?;
         }
 
         log::info!("Slaves configured. PDI size {:?}", offset);

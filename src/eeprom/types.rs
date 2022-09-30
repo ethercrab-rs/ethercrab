@@ -24,7 +24,7 @@ pub enum SiiOwner {
     /// EEPROM access rights are assigned to PDI during state change from Init to PreOp, Init to
     /// Boot and while in Boot
     #[default]
-    Dl = 0x00,
+    Master = 0x00,
 
     /// EEPROM access rights are assigned to PDI in all states except Init
     Pdi = 0x01,
