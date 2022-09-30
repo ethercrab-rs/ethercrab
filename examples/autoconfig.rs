@@ -18,8 +18,10 @@ use std::time::Duration;
 #[cfg(target_os = "windows")]
 // ASRock NIC
 // const INTERFACE: &str = "TODO";
-// USB NIC
-const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
+// // USB NIC
+// const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
+// Lenovo USB-C NIC
+const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
 // Silver USB NIC
 // const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
 #[cfg(not(target_os = "windows"))]
