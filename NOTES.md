@@ -40,9 +40,18 @@ Go to `Online` tab of any device
   +   # add_subdirectory(test/linux/slaveinfo)
   -   add_subdirectory(test/linux/slaveinfo)
       add_subdirectory(test/linux/eepromtool)
-      add_subdirectory(test/linux/simple_test)
+  +   # add_subdirectory(test/linux/simple_test)
+  -   add_subdirectory(test/linux/simple_test)
   +   add_subdirectory(test/win32/slaveinfo)
+  +   add_subdirectory(test/win32/simple_test)
     endif()
+  ```
+
+- Copy and paste `CMakeLists.txt` from `test/linux/{test}/` to `test/win32/{test}/`.
+- To squelch warnings as errors, find a line like the following, and remove `/WX`:
+
+  ```cmake
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  /WX")
   ```
 
 - `nmake` only works in the "Visual Studio Powershell" or whatever, not vanilla powershell:
