@@ -29,11 +29,18 @@ where
         eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
         cat: SiiCategory,
     ) -> Self {
+        Self::start_at(eeprom, cat.start, cat.len_words * 2)
+    }
+
+    pub fn start_at(
+        eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        address: u16,
+        len_bytes: u16,
+    ) -> Self {
         Self {
             eeprom,
-            start: cat.start,
-            // Category length is given in words (u16) but we're counting bytes here.
-            len: cat.len_words * 2,
+            start: address,
+            len: len_bytes,
             byte_count: 0,
             read: heapless::Deque::new(),
             read_length: 0,
