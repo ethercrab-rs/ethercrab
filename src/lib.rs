@@ -3,6 +3,20 @@
 // This mod MUST go first, so that the others see its macros.
 pub(crate) mod log;
 
+// Taken from `futures-lite`
+// TODO: Use core::pin::pin! when stablised
+macro_rules! pin {
+    ($($x:ident),* $(,)?) => {
+        $(
+            let mut $x = $x;
+            #[allow(unused_mut)]
+            let mut $x = unsafe {
+                core::pin::Pin::new_unchecked(&mut $x)
+            };
+        )*
+    }
+}
+
 pub mod al_control;
 pub mod al_status;
 pub mod al_status_code;
@@ -159,7 +173,7 @@ where
     TIMEOUT: TimerFactory,
     F: core::future::Future<Output = Result<O, Error>>,
 {
-    futures_lite::pin!(future);
+    pin!(future);
 
     match select(future, TIMEOUT::timer(timeout)).await {
         Either::First(res) => res,
