@@ -1,10 +1,11 @@
-pub mod frame_header;
+mod frame_header;
+mod pdu;
 mod pdu_frame;
 
 use crate::{
     command::Command,
     error::{Error, PduError},
-    pdu::Pdu,
+    pdu_loop::pdu::Pdu,
     timeout,
     timer_factory::TimerFactory,
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
@@ -16,6 +17,26 @@ use core::{
     task::Waker,
 };
 use smoltcp::wire::EthernetFrame;
+
+pub type PduResponse<T> = (T, u16);
+
+pub trait CheckWorkingCounter<T> {
+    fn wkc(self, expected: u16, context: &'static str) -> Result<T, Error>;
+}
+
+impl<T> CheckWorkingCounter<T> for PduResponse<T> {
+    fn wkc(self, expected: u16, context: &'static str) -> Result<T, Error> {
+        if self.1 == expected {
+            Ok(self.0)
+        } else {
+            Err(Error::WorkingCounter {
+                expected,
+                received: self.1,
+                context: Some(context),
+            })
+        }
+    }
+}
 
 pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: Can we have a single buffer that gives out variable length slices instead of wasting
