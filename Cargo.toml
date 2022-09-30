@@ -13,8 +13,7 @@ defmt = "0.3.2"
 embassy-futures = "0.1.0"
 heapless = "0.7.14"
 log = "0.4.17"
-# TODO: No default features
-nom = "7.1.1"
+nom = { version = "7.1.1", default-features = false }
 num_enum = { version = "0.5.7", default-features = false }
 packed_struct = { version = "0.10.0", default-features = false }
 pnet = { version = "0.31.0", features = ["std"] }
