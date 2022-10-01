@@ -37,7 +37,14 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Discovered {num_slaves} slaves");
 
-    client.init().await.expect("Init");
+    client
+        .init(|| async {
+            println!("Nice");
+
+            Ok(())
+        })
+        .await
+        .expect("Init");
 
     let value = Rc::new(RefCell::new([0u8; 8]));
     let value2 = value.clone();
