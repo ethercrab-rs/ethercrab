@@ -98,7 +98,10 @@ where
     }
 
     /// Detect slaves and set their configured station addresses.
-    pub async fn init(&self) -> Result<(), Error> {
+    pub async fn init<O>(&self, mut slave_preop_safeop: impl FnMut() -> O) -> Result<(), Error>
+    where
+        O: core::future::Future<Output = Result<(), Error>>,
+    {
         self.reset_slaves().await?;
 
         // Each slave increments working counter, so we can use it as a total count of slaves
@@ -125,7 +128,9 @@ where
             .await?
             .wkc(1, "set station address")?;
 
-            let (new_offset, slave) = Slave::configure_from_eeprom(&self, address, offset).await?;
+            let (new_offset, slave) =
+                Slave::configure_from_eeprom(&self, address, offset, &mut slave_preop_safeop)
+                    .await?;
 
             log::debug!(
                 "Slave #{:#06x} PDI mapping inputs: {}, outputs: {}",
