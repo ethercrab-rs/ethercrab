@@ -15,7 +15,7 @@ use crate::{
     timer_factory::TimerFactory,
     PduData, PduRead,
 };
-use core::{cell::RefMut, time::Duration};
+use core::time::Duration;
 use packed_struct::PackedStruct;
 
 #[derive(Clone, Debug)]
@@ -40,8 +40,8 @@ pub struct SlaveRef<
     const MAX_SLAVES: usize,
     TIMEOUT,
 > {
-    pub(crate) client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
-    pub(crate) slave: RefMut<'a, Slave>,
+    client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+    configured_address: u16,
 }
 
 impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
@@ -51,9 +51,12 @@ where
 {
     pub fn new(
         client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
-        slave: RefMut<'a, Slave>,
+        configured_address: u16,
     ) -> Self {
-        Self { client, slave }
+        Self {
+            client,
+            configured_address,
+        }
     }
 
     /// A wrapper around an FPRD service to this slave's configured address.
@@ -66,7 +69,7 @@ where
         T: PduRead,
     {
         self.client
-            .fprd(self.slave.configured_address, register)
+            .fprd(self.configured_address, register)
             .await?
             .wkc(1, context)
     }
@@ -82,7 +85,7 @@ where
         T: PduData,
     {
         self.client
-            .fpwr(self.slave.configured_address, register, value)
+            .fpwr(self.configured_address, register, value)
             .await?
             .wkc(1, context)
     }
@@ -90,7 +93,7 @@ where
     pub async fn request_slave_state(&self, state: AlState) -> Result<(), Error> {
         debug!(
             "Set state {} for slave address {:#04x}",
-            state, self.slave.configured_address
+            state, self.configured_address
         );
 
         // Send state request
@@ -170,7 +173,7 @@ where
 
         log::debug!(
             "Slave {:#06x} SM{sync_manager_index}: {:#?}",
-            self.slave.configured_address,
+            self.configured_address,
             sm_config
         );
 
@@ -201,7 +204,7 @@ where
 
         log::debug!(
             "Slave {:#06x} PDOs for outputs: {:#?}",
-            self.slave.configured_address,
+            self.configured_address,
             rx_pdos
         );
 
@@ -241,14 +244,14 @@ where
 
         log::trace!(
             "Slave {:#06x} Mailbox configuration: {:#?}",
-            self.slave.configured_address,
+            self.configured_address,
             mailbox_config
         );
 
         if !mailbox_config.has_mailbox() {
             log::trace!(
                 "Slave {:#06x} has no valid mailbox configuration",
-                self.slave.configured_address
+                self.configured_address
             );
 
             return Ok(());
@@ -369,7 +372,7 @@ where
 
                     log::debug!(
                         "Slave {:#06x} FMMU{fmmu_index}: {:#?}",
-                        self.slave.configured_address,
+                        self.configured_address,
                         fmmu_config
                     );
 
@@ -381,7 +384,7 @@ where
 
         log::debug!(
             "Slave {:#06x} IO size in: {} bits, out: {} bits",
-            self.slave.configured_address,
+            self.configured_address,
             inputs_size,
             outputs_size
         );
