@@ -285,12 +285,12 @@ where
     }
 
     /// Transmit PDOs (from device's perspective) - inputs
-    pub async fn txpdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
+    pub async fn master_read_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
         self.pdos(CategoryType::TxPdo, TX_PDO_RANGE).await
     }
 
     /// Receive PDOs (from device's perspective) - outputs
-    pub async fn rxpdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
+    pub async fn master_write_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
         self.pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
     }
 

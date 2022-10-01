@@ -124,16 +124,11 @@ where
             .await?
             .wkc(1, "set station address")?;
 
-            let slave_state = self
-                .fprd::<AlControl>(address, RegisterAddress::AlStatus)
-                .await?
-                .wkc(1, "get AL status")?;
+            let (new_offset, slave) = Slave::configure_from_eeprom(&self, address, offset).await?;
 
-            let slave = RefCell::new(Slave::new(address, slave_state.state));
+            offset = new_offset;
 
-            offset = SlaveRef::new(&self, address)
-                .configure_from_eeprom(offset)
-                .await?;
+            let slave = RefCell::new(slave);
 
             self.slaves_mut()
                 .push(slave)
