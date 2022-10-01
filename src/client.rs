@@ -110,6 +110,8 @@ where
         // Make sure slave list is empty
         self.slaves_mut().truncate(0);
 
+        let mut offset = MappingOffset::default();
+
         // Set configured address for all discovered slaves
         for slave_idx in 0..num_slaves {
             let address = BASE_SLAVE_ADDR + slave_idx;
@@ -127,21 +129,17 @@ where
                 .await?
                 .wkc(1, "get AL status")?;
 
+            let slave = RefCell::new(Slave::new(address, slave_state.state));
+
+            offset = SlaveRef::new(&self, address)
+                .configure_from_eeprom(offset)
+                .await?;
+
             self.slaves_mut()
-                .push(RefCell::new(Slave::new(address, slave_state.state)))
+                .push(slave)
                 // NOTE: This shouldn't fail as we check for capacity above, but it's worth double
                 // checking.
                 .map_err(|_| Error::TooManySlaves)?;
-        }
-
-        let mut offset = MappingOffset::default();
-
-        // Initialise each slave from EEPROM
-        for idx in 0..num_slaves {
-            offset = self
-                .slave_by_index(idx)?
-                .configure_from_eeprom(offset)
-                .await?
         }
 
         log::debug!("Next PDI offset: {:?}", offset);
