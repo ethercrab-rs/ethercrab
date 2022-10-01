@@ -195,12 +195,11 @@ where
         // TODO: Configurable timeout depending on current -> next states
         crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(5000), async {
             loop {
-                let control = self
-                    .brd::<AlControl>(RegisterAddress::AlControl)
+                let status = self
+                    .brd::<AlControl>(RegisterAddress::AlStatus)
                     .await?
                     .wkc(num_slaves as u16, "read all slaves state")?;
-
-                if control.state == desired_state {
+                if status.state == desired_state {
                     break Result::<(), Error>::Ok(());
                 }
 
