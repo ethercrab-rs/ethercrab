@@ -40,6 +40,30 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     client.init().await.expect("Init");
 
+    let value = Rc::new(RefCell::new([0u8; 8]));
+    let value2 = value.clone();
+    let client2 = client.clone();
+
+    // Cyclic data task
+    ex.spawn(async move {
+        // Cycle time
+        let mut interval = async_io::Timer::interval(Duration::from_millis(2));
+
+        while let Some(_) = interval.next().await {
+            let v = value2.try_borrow_mut();
+
+            if let Ok(mut v) = v {
+                let (res, wkc) = client2.lrw(0u32, *v).await.expect("Bad write");
+
+                *v = res;
+
+                assert!(wkc > 0, "main loop wkc");
+            }
+        }
+    })
+    .detach();
+
+    // NOTE: Valid outputs must be provided before moving into operational state
     log::debug!("Moving slaves to OP...");
 
     match client.request_slave_state(AlState::Op).await {
@@ -83,41 +107,14 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     //     .await;
     // }
 
-    // TX-only PDI
-    {
-        let value = Rc::new(RefCell::new([0u8; 8]));
+    // Blink frequency
+    let mut interval = async_io::Timer::interval(Duration::from_millis(50));
 
-        let value2 = value.clone();
-        let client2 = client.clone();
+    while let Some(_) = interval.next().await {
+        let v = value.try_borrow_mut();
 
-        // PD TX task (no RX because EL2004 is WO)
-        ex.spawn(async move {
-            // Cycle time
-            let mut interval = async_io::Timer::interval(Duration::from_millis(2));
-
-            while let Some(_) = interval.next().await {
-                let v = value2.try_borrow_mut();
-
-                if let Ok(mut v) = v {
-                    let (res, wkc) = client2.lrw(0u32, *v).await.expect("Bad write");
-
-                    *v = res;
-
-                    assert!(wkc > 0, "main loop wkc");
-                }
-            }
-        })
-        .detach();
-
-        // Blink frequency
-        let mut interval = async_io::Timer::interval(Duration::from_millis(50));
-
-        while let Some(_) = interval.next().await {
-            let v = value.try_borrow_mut();
-
-            if let Ok(mut v) = v {
-                v[0] += 1;
-            }
+        if let Ok(mut v) = v {
+            v[0] += 1;
         }
     }
 
