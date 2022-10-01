@@ -85,7 +85,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     // TX-only PDI
     {
-        let value = Rc::new(RefCell::new(0x00u8));
+        let value = Rc::new(RefCell::new([0u8; 8]));
 
         let value2 = value.clone();
         let client2 = client.clone();
@@ -96,9 +96,15 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             let mut interval = async_io::Timer::interval(Duration::from_millis(2));
 
             while let Some(_) = interval.next().await {
-                let v: u8 = *value2.borrow();
+                let v = value2.try_borrow_mut();
 
-                client2.lwr(0u32, v).await.expect("Bad write");
+                if let Ok(mut v) = v {
+                    let (res, wkc) = client2.lrw(0u32, *v).await.expect("Bad write");
+
+                    *v = res;
+
+                    assert!(wkc > 0, "main loop wkc");
+                }
             }
         })
         .detach();
@@ -107,7 +113,11 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         let mut interval = async_io::Timer::interval(Duration::from_millis(50));
 
         while let Some(_) = interval.next().await {
-            *value.borrow_mut() += 1;
+            let v = value.try_borrow_mut();
+
+            if let Ok(mut v) = v {
+                v[0] += 1;
+            }
         }
     }
 
