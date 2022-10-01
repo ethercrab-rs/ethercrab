@@ -214,6 +214,8 @@ where
 
         self.request_slave_state(AlState::PreOp).await?;
 
+        self.set_eeprom_mode(SiiOwner::Master).await?;
+
         // PDOs must be configurd in PRE-OP state
         let offset = self
             .configure_pdos(
@@ -228,6 +230,8 @@ where
 
         // Restore EEPROM mode
         self.set_eeprom_mode(SiiOwner::Pdi).await?;
+
+        self.request_slave_state(AlState::SafeOp).await?;
 
         Ok(offset)
     }
@@ -288,6 +292,9 @@ where
         fmmu_usage: &[FmmuUsage],
         mut offset: MappingOffset,
     ) -> Result<MappingOffset, Error> {
+        let mut outputs_size = 0u16;
+        let mut inputs_size = 0u16;
+
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
 
@@ -305,6 +312,12 @@ where
                         .filter(|pdo| pdo.sync_manager == sync_manager_index)
                         .map(|pdo| pdo.bit_len())
                         .sum();
+
+                    if sync_manager.usage_type == SyncManagerType::ProcessDataWrite {
+                        outputs_size += bit_len;
+                    } else {
+                        inputs_size += bit_len;
+                    }
 
                     // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
                     // to looking through FMMU usage list and picking out the appropriate kind
@@ -365,6 +378,13 @@ where
                 _ => continue,
             }
         }
+
+        log::debug!(
+            "Slave {:#06x} IO size in: {} bits, out: {} bits",
+            self.slave.configured_address,
+            inputs_size,
+            outputs_size
+        );
 
         Ok(offset)
     }
