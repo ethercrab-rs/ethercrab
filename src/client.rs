@@ -127,6 +127,13 @@ where
 
             let (new_offset, slave) = Slave::configure_from_eeprom(&self, address, offset).await?;
 
+            log::debug!(
+                "Slave #{:#06x} PDI mapping inputs: {}, outputs: {}",
+                address,
+                slave.input_range,
+                slave.output_range
+            );
+
             offset = new_offset;
 
             let slave = RefCell::new(slave);
@@ -159,10 +166,8 @@ where
 
     pub fn slave_by_index(
         &self,
-        idx: u16,
+        idx: usize,
     ) -> Result<SlaveRef<'_, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>, Error> {
-        let idx = usize::from(idx);
-
         let slave = self
             .slaves()
             .get(idx)

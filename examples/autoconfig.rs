@@ -7,6 +7,7 @@ use async_ctrlc::CtrlC;
 use ethercrab::error::Error;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
+use ethercrab::SlaveState;
 use futures_lite::stream::StreamExt;
 use futures_lite::FutureExt;
 use smol::LocalExecutor;
@@ -64,7 +65,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     // NOTE: Valid outputs must be provided before moving into operational state
     log::debug!("Moving slaves to OP...");
 
-    match client.request_slave_state(AlState::Op).await {
+    match client.request_slave_state(SlaveState::Op).await {
         Ok(it) => it,
         Err(err) => {
             for idx in 0..num_slaves {
