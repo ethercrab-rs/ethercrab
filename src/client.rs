@@ -1,11 +1,12 @@
 use crate::{
     al_control::AlControl,
-    al_status::AlState,
     command::Command,
     error::{Error, PduError},
+    pdi::PdiOffset,
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
-    slave::{MappingOffset, Slave, SlaveRef},
+    slave::{Slave, SlaveRef},
+    slave_state::SlaveState,
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR,
 };
@@ -110,7 +111,7 @@ where
         // Make sure slave list is empty
         self.slaves_mut().truncate(0);
 
-        let mut offset = MappingOffset::default();
+        let mut offset = PdiOffset::default();
 
         // Set configured address for all discovered slaves
         for slave_idx in 0..num_slaves {
@@ -139,9 +140,13 @@ where
 
         log::debug!("Next PDI offset: {:?}", offset);
 
-        self.wait_for_state(AlState::SafeOp).await?;
+        self.wait_for_state(SlaveState::SafeOp).await?;
 
         Ok(())
+    }
+
+    pub fn num_slaves(&self) -> usize {
+        self.slaves().len()
     }
 
     fn slaves(&self) -> &heapless::Vec<RefCell<Slave>, MAX_SLAVES> {
@@ -169,7 +174,7 @@ where
     }
 
     /// Request the same state for all slaves.
-    pub async fn request_slave_state(&self, desired_state: AlState) -> Result<(), Error> {
+    pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         let num_slaves = self.slaves().len();
 
         self.bwr(
@@ -182,7 +187,7 @@ where
         self.wait_for_state(desired_state).await
     }
 
-    pub async fn wait_for_state(&self, desired_state: AlState) -> Result<(), Error> {
+    pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         let num_slaves = self.slaves().len();
 
         // TODO: Configurable timeout depending on current -> next states

@@ -1,6 +1,5 @@
 use crate::{
     al_control::AlControl,
-    al_status::AlState,
     al_status_code::AlStatusCode,
     client::Client,
     eeprom::{
@@ -9,13 +8,15 @@ use crate::{
     },
     error::Error,
     fmmu::Fmmu,
+    pdi::{PdiOffset, PdiSegment},
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
+    slave_state::SlaveState,
     sync_manager_channel::{self, SyncManagerChannel},
     timer_factory::TimerFactory,
     PduData, PduRead,
 };
-use core::{ops::RangeInclusive, time::Duration};
+use core::time::Duration;
 use packed_struct::PackedStruct;
 
 #[derive(Clone, Debug)]
@@ -23,16 +24,12 @@ pub struct Slave {
     /// Configured station address.
     pub configured_address: u16,
     /// Index into PDI map corresponding to slave inputs.
-    input_range: RangeInclusive<usize>,
+    input_range: PdiSegment,
     /// Index into PDI map corresponding to slave outputs.
-    output_range: RangeInclusive<usize>,
+    output_range: PdiSegment,
 }
 
 impl Slave {
-    // pub fn new(configured_address: u16) -> Self {
-    //     Self { configured_address }
-    // }
-
     pub async fn configure_from_eeprom<
         const MAX_FRAMES: usize,
         const MAX_PDU_DATA: usize,
@@ -41,8 +38,8 @@ impl Slave {
     >(
         client: &Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
         configured_address: u16,
-        offset: MappingOffset,
-    ) -> Result<(MappingOffset, Self), Error>
+        offset: PdiOffset,
+    ) -> Result<(PdiOffset, Self), Error>
     where
         TIMEOUT: TimerFactory,
     {
@@ -118,7 +115,7 @@ where
             .wkc(1, context)
     }
 
-    async fn wait_for_state(&self, desired_state: AlState) -> Result<(), Error> {
+    async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
             loop {
                 let status = self
@@ -135,7 +132,7 @@ where
         .await
     }
 
-    pub async fn request_slave_state(&self, desired_state: AlState) -> Result<(), Error> {
+    pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         debug!(
             "Set state {} for slave address {:#04x}",
             desired_state, self.configured_address
@@ -152,10 +149,11 @@ where
         self.wait_for_state(desired_state).await
     }
 
-    pub async fn status(&self) -> Result<(AlControl, AlStatusCode), Error> {
+    pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
         let status = self
             .read::<AlControl>(RegisterAddress::AlStatus, "AL Status")
-            .await?;
+            .await
+            .map(|ctl| ctl.state)?;
 
         let code = self
             .read::<AlStatusCode>(RegisterAddress::AlStatusCode, "AL Status Code")
@@ -219,8 +217,8 @@ where
     /// The slave must be in INIT state before calling this method.
     async fn configure_from_eeprom(
         &self,
-        offset: MappingOffset,
-    ) -> Result<(MappingOffset, RangeInclusive<usize>, RangeInclusive<usize>), Error> {
+        mut offset: PdiOffset,
+    ) -> Result<(PdiOffset, PdiSegment, PdiSegment), Error> {
         // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
         // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
         // to master mode here, now that the transition is complete.
@@ -247,42 +245,39 @@ where
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
         self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
-        self.request_slave_state(AlState::PreOp).await?;
+        self.request_slave_state(SlaveState::PreOp).await?;
 
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
-        let start_offset = offset;
-
         // PDOs must be configurd in PRE-OP state
-        let offset = self
+        let outputs_range = self
             .configure_pdos(
                 &sync_managers,
                 &master_write_pdos,
                 &fmmu_sm_mappings,
                 &fmmu_usage,
                 PdoDirection::MasterWrite,
-                offset,
+                &mut offset,
             )
             .await?;
 
-        let offset = self
+        let inputs_range = self
             .configure_pdos(
                 &sync_managers,
                 &master_read_pdos,
                 &fmmu_sm_mappings,
                 &fmmu_usage,
                 PdoDirection::MasterRead,
-                offset,
+                &mut offset,
             )
             .await?;
 
         // Restore EEPROM mode
         self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
-        self.request_slave_state(AlState::SafeOp).await?;
+        self.request_slave_state(SlaveState::SafeOp).await?;
 
-        // TODO: Ranges
-        Ok((offset, 0..=0, 0..=0))
+        Ok((offset, inputs_range, outputs_range))
     }
 
     async fn configure_mailboxes(&self, sync_managers: &[SyncManager]) -> Result<(), Error> {
@@ -341,8 +336,11 @@ where
         fmmu_sm_mappings: &[crate::eeprom::types::FmmuEx],
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
-        mut offset: MappingOffset,
-    ) -> Result<MappingOffset, Error> {
+        offset: &mut PdiOffset,
+    ) -> Result<PdiSegment, Error> {
+        let start_offset = *offset;
+        let mut total_bit_len = 0;
+
         let (sm_type, fmmu_type) = direction.filter_terms();
 
         // Configure output bits first so they're before inputs in the PDI
@@ -358,6 +356,8 @@ where
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
                 .map(|pdo| pdo.bit_len())
                 .sum();
+
+            total_bit_len += bit_len;
 
             // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
             // to looking through FMMU usage list and picking out the appropriate kind
@@ -387,7 +387,9 @@ where
             let fmmu_config = Fmmu {
                 logical_start_address: offset.start_address,
                 length_bytes: sm_config.length_bytes,
-                logical_start_bit: offset.start_bit,
+                // Mapping into PDI is byte-aligned
+                logical_start_bit: 0,
+                // logical_start_bit: offset.start_bit,
                 logical_end_bit: offset.end_bit(bit_len),
                 physical_start_address: sm_config.physical_start_address,
                 physical_start_bit: 0x0,
@@ -409,10 +411,13 @@ where
                 fmmu_config
             );
 
-            offset = offset.increment_byte_aligned(bit_len);
+            *offset = offset.increment_byte_aligned(bit_len);
         }
 
-        Ok(offset)
+        Ok(PdiSegment {
+            bit_len: total_bit_len.into(),
+            bytes: start_offset.up_to(*offset),
+        })
     }
 }
 
@@ -427,221 +432,5 @@ impl PdoDirection {
             PdoDirection::MasterRead => (SyncManagerType::ProcessDataRead, FmmuUsage::Inputs),
             PdoDirection::MasterWrite => (SyncManagerType::ProcessDataWrite, FmmuUsage::Outputs),
         }
-    }
-}
-
-/// An accumulator that stores the bit and byte offsets in the PDI so slave IO data can be packed
-/// and mapped to/from the PDI using FMMUs.
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
-pub struct MappingOffset {
-    start_address: u32,
-    start_bit: u8,
-}
-
-impl MappingOffset {
-    /// Like [`MappingOffset::increment`], but byte aligned.
-    fn increment_byte_aligned(self, bits: u16) -> Self {
-        let inc_bytes = (bits + 7) / 8;
-
-        self.increment_inner(0, inc_bytes)
-    }
-
-    /// Increment, calculating values for _next_ mapping when the struct is read after increment.
-    fn increment(self, bits: u16) -> Self {
-        let inc_bytes = bits / 8;
-        let inc_bits = bits % 8;
-
-        self.increment_inner(inc_bits, inc_bytes)
-    }
-
-    fn increment_inner(self, inc_bits: u16, mut inc_bytes: u16) -> Self {
-        // Bit count overflows a byte, so move into the next byte's bits by incrementing the byte
-        // index one more.
-        let start_bit = if u16::from(self.start_bit) + inc_bits >= 8 {
-            inc_bytes += 1;
-
-            ((u16::from(self.start_bit) + inc_bits) % 8) as u8
-        } else {
-            self.start_bit + inc_bits as u8
-        };
-
-        Self {
-            start_address: self.start_address + u32::from(inc_bytes),
-            start_bit,
-        }
-    }
-
-    /// Compute end bit 0-7 in the final byte of the mapped PDI section.
-    fn end_bit(self, bits: u16) -> u8 {
-        // SAFETY: The modulos here and in `increment` mean that all value can comfortably fit in a
-        // u8, so all the `as` and non-checked `+` here are fine.
-
-        let bits = (bits.saturating_sub(1) % 8) as u8;
-
-        self.start_bit + bits % 8
-    }
-
-    fn size_bytes(self) -> usize {
-        let size = self.start_address + (u32::from(self.start_bit) + 7) / 8;
-
-        size as usize
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn size_bytes() {
-        // E.g. 2x EL2004, 1x EL1004
-        let input = MappingOffset::default()
-            .increment(4)
-            .increment(4)
-            .increment(4);
-
-        assert_eq!(input.size_bytes(), 2);
-    }
-
-    // #[test]
-    // fn sum_offsets_outputs() {
-    //     let offset = MappingOffset::default();
-
-    //     // E.g. previous EL2004
-    //     let offset = offset.increment(4);
-
-    //     // Pretend we've configured the outputs of another EL2004
-    //     let outputs = offset.increment(4);
-
-    //     assert_eq!(
-    //         offset + outputs,
-    //         MappingOffset {
-    //             start_address: 1,
-    //             start_bit: 0
-    //         }
-    //     )
-    // }
-
-    // #[test]
-    // fn sum_offsets_io() {
-    //     let offset = MappingOffset::default();
-
-    //     // E.g. previous EL2004
-    //     let offset = offset.increment(4);
-
-    //     // LAN9252 with 16 bit outputs and 48 bit inputs
-    //     let outputs = offset.increment(16);
-    //     let inputs = offset.increment(48);
-
-    //     assert_eq!(
-    //         offset + inputs + outputs,
-    //         MappingOffset {
-    //             start_address: 1,
-    //             start_bit: 0
-    //         }
-    //     )
-    // }
-
-    #[test]
-    fn simulate_2_el2004() {
-        let input = MappingOffset::default();
-
-        let input = input.increment(4);
-
-        assert_eq!(
-            input,
-            MappingOffset {
-                start_address: 0,
-                start_bit: 4
-            }
-        );
-
-        let input = input.increment(4);
-
-        assert_eq!(
-            input,
-            MappingOffset {
-                start_address: 1,
-                start_bit: 0
-            }
-        );
-    }
-
-    #[test]
-    fn el2004_byte_aligned() {
-        let input = MappingOffset::default();
-
-        let input = input.increment_byte_aligned(4);
-
-        assert_eq!(
-            input,
-            MappingOffset {
-                start_address: 1,
-                start_bit: 0
-            },
-            "first increment"
-        );
-
-        let input = input.increment_byte_aligned(4);
-
-        assert_eq!(
-            input,
-            MappingOffset {
-                start_address: 2,
-                start_bit: 0
-            },
-            "second increment"
-        );
-    }
-
-    #[test]
-    fn end_bit() {
-        let input = MappingOffset::default();
-
-        assert_eq!(input.end_bit(4), 3);
-
-        let input = input.increment(4);
-
-        assert_eq!(input.end_bit(4), 7);
-
-        let input = input.increment(4);
-
-        assert_eq!(input.end_bit(4), 3);
-    }
-
-    #[test]
-    fn zero_length_end_bit() {
-        let input = MappingOffset::default();
-
-        assert_eq!(input.end_bit(0), 0);
-
-        let input = input.increment(4);
-
-        assert_eq!(input.end_bit(0), 4);
-    }
-
-    #[test]
-    fn cross_boundary() {
-        let input = MappingOffset::default();
-
-        let input = input.increment(6);
-
-        assert_eq!(
-            input,
-            MappingOffset {
-                start_address: 0,
-                start_bit: 6
-            }
-        );
-
-        let input = input.increment(6);
-
-        assert_eq!(
-            input,
-            MappingOffset {
-                start_address: 1,
-                start_bit: 4
-            }
-        );
     }
 }
