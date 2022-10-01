@@ -4,11 +4,9 @@
 //! that order.
 
 use async_ctrlc::CtrlC;
-use ethercrab::al_status::AlState;
-use ethercrab::client::Client;
 use ethercrab::error::Error;
-use ethercrab::register::RegisterAddress;
 use ethercrab::std::tx_rx_task;
+use ethercrab::Client;
 use futures_lite::stream::StreamExt;
 use futures_lite::FutureExt;
 use smol::LocalExecutor;
@@ -34,7 +32,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
 
-    let (_res, num_slaves) = client.brd::<u8>(RegisterAddress::Type).await.unwrap();
+    let num_slaves = client.num_slaves();
 
     log::info!("Discovered {num_slaves} slaves");
 

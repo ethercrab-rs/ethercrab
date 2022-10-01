@@ -16,7 +16,7 @@ use packed_struct::prelude::*;
     num_enum::IntoPrimitive,
 )]
 #[repr(u8)]
-pub enum AlState {
+pub enum SlaveState {
     #[default]
     None = 0x00,
     Init = 0x01,
@@ -26,15 +26,15 @@ pub enum AlState {
     Op = 0x8,
 }
 
-impl fmt::Display for AlState {
+impl fmt::Display for SlaveState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            AlState::None => "None",
-            AlState::Init => "Init",
-            AlState::PreOp => "Pre-Operational",
-            AlState::Bootstrap => "Bootstrap",
-            AlState::SafeOp => "Safe-Operational",
-            AlState::Op => "Operational",
+            SlaveState::None => "None",
+            SlaveState::Init => "Init",
+            SlaveState::PreOp => "Pre-Operational",
+            SlaveState::Bootstrap => "Bootstrap",
+            SlaveState::SafeOp => "Safe-Operational",
+            SlaveState::Op => "Operational",
         };
 
         f.write_str(s)
