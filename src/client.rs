@@ -172,7 +172,7 @@ where
             .try_borrow_mut()
             .map_err(|_| Error::Borrow)?;
 
-        Ok(SlaveRef::new(self, slave))
+        Ok(SlaveRef::new(self, slave.configured_address))
     }
 
     /// Request the same state for all slaves.
