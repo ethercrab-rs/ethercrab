@@ -1,11 +1,11 @@
-use crate::{al_status::AlState, PduRead};
+use crate::{slave_state::SlaveState, PduRead};
 use packed_struct::prelude::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 pub struct AlControl {
     #[packed_field(bits = "8..=11", ty = "enum")]
-    pub state: AlState,
+    pub state: SlaveState,
     #[packed_field(bits = "12")]
     pub acknowledge: bool,
     #[packed_field(bits = "13")]
@@ -13,7 +13,7 @@ pub struct AlControl {
 }
 
 impl AlControl {
-    pub fn new(state: AlState) -> Self {
+    pub fn new(state: SlaveState) -> Self {
         Self {
             state,
             acknowledge: true,
@@ -23,7 +23,7 @@ impl AlControl {
 
     pub fn reset() -> Self {
         Self {
-            state: AlState::Init,
+            state: SlaveState::Init,
             acknowledge: true,
             ..Default::default()
         }
@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn al_control() {
         let value = AlControl {
-            state: AlState::SafeOp,
+            state: SlaveState::SafeOp,
             acknowledge: true,
             id_request: false,
         };
@@ -60,7 +60,7 @@ mod tests {
     #[test]
     fn unpack() {
         let value = AlControl {
-            state: AlState::SafeOp,
+            state: SlaveState::SafeOp,
             acknowledge: true,
             id_request: false,
         };

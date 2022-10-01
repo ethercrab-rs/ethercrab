@@ -17,22 +17,23 @@ macro_rules! pin {
     }
 }
 
-pub mod al_control;
-pub mod al_status;
-pub mod al_status_code;
-pub mod base_data_types;
-pub mod client;
-pub mod command;
-pub mod eeprom;
+mod al_control;
+mod al_status_code;
+mod base_data_types;
+mod client;
+mod command;
+mod eeprom;
 pub mod error;
-pub mod fmmu;
-pub mod mailbox;
+mod fmmu;
+mod mailbox;
+mod pdi;
 mod pdu_loop;
-pub mod register;
-pub mod slave;
-pub mod sync_manager_channel;
-pub mod timer_factory;
-pub mod vendors;
+mod register;
+mod slave;
+mod slave_state;
+mod sync_manager_channel;
+mod timer_factory;
+mod vendors;
 
 #[cfg(feature = "std")]
 pub mod std;
@@ -46,6 +47,9 @@ use timer_factory::TimerFactory;
 
 // TODO: Remove, or make a "low_level" module to allow inner access to services
 pub use pdu_loop::CheckWorkingCounter;
+
+pub use client::Client;
+pub use slave_state::SlaveState;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
