@@ -18,3 +18,10 @@
 - [ ] Byte-align each slave's PDI access for better safety
 - [ ] Mailbox support for SDOs
   - [ ] Get and store mailbox lengths from EEPROM `Standard Receive Mailbox Offset `, etc, `0x0018`
+  - [ ] If a slave has mailbox present, we need to read the PDO index/subindex out of
+        rx_pdos/tx_pdos and their entries and use the mailbox to configure the PDOs. This might be
+        why Ethercrab can't write to the LAN9252 outputs while SOEM can.
+- [ ] Remove loop ticks from timeout checker loops. SOEM doesn't delay and neither should we I
+      reckon. It's a spinloop, but it has async calls in it so potentially non-blocking.
+- [ ] Revisit packed structs with confusing backwards bit orders. If `MailboxHeader` encodes on the
+      wire correctly, I can use it's attributes elsewhere.

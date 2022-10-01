@@ -202,6 +202,9 @@ ETG1000.4 Table 60 defines the DC stuff to start from address `0x0900`
 
 The EtherCAT poster describes the setups steps quite nicely.
 
+In SOEM, `ec_configdc` seems to transparently inject some behaviour into PDU sends; commenting it
+out of `simple_test.c` stops cyclic DC output.
+
 # Reading config from EEPROM
 
 ## Sync managers
@@ -217,3 +220,43 @@ SOEM reads TXPDOs and RXPDOs into the same array. See `ecx_map_sii`, `Isize`/`Os
 SM control byte mentioned in ETG2010 Table 11 corresponds to `Sm/@ControlByte` (p96) in ETG2000,
 which then points to addres 0x0800 + 0x0004, i.e. ETG1000.4 Table 58, starting from `Buffer type`
 row.
+
+# Mailbox/CANOpen
+
+ETG1000.4 section 5.6 describes mailbox structure.
+
+Mailbox data is sent within a PDU.
+
+An expedited SDO is one where the data is contained in the same SDO (up to 4 bytes). If expedited is
+not set, the data field denotes the size of the upload.
+
+Read this: <https://www.can-cia.org/can-knowledge/canopen/sdo-protocol/>
+
+Basic SDO frame structure from
+<https://en.wikipedia.org/wiki/CANopen#Service_Data_Object_(SDO)_protocol#Service_Data_Object_(SDO)_protocol>
+
+Also a pretty decent frame structure diagram here:
+<https://www.ni.com/en-gb/innovations/white-papers/13/the-basics-of-canopen.html>
+
+| Field                          | Type    | Comment                                                                                                                                  |
+| ------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Client Command Specifier (CCS) | BIT3    | 1 = initiate download, 2 = initiate upload, 3 = SDO segment upload, 4 = abort SDO transfer, 5 = SDO block upload, 6 = SDO block download |
+| Reserved                       | BIT1    | -                                                                                                                                        |
+| n                              | BIT2    | The number of bytes in the data part of the message which do not contain data, only valid if e and s are set                             |
+| Expedited transfer             | BIT1    | 1 = expedited xfer (data contained in same frame), 0 = segmented xfer (data sent in subsequent frames)                                   |
+| s                              | BIT1    | 1 = the data size is specified in `n` (if expedited xfer is set) or in the data part of the message                                      |
+| Index                          | u16     | Object dictionary index                                                                                                                  |
+| Subindex                       | u8      | Object dictionary sub index                                                                                                              |
+| Data                           | [u8; 4] | Data                                                                                                                                     |
+
+SOEM has `ecx_mbxsend` and `ecx_mbxreceive` in `ethercatmain.c`
+
+It looks like `ecx_mbxsend` can send a large amount of data all at once so maybe the 4 byte payload
+thing from CANOpen itself isn't relevant to CoE?
+
+SOEM has `ecx_SDOwrite` in `ethercatcoe.c` which uses `ecx_mbxsend`/`ecx_mbxreceive`.
+
+Expedited (4 bytes or less) requests just get a send/receive pair
+
+SOEM calls `ecx_readPDOmapCA` or `ecx_readPDOmap` during initialisation. This then calls
+`ecx_readPDOassignCA` which reads SDOs but doesn't write anything. Hm.
