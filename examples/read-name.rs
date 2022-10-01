@@ -53,7 +53,7 @@ fn main() -> Result<(), PduError> {
 
             dbg!(slave.eeprom().sync_managers().await.expect("SM"));
             dbg!(slave.eeprom().fmmus().await.expect("FMMU"));
-            dbg!(slave.eeprom().rxpdos().await.expect("PDO"));
+            dbg!(slave.eeprom().master_write_pdos().await.expect("PDO"));
         }
     })));
 
