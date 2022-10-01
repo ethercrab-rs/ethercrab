@@ -35,17 +35,22 @@ impl Slave {
         const MAX_PDU_DATA: usize,
         const MAX_SLAVES: usize,
         TIMEOUT,
+        O,
     >(
         client: &Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
         configured_address: u16,
         offset: PdiOffset,
+        mut slave_preop_safeop: impl FnMut() -> O,
     ) -> Result<(PdiOffset, Self), Error>
     where
         TIMEOUT: TimerFactory,
+        O: core::future::Future<Output = Result<(), Error>>,
     {
         let slave_ref = SlaveRef::new(client, configured_address);
 
-        let (offset, input_range, output_range) = slave_ref.configure_from_eeprom(offset).await?;
+        let (offset, input_range, output_range) = slave_ref
+            .configure_from_eeprom(offset, &mut slave_preop_safeop)
+            .await?;
 
         Ok((
             offset,
@@ -215,10 +220,14 @@ where
     /// and can be transitioned into SAFE-OP and beyond with [`request_slave_state`].
     ///
     /// The slave must be in INIT state before calling this method.
-    async fn configure_from_eeprom(
+    async fn configure_from_eeprom<O>(
         &self,
         mut offset: PdiOffset,
-    ) -> Result<(PdiOffset, PdiSegment, PdiSegment), Error> {
+        mut slave_preop_safeop: impl FnMut() -> O,
+    ) -> Result<(PdiOffset, PdiSegment, PdiSegment), Error>
+    where
+        O: core::future::Future<Output = Result<(), Error>>,
+    {
         // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
         // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
         // to master mode here, now that the transition is complete.
@@ -249,7 +258,10 @@ where
 
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
+        slave_preop_safeop().await?;
+
         // PDOs must be configurd in PRE-OP state
+        // TODO: I think I need to read the PDOs out of CoE (if supported?), not EEPROM
         let outputs_range = self
             .configure_pdos(
                 &sync_managers,
