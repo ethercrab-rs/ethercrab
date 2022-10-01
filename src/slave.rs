@@ -15,21 +15,49 @@ use crate::{
     timer_factory::TimerFactory,
     PduData, PduRead,
 };
-use core::time::Duration;
+use core::{ops::RangeInclusive, time::Duration};
 use packed_struct::PackedStruct;
 
 #[derive(Clone, Debug)]
 pub struct Slave {
+    /// Configured station address.
     pub configured_address: u16,
-    pub state: AlState,
+    /// Index into PDI map corresponding to slave inputs.
+    input_range: RangeInclusive<usize>,
+    /// Index into PDI map corresponding to slave outputs.
+    output_range: RangeInclusive<usize>,
 }
 
 impl Slave {
-    pub fn new(configured_address: u16, state: AlState) -> Self {
-        Self {
-            configured_address,
-            state,
-        }
+    // pub fn new(configured_address: u16) -> Self {
+    //     Self { configured_address }
+    // }
+
+    pub async fn configure_from_eeprom<
+        const MAX_FRAMES: usize,
+        const MAX_PDU_DATA: usize,
+        const MAX_SLAVES: usize,
+        TIMEOUT,
+    >(
+        client: &Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        configured_address: u16,
+        offset: MappingOffset,
+    ) -> Result<(MappingOffset, Self), Error>
+    where
+        TIMEOUT: TimerFactory,
+    {
+        let slave_ref = SlaveRef::new(client, configured_address);
+
+        let (offset, input_range, output_range) = slave_ref.configure_from_eeprom(offset).await?;
+
+        Ok((
+            offset,
+            Slave {
+                configured_address,
+                input_range,
+                output_range,
+            },
+        ))
     }
 }
 
@@ -90,27 +118,14 @@ where
             .wkc(1, context)
     }
 
-    pub async fn request_slave_state(&self, state: AlState) -> Result<(), Error> {
-        debug!(
-            "Set state {} for slave address {:#04x}",
-            state, self.configured_address
-        );
-
-        // Send state request
-        self.write(
-            RegisterAddress::AlControl,
-            AlControl::new(state).pack().unwrap(),
-            "AL control",
-        )
-        .await?;
-
+    async fn wait_for_state(&self, desired_state: AlState) -> Result<(), Error> {
         crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
             loop {
                 let status = self
                     .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
                     .await?;
 
-                if status.state == state {
+                if status.state == desired_state {
                     break Result::<(), _>::Ok(());
                 }
 
@@ -118,6 +133,23 @@ where
             }
         })
         .await
+    }
+
+    pub async fn request_slave_state(&self, desired_state: AlState) -> Result<(), Error> {
+        debug!(
+            "Set state {} for slave address {:#04x}",
+            desired_state, self.configured_address
+        );
+
+        // Send state request
+        self.write(
+            RegisterAddress::AlControl,
+            AlControl::new(desired_state).pack().unwrap(),
+            "AL control",
+        )
+        .await?;
+
+        self.wait_for_state(desired_state).await
     }
 
     pub async fn status(&self) -> Result<(AlControl, AlStatusCode), Error> {
@@ -185,18 +217,18 @@ where
     /// and can be transitioned into SAFE-OP and beyond with [`request_slave_state`].
     ///
     /// The slave must be in INIT state before calling this method.
-    pub async fn configure_from_eeprom(
+    async fn configure_from_eeprom(
         &self,
         offset: MappingOffset,
-    ) -> Result<MappingOffset, Error> {
+    ) -> Result<(MappingOffset, RangeInclusive<usize>, RangeInclusive<usize>), Error> {
         // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
         // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
         // to master mode here, now that the transition is complete.
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
         // RX from the perspective of the slave device
-        let rx_pdos = self.eeprom().rxpdos().await?;
-        let tx_pdos = self.eeprom().txpdos().await?;
+        let master_write_pdos = self.eeprom().master_write_pdos().await?;
+        let master_read_pdos = self.eeprom().master_read_pdos().await?;
 
         let sync_managers = self.eeprom().sync_managers().await?;
         let fmmu_usage = self.eeprom().fmmus().await?;
@@ -205,7 +237,7 @@ where
         log::debug!(
             "Slave {:#06x} PDOs for outputs: {:#?}",
             self.configured_address,
-            rx_pdos
+            master_write_pdos
         );
 
         // Mailboxes must be configured in INIT state
@@ -219,14 +251,27 @@ where
 
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
+        let start_offset = offset;
+
         // PDOs must be configurd in PRE-OP state
         let offset = self
             .configure_pdos(
                 &sync_managers,
-                &rx_pdos,
-                &tx_pdos,
+                &master_write_pdos,
                 &fmmu_sm_mappings,
                 &fmmu_usage,
+                PdoDirection::MasterWrite,
+                offset,
+            )
+            .await?;
+
+        let offset = self
+            .configure_pdos(
+                &sync_managers,
+                &master_read_pdos,
+                &fmmu_sm_mappings,
+                &fmmu_usage,
+                PdoDirection::MasterRead,
                 offset,
             )
             .await?;
@@ -236,7 +281,8 @@ where
 
         self.request_slave_state(AlState::SafeOp).await?;
 
-        Ok(offset)
+        // TODO: Ranges
+        Ok((offset, 0..=0, 0..=0))
     }
 
     async fn configure_mailboxes(&self, sync_managers: &[SyncManager]) -> Result<(), Error> {
@@ -285,111 +331,102 @@ where
         Ok(())
     }
 
-    /// Configure SM and FMMU mappings for TX and RX PDOs.
+    /// Configure SM and FMMU mappings for either TX or RX PDOs.
+    ///
+    /// PDOs must be configured with the slave in PRE-OP state
     async fn configure_pdos(
         &self,
         sync_managers: &[SyncManager],
-        rx_pdos: &[crate::eeprom::types::Pdo],
-        tx_pdos: &[crate::eeprom::types::Pdo],
+        pdos: &[crate::eeprom::types::Pdo],
         fmmu_sm_mappings: &[crate::eeprom::types::FmmuEx],
         fmmu_usage: &[FmmuUsage],
+        direction: PdoDirection,
         mut offset: MappingOffset,
     ) -> Result<MappingOffset, Error> {
-        let mut outputs_size = 0u16;
-        let mut inputs_size = 0u16;
+        let (sm_type, fmmu_type) = direction.filter_terms();
 
-        for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
+        // Configure output bits first so they're before inputs in the PDI
+        for (sync_manager_index, sync_manager) in sync_managers
+            .iter()
+            .enumerate()
+            .filter(|(_idx, sm)| sm.usage_type == sm_type)
+        {
             let sync_manager_index = sync_manager_index as u8;
 
-            // PDOs are configured in PRE-OP state
-            match sync_manager.usage_type {
-                SyncManagerType::ProcessDataWrite | SyncManagerType::ProcessDataRead => {
-                    let pdos = if sync_manager.usage_type == SyncManagerType::ProcessDataWrite {
-                        &rx_pdos
-                    } else {
-                        &tx_pdos
-                    };
+            let bit_len = pdos
+                .iter()
+                .filter(|pdo| pdo.sync_manager == sync_manager_index)
+                .map(|pdo| pdo.bit_len())
+                .sum();
 
-                    let bit_len = pdos
+            // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
+            // to looking through FMMU usage list and picking out the appropriate kind
+            // (Inputs, Outputs)
+            let fmmu_index = fmmu_sm_mappings
+                .iter()
+                .find(|fmmu| fmmu.sync_manager == sync_manager_index)
+                .map(|fmmu| fmmu.sync_manager)
+                .or_else(|| {
+                    log::trace!("Could not find FMMU for PDO SM{sync_manager_index}");
+
+                    fmmu_usage
                         .iter()
-                        .filter(|pdo| pdo.sync_manager == sync_manager_index)
-                        .map(|pdo| pdo.bit_len())
-                        .sum();
+                        .position(|usage| *usage == fmmu_type)
+                        .map(|idx| {
+                            log::trace!("Using fallback FMMU FMMU{idx}");
 
-                    if sync_manager.usage_type == SyncManagerType::ProcessDataWrite {
-                        outputs_size += bit_len;
-                    } else {
-                        inputs_size += bit_len;
-                    }
-
-                    // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
-                    // to looking through FMMU usage list and picking out the appropriate kind
-                    // (Inputs, Outputs)
-                    let fmmu_index = fmmu_sm_mappings
-                        .iter()
-                        .find(|fmmu| fmmu.sync_manager == sync_manager_index)
-                        .map(|fmmu| fmmu.sync_manager)
-                        .or_else(|| {
-                            log::trace!("Could not find FMMU for PDO SM{sync_manager_index}");
-
-                            fmmu_usage
-                                .iter()
-                                .position(|usage| match (sync_manager.usage_type, usage) {
-                                    (SyncManagerType::ProcessDataWrite, FmmuUsage::Outputs) => true,
-                                    (SyncManagerType::ProcessDataRead, FmmuUsage::Inputs) => true,
-                                    _ => false,
-                                })
-                                .map(|idx| {
-                                    log::trace!("Using fallback FMMU FMMU{idx}");
-
-                                    idx as u8
-                                })
+                            idx as u8
                         })
-                        .ok_or(Error::Other)?;
+                })
+                .ok_or(Error::Other)?;
 
-                    let sm_config = self
-                        .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
-                        .await?;
+            let sm_config = self
+                .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
+                .await?;
 
-                    let fmmu_config = Fmmu {
-                        logical_start_address: offset.start_address,
-                        length_bytes: sm_config.length_bytes,
-                        logical_start_bit: offset.start_bit,
-                        logical_end_bit: offset.end_bit(bit_len),
-                        physical_start_address: sm_config.physical_start_address,
-                        physical_start_bit: 0x0,
-                        read_enable: sync_manager.usage_type == SyncManagerType::ProcessDataRead,
-                        write_enable: sync_manager.usage_type == SyncManagerType::ProcessDataWrite,
-                        enable: true,
-                    };
+            let fmmu_config = Fmmu {
+                logical_start_address: offset.start_address,
+                length_bytes: sm_config.length_bytes,
+                logical_start_bit: offset.start_bit,
+                logical_end_bit: offset.end_bit(bit_len),
+                physical_start_address: sm_config.physical_start_address,
+                physical_start_bit: 0x0,
+                read_enable: sm_type == SyncManagerType::ProcessDataRead,
+                write_enable: sm_type == SyncManagerType::ProcessDataWrite,
+                enable: true,
+            };
 
-                    self.write(
-                        RegisterAddress::fmmu(fmmu_index),
-                        fmmu_config.pack().unwrap(),
-                        "PDI FMMU",
-                    )
-                    .await?;
+            self.write(
+                RegisterAddress::fmmu(fmmu_index),
+                fmmu_config.pack().unwrap(),
+                "PDI FMMU",
+            )
+            .await?;
 
-                    log::debug!(
-                        "Slave {:#06x} FMMU{fmmu_index}: {:#?}",
-                        self.configured_address,
-                        fmmu_config
-                    );
+            log::debug!(
+                "Slave {:#06x} FMMU{fmmu_index}: {:#?}",
+                self.configured_address,
+                fmmu_config
+            );
 
-                    offset = offset.increment(bit_len);
-                }
-                _ => continue,
-            }
+            offset = offset.increment_byte_aligned(bit_len);
         }
 
-        log::debug!(
-            "Slave {:#06x} IO size in: {} bits, out: {} bits",
-            self.configured_address,
-            inputs_size,
-            outputs_size
-        );
-
         Ok(offset)
+    }
+}
+
+enum PdoDirection {
+    MasterRead,
+    MasterWrite,
+}
+
+impl PdoDirection {
+    fn filter_terms(self) -> (SyncManagerType, FmmuUsage) {
+        match self {
+            PdoDirection::MasterRead => (SyncManagerType::ProcessDataRead, FmmuUsage::Inputs),
+            PdoDirection::MasterWrite => (SyncManagerType::ProcessDataWrite, FmmuUsage::Outputs),
+        }
     }
 }
 
@@ -402,11 +439,22 @@ pub struct MappingOffset {
 }
 
 impl MappingOffset {
+    /// Like [`MappingOffset::increment`], but byte aligned.
+    fn increment_byte_aligned(self, bits: u16) -> Self {
+        let inc_bytes = (bits + 7) / 8;
+
+        self.increment_inner(0, inc_bytes)
+    }
+
     /// Increment, calculating values for _next_ mapping when the struct is read after increment.
     fn increment(self, bits: u16) -> Self {
-        let mut inc_bytes = bits / 8;
+        let inc_bytes = bits / 8;
         let inc_bits = bits % 8;
 
+        self.increment_inner(inc_bits, inc_bytes)
+    }
+
+    fn increment_inner(self, inc_bits: u16, mut inc_bytes: u16) -> Self {
         // Bit count overflows a byte, so move into the next byte's bits by incrementing the byte
         // index one more.
         let start_bit = if u16::from(self.start_bit) + inc_bits >= 8 {
@@ -455,6 +503,45 @@ mod tests {
         assert_eq!(input.size_bytes(), 2);
     }
 
+    // #[test]
+    // fn sum_offsets_outputs() {
+    //     let offset = MappingOffset::default();
+
+    //     // E.g. previous EL2004
+    //     let offset = offset.increment(4);
+
+    //     // Pretend we've configured the outputs of another EL2004
+    //     let outputs = offset.increment(4);
+
+    //     assert_eq!(
+    //         offset + outputs,
+    //         MappingOffset {
+    //             start_address: 1,
+    //             start_bit: 0
+    //         }
+    //     )
+    // }
+
+    // #[test]
+    // fn sum_offsets_io() {
+    //     let offset = MappingOffset::default();
+
+    //     // E.g. previous EL2004
+    //     let offset = offset.increment(4);
+
+    //     // LAN9252 with 16 bit outputs and 48 bit inputs
+    //     let outputs = offset.increment(16);
+    //     let inputs = offset.increment(48);
+
+    //     assert_eq!(
+    //         offset + inputs + outputs,
+    //         MappingOffset {
+    //             start_address: 1,
+    //             start_bit: 0
+    //         }
+    //     )
+    // }
+
     #[test]
     fn simulate_2_el2004() {
         let input = MappingOffset::default();
@@ -477,6 +564,33 @@ mod tests {
                 start_address: 1,
                 start_bit: 0
             }
+        );
+    }
+
+    #[test]
+    fn el2004_byte_aligned() {
+        let input = MappingOffset::default();
+
+        let input = input.increment_byte_aligned(4);
+
+        assert_eq!(
+            input,
+            MappingOffset {
+                start_address: 1,
+                start_bit: 0
+            },
+            "first increment"
+        );
+
+        let input = input.increment_byte_aligned(4);
+
+        assert_eq!(
+            input,
+            MappingOffset {
+                start_address: 2,
+                start_bit: 0
+            },
+            "second increment"
         );
     }
 
