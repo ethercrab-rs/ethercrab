@@ -144,7 +144,9 @@ where
                 .await?
         }
 
-        self.wait_for_state(AlState::PreOp).await?;
+        log::debug!("Next PDI offset: {:?}", offset);
+
+        self.wait_for_state(AlState::SafeOp).await?;
 
         Ok(())
     }
