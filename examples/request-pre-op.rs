@@ -3,11 +3,10 @@
 //! This is designed for use with the EK1100 + EL2004.
 
 use async_ctrlc::CtrlC;
-use ethercrab::al_status::AlState;
-use ethercrab::client::Client;
 use ethercrab::error::PduError;
-use ethercrab::register::RegisterAddress;
 use ethercrab::std::tx_rx_task;
+use ethercrab::Client;
+use ethercrab::SlaveState;
 use futures_lite::FutureExt;
 use smol::LocalExecutor;
 use std::sync::Arc;
@@ -35,13 +34,9 @@ fn main() -> Result<(), PduError> {
             .spawn(tx_rx_task(INTERFACE, &client).unwrap())
             .detach();
 
-        let (_res, num_slaves) = client.brd::<u8>(RegisterAddress::Type).await.unwrap();
-
-        log::info!("Discovered {num_slaves} slaves");
-
         client.init().await.expect("Init");
 
-        client.request_slave_state(AlState::PreOp).await.unwrap();
+        client.request_slave_state(SlaveState::PreOp).await.unwrap();
     })));
 
     Ok(())

@@ -22,11 +22,11 @@ use packed_struct::PackedStruct;
 #[derive(Clone, Debug)]
 pub struct Slave {
     /// Configured station address.
-    pub configured_address: u16,
+    pub(crate) configured_address: u16,
     /// Index into PDI map corresponding to slave inputs.
-    input_range: PdiSegment,
+    pub(crate) input_range: PdiSegment,
     /// Index into PDI map corresponding to slave outputs.
-    output_range: PdiSegment,
+    pub(crate) output_range: PdiSegment,
 }
 
 impl Slave {
