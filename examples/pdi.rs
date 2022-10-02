@@ -1,21 +1,17 @@
-//! Read slave configuration from EEPROM and automatically apply it.
+//! An experiment in how to safely represent and use the PDI (Process Data Image).
 //!
-//! PDI is hardcoded to two bytes to support 2x EL2004 output modules and 1x EL1004 input module in
-//! that order.
+//! At time of writing, requires EL2004, EL2004 and EL1004 in that order to function correctly due
+//! to a pile of hard-coding.
 
 use async_ctrlc::CtrlC;
-use bitflags::_core::slice;
 use ethercrab::error::Error;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
+use ethercrab::Pdi;
 use ethercrab::SlaveState;
 use futures_lite::stream::StreamExt;
 use futures_lite::FutureExt;
-use smol::LocalExecutor;
-use std::cell::RefCell;
-use std::cell::UnsafeCell;
-use std::ptr::NonNull;
-use std::rc::Rc;
+use smol::LocalExecutor;;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -38,8 +34,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     let num_slaves = client.num_slaves();
 
-    log::info!("Discovered {num_slaves} slaves");
-
     client
         .init(|| async {
             println!("Nice");
@@ -49,30 +43,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         .await
         .expect("Init");
 
-    let pdi = UnsafeCell::new([0u8; 8]);
-
-    let pdi_ptr = pdi.get();
-
-    // let pdi2 = pdi.clone();
-    let client2 = client.clone();
-
-    // Cyclic data task
-    ex.spawn(async move {
-        // Cycle time
-        let mut interval = async_io::Timer::interval(Duration::from_millis(2));
-
-        while let Some(_) = interval.next().await {
-            let pdi = unsafe { &mut *pdi_ptr };
-
-            let (res, wkc) = client2.lrw(0u32, *pdi).await.expect("Bad write");
-
-            // Don't overwrite test output byte
-            pdi[1..].copy_from_slice(&res[1..]);
-
-            assert!(wkc > 0, "main loop wkc");
-        }
-    })
-    .detach();
+    log::info!("Discovered {num_slaves} slaves");
 
     // NOTE: Valid outputs must be provided before moving into operational state
     log::debug!("Moving slaves to OP...");
@@ -94,37 +65,25 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Slaves moved to OP state");
 
-    // // RX-only PDI, second byte contains 4 input state bits
-    // {
-    //     let value = Rc::new(RefCell::new([0u8; 2]));
+    async_io::Timer::after(Duration::from_millis(100)).await;
 
-    //     let value2 = value.clone();
-    //     let client2 = client.clone();
+    // TODO: Groups will have an offset address; use it instead of zero
+    let mut group = Pdi::<16, 16>::new(0);
 
-    //     ex.spawn(async move {
-    //         // Cycle time
-    //         let mut interval = async_io::Timer::interval(Duration::from_millis(2));
+    let mut interval = async_io::Timer::interval(Duration::from_millis(50));
 
-    //         while let Some(_) = interval.next().await {
-    //             let v = *value2.borrow();
+    while let Some(_) = interval.next().await {
+        group.tx_rx(&client).await.unwrap();
 
-    //             let read = client2.lrw(0u32, v).await.expect("Bad write");
+        group.io(0).and_then(|(_i, o)| o).map(|o| {
+            o[0] += 1;
+        });
 
-    //             dbg!(read.0);
-    //         }
-    //     })
-    //     .await;
-    // }
+        let switches = group.io(2).and_then(|(i, _o)| i).map(|i| i[0]).unwrap();
 
-    {
-        // Blink frequency
-        let mut interval = async_io::Timer::interval(Duration::from_millis(50));
-
-        let pdi = unsafe { &mut *pdi_ptr };
-
-        while let Some(_) = interval.next().await {
-            pdi[0] += 1;
-        }
+        group.io(1).and_then(|(_i, o)| o).map(|o| {
+            o[0] = switches;
+        });
     }
 
     Ok(())
