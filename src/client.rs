@@ -2,7 +2,7 @@ use crate::{
     al_control::AlControl,
     command::Command,
     error::{Error, PduError},
-    pdi::PdiOffset,
+    pdi::{PdiOffset, PdiSegment},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::{Slave, SlaveRef},
@@ -167,6 +167,18 @@ where
 
     fn slaves_mut(&self) -> &mut heapless::Vec<RefCell<Slave>, MAX_SLAVES> {
         unsafe { &mut *self.slaves.get() as &mut heapless::Vec<RefCell<Slave>, MAX_SLAVES> }
+    }
+
+    // DELETEME
+    pub fn slave_by_index_pdi_ranges(&self, idx: usize) -> Result<(PdiSegment, PdiSegment), Error> {
+        let slave = self
+            .slaves()
+            .get(idx)
+            .ok_or(Error::SlaveNotFound(idx))?
+            .try_borrow_mut()
+            .map_err(|_| Error::Borrow)?;
+
+        Ok((slave.input_range.clone(), slave.output_range.clone()))
     }
 
     pub fn slave_by_index(
