@@ -25,3 +25,5 @@
       reckon. It's a spinloop, but it has async calls in it so potentially non-blocking.
 - [ ] Revisit packed structs with confusing backwards bit orders. If `MailboxHeader` encodes on the
       wire correctly, I can use it's attributes elsewhere.
+- [ ] PDI struct with read/write accessors or some other kind of slave interop
+- [ ] Write a bunch of MIRI tests around PDI buffer read/write, and the PDU loop
