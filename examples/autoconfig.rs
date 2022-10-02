@@ -4,6 +4,7 @@
 //! that order.
 
 use async_ctrlc::CtrlC;
+use bitflags::_core::slice;
 use ethercrab::error::Error;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
@@ -12,6 +13,8 @@ use futures_lite::stream::StreamExt;
 use futures_lite::FutureExt;
 use smol::LocalExecutor;
 use std::cell::RefCell;
+use std::cell::UnsafeCell;
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -46,8 +49,11 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         .await
         .expect("Init");
 
-    let value = Rc::new(RefCell::new([0u8; 8]));
-    let value2 = value.clone();
+    let pdi = UnsafeCell::new([0u8; 8]);
+
+    let pdi_ptr = pdi.get();
+
+    // let pdi2 = pdi.clone();
     let client2 = client.clone();
 
     // Cyclic data task
@@ -56,15 +62,13 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         let mut interval = async_io::Timer::interval(Duration::from_millis(2));
 
         while let Some(_) = interval.next().await {
-            let v = value2.try_borrow_mut();
+            let pdi = unsafe { &mut *pdi_ptr };
 
-            if let Ok(mut v) = v {
-                let (res, wkc) = client2.lrw(0u32, *v).await.expect("Bad write");
+            let (res, wkc) = client2.lrw(0u32, *pdi).await.expect("Bad write");
 
-                *v = res;
+            *pdi = res;
 
-                assert!(wkc > 0, "main loop wkc");
-            }
+            assert!(wkc > 0, "main loop wkc");
         }
     })
     .detach();
@@ -113,14 +117,14 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     //     .await;
     // }
 
-    // Blink frequency
-    let mut interval = async_io::Timer::interval(Duration::from_millis(50));
+    {
+        // Blink frequency
+        let mut interval = async_io::Timer::interval(Duration::from_millis(50));
 
-    while let Some(_) = interval.next().await {
-        let v = value.try_borrow_mut();
+        let pdi = unsafe { &mut *pdi_ptr };
 
-        if let Ok(mut v) = v {
-            v[0] += 1;
+        while let Some(_) = interval.next().await {
+            pdi[0] += 1;
         }
     }
 
