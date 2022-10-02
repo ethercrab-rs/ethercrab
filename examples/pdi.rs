@@ -11,7 +11,7 @@ use ethercrab::Pdi;
 use ethercrab::SlaveState;
 use futures_lite::stream::StreamExt;
 use futures_lite::FutureExt;
-use smol::LocalExecutor;;
+use smol::LocalExecutor;
 use std::sync::Arc;
 use std::time::Duration;
 
