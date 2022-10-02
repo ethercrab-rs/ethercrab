@@ -66,7 +66,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
             let (res, wkc) = client2.lrw(0u32, *pdi).await.expect("Bad write");
 
-            *pdi = res;
+            // Don't overwrite test output byte
+            pdi[1..].copy_from_slice(&res[1..]);
 
             assert!(wkc > 0, "main loop wkc");
         }
