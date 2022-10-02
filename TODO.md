@@ -27,3 +27,4 @@
       wire correctly, I can use it's attributes elsewhere.
 - [ ] PDI struct with read/write accessors or some other kind of slave interop
 - [ ] Write a bunch of MIRI tests around PDI buffer read/write, and the PDU loop
+- [ ] Group support
