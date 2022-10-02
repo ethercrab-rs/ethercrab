@@ -296,3 +296,36 @@ EEPROM is word-based, but I want to read bytes so let's make an abstraction:
       - If write fails,
         - If we have space left, push partial chunk
         - Return buffer
+
+# PDI
+
+- Send PDI in chunks of `MAX_PDU_DATA`
+- Core concept for thread safety: Slaves must be grouped
+  - I can provide a nice API to get a single default group maybe
+- Each group has its own PDI with a start address and length or whatever
+- Iteration looks like this:
+
+  ```rust
+  let interval = Interval::new(Duration::from_millis(2));
+
+  while let Some(_) = interval.next().await {
+      group.tx_rx(&client).await;
+
+      // Or whatever
+      group.slave_by_index(0).outputs()[0] = 0xff;
+
+      for slave in group.slaves_mut() {
+          // Whatever
+      }
+  }
+  ```
+
+- Because each group is non-overlapping, we don't need to lock in `group.tx_rx().await`
+- Groups are `Send` but not `Sync`; they can be moved to a thread but NOT shared.
+- Sharing data between groups is up to the user, e.g. SPSC or other means to keep things safe. A bit
+  of a copout but it means we don't get data races by default.
+- Assign a group ID to each discovered slave before init, using a closure and maybe make group IDs
+  generic to the user. Or maybe not; a group ID should map to a number for indexing reasons. Maybe
+  just `Into<usize>` for the user's type? That would allow nice enums like `Safety, Servos, IO`, etc
+- Groups should be separate from `client` - the list of slaves should store enough info to be useful
+  to users. `client` should only be used for tx/rx

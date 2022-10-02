@@ -99,6 +99,8 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     }
 
     /// Write an ethernet frame into `buf`, returning the used portion of the buffer.
+    // TODO: Refactor so the network TX can reuse the same ethernet frame over and over. We don't
+    // need to make a new one inside this method.
     pub fn to_ethernet_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8], PduError> {
         let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.frame_buf_len());
 
