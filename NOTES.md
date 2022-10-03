@@ -338,39 +338,42 @@ struct Groups {
     servos: SlaveGroup<3>
 }
 
+// Closure must return a reference to a SlaveGroup to insert the slave into
 let groups = client.init::<Groups>(|&mut groups, slave, idx| {
   if slave.id == 0xwhatever {
-    groups.io.push(slave);
+    Some(&mut groups.io)
+  } else if slave.manu == 0xwhatever {
+    Some(&mut groups.servos)
   } else {
-    groups.servos.push(slave);
+    // Might want to ignore a detected slave - maybe it's not a recognised device. Add config option
+    // to make this an error?
+    None
   }
 }).await.unwrap();
+
+// init()
+// - Detect all slaves
+// - TODO: Add some basic info to them like manufacturer ID, name, etc so people can identify them
+//   - For now I'll just return an index
+// - Loop through them all, passing into closure to get the group to insert into
+// - While we have a ref to the group, initialise the slave in it and update its PDI map
+// - Return groups when we're done
 
 struct SlaveGroup<const N: usize> {
     slaves: heapless::Vec<Slave, N>
 }
 
 impl SlaveGroup {
-    fn new(slaves) -> Self {
-        Self { slaves }
+    fn new() -> Self {
+        // This could probably impl default
+        Self { slaves: heapless::Vec::new() }
     }
 
-    async fn init(self, &client) -> Result<ConfiguredSlaveGroup, Error> {
-        // Loop through each slave, initialise with offset, move to configured group, return configured group
+    async fn init_from_eeprom(&mut self, &client) -> Result<(), Error> {
+        // What the client already does, but scoped to a group.
+        // Needs to also return the PDI offset ready for the next group to use.
     }
-}
 
-struct ConfiguredSlave {
-    slave: Slave,
-    inputs: PdiRange,
-    outputs: PdiRange,
-}
-
-struct ConfiguredSlaveGroup {
-    slaves: heapless::Vec<ConfiguredSlave, N>
-}
-
-impl<const N> ConfiguredSlaveGroup<N> {
     pub async fn tx_rx(&self, &client) -> Result<(), Error> {
         //
     }
