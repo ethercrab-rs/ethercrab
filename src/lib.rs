@@ -29,7 +29,9 @@ mod mailbox;
 mod pdi;
 mod pdu_loop;
 mod register;
-mod slave;
+// TODO: Un-pub
+pub mod slave;
+mod slave_group;
 mod slave_state;
 mod sync_manager_channel;
 mod timer_factory;

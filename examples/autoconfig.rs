@@ -6,6 +6,7 @@
 use async_ctrlc::CtrlC;
 use bitflags::_core::slice;
 use ethercrab::error::Error;
+use ethercrab::slave::SlaveRef;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
 use ethercrab::SlaveState;
@@ -40,14 +41,9 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Discovered {num_slaves} slaves");
 
-    client
-        .init(|| async {
-            println!("Nice");
+    let groups = client.init::<16, 16>(|_| 0).await.expect("Init");
 
-            Ok(())
-        })
-        .await
-        .expect("Init");
+    let slaves = &groups[0].slaves;
 
     let pdi = UnsafeCell::new([0u8; 8]);
 
@@ -80,8 +76,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     match client.request_slave_state(SlaveState::Op).await {
         Ok(it) => it,
         Err(err) => {
-            for idx in 0..num_slaves {
-                let slave = client.slave_by_index(idx)?;
+            for (idx, slave) in slaves.iter().enumerate() {
+                let slave = SlaveRef::new(&client, slave.configured_address);
 
                 let (status, code) = slave.status().await?;
 

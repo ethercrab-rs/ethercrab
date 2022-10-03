@@ -34,34 +34,19 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     let num_slaves = client.num_slaves();
 
-    client
-        .init(|| async {
-            println!("Nice");
+    let _groups = client.init::<16, 16>(|_| 0).await.expect("Init");
 
-            Ok(())
-        })
-        .await
-        .expect("Init");
+    let _slaves = &_groups[0].slaves;
 
     log::info!("Discovered {num_slaves} slaves");
 
     // NOTE: Valid outputs must be provided before moving into operational state
     log::debug!("Moving slaves to OP...");
 
-    match client.request_slave_state(SlaveState::Op).await {
-        Ok(it) => it,
-        Err(err) => {
-            for idx in 0..num_slaves {
-                let slave = client.slave_by_index(idx)?;
-
-                let (status, code) = slave.status().await?;
-
-                log::error!("Slave {idx} failed to transition to OP: {status:?} ({code})");
-            }
-
-            return Err(err);
-        }
-    };
+    client
+        .request_slave_state(SlaveState::Op)
+        .await
+        .expect("OP");
 
     log::info!("Slaves moved to OP state");
 
