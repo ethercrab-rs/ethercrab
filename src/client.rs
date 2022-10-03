@@ -380,4 +380,25 @@ where
     {
         self.write_service(Command::Lrw { address }, value).await
     }
+
+    /// Logical read/write, but direct from/to a mutable slice.
+    // TODO: Chunked sends if buffer is too long for MAX_PDU_DATA
+    pub async fn lrw_buf<'buf>(
+        &self,
+        address: u32,
+        value: &'buf mut [u8],
+    ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
+        let pdu = self
+            .pdu_loop
+            .pdu_tx(Command::Lrw { address }, value, value.len() as u16)
+            .await?;
+
+        if pdu.data().len() != value.len() {
+            return Err(Error::Pdu(PduError::Decode));
+        }
+
+        value.copy_from_slice(pdu.data());
+
+        Ok((value, pdu.working_counter()))
+    }
 }
