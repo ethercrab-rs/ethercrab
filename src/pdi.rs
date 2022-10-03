@@ -86,17 +86,11 @@ impl<const MAX_PDI: usize, const MAX_SLAVES: usize> Pdi<MAX_PDI, MAX_SLAVES> {
     where
         TIMEOUT: TimerFactory,
     {
-        // TODO: Chunked send if PDI is larger than MAX_PDU_DATA
-        // TODO: omg I need to be able to send references holy moly all this moving of data!
-        let (res, _wkc) = client
-            .lrw(self.start_address, unsafe { *self.data.get() })
+        let (_res, _wkc) = client
+            .lrw_buf(self.start_address, unsafe { &mut *self.data.get() })
             .await?;
 
         // TODO: Check working counter = (slaves with outputs) + (slaves with inputs * 2)
-
-        let d = unsafe { &mut *self.data.get() };
-
-        *d = res;
 
         Ok(())
     }
