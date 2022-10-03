@@ -369,7 +369,7 @@ impl SlaveGroup {
         Self { slaves: heapless::Vec::new() }
     }
 
-    async fn init_from_eeprom(&mut self, &client) -> Result<(), Error> {
+    async fn init_from_eeprom_and_push(&mut self, &client, slave) -> Result<(), Error> {
         // What the client already does, but scoped to a group.
         // Needs to also return the PDI offset ready for the next group to use.
     }
