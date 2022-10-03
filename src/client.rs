@@ -2,28 +2,23 @@ use crate::{
     al_control::AlControl,
     command::Command,
     error::{Error, PduError},
-    pdi::{PdiOffset, PdiSegment},
+    pdi::PdiOffset,
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
-    slave::{Slave, SlaveRef},
+    slave::Slave,
     slave_group::SlaveGroup,
     slave_state::SlaveState,
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR,
 };
 use core::{
-    cell::{Ref, RefCell, UnsafeCell},
+    cell::{Ref, RefCell},
     marker::PhantomData,
     time::Duration,
 };
 use packed_struct::PackedStruct;
 
-pub struct Client<
-    const MAX_FRAMES: usize,
-    const MAX_PDU_DATA: usize,
-    const MAX_SLAVES: usize,
-    TIMEOUT,
-> {
+pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: un-pub
     pub pdu_loop: PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
@@ -32,13 +27,13 @@ pub struct Client<
     // slaves: UnsafeCell<heapless::Vec<RefCell<Slave>, MAX_SLAVES>>,
 }
 
-unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
-    Sync for Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
+unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
+    for Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
 }
 
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
-    Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
@@ -47,12 +42,6 @@ where
         assert!(
             MAX_FRAMES <= u8::MAX.into(),
             "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
-        );
-
-        // MSRV: Make `MAX_SLAVES` a `u16` when `generic_const_exprs` is stablised
-        assert!(
-            MAX_SLAVES <= u16::MAX.into(),
-            "Slave list may only contain up to u16::MAX slaves"
         );
 
         Self {
@@ -101,16 +90,16 @@ where
     }
 
     /// Detect slaves and set their configured station addresses.
-    pub async fn init<const MAX_GROUPS: usize, const MAX_SLAVES2: usize>(
+    pub async fn init<const MAX_GROUPS: usize, const MAX_SLAVES: usize>(
         &self,
         mut group_filter: impl FnMut(&mut Slave) -> usize,
-    ) -> Result<[SlaveGroup<MAX_SLAVES2>; MAX_GROUPS], Error> {
+    ) -> Result<[SlaveGroup<MAX_SLAVES>; MAX_GROUPS], Error> {
         self.reset_slaves().await?;
 
         // Each slave increments working counter, so we can use it as a total count of slaves
         let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
 
-        if usize::from(num_slaves) > MAX_SLAVES2 {
+        if usize::from(num_slaves) > MAX_SLAVES {
             return Err(Error::TooManySlaves);
         }
 

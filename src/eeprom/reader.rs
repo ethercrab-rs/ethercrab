@@ -4,36 +4,30 @@ use crate::{
     timer_factory::TimerFactory,
 };
 
-pub struct EepromSectionReader<
-    'a,
-    const MAX_FRAMES: usize,
-    const MAX_PDU_DATA: usize,
-    const MAX_SLAVES: usize,
-    TIMEOUT,
-> {
+pub struct EepromSectionReader<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     start: u16,
     /// Category length in bytes.
     len: u16,
     byte_count: u16,
     read: heapless::Deque<u8, 8>,
-    eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+    eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     read_length: usize,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
-    EepromSectionReader<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
+impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    EepromSectionReader<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
     pub fn new(
-        eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
         cat: SiiCategory,
     ) -> Self {
         Self::start_at(eeprom, cat.start, cat.len_words * 2)
     }
 
     pub fn start_at(
-        eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
         address: u16,
         len_bytes: u16,
     ) -> Self {

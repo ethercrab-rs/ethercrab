@@ -73,15 +73,9 @@ impl<const MAX_PDI: usize, const MAX_SLAVES: usize> Pdi<MAX_PDI, MAX_SLAVES> {
         Some((i, o))
     }
 
-    pub async fn tx_rx<
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        // TODO: Remove slaves from client
-        const MAX_SLAVES_CLIENT: usize,
-        TIMEOUT,
-    >(
+    pub async fn tx_rx<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
         &mut self,
-        client: &Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES_CLIENT, TIMEOUT>,
+        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     ) -> Result<(), Error>
     where
         TIMEOUT: TimerFactory,
