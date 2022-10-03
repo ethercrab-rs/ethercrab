@@ -329,3 +329,54 @@ EEPROM is word-based, but I want to read bytes so let's make an abstraction:
   just `Into<usize>` for the user's type? That would allow nice enums like `Safety, Servos, IO`, etc
 - Groups should be separate from `client` - the list of slaves should store enough info to be useful
   to users. `client` should only be used for tx/rx
+
+## Another idea for slave config/grouping
+
+```rust
+struct Groups {
+    io: SlaveGroup<16>,
+    servos: SlaveGroup<3>
+}
+
+let groups = client.init::<Groups>(|&mut groups, slave, idx| {
+  if slave.id == 0xwhatever {
+    groups.io.push(slave);
+  } else {
+    groups.servos.push(slave);
+  }
+}).await.unwrap();
+
+struct SlaveGroup<const N: usize> {
+    slaves: heapless::Vec<Slave, N>
+}
+
+impl SlaveGroup {
+    fn new(slaves) -> Self {
+        Self { slaves }
+    }
+
+    async fn init(self, &client) -> Result<ConfiguredSlaveGroup, Error> {
+        // Loop through each slave, initialise with offset, move to configured group, return configured group
+    }
+}
+
+struct ConfiguredSlave {
+    slave: Slave,
+    inputs: PdiRange,
+    outputs: PdiRange,
+}
+
+struct ConfiguredSlaveGroup {
+    slaves: heapless::Vec<ConfiguredSlave, N>
+}
+
+impl<const N> ConfiguredSlaveGroup<N> {
+    pub async fn tx_rx(&self, &client) -> Result<(), Error> {
+        //
+    }
+
+    // TODO: Iterator over slaves to get IO
+
+    // TODO: API to get slave by index
+}
+```
