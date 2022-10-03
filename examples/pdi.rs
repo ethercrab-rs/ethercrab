@@ -28,7 +28,7 @@ const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
 const INTERFACE: &str = "eth1";
 
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
-    let client = Arc::new(Client::<16, 16, 16, smol::Timer>::new());
+    let client = Arc::new(Client::<16, 16, smol::Timer>::new());
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
 

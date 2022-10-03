@@ -34,11 +34,10 @@ impl Slave {
     pub async fn configure_from_eeprom<
         const MAX_FRAMES: usize,
         const MAX_PDU_DATA: usize,
-        const MAX_SLAVES: usize,
         TIMEOUT,
         O,
     >(
-        client: &Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
         configured_address: u16,
         offset: PdiOffset,
         mut slave_preop_safeop: impl FnMut() -> O,
@@ -64,24 +63,18 @@ impl Slave {
     }
 }
 
-pub struct SlaveRef<
-    'a,
-    const MAX_FRAMES: usize,
-    const MAX_PDU_DATA: usize,
-    const MAX_SLAVES: usize,
-    TIMEOUT,
-> {
-    client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+pub struct SlaveRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+    client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     configured_address: u16,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
-    SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
+impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
     pub fn new(
-        client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+        client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
         configured_address: u16,
     ) -> Self {
         Self {
@@ -169,7 +162,7 @@ where
     }
 
     // TODO: Separate TIMEOUT for EEPROM specifically
-    pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT> {
+    pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
         Eeprom::new(&self)
     }
 

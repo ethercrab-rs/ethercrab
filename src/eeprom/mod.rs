@@ -23,24 +23,16 @@ use num_enum::TryFromPrimitive;
 /// Table 2.
 const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 
-pub struct Eeprom<
-    'a,
-    const MAX_FRAMES: usize,
-    const MAX_PDU_DATA: usize,
-    const MAX_SLAVES: usize,
-    TIMEOUT,
-> {
-    slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
+pub struct Eeprom<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+    slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, const MAX_SLAVES: usize, TIMEOUT>
-    Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>
+impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub(crate) fn new(
-        slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>,
-    ) -> Self {
+    pub(crate) fn new(slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> Self {
         Self { slave }
     }
 
@@ -338,8 +330,7 @@ where
     async fn find_category(
         &self,
         category: CategoryType,
-    ) -> Result<Option<EepromSectionReader<'_, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>>, Error>
-    {
+    ) -> Result<Option<EepromSectionReader<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>, Error> {
         let mut start = SII_FIRST_CATEGORY_START;
 
         loop {
