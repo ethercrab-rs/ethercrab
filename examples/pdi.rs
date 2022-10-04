@@ -8,6 +8,7 @@ use ethercrab::error::Error;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
 use ethercrab::Pdi;
+use ethercrab::SlaveGroup;
 use ethercrab::SlaveState;
 use futures_lite::stream::StreamExt;
 use futures_lite::FutureExt;
@@ -32,13 +33,20 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
 
-    let num_slaves = client.num_slaves();
+    // let num_slaves = client.num_slaves();
 
-    let _groups = client.init::<16, 16>(|_| 0).await.expect("Init");
+    let _groups = client
+        .init([SlaveGroup::<16>::default(); 1], |groups, slave| {
+            groups[0].push(slave).expect("Too many slaves");
 
-    let _slaves = &_groups[0].slaves;
+            // TODO: Return Result
+        })
+        .await
+        .expect("Init");
 
-    log::info!("Discovered {num_slaves} slaves");
+    let _slaves = &_groups[0].slaves();
+
+    // log::info!("Discovered {num_slaves} slaves");
 
     // NOTE: Valid outputs must be provided before moving into operational state
     log::debug!("Moving slaves to OP...");

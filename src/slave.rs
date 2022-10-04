@@ -19,7 +19,7 @@ use crate::{
 use core::time::Duration;
 use packed_struct::PackedStruct;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Slave {
     /// Configured station address.
     // TODO: Un-pub
@@ -31,35 +31,40 @@ pub struct Slave {
 }
 
 impl Slave {
+    pub(crate) fn new(configured_address: u16) -> Self {
+        Self {
+            configured_address,
+            input_range: PdiSegment::default(),
+            output_range: PdiSegment::default(),
+        }
+    }
+
     pub async fn configure_from_eeprom<
         const MAX_FRAMES: usize,
         const MAX_PDU_DATA: usize,
         TIMEOUT,
         O,
     >(
+        &mut self,
         client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        configured_address: u16,
         offset: PdiOffset,
         mut slave_preop_safeop: impl FnMut() -> O,
-    ) -> Result<(PdiOffset, Self), Error>
+    ) -> Result<PdiOffset, Error>
     where
         TIMEOUT: TimerFactory,
         O: core::future::Future<Output = Result<(), Error>>,
     {
-        let slave_ref = SlaveRef::new(client, configured_address);
+        // TODO: I don't think we need SlaveRef anymore
+        let slave_ref = SlaveRef::new(client, self.configured_address);
 
         let (offset, input_range, output_range) = slave_ref
             .configure_from_eeprom(offset, &mut slave_preop_safeop)
             .await?;
 
-        Ok((
-            offset,
-            Slave {
-                configured_address,
-                input_range,
-                output_range,
-            },
-        ))
+        self.input_range = input_range;
+        self.output_range = output_range;
+
+        Ok(offset)
     }
 }
 

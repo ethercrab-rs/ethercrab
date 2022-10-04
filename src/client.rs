@@ -6,7 +6,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
-    slave_group::SlaveGroup,
+    slave_group::{SlaveGroup, SlaveGroupRef},
     slave_state::SlaveState,
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR,
@@ -14,6 +14,7 @@ use crate::{
 use core::{
     cell::{Ref, RefCell},
     marker::PhantomData,
+    ops::IndexMut,
     time::Duration,
 };
 use packed_struct::PackedStruct;
@@ -30,6 +31,24 @@ pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
     for Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
+}
+
+pub trait SlaveGroupContainer<'a> {
+    fn num_groups(&self) -> usize;
+
+    fn group(&'a mut self, index: usize) -> Option<SlaveGroupRef<'a>>;
+}
+
+impl<'a, const MAX_SLAVES: usize, const N: usize> SlaveGroupContainer<'a>
+    for [SlaveGroup<MAX_SLAVES>; N]
+{
+    fn num_groups(&self) -> usize {
+        N
+    }
+
+    fn group(&'a mut self, index: usize) -> Option<SlaveGroupRef<'a>> {
+        self.get_mut(index).map(|group| group.as_mut_ref())
+    }
 }
 
 impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
@@ -90,66 +109,84 @@ where
     }
 
     /// Detect slaves and set their configured station addresses.
-    pub async fn init<const MAX_GROUPS: usize, const MAX_SLAVES: usize>(
+    pub async fn init<G>(
         &self,
-        mut group_filter: impl FnMut(&mut Slave) -> usize,
-    ) -> Result<[SlaveGroup<MAX_SLAVES>; MAX_GROUPS], Error> {
+        mut groups: G,
+        mut group_filter: impl FnMut(&mut G, Slave),
+    ) -> Result<G, Error>
+    where
+        G: for<'a> SlaveGroupContainer<'a>,
+    {
         self.reset_slaves().await?;
 
         // Each slave increments working counter, so we can use it as a total count of slaves
         let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
 
-        if usize::from(num_slaves) > MAX_SLAVES {
-            return Err(Error::TooManySlaves);
-        }
+        // if usize::from(num_slaves) > MAX_SLAVES {
+        //     return Err(Error::TooManySlaves);
+        // }
 
         *self.num_slaves.borrow_mut() = num_slaves;
 
         // NOTE: .map() because SlaveGroup is not copy
-        let mut groups = [0u8; MAX_GROUPS].map(|_| SlaveGroup::default());
-        let mut group_offsets = [PdiOffset::default(); MAX_GROUPS];
-
-        let mut offset = PdiOffset::default();
+        // let mut groups = [0u8; MAX_GROUPS].map(|_| SlaveGroup::default());
+        // let mut group_offsets = [PdiOffset::default(); MAX_GROUPS];
 
         // Set configured address for all discovered slaves
         for slave_idx in 0..num_slaves {
-            let address = BASE_SLAVE_ADDR + slave_idx;
+            let configured_address = BASE_SLAVE_ADDR + slave_idx;
 
             self.apwr(
                 slave_idx,
                 RegisterAddress::ConfiguredStationAddress,
-                address,
+                configured_address,
             )
             .await?
             .wkc(1, "set station address")?;
 
-            let (new_offset, slave) =
-                Slave::configure_from_eeprom(&self, address, offset, &mut || async {
-                    // TODO: Store PO2SO hook on slave. Currently blocked by `Client` having so many const generics
-                    Ok(())
-                })
-                .await?;
+            // let (new_offset, slave) =
+            //     Slave::configure_from_eeprom(&self, address, offset, &mut || async {
+            //         // TODO: Store PO2SO hook on slave. Currently blocked by `Client` having so many const generics
+            //         Ok(())
+            //     })
+            //     .await?;
 
-            log::debug!(
-                "Slave #{:#06x} PDI mapping inputs: {}, outputs: {}",
-                address,
-                slave.input_range,
-                slave.output_range
-            );
+            // TODO: Instead of just a configured address, read some basic slave data into the
+            // struct so the user has more to work with in the grouping function.
+            let slave = Slave::new(configured_address);
 
-            offset = new_offset;
+            // log::debug!(
+            //     "Slave #{:#06x} PDI mapping inputs: {}, outputs: {}",
+            //     address,
+            //     slave.input_range,
+            //     slave.output_range
+            // );
+
+            // offset = new_offset;
+
+            group_filter(&mut groups, slave);
 
             // let slave = RefCell::new(slave);
 
-            groups[0]
-                .slaves
-                .push(slave)
-                // NOTE: This shouldn't fail as we check for capacity above, but it's worth double
-                // checking.
-                .map_err(|_| Error::TooManySlaves)?;
+            // groups[0]
+            //     .slaves
+            //     .push(slave)
+            //     // NOTE: This shouldn't fail as we check for capacity above, but it's worth double
+            //     // checking.
+            //     .map_err(|_| Error::TooManySlaves)?;
         }
 
-        log::debug!("Next PDI offset: {:?}", offset);
+        let mut offset = PdiOffset::default();
+
+        // Loop through groups and configure the slaves in each one.
+        for i in 0..groups.num_groups() {
+            // TODO: Better error type for broken group index calculation
+            let mut group = groups.group(i).ok_or_else(|| Error::Other)?;
+
+            offset = group.configure_from_eeprom(offset, &self).await?;
+
+            log::debug!("After group #{i} offset: {:?}", offset);
+        }
 
         self.wait_for_state(SlaveState::SafeOp).await?;
 
