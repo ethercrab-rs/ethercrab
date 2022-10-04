@@ -52,6 +52,7 @@ pub use pdu_loop::CheckWorkingCounter;
 
 pub use client::Client;
 pub use pdi::Pdi;
+pub use slave_group::SlaveGroup;
 pub use slave_state::SlaveState;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
