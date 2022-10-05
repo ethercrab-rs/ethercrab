@@ -42,6 +42,10 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         Ok(())
     }
 
+    pub(crate) fn pdu(&mut self) -> &mut Pdu<MAX_PDU_DATA> {
+        &mut self.pdu
+    }
+
     /// The size of the total payload to be insterted into an Ethernet frame, i.e. EtherCAT frame
     /// payload and header.
     fn ethernet_payload_len(&self) -> usize {
@@ -66,7 +70,7 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         Ok(ethernet_frame.into_inner())
     }
 
-    pub(crate) fn wake_done(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
+    pub(crate) fn wake_done(&mut self) -> Result<(), PduError> {
         if self.state != FrameState::Sending {
             trace!("Expected {:?}, got {:?}", FrameState::Sending, self.state);
             Err(PduError::InvalidFrameState)?;
@@ -75,15 +79,12 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         let waker = self.waker.take().ok_or_else(|| {
             error!(
                 "Attempted to wake frame #{} with no waker, possibly caused by timeout",
-                pdu.index()
+                self.pdu.index()
             );
 
             PduError::InvalidFrameState
         })?;
 
-        pdu.is_response_to(&self.pdu)?;
-
-        self.pdu = pdu;
         self.state = FrameState::Done;
 
         waker.wake();

@@ -3,9 +3,13 @@ mod pdu;
 mod pdu_frame;
 
 use crate::{
-    command::Command,
-    error::{Error, PduError},
-    pdu_loop::{pdu::Pdu, pdu_frame::SendableFrame},
+    command::{Command, CommandCode},
+    error::{Error, PduError, PduValidationError},
+    pdu_loop::{
+        frame_header::FrameHeader,
+        pdu::{Pdu, PduFlags},
+        pdu_frame::SendableFrame,
+    },
     timeout,
     timer_factory::TimerFactory,
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
@@ -17,6 +21,13 @@ use core::{
     sync::atomic::{AtomicU8, Ordering},
     task::Waker,
 };
+use nom::{
+    bytes::complete::take,
+    combinator::map_res,
+    error::context,
+    number::complete::{le_u16, u8},
+};
+use packed_struct::PackedStructSlice;
 use smoltcp::wire::EthernetFrame;
 
 pub type PduResponse<T> = (T, u16);
@@ -164,12 +175,42 @@ where
             return Ok(());
         }
 
-        let (_rest, pdu) = Pdu::<MAX_PDU_DATA>::from_ethernet_payload::<nom::error::Error<&[u8]>>(
-            raw_packet.payload(),
-        )
-        .map_err(|_| PduError::Parse)?;
+        let i = raw_packet.payload();
 
-        self.frame(pdu.index())?.wake_done(pdu)?;
+        let (i, header) = context("header", FrameHeader::parse)(i)?;
+
+        // Only take as much as the header says we should
+        let (_rest, i) = take(header.payload_len())(i)?;
+
+        let (i, command_code) = map_res(u8, CommandCode::try_from)(i)?;
+        let (i, index) = u8(i)?;
+
+        let frame = self.frame(index)?;
+
+        let (i, command) = command_code.parse_address(i)?;
+
+        if command.code() != frame.pdu().command().code() {
+            return Err(Error::Pdu(PduError::Validation(
+                PduValidationError::CommandMismatch {
+                    sent: command,
+                    received: frame.pdu().command(),
+                },
+            )));
+        }
+
+        let (i, flags) = map_res(take(2usize), PduFlags::unpack_from_slice)(i)?;
+        let (i, irq) = le_u16(i)?;
+        let (i, data) = take(flags.length)(i)?;
+        let (i, working_counter) = le_u16(i)?;
+
+        // `_i` should be empty as we `take()`d an exact amount above.
+        debug_assert_eq!(i.len(), 0);
+
+        frame
+            .pdu()
+            .set_response(flags, irq, data, working_counter)?;
+
+        frame.wake_done()?;
 
         Ok(())
     }

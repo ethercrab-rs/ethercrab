@@ -1,21 +1,9 @@
-use crate::{
-    command::{Command, CommandCode},
-    error::{PduError, PduValidationError},
-    pdu_loop::frame_header::FrameHeader,
-    LEN_MASK,
-};
+use crate::{command::Command, error::PduError, pdu_loop::frame_header::FrameHeader, LEN_MASK};
 use cookie_factory::{
     bytes::{le_u16, le_u8},
     combinator::{skip, slice},
     gen_simple, GenError,
 };
-use nom::{
-    bytes::complete::take,
-    combinator::map_res,
-    error::{context, ContextError, FromExternalError, ParseError},
-    IResult,
-};
-use num_enum::TryFromPrimitiveError;
 use packed_struct::prelude::*;
 
 #[derive(Debug, Clone, Default)]
@@ -49,6 +37,26 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
             data,
             working_counter: 0,
         })
+    }
+
+    pub fn set_response(
+        &mut self,
+        flags: PduFlags,
+        irq: u16,
+        data: &[u8],
+        working_counter: u16,
+    ) -> Result<(), PduError> {
+        self.flags = flags;
+        self.irq = irq;
+
+        self.data
+            .resize(data.len(), 0u8)
+            .map_err(|_| PduError::TooLong)?;
+        self.data.copy_from_slice(data);
+
+        self.working_counter = working_counter;
+
+        Ok(())
     }
 
     pub fn nop() -> Self {
@@ -112,70 +120,12 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         }
     }
 
-    /// Create an EtherCAT frame from an Ethernet II frame's payload.
-    pub fn from_ethernet_payload<'a, E>(i: &'a [u8]) -> IResult<&'a [u8], Self, E>
-    where
-        E: ParseError<&'a [u8]>
-            + ContextError<&'a [u8]>
-            + FromExternalError<&'a [u8], TryFromPrimitiveError<CommandCode>>
-            + FromExternalError<&'a [u8], PackingError>
-            + FromExternalError<&'a [u8], ()>,
-    {
-        // TODO: Split out frame header parsing when we want to support multiple PDUs. This should
-        // also let us do better with the const generics.
-        let (i, header) = context("header", FrameHeader::parse)(i)?;
-
-        // Only take as much as the header says we should
-        let (_rest, i) = context("take", take(header.payload_len()))(i)?;
-
-        let (i, command_code) = context(
-            "command code",
-            map_res(nom::number::complete::u8, CommandCode::try_from),
-        )(i)?;
-        let (i, index) = context("index", nom::number::complete::u8)(i)?;
-        let (i, command) = context("command", |i| command_code.parse_address(i))(i)?;
-        let (i, flags) = context("flags", map_res(take(2usize), PduFlags::unpack_from_slice))(i)?;
-        let (i, irq) = context("irq", nom::number::complete::le_u16)(i)?;
-
-        let (i, data) = context(
-            "data",
-            map_res(take(flags.length), |slice: &[u8]| slice.try_into()),
-        )(i)?;
-        let (i, working_counter) = context("working counter", nom::number::complete::le_u16)(i)?;
-
-        Ok((
-            i,
-            Self {
-                command,
-                index,
-                flags,
-                irq,
-                data,
-                working_counter,
-            },
-        ))
-    }
-
-    pub fn is_response_to(&self, request_pdu: &Self) -> Result<(), PduValidationError> {
-        if request_pdu.index != self.index {
-            return Err(PduValidationError::IndexMismatch {
-                sent: request_pdu.command,
-                received: self.command,
-            });
-        }
-
-        if request_pdu.command.code() != self.command.code() {
-            return Err(PduValidationError::CommandMismatch {
-                sent: request_pdu.command,
-                received: self.command,
-            });
-        }
-
-        Ok(())
-    }
-
     pub fn index(&self) -> u8 {
         self.index
+    }
+
+    pub fn command(&self) -> Command {
+        self.command
     }
 
     pub(crate) fn data(&self) -> &[u8] {
@@ -192,7 +142,7 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
 pub struct PduFlags {
     /// Data length of this PDU.
     #[packed_field(bits = "0..=10")]
-    length: u16,
+    pub(crate) length: u16,
     /// Circulating frame
     ///
     /// 0: Frame is not circulating,
