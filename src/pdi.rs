@@ -73,9 +73,9 @@ impl<const MAX_PDI: usize, const MAX_SLAVES: usize> Pdi<MAX_PDI, MAX_SLAVES> {
         Some((i, o))
     }
 
-    pub async fn tx_rx<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
+    pub async fn tx_rx<'client, const MAX_FRAMES: usize, TIMEOUT>(
         &mut self,
-        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        client: &'client Client<'client, MAX_FRAMES, TIMEOUT>,
     ) -> Result<(), Error>
     where
         TIMEOUT: TimerFactory,
