@@ -13,6 +13,7 @@ use crate::{
 use core::{
     cell::{RefCell, UnsafeCell},
     marker::PhantomData,
+    mem::MaybeUninit,
     sync::atomic::{AtomicU8, Ordering},
     task::Waker,
 };
@@ -41,6 +42,9 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: Can we have a single buffer that gives out variable length slices instead of wasting
     // space with lots of potentially huge PDUs?
+    // No, at least not with BBQueue; the received data needs to be written back into the grant, but
+    // that means the grant lives too long and blocks the sending of any other data from the
+    // BBBuffer.
     frames: [UnsafeCell<pdu_frame::Frame<MAX_PDU_DATA>>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: RefCell<Option<Waker>>,
@@ -51,7 +55,6 @@ pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> 
 
 // If we don't impl Send, does this guarantee we can have a PduLoopRef and not invalidate the
 // pointer? BBQueue does this.
-// TODO: Allow static init of `PduLoop` so it can be given to multiple threads if the user desires.
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
     for PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
@@ -62,14 +65,25 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    // TODO: Make this a const fn so we can store the PDU loop in a static. This will let us give
-    // `Client` and other stuff to other threads, without using scoped threads. I'll need to use
-    // MaybeUninit for `frames`. I also need to move all the methods to `PduLoopRef`, similar to how
-    // BBQueue does it, then initialise the maybeuninit on that call. Maybe we can only get one ref,
-    // but allow `Clone` on it?
-    pub fn new() -> Self {
+    // // TODO: Make this a const fn so we can store the PDU loop in a static. This will let us give
+    // // `Client` and other stuff to other threads, without using scoped threads. I'll need to use
+    // // MaybeUninit for `frames`. I also need to move all the methods to `PduLoopRef`, similar to how
+    // // BBQueue does it, then initialise the maybeuninit on that call. Maybe we can only get one ref,
+    // // but allow `Clone` on it?
+    // pub fn new() -> Self {
+    //     Self {
+    //         frames: [(); MAX_FRAMES].map(|_| UnsafeCell::new(pdu_frame::Frame::default())),
+    //         tx_waker: RefCell::new(None),
+    //         idx: AtomicU8::new(0),
+    //         _timeout: PhantomData,
+    //     }
+    // }
+
+    pub const fn new() -> Self {
+        let frames = unsafe { MaybeUninit::uninit().assume_init() };
+
         Self {
-            frames: [(); MAX_FRAMES].map(|_| UnsafeCell::new(pdu_frame::Frame::default())),
+            frames,
             tx_waker: RefCell::new(None),
             idx: AtomicU8::new(0),
             _timeout: PhantomData,
