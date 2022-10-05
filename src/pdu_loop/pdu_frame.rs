@@ -1,8 +1,11 @@
 use crate::error::{Error, PduError};
 use crate::pdu_loop::pdu::Pdu;
+use crate::{pdu_loop::frame_header::FrameHeader, ETHERCAT_ETHERTYPE, MASTER_ADDR};
 use core::future::Future;
+use core::mem;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
+use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 #[derive(Debug, PartialEq, Default)]
 pub(crate) enum FrameState {
@@ -34,6 +37,32 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         };
 
         Ok(())
+    }
+
+    /// The size of the total payload to be insterted into an Ethernet frame, i.e. EtherCAT frame
+    /// payload and header.
+    fn ethernet_payload_len(&self) -> usize {
+        self.pdu.ethercat_payload_len() + mem::size_of::<FrameHeader>()
+    }
+
+    pub fn to_ethernet_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8], PduError> {
+        let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len());
+
+        let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
+
+        let mut ethernet_frame = EthernetFrame::new_checked(buf).map_err(PduError::CreateFrame)?;
+
+        ethernet_frame.set_src_addr(MASTER_ADDR);
+        ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
+        ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
+
+        let buf = ethernet_frame.payload_mut();
+
+        self.pdu.to_ethernet_payload(buf)?;
+
+        let buf = ethernet_frame.into_inner();
+
+        Ok(buf)
     }
 
     pub(crate) fn wake_done(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
@@ -80,8 +109,11 @@ impl<'a, const MAX_PDU_DATA: usize> SendableFrame<'a, MAX_PDU_DATA> {
         self.frame.state = FrameState::Sending;
     }
 
-    pub(crate) fn pdu(&self) -> &Pdu<MAX_PDU_DATA> {
-        &self.frame.pdu
+    pub(crate) fn write_ethernet_packet<'buf>(
+        &self,
+        buf: &'buf mut [u8],
+    ) -> Result<&'buf [u8], PduError> {
+        self.frame.to_ethernet_frame(buf)
     }
 }
 
