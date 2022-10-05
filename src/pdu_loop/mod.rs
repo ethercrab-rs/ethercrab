@@ -5,7 +5,7 @@ mod pdu_frame;
 use crate::{
     command::Command,
     error::{Error, PduError},
-    pdu_loop::pdu::Pdu,
+    pdu_loop::{pdu::Pdu, pdu_frame::SendableFrame},
     timeout,
     timer_factory::TimerFactory,
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
@@ -84,7 +84,7 @@ where
 
     pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), ()>
     where
-        F: FnMut(&Pdu<MAX_PDU_DATA>) -> Result<(), ()>,
+        F: FnMut(&SendableFrame<MAX_PDU_DATA>) -> Result<(), ()>,
     {
         self.frames.iter().try_for_each(|frame| {
             let frame = unsafe { &mut *frame.get() };
@@ -92,7 +92,7 @@ where
             if let Some(ref mut frame) = frame.sendable() {
                 frame.mark_sending();
 
-                send(frame.pdu())
+                send(frame)
             } else {
                 Ok(())
             }
