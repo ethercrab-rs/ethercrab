@@ -49,6 +49,9 @@ pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> 
     _timeout: PhantomData<TIMEOUT>,
 }
 
+// If we don't impl Send, does this guarantee we can have a PduLoopRef and not invalidate the
+// pointer? BBQueue does this.
+// TODO: Allow static init of `PduLoop` so it can be given to multiple threads if the user desires.
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
     for PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
@@ -59,6 +62,11 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
+    // TODO: Make this a const fn so we can store the PDU loop in a static. This will let us give
+    // `Client` and other stuff to other threads, without using scoped threads. I'll need to use
+    // MaybeUninit for `frames`. I also need to move all the methods to `PduLoopRef`, similar to how
+    // BBQueue does it, then initialise the maybeuninit on that call. Maybe we can only get one ref,
+    // but allow `Clone` on it?
     pub fn new() -> Self {
         Self {
             frames: [(); MAX_FRAMES].map(|_| UnsafeCell::new(pdu_frame::Frame::default())),
@@ -132,6 +140,42 @@ where
         let timer = core::time::Duration::from_micros(30_000);
 
         timeout::<TIMEOUT, _, _>(timer, frame).await
+    }
+
+    pub async fn pdu_tx2<'buf>(
+        &self,
+        command: Command,
+        buffer: &'buf mut [u8],
+        read_length: u16,
+    ) -> Result<(&'buf [u8], u16), Error> {
+        let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
+
+        let frame = self.frame(idx)?;
+
+        let pdu = Pdu::<MAX_PDU_DATA>::new(command, read_length, idx, buffer)?;
+
+        frame.replace(pdu)?;
+
+        // Tell the packet sender there is data ready to send
+        match self.tx_waker.try_borrow() {
+            Ok(waker) => {
+                if let Some(waker) = &*waker {
+                    waker.wake_by_ref()
+                }
+            }
+            Err(_) => warn!("Send waker is already borrowed"),
+        }
+
+        // TODO: Configurable timeout
+        let timer = core::time::Duration::from_micros(30_000);
+
+        let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
+
+        let data = res.data();
+
+        buffer[0..data.len()].copy_from_slice(data);
+
+        Ok((buffer, res.working_counter()))
     }
 
     pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {

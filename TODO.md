@@ -35,3 +35,6 @@
 - [-] Refactor FMMU mapping to group Is and Os for groups sequentially
   - Why? Each slave group will send its entire PDI anyway, as well as store each slave's PDI range
     in a list.
+- [ ] Make pdu_loop accept mutable slice references so we don't copy so much data around
+  - [ ] Also allows creation of `PduLoopRef` which will (hopefully) elide all the const generics,
+        making passing it around much cleaner - likely with just a lifetime.

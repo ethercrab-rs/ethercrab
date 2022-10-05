@@ -13,6 +13,7 @@ use crate::{
 };
 use core::{
     cell::{Ref, RefCell},
+    fmt::Display,
     marker::PhantomData,
     ops::IndexMut,
     time::Duration,
@@ -270,11 +271,18 @@ where
     where
         T: PduRead,
     {
-        let pdu = self.pdu_loop.pdu_tx(command, &[], T::len()).await?;
+        // TODO: Variable length
+        let mut buf = [0u8; MAX_PDU_DATA];
 
-        let res = T::try_from_slice(pdu.data()).map_err(|_e| PduError::Decode)?;
+        let (data, working_counter) = self.pdu_loop.pdu_tx2(command, &mut buf, T::len()).await?;
 
-        Ok((res, pdu.working_counter()))
+        let res = T::try_from_slice(&data[0..usize::from(T::len())]).map_err(|_e| {
+            log::error!("PDU data decode");
+
+            PduError::Decode
+        })?;
+
+        Ok((res, working_counter))
     }
 
     // TODO: Support different I and O types; some things can return different data
