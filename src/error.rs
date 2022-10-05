@@ -86,6 +86,12 @@ impl From<PduValidationError> for PduError {
     }
 }
 
+impl From<cookie_factory::GenError> for PduError {
+    fn from(e: cookie_factory::GenError) -> Self {
+        Self::Encode(e)
+    }
+}
+
 impl From<smoltcp::Error> for PduError {
     fn from(e: smoltcp::Error) -> Self {
         Self::Ethernet(e)

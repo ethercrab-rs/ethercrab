@@ -156,42 +156,6 @@ where
         timeout::<TIMEOUT, _, _>(timer, frame).await
     }
 
-    pub async fn pdu_tx2<'buf>(
-        &self,
-        command: Command,
-        buffer: &'buf mut [u8],
-        read_length: u16,
-    ) -> Result<(&'buf [u8], u16), Error> {
-        let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
-
-        let frame = self.frame(idx)?;
-
-        let pdu = Pdu::<MAX_PDU_DATA>::new(command, read_length, idx, buffer)?;
-
-        frame.replace(pdu)?;
-
-        // Tell the packet sender there is data ready to send
-        match self.tx_waker.try_borrow() {
-            Ok(waker) => {
-                if let Some(waker) = &*waker {
-                    waker.wake_by_ref()
-                }
-            }
-            Err(_) => warn!("Send waker is already borrowed"),
-        }
-
-        // TODO: Configurable timeout
-        let timer = core::time::Duration::from_micros(30_000);
-
-        let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
-
-        let data = res.data();
-
-        buffer[0..data.len()].copy_from_slice(data);
-
-        Ok((buffer, res.working_counter()))
-    }
-
     pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
