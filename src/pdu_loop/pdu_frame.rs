@@ -59,13 +59,11 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
         ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
 
-        let buf = ethernet_frame.payload_mut();
+        let ethernet_payload = ethernet_frame.payload_mut();
 
-        self.pdu.to_ethernet_payload(buf)?;
+        self.pdu.to_ethernet_payload(ethernet_payload)?;
 
-        let buf = ethernet_frame.into_inner();
-
-        Ok(buf)
+        Ok(ethernet_frame.into_inner())
     }
 
     pub(crate) fn wake_done(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {

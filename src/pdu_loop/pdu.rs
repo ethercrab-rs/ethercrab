@@ -62,33 +62,6 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         }
     }
 
-    fn as_bytes<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
-        // Order is VITAL here
-        let buf = gen_simple(le_u8(self.command.code() as u8), buf)?;
-        let buf = gen_simple(le_u8(self.index), buf)?;
-
-        // Write address and register data
-        let buf = gen_simple(slice(self.command.address()?), buf)?;
-
-        let buf = gen_simple(le_u16(u16::from_le_bytes(self.flags.pack().unwrap())), buf)?;
-        let buf = gen_simple(le_u16(self.irq), buf)?;
-
-        // Probably a read
-        // TODO: Read/write flag/enum to signal this more explicitly? "Probably" is a poor word to use...
-        let buf = if self.data.is_empty() {
-            gen_simple(skip(usize::from(self.flags.len())), buf)?
-        }
-        // Probably a write
-        else {
-            gen_simple(slice(&self.data), buf)?
-        };
-
-        // Working counter is always zero when sending
-        let buf = gen_simple(le_u16(0u16), buf)?;
-
-        Ok(buf)
-    }
-
     /// The size of the total payload to be insterted into an EtherCAT frame.
     pub(crate) fn ethercat_payload_len(&self) -> usize {
         // TODO: Add unit test to stop regressions
@@ -104,7 +77,28 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         let header = FrameHeader::pdu(self.ethercat_payload_len());
 
         let buf = gen_simple(le_u16(header.0), buf).map_err(PduError::Encode)?;
-        let buf = self.as_bytes(buf).map_err(PduError::Encode)?;
+
+        let buf = gen_simple(le_u8(self.command.code() as u8), buf)?;
+        let buf = gen_simple(le_u8(self.index), buf)?;
+
+        // Write address and register data
+        let buf = gen_simple(slice(self.command.address()?), buf)?;
+
+        let buf = gen_simple(le_u16(u16::from_le_bytes(self.flags.pack().unwrap())), buf)?;
+        let buf = gen_simple(le_u16(self.irq), buf)?;
+
+        // Probably a read; the sent packet's data area can be any old garbage, so we'll skip over it.
+        // TODO: Read/write flag/enum to signal this more explicitly? "Probably" is a poor word to use...
+        let buf = if self.data.is_empty() {
+            gen_simple(skip(usize::from(self.flags.len())), buf)?
+        }
+        // Probably a write
+        else {
+            gen_simple(slice(&self.data), buf)?
+        };
+
+        // Working counter is always zero when sending
+        let buf = gen_simple(le_u16(0u16), buf)?;
 
         if buf.len() != 0 {
             log::error!(

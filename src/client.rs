@@ -271,18 +271,15 @@ where
     where
         T: PduRead,
     {
-        // TODO: Variable length
-        let mut buf = [0u8; MAX_PDU_DATA];
+        let pdu = self.pdu_loop.pdu_tx(command, &[], T::len()).await?;
 
-        let (data, working_counter) = self.pdu_loop.pdu_tx2(command, &mut buf, T::len()).await?;
-
-        let res = T::try_from_slice(&data[0..usize::from(T::len())]).map_err(|_e| {
+        let res = T::try_from_slice(pdu.data()).map_err(|_e| {
             log::error!("PDU data decode");
 
             PduError::Decode
         })?;
 
-        Ok((res, working_counter))
+        Ok((res, pdu.working_counter()))
     }
 
     // TODO: Support different I and O types; some things can return different data
