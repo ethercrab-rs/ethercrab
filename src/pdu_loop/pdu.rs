@@ -6,7 +6,7 @@ use crate::{
 };
 use cookie_factory::{
     bytes::{le_u16, le_u8},
-    combinator::slice,
+    combinator::{skip, slice},
     gen_simple, GenError,
 };
 use nom::{
@@ -72,7 +72,17 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
 
         let buf = gen_simple(le_u16(u16::from_le_bytes(self.flags.pack().unwrap())), buf)?;
         let buf = gen_simple(le_u16(self.irq), buf)?;
-        let buf = gen_simple(slice(&self.data), buf)?;
+
+        // Probably a read
+        // TODO: Read/write flag/enum to signal this more explicitly? "Probably" is a poor word to use...
+        let buf = if self.data.is_empty() {
+            gen_simple(skip(usize::from(self.flags.len())), buf)?
+        }
+        // Probably a write
+        else {
+            gen_simple(slice(&self.data), buf)?
+        };
+
         // Working counter is always zero when sending
         let buf = gen_simple(le_u16(0u16), buf)?;
 
@@ -84,7 +94,9 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         // TODO: Add unit test to stop regressions
         let pdu_overhead = 12;
 
-        self.data.len() + pdu_overhead
+        // NOTE: Sometimes data length is zero (e.g. for read-only ops), so we'll look at the actual
+        // packet length in flags instead.
+        usize::from(self.flags.len()) + pdu_overhead
     }
 
     /// Write an EtherCAT frame into `buf`.
@@ -95,6 +107,11 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         let buf = self.as_bytes(buf).map_err(PduError::Encode)?;
 
         if buf.len() != 0 {
+            log::error!(
+                "Expected fully used buffer, got {} bytes left instead",
+                buf.len()
+            );
+
             Err(PduError::Encode(GenError::BufferTooBig(buf.len())))
         } else {
             Ok(())
@@ -201,5 +218,9 @@ impl PduFlags {
             circulated: false,
             is_not_last: false,
         }
+    }
+
+    pub const fn len(self) -> u16 {
+        self.length
     }
 }
