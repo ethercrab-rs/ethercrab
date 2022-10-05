@@ -103,3 +103,9 @@ impl From<smoltcp::Error> for Error {
         Self::Pdu(e.into())
     }
 }
+
+impl<I> From<nom::Err<nom::error::Error<I>>> for Error {
+    fn from(e: nom::Err<nom::error::Error<I>>) -> Self {
+        Self::Pdu(PduError::Decode)
+    }
+}
