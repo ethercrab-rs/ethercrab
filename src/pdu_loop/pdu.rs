@@ -21,27 +21,29 @@ use packed_struct::prelude::*;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 #[derive(Debug, Clone, Default)]
-pub struct Pdu<const MAX_DATA: usize> {
+pub struct Pdu<'a> {
     command: Command,
     index: u8,
     flags: PduFlags,
     irq: u16,
-    data: heapless::Vec<u8, MAX_DATA>,
+    data: &'a [u8],
     working_counter: u16,
 }
 
-impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
+const EMPTY_DATA: &[u8] = &[];
+
+impl<'a> Pdu<'a> {
     pub fn new(
         command: Command,
         data_length: u16,
         index: u8,
         data: &[u8],
     ) -> Result<Self, PduError> {
-        debug_assert!(MAX_DATA <= LEN_MASK as usize);
-        debug_assert!(data_length as usize <= MAX_DATA);
+        // debug_assert!(MAX_DATA <= LEN_MASK as usize);
+        // debug_assert!(data_length as usize <= MAX_DATA);
 
         // TODO: Is there a way I can do this without copying/cloning?
-        let data = heapless::Vec::from_slice(data).map_err(|_| PduError::TooLong)?;
+        // let data = heapless::Vec::from_slice(data).map_err(|_| PduError::TooLong)?;
 
         Ok(Self {
             command,
@@ -59,12 +61,12 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
             index: 0,
             flags: PduFlags::with_len(0),
             irq: 0,
-            data: heapless::Vec::new(),
+            data: EMPTY_DATA,
             working_counter: 0,
         }
     }
 
-    fn as_bytes<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8], GenError> {
+    fn as_bytes<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf mut [u8], GenError> {
         // Order is VITAL here
         let buf = gen_simple(le_u8(self.command.code() as u8), buf)?;
         let buf = gen_simple(le_u8(self.index), buf)?;
@@ -83,8 +85,7 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
 
     /// Compute the number of bytes required to store the PDU payload and metadata.
     const fn buf_len(&self) -> usize {
-        // TODO: Add unit test to stop regressions
-        MAX_DATA + 12
+        self.data.len() + 12
     }
 
     /// Compute the number of bytes required to store the PDU payload, metadata and EtherCAT frame
@@ -92,16 +93,13 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     pub fn frame_buf_len(&self) -> usize {
         let size = self.buf_len() + mem::size_of::<FrameHeader>();
 
-        // TODO: Move to unit test
-        assert_eq!(size, MAX_DATA + 14);
-
         size
     }
 
     /// Write an ethernet frame into `buf`, returning the used portion of the buffer.
     // TODO: Refactor so the network TX can reuse the same ethernet frame over and over. We don't
     // need to make a new one inside this method.
-    pub fn to_ethernet_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8], PduError> {
+    pub fn to_ethernet_frame<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
         let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.frame_buf_len());
 
         let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
@@ -125,13 +123,13 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     }
 
     /// Create an EtherCAT frame from an Ethernet II frame's payload.
-    pub fn from_ethernet_payload<'a, E>(i: &'a [u8]) -> IResult<&'a [u8], Self, E>
+    pub fn from_ethernet_payload<'buf, E>(i: &'buf [u8]) -> IResult<&'buf [u8], Self, E>
     where
-        E: ParseError<&'a [u8]>
-            + ContextError<&'a [u8]>
-            + FromExternalError<&'a [u8], TryFromPrimitiveError<CommandCode>>
-            + FromExternalError<&'a [u8], PackingError>
-            + FromExternalError<&'a [u8], ()>,
+        E: ParseError<&'buf [u8]>
+            + ContextError<&'buf [u8]>
+            + FromExternalError<&'buf [u8], TryFromPrimitiveError<CommandCode>>
+            + FromExternalError<&'buf [u8], PackingError>
+            + FromExternalError<&'buf [u8], ()>,
     {
         // TODO: Split out frame header parsing when we want to support multiple PDUs. This should
         // also let us do better with the const generics.
@@ -149,10 +147,7 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         let (i, flags) = context("flags", map_res(take(2usize), PduFlags::unpack_from_slice))(i)?;
         let (i, irq) = context("irq", nom::number::complete::le_u16)(i)?;
 
-        let (i, data) = context(
-            "data",
-            map_res(take(flags.length), |slice: &[u8]| slice.try_into()),
-        )(i)?;
+        let (i, data) = context("data", take(flags.length))(i)?;
         let (i, working_counter) = context("working counter", nom::number::complete::le_u16)(i)?;
 
         Ok((
@@ -191,7 +186,7 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     }
 
     pub(crate) fn data(&self) -> &[u8] {
-        self.data.as_slice()
+        self.data
     }
 
     pub(crate) fn working_counter(&self) -> u16 {
