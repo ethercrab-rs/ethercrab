@@ -189,6 +189,8 @@ where
 
         let (i, command) = command_code.parse_address(i)?;
 
+        // Check for weird bugs where a slave might return a different command than the one sent for
+        // this PDU index.
         if command.code() != frame.pdu().command().code() {
             return Err(Error::Pdu(PduError::Validation(
                 PduValidationError::CommandMismatch {
@@ -206,11 +208,7 @@ where
         // `_i` should be empty as we `take()`d an exact amount above.
         debug_assert_eq!(i.len(), 0);
 
-        frame
-            .pdu()
-            .set_response(flags, irq, data, working_counter)?;
-
-        frame.wake_done()?;
+        frame.wake_done(flags, irq, data, working_counter)?;
 
         Ok(())
     }
