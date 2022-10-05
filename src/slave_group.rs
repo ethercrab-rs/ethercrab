@@ -31,10 +31,14 @@ pub struct SlaveGroupRef<'a> {
 }
 
 impl<'a> SlaveGroupRef<'a> {
-    pub(crate) async fn configure_from_eeprom<'client, const MAX_FRAMES: usize, TIMEOUT>(
+    pub(crate) async fn configure_from_eeprom<
+        const MAX_FRAMES: usize,
+        const MAX_PDU_DATA: usize,
+        TIMEOUT,
+    >(
         &mut self,
         mut offset: PdiOffset,
-        client: &Client<'a, MAX_FRAMES, TIMEOUT>,
+        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     ) -> Result<PdiOffset, Error>
     where
         TIMEOUT: TimerFactory,
