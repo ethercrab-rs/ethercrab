@@ -4,29 +4,20 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub(crate) enum FrameState {
+    #[default]
     None,
     Created,
     Sending,
     Done,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Frame<const MAX_PDU_DATA: usize> {
     state: FrameState,
     waker: Option<Waker>,
     pdu: Pdu<MAX_PDU_DATA>,
-}
-
-impl<const MAX_PDU_DATA: usize> Default for Frame<MAX_PDU_DATA> {
-    fn default() -> Self {
-        Self {
-            state: FrameState::None,
-            waker: None,
-            pdu: Pdu::nop(),
-        }
-    }
 }
 
 impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
