@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bbqueue = "0.5.1"
 bitflags = "1.3.2"
 cookie-factory = { version = "0.3.2", default-features = false }
 defmt = "0.3.2"
