@@ -9,8 +9,11 @@ use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 #[derive(Debug, PartialEq, Default)]
 pub(crate) enum FrameState {
+    // SAFETY: Because we create a bunch of `Frame`s with `MaybeUninit::zeroed`, the `None` state
+    // MUST be equal to zero. All other fields in `Frame` are overridden in `replace`, so there
+    // should be no UB there.
     #[default]
-    None,
+    None = 0x00,
     Created,
     Sending,
     Done,
