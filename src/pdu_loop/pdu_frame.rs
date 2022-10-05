@@ -1,3 +1,4 @@
+use super::pdu::PduFlags;
 use crate::error::{Error, PduError};
 use crate::pdu_loop::pdu::Pdu;
 use crate::{pdu_loop::frame_header::FrameHeader, ETHERCAT_ETHERTYPE, MASTER_ADDR};
@@ -70,7 +71,13 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         Ok(ethernet_frame.into_inner())
     }
 
-    pub(crate) fn wake_done(&mut self) -> Result<(), PduError> {
+    pub(crate) fn wake_done(
+        &mut self,
+        flags: PduFlags,
+        irq: u16,
+        data: &[u8],
+        working_counter: u16,
+    ) -> Result<(), PduError> {
         if self.state != FrameState::Sending {
             trace!("Expected {:?}, got {:?}", FrameState::Sending, self.state);
             Err(PduError::InvalidFrameState)?;
@@ -84,6 +91,8 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
 
             PduError::InvalidFrameState
         })?;
+
+        self.pdu.set_response(flags, irq, data, working_counter)?;
 
         self.state = FrameState::Done;
 
