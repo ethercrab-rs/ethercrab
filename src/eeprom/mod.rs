@@ -23,15 +23,16 @@ use num_enum::TryFromPrimitive;
 /// Table 2.
 const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 
-pub struct Eeprom<'a, const MAX_FRAMES: usize, TIMEOUT> {
-    slave: &'a SlaveRef<'a, MAX_FRAMES, TIMEOUT>,
+pub struct Eeprom<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+    slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
 }
 
-impl<'a, const MAX_FRAMES: usize, TIMEOUT> Eeprom<'a, MAX_FRAMES, TIMEOUT>
+impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub(crate) fn new(slave: &'a SlaveRef<'a, MAX_FRAMES, TIMEOUT>) -> Self {
+    pub(crate) fn new(slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> Self {
         Self { slave }
     }
 
@@ -138,9 +139,7 @@ where
         .await
     }
 
-    pub async fn device_name<const N: usize>(
-        &'a self,
-    ) -> Result<Option<heapless::String<N>>, Error> {
+    pub async fn device_name<const N: usize>(&self) -> Result<Option<heapless::String<N>>, Error> {
         let general = self.general().await?;
 
         let name_idx = general.name_string_idx;
@@ -148,7 +147,7 @@ where
         self.find_string(name_idx).await
     }
 
-    pub async fn mailbox_config(&'a self) -> Result<MailboxConfig, Error> {
+    pub async fn mailbox_config(&self) -> Result<MailboxConfig, Error> {
         // Start reading standard mailbox config. Raw start address defined in ETG2010 Table 2.
         // Mailbox config is 10 bytes long.
         let mut reader = EepromSectionReader::start_at(self, 0x0018, 10);
@@ -160,7 +159,7 @@ where
         Ok(config)
     }
 
-    async fn general(&'a self) -> Result<SiiGeneral, Error> {
+    async fn general(&self) -> Result<SiiGeneral, Error> {
         let mut reader = self
             .find_category(CategoryType::General)
             .await?
@@ -175,7 +174,7 @@ where
         Ok(general)
     }
 
-    pub async fn sync_managers(&'a self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
+    pub async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
         let mut sync_managers = heapless::Vec::<_, 8>::new();
 
         if let Some(mut reader) = self.find_category(CategoryType::SyncManager).await? {
@@ -191,7 +190,7 @@ where
         Ok(sync_managers)
     }
 
-    pub async fn fmmus(&'a self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
+    pub async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
         let category = self.find_category(CategoryType::Fmmu).await?;
 
         // ETG100.4 6.6.1 states there may be up to 16 FMMUs
@@ -210,7 +209,7 @@ where
         Ok(fmmus)
     }
 
-    pub async fn fmmu_mappings(&'a self) -> Result<heapless::Vec<FmmuEx, 16>, Error> {
+    pub async fn fmmu_mappings(&self) -> Result<heapless::Vec<FmmuEx, 16>, Error> {
         let mut mappings = heapless::Vec::<_, 16>::new();
 
         if let Some(mut reader) = self.find_category(CategoryType::FmmuExtended).await? {
@@ -227,7 +226,7 @@ where
     }
 
     async fn pdos(
-        &'a self,
+        &self,
         category: CategoryType,
         valid_range: RangeInclusive<u16>,
     ) -> Result<heapless::Vec<Pdo, 16>, Error> {
@@ -278,17 +277,17 @@ where
     }
 
     /// Transmit PDOs (from device's perspective) - inputs
-    pub async fn master_read_pdos(&'a self) -> Result<heapless::Vec<Pdo, 16>, Error> {
+    pub async fn master_read_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
         self.pdos(CategoryType::TxPdo, TX_PDO_RANGE).await
     }
 
     /// Receive PDOs (from device's perspective) - outputs
-    pub async fn master_write_pdos(&'a self) -> Result<heapless::Vec<Pdo, 16>, Error> {
+    pub async fn master_write_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
         self.pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
     }
 
     async fn find_string<const N: usize>(
-        &'a self,
+        &self,
         search_index: u8,
     ) -> Result<Option<heapless::String<N>>, Error> {
         // An index of zero in EtherCAT denotes an empty string.
@@ -329,9 +328,9 @@ where
     }
 
     async fn find_category(
-        &'a self,
+        &self,
         category: CategoryType,
-    ) -> Result<Option<EepromSectionReader<'a, MAX_FRAMES, TIMEOUT>>, Error> {
+    ) -> Result<Option<EepromSectionReader<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>, Error> {
         let mut start = SII_FIRST_CATEGORY_START;
 
         loop {

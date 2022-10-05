@@ -14,14 +14,14 @@ pub(crate) enum FrameState {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Frame<'a> {
+pub(crate) struct Frame<const MAX_PDU_DATA: usize> {
     state: FrameState,
     waker: Option<Waker>,
-    pdu: Pdu<'a>,
+    pdu: Pdu<MAX_PDU_DATA>,
 }
 
-impl<'a> Frame<'a> {
-    pub(crate) fn replace(&mut self, pdu: Pdu<'a>) -> Result<(), PduError> {
+impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
+    pub(crate) fn replace(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
         if self.state != FrameState::None {
             trace!("Expected {:?}, got {:?}", FrameState::None, self.state);
             Err(PduError::InvalidFrameState)?;
@@ -36,7 +36,7 @@ impl<'a> Frame<'a> {
         Ok(())
     }
 
-    pub(crate) fn wake_done(&mut self, pdu: Pdu<'a>) -> Result<(), PduError> {
+    pub(crate) fn wake_done(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
         if self.state != FrameState::Sending {
             trace!("Expected {:?}, got {:?}", FrameState::Sending, self.state);
             Err(PduError::InvalidFrameState)?;
@@ -61,7 +61,7 @@ impl<'a> Frame<'a> {
         Ok(())
     }
 
-    pub(crate) fn sendable(&mut self) -> Option<SendableFrame<'_>> {
+    pub(crate) fn sendable(&mut self) -> Option<SendableFrame<'_, MAX_PDU_DATA>> {
         if self.state == FrameState::Created {
             Some(SendableFrame { frame: self })
         } else {
@@ -71,22 +71,22 @@ impl<'a> Frame<'a> {
 }
 
 /// A frame that is in a sendable state.
-pub struct SendableFrame<'a> {
-    frame: &'a mut Frame<'a>,
+pub struct SendableFrame<'a, const MAX_PDU_DATA: usize> {
+    frame: &'a mut Frame<MAX_PDU_DATA>,
 }
 
-impl<'a> SendableFrame<'a> {
+impl<'a, const MAX_PDU_DATA: usize> SendableFrame<'a, MAX_PDU_DATA> {
     pub(crate) fn mark_sending(&mut self) {
         self.frame.state = FrameState::Sending;
     }
 
-    pub(crate) fn pdu(&self) -> &Pdu<'a> {
+    pub(crate) fn pdu(&self) -> &Pdu<MAX_PDU_DATA> {
         &self.frame.pdu
     }
 }
 
-impl<'a> Future for Frame<'a> {
-    type Output = Result<Pdu<'a>, Error>;
+impl<const MAX_PDU_DATA: usize> Future for Frame<MAX_PDU_DATA> {
+    type Output = Result<Pdu<MAX_PDU_DATA>, Error>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.state {

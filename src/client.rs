@@ -20,16 +20,19 @@ use core::{
 };
 use packed_struct::PackedStruct;
 
-pub struct Client<'a, const MAX_FRAMES: usize, TIMEOUT> {
+pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: un-pub
-    pub pdu_loop: PduLoop<'a, MAX_FRAMES, TIMEOUT>,
+    pub pdu_loop: PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
     // // TODO: UnsafeCell instead of RefCell?
     // slaves: UnsafeCell<heapless::Vec<RefCell<Slave>, MAX_SLAVES>>,
 }
 
-unsafe impl<'a, const MAX_FRAMES: usize, TIMEOUT> Sync for Client<'a, MAX_FRAMES, TIMEOUT> {}
+unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
+    for Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+{
+}
 
 pub trait SlaveGroupContainer<'a> {
     fn num_groups(&self) -> usize;
@@ -49,7 +52,8 @@ impl<'a, const MAX_SLAVES: usize, const N: usize> SlaveGroupContainer<'a>
     }
 }
 
-impl<'a, const MAX_FRAMES: usize, TIMEOUT> Client<'a, MAX_FRAMES, TIMEOUT>
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
@@ -71,8 +75,7 @@ where
     /// Write zeroes to every slave's memory in chunks of [`MAX_PDU_DATA`].
     async fn blank_memory(&self, start: impl Into<u16>, len: u16) -> Result<(), Error> {
         let start: u16 = start.into();
-        // TODO: Configurable or calculated based on PDU loop buffer or something
-        let step = 16;
+        let step = MAX_PDU_DATA;
         let range = start..(start + len);
 
         for chunk_start in range.step_by(step) {
@@ -81,7 +84,7 @@ where
                     address: 0,
                     register: chunk_start,
                 },
-                [0u8; 16],
+                [0u8; MAX_PDU_DATA],
             )
             .await?;
         }
@@ -113,7 +116,7 @@ where
         mut group_filter: impl FnMut(&mut G, Slave),
     ) -> Result<G, Error>
     where
-        G: for<'group> SlaveGroupContainer<'group>,
+        G: for<'a> SlaveGroupContainer<'a>,
     {
         self.reset_slaves().await?;
 
