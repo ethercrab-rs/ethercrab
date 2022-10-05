@@ -81,28 +81,25 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         Ok(buf)
     }
 
-    /// Compute the number of bytes required to store the PDU payload and metadata.
-    const fn buf_len(&self) -> usize {
+    /// The size of the total payload to be insterted into an EtherCAT frame.
+    fn ethercat_payload_len(&self) -> usize {
         // TODO: Add unit test to stop regressions
-        MAX_DATA + 12
+        let pdu_overhead = 12;
+
+        self.data.len() + pdu_overhead
     }
 
-    /// Compute the number of bytes required to store the PDU payload, metadata and EtherCAT frame
-    /// header data.
-    pub fn frame_buf_len(&self) -> usize {
-        let size = self.buf_len() + mem::size_of::<FrameHeader>();
-
-        // TODO: Move to unit test
-        assert_eq!(size, MAX_DATA + 14);
-
-        size
+    /// The size of the total payload to be insterted into an Ethernet frame, i.e. EtherCAT frame
+    /// payload and header.
+    pub fn ethernet_payload_len(&self) -> usize {
+        self.ethercat_payload_len() + mem::size_of::<FrameHeader>()
     }
 
     /// Write an ethernet frame into `buf`, returning the used portion of the buffer.
     // TODO: Refactor so the network TX can reuse the same ethernet frame over and over. We don't
     // need to make a new one inside this method.
     pub fn to_ethernet_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8], PduError> {
-        let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.frame_buf_len());
+        let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len());
 
         let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
 
@@ -112,7 +109,7 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
         ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
 
-        let header = FrameHeader::pdu(self.buf_len());
+        let header = FrameHeader::pdu(self.ethercat_payload_len());
 
         let buf = ethernet_frame.payload_mut();
 
