@@ -2,14 +2,13 @@ use crate::{
     command::{Command, CommandCode},
     error::{PduError, PduValidationError},
     pdu_loop::frame_header::FrameHeader,
-    ETHERCAT_ETHERTYPE, LEN_MASK, MASTER_ADDR,
+    LEN_MASK,
 };
 use cookie_factory::{
     bytes::{le_u16, le_u8},
     combinator::slice,
     gen_simple, GenError,
 };
-use core::mem;
 use nom::{
     bytes::complete::take,
     combinator::map_res,
@@ -18,7 +17,6 @@ use nom::{
 };
 use num_enum::TryFromPrimitiveError;
 use packed_struct::prelude::*;
-use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 #[derive(Debug, Clone, Default)]
 pub struct Pdu<const MAX_DATA: usize> {
@@ -82,43 +80,25 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     }
 
     /// The size of the total payload to be insterted into an EtherCAT frame.
-    fn ethercat_payload_len(&self) -> usize {
+    pub(crate) fn ethercat_payload_len(&self) -> usize {
         // TODO: Add unit test to stop regressions
         let pdu_overhead = 12;
 
         self.data.len() + pdu_overhead
     }
 
-    /// The size of the total payload to be insterted into an Ethernet frame, i.e. EtherCAT frame
-    /// payload and header.
-    pub fn ethernet_payload_len(&self) -> usize {
-        self.ethercat_payload_len() + mem::size_of::<FrameHeader>()
-    }
-
-    /// Write an ethernet frame into `buf`, returning the used portion of the buffer.
-    // TODO: Refactor so the network TX can reuse the same ethernet frame over and over. We don't
-    // need to make a new one inside this method.
-    pub fn to_ethernet_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8], PduError> {
-        let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len());
-
-        let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
-
-        let mut ethernet_frame = EthernetFrame::new_checked(buf).map_err(PduError::CreateFrame)?;
-
-        ethernet_frame.set_src_addr(MASTER_ADDR);
-        ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
-        ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
-
+    /// Write an EtherCAT frame into `buf`.
+    pub fn to_ethernet_payload<'a>(&self, buf: &'a mut [u8]) -> Result<(), PduError> {
         let header = FrameHeader::pdu(self.ethercat_payload_len());
 
-        let buf = ethernet_frame.payload_mut();
-
         let buf = gen_simple(le_u16(header.0), buf).map_err(PduError::Encode)?;
-        let _buf = self.as_bytes(buf).map_err(PduError::Encode)?;
+        let buf = self.as_bytes(buf).map_err(PduError::Encode)?;
 
-        let buf = ethernet_frame.into_inner();
-
-        Ok(buf)
+        if buf.len() != 0 {
+            Err(PduError::Encode(GenError::BufferTooBig(buf.len())))
+        } else {
+            Ok(())
+        }
     }
 
     /// Create an EtherCAT frame from an Ethernet II frame's payload.
