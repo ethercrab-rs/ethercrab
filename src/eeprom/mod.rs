@@ -139,10 +139,19 @@ where
         .await
     }
 
+    /// Get the device name.
+    ///
+    /// Note that the string index is hard coded to `1` instead of reading the string index from the
+    /// EEPROM `General` section.
     pub async fn device_name<const N: usize>(&self) -> Result<Option<heapless::String<N>>, Error> {
-        let general = self.general().await?;
+        // Uncomment to read longer, but correct, name string from EEPROM
+        // let general = self.general().await?;
+        // let name_idx = general.name_string_idx;
 
-        let name_idx = general.name_string_idx;
+        // NOTE: Hard coded to the first string. This mirrors SOEM's behaviour. Reading the
+        // string index from EEPROM gives a different value in my testing - still a name, but
+        // longer.
+        let name_idx = 1;
 
         self.find_string(name_idx).await
     }

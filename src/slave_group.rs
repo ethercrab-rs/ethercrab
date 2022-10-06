@@ -171,11 +171,11 @@ impl<
 
 /// A reference to a [`SlaveGroup`] with elided `MAX_SLAVES` constant.
 pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O> {
-    pub(crate) slaves: &'a mut [Slave],
     pdi_len: &'a mut usize,
     start_address: &'a mut u32,
     group_working_counter: &'a mut u16,
-    pub(crate) preop_safeop_hook: Option<
+    slaves: &'a mut [Slave],
+    preop_safeop_hook: Option<
         fn(
             client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
             &SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
