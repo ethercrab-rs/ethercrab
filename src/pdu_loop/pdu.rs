@@ -44,16 +44,6 @@ impl Pdu {
         Ok(())
     }
 
-    pub fn nop() -> Self {
-        Self {
-            command: Command::Nop,
-            index: 0,
-            flags: PduFlags::with_len(0),
-            irq: 0,
-            working_counter: 0,
-        }
-    }
-
     /// The size of the total payload to be insterted into an EtherCAT frame.
     pub(crate) fn ethercat_payload_len(&self) -> usize {
         // TODO: Add unit test to stop regressions

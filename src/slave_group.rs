@@ -1,11 +1,44 @@
 use crate::{
     error::Error,
-    pdi::{PdiOffset, PdiSegment},
+    pdi::PdiOffset,
     slave::{Slave, SlaveRef},
     timer_factory::TimerFactory,
     Client,
 };
 use core::cell::UnsafeCell;
+
+pub trait SlaveGroupContainer<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O> {
+    fn num_groups(&self) -> usize;
+
+    fn group(
+        &'a mut self,
+        index: usize,
+    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>>;
+}
+
+impl<
+        'a,
+        const N: usize,
+        const MAX_SLAVES: usize,
+        const MAX_PDI: usize,
+        const MAX_FRAMES: usize,
+        const MAX_PDU_DATA: usize,
+        TIMEOUT,
+        O,
+    > SlaveGroupContainer<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
+    for [SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>; N]
+{
+    fn num_groups(&self) -> usize {
+        N
+    }
+
+    fn group(
+        &'a mut self,
+        index: usize,
+    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>> {
+        self.get_mut(index).map(|group| group.as_mut_ref())
+    }
+}
 
 pub struct SlaveGroup<
     const MAX_SLAVES: usize,
@@ -16,7 +49,6 @@ pub struct SlaveGroup<
     O,
 > {
     slaves: heapless::Vec<Slave, MAX_SLAVES>,
-    io: heapless::Vec<(Option<PdiSegment>, Option<PdiSegment>), MAX_SLAVES>,
     preop_safeop_hook: Option<
         fn(
             client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
@@ -47,7 +79,6 @@ impl<
             preop_safeop_hook: Default::default(),
             pdi: UnsafeCell::new([0u8; MAX_PDI]),
             pdi_len: Default::default(),
-            io: heapless::Vec::new(),
             start_address: 0,
             group_working_counter: 0,
         }
