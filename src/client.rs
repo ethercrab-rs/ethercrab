@@ -6,18 +6,12 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
-    slave_group::{SlaveGroup, SlaveGroupRef},
+    slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR,
 };
-use core::{
-    cell::{Ref, RefCell},
-    fmt::Display,
-    marker::PhantomData,
-    ops::IndexMut,
-    time::Duration,
-};
+use core::{cell::RefCell, marker::PhantomData, time::Duration};
 use packed_struct::PackedStruct;
 
 pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
@@ -32,39 +26,6 @@ pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
     for Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
-}
-
-pub trait SlaveGroupContainer<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O> {
-    fn num_groups(&self) -> usize;
-
-    fn group(
-        &'a mut self,
-        index: usize,
-    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>>;
-}
-
-impl<
-        'a,
-        const N: usize,
-        const MAX_SLAVES: usize,
-        const MAX_PDI: usize,
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-        O,
-    > SlaveGroupContainer<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
-    for [SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>; N]
-{
-    fn num_groups(&self) -> usize {
-        N
-    }
-
-    fn group(
-        &'a mut self,
-        index: usize,
-    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>> {
-        self.get_mut(index).map(|group| group.as_mut_ref())
-    }
 }
 
 impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
@@ -139,15 +100,7 @@ where
         // Each slave increments working counter, so we can use it as a total count of slaves
         let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
 
-        // if usize::from(num_slaves) > MAX_SLAVES {
-        //     return Err(Error::TooManySlaves);
-        // }
-
         *self.num_slaves.borrow_mut() = num_slaves;
-
-        // NOTE: .map() because SlaveGroup is not copy
-        // let mut groups = [0u8; MAX_GROUPS].map(|_| SlaveGroup::default());
-        // let mut group_offsets = [PdiOffset::default(); MAX_GROUPS];
 
         // Set configured address for all discovered slaves
         for slave_idx in 0..num_slaves {
@@ -161,36 +114,11 @@ where
             .await?
             .wkc(1, "set station address")?;
 
-            // let (new_offset, slave) =
-            //     Slave::configure_from_eeprom(&self, address, offset, &mut || async {
-            //         // TODO: Store PO2SO hook on slave. Currently blocked by `Client` having so many const generics
-            //         Ok(())
-            //     })
-            //     .await?;
-
             // TODO: Instead of just a configured address, read some basic slave data into the
             // struct so the user has more to work with in the grouping function.
             let slave = Slave::new(configured_address);
 
-            // log::debug!(
-            //     "Slave #{:#06x} PDI mapping inputs: {}, outputs: {}",
-            //     address,
-            //     slave.input_range,
-            //     slave.output_range
-            // );
-
-            // offset = new_offset;
-
             group_filter(&mut groups, slave);
-
-            // let slave = RefCell::new(slave);
-
-            // groups[0]
-            //     .slaves
-            //     .push(slave)
-            //     // NOTE: This shouldn't fail as we check for capacity above, but it's worth double
-            //     // checking.
-            //     .map_err(|_| Error::TooManySlaves)?;
         }
 
         let mut offset = PdiOffset::default();
@@ -213,40 +141,6 @@ where
     pub fn num_slaves(&self) -> usize {
         usize::from(*self.num_slaves.borrow())
     }
-
-    // fn slaves(&self) -> &heapless::Vec<RefCell<Slave>, MAX_SLAVES> {
-    //     unsafe { &*self.slaves.get() as &heapless::Vec<RefCell<Slave>, MAX_SLAVES> }
-    // }
-
-    // fn slaves_mut(&self) -> &mut heapless::Vec<RefCell<Slave>, MAX_SLAVES> {
-    //     unsafe { &mut *self.slaves.get() as &mut heapless::Vec<RefCell<Slave>, MAX_SLAVES> }
-    // }
-
-    // // DELETEME
-    // pub fn slave_by_index_pdi_ranges(&self, idx: usize) -> Result<(PdiSegment, PdiSegment), Error> {
-    //     let slave = self
-    //         .slaves()
-    //         .get(idx)
-    //         .ok_or(Error::SlaveNotFound(idx))?
-    //         .try_borrow_mut()
-    //         .map_err(|_| Error::Borrow)?;
-
-    //     Ok((slave.input_range.clone(), slave.output_range.clone()))
-    // }
-
-    // pub fn slave_by_index(
-    //     &self,
-    //     idx: usize,
-    // ) -> Result<SlaveRef<'_, MAX_FRAMES, MAX_PDU_DATA, MAX_SLAVES, TIMEOUT>, Error> {
-    //     let slave = self
-    //         .slaves()
-    //         .get(idx)
-    //         .ok_or(Error::SlaveNotFound(idx))?
-    //         .try_borrow_mut()
-    //         .map_err(|_| Error::Borrow)?;
-
-    //     Ok(SlaveRef::new(self, slave.configured_address))
-    // }
 
     /// Request the same state for all slaves.
     pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
