@@ -200,17 +200,20 @@ where
         *self.start_address = offset.start_address;
 
         for slave in self.slaves.iter_mut() {
-            let mut slave = SlaveRef::new(client, slave.configured_address, slave);
+            let mut slave_ref = SlaveRef::new(client, slave.configured_address);
 
-            slave.configure_from_eeprom_safe_op().await?;
+            slave_ref.configure_from_eeprom_safe_op().await?;
 
             if let Some(hook) = self.preop_safeop_hook {
-                (hook)(&client, &slave);
+                (hook)(&client, &slave_ref);
             }
 
-            offset = slave.configure_from_eeprom_pre_op(offset).await?;
+            let (new_offset, i, o) = slave_ref.configure_from_eeprom_pre_op(offset).await?;
 
-            let (i, o) = slave.io_segments();
+            slave.input_range = i.clone();
+            slave.output_range = o.clone();
+
+            offset = new_offset;
 
             *self.group_working_counter += i.map(|_| 1).unwrap_or(0) + o.map(|_| 2).unwrap_or(0);
         }

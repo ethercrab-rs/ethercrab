@@ -11,6 +11,7 @@ use crate::{
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR,
 };
+use core::{any::type_name, fmt::Debug};
 use core::{cell::RefCell, marker::PhantomData, time::Duration};
 use packed_struct::PackedStruct;
 
@@ -19,8 +20,6 @@ pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     pub pdu_loop: PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
-    // // TODO: UnsafeCell instead of RefCell?
-    // slaves: UnsafeCell<heapless::Vec<RefCell<Slave>, MAX_SLAVES>>,
 }
 
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
@@ -114,9 +113,7 @@ where
             .await?
             .wkc(1, "set station address")?;
 
-            // TODO: Instead of just a configured address, read some basic slave data into the
-            // struct so the user has more to work with in the grouping function.
-            let slave = Slave::new(configured_address);
+            let slave = Slave::new(&self, configured_address).await?;
 
             group_filter(&mut groups, slave);
         }
@@ -180,11 +177,17 @@ where
     async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
+        <T as PduRead>::Error: Debug,
     {
         let (data, working_counter) = self.pdu_loop.pdu_tx(command, &[], T::len()).await?;
 
-        let res = T::try_from_slice(&data).map_err(|_e| {
-            log::error!("PDU data decode");
+        let res = T::try_from_slice(&data).map_err(|e| {
+            log::error!(
+                "PDU data decode: {:?}, T: {} data {:?}",
+                e,
+                type_name::<T>(),
+                data
+            );
 
             PduError::Decode
         })?;
@@ -210,6 +213,7 @@ where
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
+        <T as PduRead>::Error: Debug,
     {
         self.read_service(Command::Brd {
             // Address is always zero when sent from master
@@ -242,6 +246,7 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
+        <T as PduRead>::Error: Debug,
     {
         self.read_service(Command::Aprd {
             address: 0u16.wrapping_sub(address),
@@ -278,6 +283,7 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
+        <T as PduRead>::Error: Debug,
     {
         self.read_service(Command::Fprd {
             address,

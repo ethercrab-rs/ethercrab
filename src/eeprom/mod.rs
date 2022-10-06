@@ -13,7 +13,7 @@ use crate::{
     },
     error::{Capacity, Error},
     register::RegisterAddress,
-    slave::SlaveRef,
+    slave::{SlaveIdentity, SlaveRef},
     timer_factory::TimerFactory,
 };
 use core::{mem, ops::RangeInclusive, str::FromStr};
@@ -159,7 +159,7 @@ where
         Ok(config)
     }
 
-    async fn general(&self) -> Result<SiiGeneral, Error> {
+    pub(crate) async fn general(&self) -> Result<SiiGeneral, Error> {
         let mut reader = self
             .find_category(CategoryType::General)
             .await?
@@ -170,6 +170,18 @@ where
             .await?;
 
         let (_, general) = SiiGeneral::parse(&buf).expect("General parse");
+
+        Ok(general)
+    }
+
+    pub async fn identity(&self) -> Result<SlaveIdentity, Error> {
+        let mut reader = EepromSectionReader::start_at(self, 0x0008, 16);
+
+        let buf = reader
+            .take_vec_exact::<{ mem::size_of::<SlaveIdentity>() }>()
+            .await?;
+
+        let (_, general) = SlaveIdentity::parse(&buf).expect("Slave identity parse");
 
         Ok(general)
     }
@@ -286,7 +298,7 @@ where
         self.pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
     }
 
-    async fn find_string<const N: usize>(
+    pub(crate) async fn find_string<const N: usize>(
         &self,
         search_index: u8,
     ) -> Result<Option<heapless::String<N>>, Error> {
