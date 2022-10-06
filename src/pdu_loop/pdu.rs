@@ -1,4 +1,4 @@
-use crate::{command::Command, error::PduError, pdu_loop::frame_header::FrameHeader, LEN_MASK};
+use crate::{command::Command, error::PduError, pdu_loop::frame_header::FrameHeader};
 use cookie_factory::{
     bytes::{le_u16, le_u8},
     combinator::{skip, slice},
@@ -17,26 +17,26 @@ pub struct Pdu<const MAX_DATA: usize> {
 }
 
 impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
-    pub fn new(
+    pub fn replace(
+        &mut self,
         command: Command,
         data_length: u16,
         index: u8,
         data: &[u8],
-    ) -> Result<Self, PduError> {
-        debug_assert!(MAX_DATA <= LEN_MASK as usize);
-        debug_assert!(data_length as usize <= MAX_DATA);
+    ) -> Result<(), PduError> {
+        self.command = command;
+        self.flags = PduFlags::with_len(data_length);
+        self.irq = 0;
+        self.index = index;
 
-        // TODO: Is there a way I can do this without copying/cloning?
-        let data = heapless::Vec::from_slice(data).map_err(|_| PduError::TooLong)?;
+        self.data
+            .resize(usize::from(data_length), 0u8)
+            .map_err(|_| PduError::TooLong)?;
+        self.data[0..data.len()].copy_from_slice(data);
 
-        Ok(Self {
-            command,
-            index,
-            flags: PduFlags::with_len(data_length),
-            irq: 0,
-            data,
-            working_counter: 0,
-        })
+        self.working_counter = 0;
+
+        Ok(())
     }
 
     pub fn set_response(

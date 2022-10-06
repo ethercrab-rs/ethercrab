@@ -147,9 +147,7 @@ where
 
         let frame = self.frame(idx)?;
 
-        let pdu = Pdu::<MAX_PDU_DATA>::new(command, data_length, idx, data)?;
-
-        frame.replace(pdu)?;
+        frame.replace(command, data_length, idx, data)?;
 
         // Tell the packet sender there is data ready to send
         match self.tx_waker.try_borrow() {

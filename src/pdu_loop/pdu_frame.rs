@@ -1,4 +1,5 @@
 use super::pdu::PduFlags;
+use crate::command::Command;
 use crate::error::{Error, PduError};
 use crate::pdu_loop::pdu::Pdu;
 use crate::{pdu_loop::frame_header::FrameHeader, ETHERCAT_ETHERTYPE, MASTER_ADDR};
@@ -28,23 +29,27 @@ pub(crate) struct Frame<const MAX_PDU_DATA: usize> {
 }
 
 impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
-    pub(crate) fn replace(&mut self, pdu: Pdu<MAX_PDU_DATA>) -> Result<(), PduError> {
+    pub(crate) fn replace(
+        &mut self,
+        command: Command,
+        data_length: u16,
+        index: u8,
+        data: &[u8],
+    ) -> Result<(), PduError> {
         if self.state != FrameState::None {
             trace!("Expected {:?}, got {:?}", FrameState::None, self.state);
             Err(PduError::InvalidFrameState)?;
         }
 
-        *self = Self {
-            state: FrameState::Created,
-            waker: None,
-            pdu,
-        };
+        self.state = FrameState::Created;
+        self.waker = None;
+        self.pdu.replace(command, data_length, index, data)?;
 
         Ok(())
     }
 
-    pub(crate) fn pdu(&mut self) -> &mut Pdu<MAX_PDU_DATA> {
-        &mut self.pdu
+    pub(crate) fn pdu(&self) -> &Pdu<MAX_PDU_DATA> {
+        &self.pdu
     }
 
     /// The size of the total payload to be insterted into an Ethernet frame, i.e. EtherCAT frame
