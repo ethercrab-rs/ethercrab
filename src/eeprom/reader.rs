@@ -5,10 +5,11 @@ use crate::{
 };
 
 pub struct EepromSectionReader<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    start: u16,
+    // TODO: Un-pub
+    pub(crate) start: u16,
     /// Category length in bytes.
-    len: u16,
-    byte_count: u16,
+    pub(crate) len: u16,
+    pub(crate) byte_count: u16,
     read: heapless::Deque<u8, 8>,
     eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     read_length: usize,
@@ -50,9 +51,11 @@ where
             self.read_length = slice.len();
 
             for byte in slice.iter() {
-                self.read
-                    .push_back(*byte)
-                    .map_err(|_| Error::EepromSectionOverrun)?;
+                self.read.push_back(*byte).map_err(|_| {
+                    log::error!("EEPROM read queue is full");
+
+                    Error::EepromSectionOverrun
+                })?;
             }
 
             self.start += (self.read.len() / 2) as u16;
@@ -135,6 +138,8 @@ where
 
             // If buffer is full, we'd end up with truncated data, so error out.
             if buf.is_full() {
+                log::error!("take_n_vec output buffer is full");
+
                 break Err(Error::EepromSectionOverrun);
             }
 

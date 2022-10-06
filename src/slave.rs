@@ -69,8 +69,9 @@ pub struct Slave {
     pub(crate) output_range: Option<PdiSegment>,
 
     pub identity: SlaveIdentity,
-    // TODO: Fix crash, use
-    // pub name: heapless::String<16>,
+
+    // NOTE: Default length in SOEM is 40 bytes
+    pub name: heapless::String<64>,
 }
 
 impl Slave {
@@ -91,27 +92,32 @@ impl Slave {
 
         let identity = eep.identity().await?;
 
-        // let name: heapless::String<16> = {
-        //     let general = eep.general().await?;
+        let name: heapless::String<64> = {
+            // Uncomment to read longer, but correct, name string from EEPROM
+            // let general = eep.general().await?;
+            // let idx = general.name_string_idx;
 
-        //     dbg!(general.name_string_idx);
+            // NOTE: Hard coded to the first string. This mirrors SOEM's behaviour. Reading the
+            // string index from EEPROM gives a different value in my testing - still a name, but
+            // longer.
+            let idx = 1;
 
-        //     // TODO: This crashes. Figure out why next time you're on a Linux/macOS box.
-        //     // Windows says: (exit code: 0xc0000005, STATUS_ACCESS_VIOLATION)
-        //     let name = eep
-        //         .find_string(general.name_string_idx)
-        //         .await?
-        //         .unwrap_or_else(|| "(unknown)".into());
+            let name = eep
+                .find_string(idx)
+                .await?
+                .unwrap_or_else(|| "(unknown)".into());
 
-        //     name
-        // };
+            name
+        };
+
+        log::debug!("Slave name {}", name);
 
         Ok(Self {
             configured_address,
             input_range: None,
             output_range: None,
             identity,
-            // name,
+            name,
         })
     }
 

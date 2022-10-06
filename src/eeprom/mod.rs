@@ -323,11 +323,15 @@ where
                 reader.skip(u16::from(string_len)).await?;
             }
 
-            let string_len = reader.try_next().await?;
+            let string_len = usize::from(reader.try_next().await?);
 
             let bytes = reader
-                .take_n_vec_exact::<N>(usize::from(string_len))
-                .await?;
+                .take_n_vec_exact::<N>(string_len)
+                .await
+                .map_err(|_| Error::StringTooLong {
+                    desired: N,
+                    required: string_len,
+                })?;
 
             let s = core::str::from_utf8(&bytes).map_err(|_| Error::EepromDecode)?;
 
