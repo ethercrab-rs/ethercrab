@@ -76,11 +76,10 @@ where
 {
     pub const fn new() -> Self {
         let frames = unsafe { MaybeUninit::uninit().assume_init() };
-        let frame_data = unsafe { MaybeUninit::uninit().assume_init() };
 
         Self {
             frames,
-            frame_data,
+            frame_data: UnsafeCell::new([0u8; 1024]),
             tx_waker: RefCell::new(None),
             idx: AtomicU8::new(0),
             _timeout: PhantomData,
