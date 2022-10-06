@@ -24,6 +24,7 @@ pub enum SlaveState {
     Bootstrap = 0x03,
     SafeOp = 0x04,
     Op = 0x8,
+    Unknown = 0xff,
 }
 
 impl fmt::Display for SlaveState {
@@ -35,6 +36,7 @@ impl fmt::Display for SlaveState {
             SlaveState::Bootstrap => "Bootstrap",
             SlaveState::SafeOp => "Safe-Operational",
             SlaveState::Op => "Operational",
+            SlaveState::Unknown => "Unknown",
         };
 
         f.write_str(s)
