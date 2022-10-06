@@ -5,11 +5,10 @@ use crate::{
 };
 
 pub struct EepromSectionReader<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    // TODO: Un-pub
-    pub(crate) start: u16,
+    start: u16,
     /// Category length in bytes.
-    pub(crate) len: u16,
-    pub(crate) byte_count: u16,
+    len: u16,
+    byte_count: u16,
     read: heapless::Deque<u8, 8>,
     eeprom: &'a Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     read_length: usize,
