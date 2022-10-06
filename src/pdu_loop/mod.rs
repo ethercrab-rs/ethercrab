@@ -54,7 +54,7 @@ pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> 
     // BBBuffer.
     // TODO: Configurable length with a single const generic
     frame_data: UnsafeCell<[u8; 1024]>,
-    frames: [UnsafeCell<pdu_frame::Frame<MAX_PDU_DATA>>; MAX_FRAMES],
+    frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: RefCell<Option<Waker>>,
     /// EtherCAT frame index.
@@ -109,7 +109,7 @@ where
 
     pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), ()>
     where
-        F: FnMut(&SendableFrame<MAX_PDU_DATA>, &[u8]) -> Result<(), ()>,
+        F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
     {
         self.frames.iter().try_for_each(|frame| {
             let frame = unsafe { &mut *frame.get() };
@@ -130,7 +130,7 @@ where
         Ok(())
     }
 
-    fn frame(&self, idx: u8) -> Result<&mut pdu_frame::Frame<MAX_PDU_DATA>, Error> {
+    fn frame(&self, idx: u8) -> Result<&mut pdu_frame::Frame, Error> {
         let req = self
             .frames
             .get(usize::from(idx))
