@@ -134,6 +134,10 @@ impl<'a, const MAX_PDU_DATA: usize> SendableFrame<'a, MAX_PDU_DATA> {
         self.frame.pdu.index
     }
 
+    pub(crate) fn data_len(&self) -> usize {
+        usize::from(self.frame.pdu.flags.len())
+    }
+
     pub(crate) fn write_ethernet_packet<'buf>(
         &self,
         buf: &'buf mut [u8],
