@@ -3,7 +3,7 @@ use crate::{
     command::Command,
     error::{Error, PduError},
     pdi::PdiOffset,
-    pdu_loop::{CheckWorkingCounter, PduLoop, PduLoopRef, PduResponse},
+    pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
     slave_group::{SlaveGroup, SlaveGroupRef},
@@ -25,87 +25,8 @@ pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     pub pdu_loop: PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
+    // // TODO: UnsafeCell instead of RefCell?
     // slaves: UnsafeCell<heapless::Vec<RefCell<Slave>, MAX_SLAVES>>,
-}
-
-pub struct ClientRef<'a> {
-    pdu_loop: PduLoopRef<'a>,
-    // num_slaves: u16,
-}
-
-impl<'a> ClientRef<'a> {
-    // TODO: Dedupe with write_service when refactoring allows
-    async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, Error>
-    where
-        T: PduRead,
-    {
-        let (data, working_counter) = self.pdu_loop.pdu_tx(command, &[], T::len()).await?;
-
-        let res = T::try_from_slice(&data).map_err(|_e| {
-            log::error!("PDU data decode");
-
-            PduError::Decode
-        })?;
-
-        Ok((res, working_counter))
-    }
-
-    // TODO: Support different I and O types; some things can return different data
-    async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, Error>
-    where
-        T: PduData,
-    {
-        let (data, working_counter) = self
-            .pdu_loop
-            .pdu_tx(command, value.as_slice(), T::len())
-            .await?;
-
-        let res = T::try_from_slice(&data).map_err(|_| PduError::Decode)?;
-
-        Ok((res, working_counter))
-    }
-
-    /// Configured address read.
-    pub async fn fprd<T>(
-        &self,
-        address: u16,
-        register: RegisterAddress,
-    ) -> Result<PduResponse<T>, Error>
-    where
-        T: PduRead,
-    {
-        self.read_service(Command::Fprd {
-            address,
-            register: register.into(),
-        })
-        .await
-    }
-
-    /// Configured address write.
-    pub async fn fpwr<T>(
-        &self,
-        address: u16,
-        register: RegisterAddress,
-        value: T,
-    ) -> Result<PduResponse<T>, Error>
-    where
-        T: PduData,
-    {
-        self.write_service(
-            Command::Fpwr {
-                address,
-                register: register.into(),
-            },
-            value,
-        )
-        .await
-    }
-
-    pub(crate) fn another_one(&self) -> Self {
-        ClientRef {
-            pdu_loop: self.pdu_loop,
-        }
-    }
 }
 
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
@@ -146,16 +67,8 @@ where
         Self {
             pdu_loop: PduLoop::new(),
             // slaves: UnsafeCell::new(heapless::Vec::new()),
-            // TODO: Make the RefCell go away somehow
             num_slaves: RefCell::new(0),
             _timeout: PhantomData,
-        }
-    }
-
-    pub fn as_ref<'a>(&'a self) -> ClientRef<'a> {
-        ClientRef {
-            pdu_loop: self.pdu_loop.as_ref(),
-            // num_slaves: *self.num_slaves.borrow(),
         }
     }
 
@@ -271,7 +184,7 @@ where
             // TODO: Better error type for broken group index calculation
             let mut group = groups.group(i).ok_or_else(|| Error::Other)?;
 
-            offset = group.configure_from_eeprom(offset, self.as_ref()).await?;
+            offset = group.configure_from_eeprom(offset, &self).await?;
 
             log::debug!("After group #{i} offset: {:?}", offset);
         }
@@ -281,9 +194,9 @@ where
         Ok(groups)
     }
 
-    // pub fn num_slaves(&self) -> usize {
-    //     usize::from(*self.num_slaves.borrow())
-    // }
+    pub fn num_slaves(&self) -> usize {
+        usize::from(*self.num_slaves.borrow())
+    }
 
     // fn slaves(&self) -> &heapless::Vec<RefCell<Slave>, MAX_SLAVES> {
     //     unsafe { &*self.slaves.get() as &heapless::Vec<RefCell<Slave>, MAX_SLAVES> }
@@ -358,9 +271,7 @@ where
     where
         T: PduRead,
     {
-        let pdu_loop = self.pdu_loop.as_ref();
-
-        let (data, working_counter) = pdu_loop.pdu_tx(command, &[], T::len()).await?;
+        let (data, working_counter) = self.pdu_loop.pdu_tx(command, &[], T::len()).await?;
 
         let res = T::try_from_slice(&data).map_err(|_e| {
             log::error!("PDU data decode");
@@ -376,9 +287,10 @@ where
     where
         T: PduData,
     {
-        let pdu_loop = self.pdu_loop.as_ref();
-
-        let (data, working_counter) = pdu_loop.pdu_tx(command, value.as_slice(), T::len()).await?;
+        let (data, working_counter) = self
+            .pdu_loop
+            .pdu_tx(command, value.as_slice(), T::len())
+            .await?;
 
         let res = T::try_from_slice(&data).map_err(|_| PduError::Decode)?;
 
@@ -448,41 +360,41 @@ where
         .await
     }
 
-    // /// Configured address read.
-    // pub async fn fprd<T>(
-    //     &self,
-    //     address: u16,
-    //     register: RegisterAddress,
-    // ) -> Result<PduResponse<T>, Error>
-    // where
-    //     T: PduRead,
-    // {
-    //     self.read_service(Command::Fprd {
-    //         address,
-    //         register: register.into(),
-    //     })
-    //     .await
-    // }
+    /// Configured address read.
+    pub async fn fprd<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+    ) -> Result<PduResponse<T>, Error>
+    where
+        T: PduRead,
+    {
+        self.read_service(Command::Fprd {
+            address,
+            register: register.into(),
+        })
+        .await
+    }
 
-    // /// Configured address write.
-    // pub async fn fpwr<T>(
-    //     &self,
-    //     address: u16,
-    //     register: RegisterAddress,
-    //     value: T,
-    // ) -> Result<PduResponse<T>, Error>
-    // where
-    //     T: PduData,
-    // {
-    //     self.write_service(
-    //         Command::Fpwr {
-    //             address,
-    //             register: register.into(),
-    //         },
-    //         value,
-    //     )
-    //     .await
-    // }
+    /// Configured address write.
+    pub async fn fpwr<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+        value: T,
+    ) -> Result<PduResponse<T>, Error>
+    where
+        T: PduData,
+    {
+        self.write_service(
+            Command::Fpwr {
+                address,
+                register: register.into(),
+            },
+            value,
+        )
+        .await
+    }
 
     /// Logical write.
     pub async fn lwr<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
@@ -507,9 +419,8 @@ where
         address: u32,
         value: &'buf mut [u8],
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
-        let pdu_loop = self.pdu_loop.as_ref();
-
-        let (data, working_counter) = pdu_loop
+        let (data, working_counter) = self
+            .pdu_loop
             .pdu_tx(Command::Lrw { address }, value, value.len() as u16)
             .await?;
 
