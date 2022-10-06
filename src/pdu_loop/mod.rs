@@ -52,7 +52,7 @@ pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> 
     // No, at least not with BBQueue; the received data needs to be written back into the grant, but
     // that means the grant lives too long and blocks the sending of any other data from the
     // BBBuffer.
-    // TODO: Configurable length with a single const generic
+    // TODO: Compute length with `MAX_PDU_DATA * MAX_FRAMES
     frame_data: UnsafeCell<[u8; 1024]>,
     frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
