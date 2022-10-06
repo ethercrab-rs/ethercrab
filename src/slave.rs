@@ -16,59 +16,111 @@ use crate::{
     timer_factory::TimerFactory,
     PduData, PduRead,
 };
-use core::time::Duration;
+use core::fmt::Debug;
+use core::{fmt, time::Duration};
+use nom::{number::complete::le_u32, IResult};
 use packed_struct::PackedStruct;
+
+#[derive(Default)]
+pub struct SlaveIdentity {
+    pub vendor_id: u32,
+    pub product_id: u32,
+    pub revision: u32,
+    pub serial: u32,
+}
+
+impl fmt::Debug for SlaveIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SlaveIdentity")
+            .field("vendor_id", &format_args!("{:#010x}", self.vendor_id))
+            .field("product_id", &format_args!("{:#010x}", self.product_id))
+            .field("revision", &self.revision)
+            .field("serial", &self.serial)
+            .finish()
+    }
+}
+
+impl SlaveIdentity {
+    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+        let (i, vendor_id) = le_u32(i)?;
+        let (i, product_id) = le_u32(i)?;
+        let (i, revision) = le_u32(i)?;
+        let (i, serial) = le_u32(i)?;
+
+        Ok((
+            i,
+            Self {
+                vendor_id,
+                product_id,
+                revision,
+                serial,
+            },
+        ))
+    }
+}
 
 #[derive(Debug)]
 pub struct Slave {
     /// Configured station address.
-    // TODO: Un-pub
-    pub configured_address: u16,
+    pub(crate) configured_address: u16,
     /// Index into PDI map corresponding to slave inputs.
     pub(crate) input_range: Option<PdiSegment>,
     /// Index into PDI map corresponding to slave outputs.
     pub(crate) output_range: Option<PdiSegment>,
+
+    pub identity: SlaveIdentity,
+    // TODO: Fix crash, use
+    // pub name: heapless::String<16>,
 }
 
 impl Slave {
-    pub(crate) fn new(configured_address: u16) -> Self {
-        Self {
+    pub(crate) async fn new<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
+        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        configured_address: u16,
+    ) -> Result<Self, Error>
+    where
+        TIMEOUT: TimerFactory,
+    {
+        let slave_ref = SlaveRef::new(client, configured_address);
+
+        slave_ref.wait_for_state(SlaveState::Init).await?;
+
+        slave_ref.set_eeprom_mode(SiiOwner::Master).await?;
+
+        let eep = slave_ref.eeprom();
+
+        let identity = eep.identity().await?;
+
+        // let name: heapless::String<16> = {
+        //     let general = eep.general().await?;
+
+        //     dbg!(general.name_string_idx);
+
+        //     // TODO: This crashes. Figure out why next time you're on a Linux/macOS box.
+        //     // Windows says: (exit code: 0xc0000005, STATUS_ACCESS_VIOLATION)
+        //     let name = eep
+        //         .find_string(general.name_string_idx)
+        //         .await?
+        //         .unwrap_or_else(|| "(unknown)".into());
+
+        //     name
+        // };
+
+        Ok(Self {
             configured_address,
             input_range: None,
             output_range: None,
-        }
+            identity,
+            // name,
+        })
     }
 
     pub(crate) fn io_segments(&self) -> (Option<PdiSegment>, Option<PdiSegment>) {
         (self.input_range.clone(), self.output_range.clone())
     }
-
-    // pub async fn configure_from_eeprom<
-    //     const MAX_FRAMES: usize,
-    //     const MAX_PDU_DATA: usize,
-    //     TIMEOUT,
-    // >(
-    //     &mut self,
-    //     client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-    //     offset: PdiOffset,
-    // ) -> Result<PdiOffset, Error>
-    // where
-    //     TIMEOUT: TimerFactory,
-    // {
-    //     // TODO: I don't think we need SlaveRef anymore
-    //     let slave_ref = SlaveRef::new(client, self.configured_address);
-
-    //     let (offset, input_range, output_range) = slave_ref.configure_from_eeprom(offset).await?;
-
-    //     self.input_range = input_range;
-    //     self.output_range = output_range;
-
-    //     Ok(offset)
-    // }
 }
 
 pub struct SlaveRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    slave: &'a mut Slave,
     client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     configured_address: u16,
 }
@@ -81,10 +133,8 @@ where
     pub fn new(
         client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
         configured_address: u16,
-        slave: &'a mut Slave,
     ) -> Self {
         Self {
-            slave,
             client,
             configured_address,
         }
@@ -98,6 +148,7 @@ where
     ) -> Result<T, Error>
     where
         T: PduRead,
+        <T as PduRead>::Error: Debug,
     {
         self.client
             .fprd(self.configured_address, register)
@@ -241,7 +292,7 @@ where
     pub(crate) async fn configure_from_eeprom_pre_op(
         &mut self,
         mut offset: PdiOffset,
-    ) -> Result<PdiOffset, Error> {
+    ) -> Result<(PdiOffset, Option<PdiSegment>, Option<PdiSegment>), Error> {
         // RX from the perspective of the slave device
         let master_write_pdos = self.eeprom().master_write_pdos().await?;
         let master_read_pdos = self.eeprom().master_read_pdos().await?;
@@ -279,10 +330,10 @@ where
 
         self.request_slave_state(SlaveState::SafeOp).await?;
 
-        self.slave.input_range = inputs_range.clone();
-        self.slave.output_range = outputs_range.clone();
+        // self.slave.input_range = inputs_range.clone();
+        // self.slave.output_range = outputs_range.clone();
 
-        Ok(offset)
+        Ok((offset, inputs_range, outputs_range))
     }
 
     async fn configure_mailboxes(&self, sync_managers: &[SyncManager]) -> Result<(), Error> {
@@ -423,10 +474,6 @@ where
             bit_len: total_bit_len.into(),
             bytes: start_offset.up_to(*offset),
         }))
-    }
-
-    pub(crate) fn io_segments(&self) -> (Option<PdiSegment>, Option<PdiSegment>) {
-        self.slave.io_segments()
     }
 }
 
