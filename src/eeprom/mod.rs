@@ -4,6 +4,7 @@ pub mod types;
 
 use self::types::{FmmuEx, MailboxConfig};
 use crate::{
+    client::ClientRef,
     eeprom::{
         reader::EepromSectionReader,
         types::{
@@ -13,8 +14,9 @@ use crate::{
     },
     error::{Capacity, Error},
     register::RegisterAddress,
-    slave::SlaveRef,
+    slave::{Slave, SlaveRef},
     timer_factory::TimerFactory,
+    CheckWorkingCounter, PduData, PduRead,
 };
 use core::{mem, ops::RangeInclusive, str::FromStr};
 use num_enum::TryFromPrimitive;
@@ -23,19 +25,12 @@ use num_enum::TryFromPrimitive;
 /// Table 2.
 const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 
-pub struct Eeprom<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+pub struct Eeprom<'a> {
+    slave: &'a SlaveRef<'a>,
+    configured_address: u16,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
-{
-    pub(crate) fn new(slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> Self {
-        Self { slave }
-    }
-
+impl<'a> Eeprom<'a> {
     async fn read_eeprom_raw(&self, eeprom_address: u16) -> Result<[u8; 8], Error> {
         let status = self
             .slave
@@ -116,27 +111,49 @@ where
         Ok(data)
     }
 
+    // FIXME
+    // /// Wait for EEPROM read or write operation to finish and clear the busy flag.
+    // async fn wait(& self) -> Result<(), Error> {
+    //     // TODO: Configurable timeout
+    //     let timeout = core::time::Duration::from_millis(10);
+
+    //     crate::timeout::<TIMEOUT, _, _>(timeout, async {
+    //         loop {
+    //             let control = self
+    //
+    //                 .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
+    //                 .await?;
+
+    //             if !control.busy {
+    //                 break Ok(());
+    //             }
+
+    //             // TODO: Configurable loop tick
+    //             TIMEOUT::timer(core::time::Duration::from_millis(1)).await;
+    //         }
+    //     })
+    //     .await
+    // }
+
     /// Wait for EEPROM read or write operation to finish and clear the busy flag.
     async fn wait(&self) -> Result<(), Error> {
-        // TODO: Configurable timeout
-        let timeout = core::time::Duration::from_millis(10);
+        // // TODO: Configurable timeout
+        // let timeout = core::time::Duration::from_millis(10);
 
-        crate::timeout::<TIMEOUT, _, _>(timeout, async {
-            loop {
-                let control = self
-                    .slave
-                    .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
-                    .await?;
+        // FIXME
+        // crate::timeout::<TIMEOUT, _, _>(timeout, async {
+        loop {
+            let control = self
+                .slave
+                .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
+                .await?;
 
-                if !control.busy {
-                    break Ok(());
-                }
-
-                // TODO: Configurable loop tick
-                TIMEOUT::timer(core::time::Duration::from_millis(1)).await;
+            if !control.busy {
+                break Ok(());
             }
-        })
-        .await
+        }
+        // })
+        // .await
     }
 
     pub async fn device_name<const N: usize>(&self) -> Result<Option<heapless::String<N>>, Error> {
@@ -330,7 +347,7 @@ where
     async fn find_category(
         &self,
         category: CategoryType,
-    ) -> Result<Option<EepromSectionReader<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>, Error> {
+    ) -> Result<Option<EepromSectionReader<'_>>, Error> {
         let mut start = SII_FIRST_CATEGORY_START;
 
         loop {
@@ -351,14 +368,16 @@ where
 
             match category_type {
                 cat if cat == category => {
-                    break Ok(Some(EepromSectionReader::new(
-                        self,
-                        SiiCategory {
-                            category: cat,
-                            start,
-                            len_words: data_len,
-                        },
-                    )))
+                    // break Ok(Some(EepromSectionReader::new(
+                    //     self,
+                    //     SiiCategory {
+                    //         category: cat,
+                    //         start,
+                    //         len_words: data_len,
+                    //     },
+                    // )))
+
+                    todo!()
                 }
                 CategoryType::End => break Ok(None),
                 _ => (),

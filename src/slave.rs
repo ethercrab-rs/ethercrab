@@ -1,7 +1,7 @@
 use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
-    client::Client,
+    client::ClientRef,
     eeprom::{
         types::{FmmuUsage, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType},
         Eeprom,
@@ -39,58 +39,42 @@ impl Slave {
         }
     }
 
-    pub async fn configure_from_eeprom<
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-        O,
-    >(
-        &mut self,
-        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        offset: PdiOffset,
-        mut slave_preop_safeop: impl FnMut() -> O,
-    ) -> Result<PdiOffset, Error>
-    where
-        TIMEOUT: TimerFactory,
-        O: core::future::Future<Output = Result<(), Error>>,
-    {
-        // TODO: I don't think we need SlaveRef anymore
-        let slave_ref = SlaveRef::new(client, self.configured_address);
+    // pub async fn configure_from_eeprom<'a>(
+    //     &mut self,
+    //     client: ClientRef<'a>,
+    //     offset: PdiOffset,
+    // ) -> Result<PdiOffset, Error> {
+    //     // TODO: I don't think we need SlaveRef anymore
+    //     let slave_ref = SlaveRef::new(client.another_one(), self.configured_address);
 
-        let (offset, input_range, output_range) = slave_ref
-            .configure_from_eeprom(offset, &mut slave_preop_safeop)
-            .await?;
+    //     let (offset, input_range, output_range) = slave_ref.configure_from_eeprom(offset).await?;
 
-        self.input_range = input_range;
-        self.output_range = output_range;
+    //     self.input_range = input_range;
+    //     self.output_range = output_range;
 
-        Ok(offset)
-    }
+    //     Ok(offset)
+    // }
 }
 
-pub struct SlaveRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+pub struct SlaveRef<'a> {
+    slave: &'a mut Slave,
+    client: &'a ClientRef<'a>,
     configured_address: u16,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
-{
-    pub fn new(
-        client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        configured_address: u16,
-    ) -> Self {
+impl<'a> SlaveRef<'a> {
+    pub fn new(slave: &'a mut Slave, client: &'a ClientRef<'_>, configured_address: u16) -> Self {
         Self {
-            client,
+            slave,
             configured_address,
+            client,
         }
     }
 
     /// A wrapper around an FPRD service to this slave's configured address.
     pub(crate) async fn read<T>(
         &self,
+
         register: RegisterAddress,
         context: &'static str,
     ) -> Result<T, Error>
@@ -106,6 +90,7 @@ where
     /// A wrapper around an FPWR service to this slave's configured address.
     pub(crate) async fn write<T>(
         &self,
+
         register: RegisterAddress,
         value: T,
         context: &'static str,
@@ -119,21 +104,40 @@ where
             .wkc(1, context)
     }
 
+    // FIXME
+    // async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
+    //     crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
+    //         loop {
+    //             let status = self
+    //                 .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
+    //                 .await?;
+
+    //             if status.state == desired_state {
+    //                 break Result::<(), _>::Ok(());
+    //             }
+
+    //             TIMEOUT::timer(Duration::from_millis(10)).await;
+    //         }
+    //     })
+    //     .await
+    // }
+
     async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
-            loop {
-                let status = self
-                    .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
-                    .await?;
+        // FIXME
+        // crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
+        loop {
+            let status = self
+                .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
+                .await?;
 
-                if status.state == desired_state {
-                    break Result::<(), _>::Ok(());
-                }
-
-                TIMEOUT::timer(Duration::from_millis(10)).await;
+            if status.state == desired_state {
+                break Result::<(), _>::Ok(());
             }
-        })
-        .await
+
+            // TIMEOUT::timer(Duration::from_millis(10)).await;
+        }
+        // })
+        // .await
     }
 
     pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
@@ -166,9 +170,11 @@ where
         Ok((status, code))
     }
 
-    // TODO: Separate TIMEOUT for EEPROM specifically
-    pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
-        Eeprom::new(&self)
+    fn eeprom(&self) -> Eeprom<'a> {
+        Eeprom {
+            slave: &self,
+            configured_address: self.configured_address,
+        }
     }
 
     async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
@@ -214,19 +220,15 @@ where
         Ok(sm_config)
     }
 
-    // TODO: PO2SO callback for configuring SDOs
     /// Configure slave from EEPROM configuration. Once complete, the slave will be in PRE-OP state
     /// and can be transitioned into SAFE-OP and beyond with [`request_slave_state`].
     ///
     /// The slave must be in INIT state before calling this method.
-    async fn configure_from_eeprom<O>(
-        &self,
+    async fn configure_from_eeprom<'client>(
+        &mut self,
+        client: ClientRef<'client>,
         mut offset: PdiOffset,
-        mut slave_preop_safeop: impl FnMut() -> O,
-    ) -> Result<(PdiOffset, PdiSegment, PdiSegment), Error>
-    where
-        O: core::future::Future<Output = Result<(), Error>>,
-    {
+    ) -> Result<PdiOffset, Error> {
         // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
         // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
         // to master mode here, now that the transition is complete.
@@ -257,7 +259,8 @@ where
 
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
-        slave_preop_safeop().await?;
+        // TODO: Split this method here and call preop hook in slave group init method
+        // slave_preop_safeop().await?;
 
         // PDOs must be configurd in PRE-OP state
         // TODO: I think I need to read the PDOs out of CoE (if supported?), not EEPROM
@@ -288,7 +291,12 @@ where
 
         self.request_slave_state(SlaveState::SafeOp).await?;
 
-        Ok((offset, inputs_range, outputs_range))
+        // Ok((offset, inputs_range, outputs_range))
+
+        self.slave.input_range = inputs_range;
+        self.slave.output_range = outputs_range;
+
+        Ok(offset)
     }
 
     async fn configure_mailboxes(&self, sync_managers: &[SyncManager]) -> Result<(), Error> {

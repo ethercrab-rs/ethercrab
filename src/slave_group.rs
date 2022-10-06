@@ -1,4 +1,7 @@
-use crate::{error::Error, pdi::PdiOffset, slave::Slave, timer_factory::TimerFactory, Client};
+use crate::{
+    client::ClientRef, error::Error, pdi::PdiOffset, slave::Slave, timer_factory::TimerFactory,
+    Client,
+};
 
 // TODO: Can probably dedupe with pdi::Pdi?
 #[derive(Debug, Default)]
@@ -31,25 +34,17 @@ pub struct SlaveGroupRef<'a> {
 }
 
 impl<'a> SlaveGroupRef<'a> {
-    pub(crate) async fn configure_from_eeprom<
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-    >(
+    pub(crate) async fn configure_from_eeprom(
         &mut self,
         mut offset: PdiOffset,
-        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-    ) -> Result<PdiOffset, Error>
-    where
-        TIMEOUT: TimerFactory,
-    {
+        client: ClientRef<'a>,
+    ) -> Result<PdiOffset, Error> {
+        // TODO: PO2SO hook, store on slave group
+
         for slave in self.slaves.iter_mut() {
-            offset = slave
-                .configure_from_eeprom(&client, offset, &mut || async {
-                    // TODO: Store PO2SO hook on slave. Currently blocked by `Client` having so many const generics
-                    Ok(())
-                })
-                .await?;
+            // offset = slave
+            //     .configure_from_eeprom(client.another_one(), offset)
+            //     .await?;
         }
 
         Ok(offset)
