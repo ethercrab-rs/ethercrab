@@ -47,8 +47,12 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 }
 
 pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    // TODO: Create a BBQueue-esque buffer that hands out non-overlapping ranges (wrapped in a
-    // tracking struct) so we can write PDU data back into the correct place.
+    // TODO: Can we have a single buffer that gives out variable length slices instead of wasting
+    // space with lots of potentially huge PDUs?
+    // No, at least not with BBQueue; the received data needs to be written back into the grant, but
+    // that means the grant lives too long and blocks the sending of any other data from the
+    // BBBuffer.
+    // TODO: Configurable length with a single const generic
     frame_data: UnsafeCell<[u8; 1024]>,
     frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
@@ -56,91 +60,6 @@ pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> 
     /// EtherCAT frame index.
     idx: AtomicU8,
     _timeout: PhantomData<TIMEOUT>,
-}
-
-pub struct PduLoopRef<'a> {
-    frame_data: UnsafeCell<&'a [u8]>,
-    frames: UnsafeCell<&'a [pdu_frame::Frame]>,
-    tx_waker: &'a RefCell<Option<Waker>>,
-    idx: &'a AtomicU8,
-    max_frames: u8,
-    max_pdu_data: usize,
-}
-
-impl<'a> PduLoopRef<'a> {
-    fn frame(&self, idx: u8) -> Result<&mut pdu_frame::Frame, Error> {
-        // let req = self
-        //     .frames
-        //     .get(usize::from(idx))
-        //     .ok_or(PduError::InvalidIndex(idx))?;
-
-        // Ok(unsafe { &mut *req.get() })
-
-        todo!()
-
-        // let frame = self
-        //     .frames
-        //     .get_mut(usize::from(idx))
-        //     .ok_or(PduError::InvalidIndex(idx))?;
-
-        // Ok(frame)
-    }
-
-    fn frame_data(&self, idx: u8) -> Result<&mut [u8], Error> {
-        todo!()
-        // let start = usize::from(idx) * self.max_pdu_data;
-
-        // let range = start..(start + self.max_pdu_data);
-
-        // // let frames = self.frame_data;
-
-        // let frame = self
-        //     .frame_data
-        //     .get_mut(range)
-        //     // TODO: Better error variant
-        //     .ok_or(PduError::InvalidIndex(idx))?;
-
-        // Ok(frame)
-    }
-
-    pub async fn pdu_tx(
-        &self,
-        command: Command,
-        data: &[u8],
-        data_length: u16,
-    ) -> Result<(&[u8], u16), Error> {
-        let idx = self.idx.fetch_add(1, Ordering::AcqRel) % self.max_frames as u8;
-
-        let frame = self.frame(idx)?;
-
-        frame.replace(command, data_length, idx)?;
-
-        let frame_data = self.frame_data(idx)?;
-
-        // TODO: .min(data.len()) is weird. We should split `pdu_tx` out into something that only
-        // reads data, or something that sends too.
-        frame_data[0..usize::from(data_length).min(data.len())].copy_from_slice(data);
-
-        // Tell the packet sender there is data ready to send
-        match self.tx_waker.try_borrow() {
-            Ok(waker) => {
-                if let Some(waker) = &*waker {
-                    waker.wake_by_ref()
-                }
-            }
-            Err(_) => warn!("Send waker is already borrowed"),
-        }
-
-        // TODO: Configurable timeout
-        let timer = core::time::Duration::from_micros(30_000);
-
-        let res = frame.await?;
-
-        Ok((
-            &frame_data[0..usize::from(data_length)],
-            res.working_counter(),
-        ))
-    }
 }
 
 // If we don't impl Send, does this guarantee we can have a PduLoopRef and not invalidate the
@@ -168,18 +87,6 @@ where
     //         _timeout: PhantomData,
     //     }
     // }
-
-    pub fn as_ref<'a>(&'a self) -> PduLoopRef<'a> {
-        PduLoopRef {
-            // TODO: MIRI
-            frame_data: UnsafeCell::new(unsafe { &*self.frame_data.get() }),
-            frames: unsafe { core::mem::transmute(self.frames.as_slice()) },
-            tx_waker: &self.tx_waker,
-            idx: &self.idx,
-            max_frames: MAX_FRAMES as u8,
-            max_pdu_data: MAX_PDU_DATA,
-        }
-    }
 
     pub const fn new() -> Self {
         let frames = unsafe { MaybeUninit::uninit().assume_init() };
@@ -246,44 +153,44 @@ where
         Ok(frame)
     }
 
-    // pub async fn pdu_tx(
-    //     &self,
-    //     command: Command,
-    //     data: &[u8],
-    //     data_length: u16,
-    // ) -> Result<(heapless::Vec<u8, MAX_PDU_DATA>, u16), Error> {
-    //     let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
+    pub async fn pdu_tx(
+        &self,
+        command: Command,
+        data: &[u8],
+        data_length: u16,
+    ) -> Result<(heapless::Vec<u8, MAX_PDU_DATA>, u16), Error> {
+        let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
-    //     let frame = self.frame(idx)?;
+        let frame = self.frame(idx)?;
 
-    //     frame.replace(command, data_length, idx)?;
+        frame.replace(command, data_length, idx)?;
 
-    //     let frame_data = self.frame_data(idx)?;
+        let frame_data = self.frame_data(idx)?;
 
-    //     // TODO: .min(data.len()) is weird. We should split `pdu_tx` out into something that only
-    //     // reads data, or something that sends too.
-    //     frame_data[0..usize::from(data_length).min(data.len())].copy_from_slice(data);
+        // TODO: .min(data.len()) is weird. We should split `pdu_tx` out into something that only
+        // reads data, or something that sends too.
+        frame_data[0..usize::from(data_length).min(data.len())].copy_from_slice(data);
 
-    //     // Tell the packet sender there is data ready to send
-    //     match self.tx_waker.try_borrow() {
-    //         Ok(waker) => {
-    //             if let Some(waker) = &*waker {
-    //                 waker.wake_by_ref()
-    //             }
-    //         }
-    //         Err(_) => warn!("Send waker is already borrowed"),
-    //     }
+        // Tell the packet sender there is data ready to send
+        match self.tx_waker.try_borrow() {
+            Ok(waker) => {
+                if let Some(waker) = &*waker {
+                    waker.wake_by_ref()
+                }
+            }
+            Err(_) => warn!("Send waker is already borrowed"),
+        }
 
-    //     // TODO: Configurable timeout
-    //     let timer = core::time::Duration::from_micros(30_000);
+        // TODO: Configurable timeout
+        let timer = core::time::Duration::from_micros(30_000);
 
-    //     let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
+        let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
 
-    //     Ok((
-    //         frame_data[0..usize::from(data_length)].try_into().unwrap(),
-    //         res.working_counter(),
-    //     ))
-    // }
+        Ok((
+            frame_data[0..usize::from(data_length)].try_into().unwrap(),
+            res.working_counter(),
+        ))
+    }
 
     pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
