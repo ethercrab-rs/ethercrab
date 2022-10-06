@@ -1,6 +1,8 @@
 mod frame_header;
 mod pdu;
+mod pdu2;
 mod pdu_frame;
+mod pdu_frame2;
 
 use crate::{
     command::{Command, CommandCode},
@@ -14,10 +16,12 @@ use crate::{
     timer_factory::TimerFactory,
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
+use bbqueue::{BBBuffer, Consumer, GrantW, Producer};
 use core::{
     cell::{RefCell, UnsafeCell},
     marker::PhantomData,
     mem::MaybeUninit,
+    pin::Pin,
     sync::atomic::{AtomicU8, Ordering},
     task::Waker,
 };
@@ -29,6 +33,8 @@ use nom::{
 };
 use packed_struct::PackedStructSlice;
 use smoltcp::wire::EthernetFrame;
+
+use self::pdu_frame2::Frame2;
 
 pub type PduResponse<T> = (T, u16);
 
@@ -50,13 +56,19 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
     }
 }
 
-pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+// TODO: Not static lmao
+static BUF: BBBuffer<1024> = BBBuffer::new();
+
+pub struct PduLoop<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: Can we have a single buffer that gives out variable length slices instead of wasting
     // space with lots of potentially huge PDUs?
     // No, at least not with BBQueue; the received data needs to be written back into the grant, but
     // that means the grant lives too long and blocks the sending of any other data from the
     // BBBuffer.
     frames: [UnsafeCell<pdu_frame::Frame<MAX_PDU_DATA>>; MAX_FRAMES],
+    frames2: [UnsafeCell<pdu_frame2::Frame2<'a>>; MAX_FRAMES],
+    buf_tx: UnsafeCell<Producer<'static, 1024>>,
+    buf_rx: UnsafeCell<Consumer<'static, 1024>>,
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: RefCell<Option<Waker>>,
     /// EtherCAT frame index.
@@ -66,13 +78,13 @@ pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> 
 
 // If we don't impl Send, does this guarantee we can have a PduLoopRef and not invalidate the
 // pointer? BBQueue does this.
-unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
-    for PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+unsafe impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
+    for PduLoop<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
 }
 
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    PduLoop<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
@@ -90,14 +102,21 @@ where
     //     }
     // }
 
-    pub const fn new() -> Self {
+    // TODO: Re-const
+    pub fn new() -> Self {
         let frames = unsafe { MaybeUninit::uninit().assume_init() };
+        let frames2 = unsafe { MaybeUninit::uninit().assume_init() };
+
+        let (buf_tx, buf_rx) = BUF.try_split().expect("Buf split");
 
         Self {
             frames,
+            frames2,
             tx_waker: RefCell::new(None),
             idx: AtomicU8::new(0),
             _timeout: PhantomData,
+            buf_tx: UnsafeCell::new(buf_tx),
+            buf_rx: UnsafeCell::new(buf_rx),
         }
     }
 
@@ -111,6 +130,8 @@ where
     where
         F: FnMut(&SendableFrame<MAX_PDU_DATA>) -> Result<(), ()>,
     {
+        log::trace!("Send frames blocking");
+
         self.frames.iter().try_for_each(|frame| {
             let frame = unsafe { &mut *frame.get() };
 
@@ -163,6 +184,78 @@ where
         let timer = core::time::Duration::from_micros(30_000);
 
         timeout::<TIMEOUT, _, _>(timer, frame).await
+    }
+
+    fn grant_tx(&self, size: usize) -> GrantW<'static, 1024> {
+        let buf_tx = unsafe { &mut *self.buf_tx.get() };
+
+        buf_tx.grant_exact(size).unwrap()
+    }
+
+    pub fn stuff(&self) -> &mut Consumer<'static, 1024> {
+        let buf_rx = unsafe { &mut *self.buf_rx.get() };
+
+        buf_rx
+    }
+
+    fn frame2(&self, idx: u8) -> Result<&mut pdu_frame2::Frame2<'a>, Error> {
+        let req = self
+            .frames2
+            .get(usize::from(idx))
+            .ok_or(PduError::InvalidIndex(idx))?;
+
+        Ok(unsafe { &mut *req.get() })
+    }
+
+    pub async fn pdu_tx2<'data>(
+        &self,
+        command: Command,
+        data: &'data mut [u8],
+        data_length: u16,
+    ) -> Result<(&'data [u8], u16), Error> {
+        let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
+
+        // let frame = self.frame(idx)?;
+
+        // frame.replace(command, data_length, idx, data)?;
+
+        let mut frame = Frame2::default();
+        // let frame = self.frame2(idx)?;
+
+        frame.replace(command, data_length, idx, data)?;
+
+        let len = frame.ethernet_frame_len();
+
+        let mut grant = self.grant_tx(len);
+
+        frame.to_ethernet_frame(&mut grant)?;
+
+        grant.commit(len);
+
+        // Tell the packet sender there is data ready to send
+        match self.tx_waker.try_borrow() {
+            Ok(waker) => {
+                if let Some(waker) = &*waker {
+                    waker.wake_by_ref()
+                }
+            }
+            Err(_) => warn!("Send waker is already borrowed"),
+        }
+
+        // TODO: Configurable timeout
+        let timer = core::time::Duration::from_micros(30_000);
+
+        // let mut slot = self.ref_slot(idx)?;
+
+        // slot.replace(data);
+
+        let working_counter = timeout::<TIMEOUT, _, _>(timer, frame).await?;
+
+        // &data[0..usize::from(data_length)].copy_from_slice(res.data());
+
+        // Ok((data, res.working_counter()))
+
+        Ok((data, working_counter))
     }
 
     pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {

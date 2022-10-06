@@ -47,6 +47,8 @@ where
         client_tx
             .pdu_loop
             .send_frames_blocking(ctx.waker(), |frame| {
+                log::trace!("Sending frame");
+
                 let mut packet_buf = [0u8; 1536];
 
                 let packet = frame.write_ethernet_packet(&mut packet_buf).unwrap();
@@ -54,6 +56,22 @@ where
                 tx.send_to(packet, None).unwrap().map_err(|_| ())
             })
             .unwrap();
+
+        let consumer = client_tx.pdu_loop.stuff();
+
+        let read = consumer.split_read().unwrap();
+        let len = read.combined_len();
+
+        let (a, b) = read.bufs();
+
+        if !a.is_empty() {
+            tx.send_to(a, None).unwrap().map_err(|_| ()).expect("A");
+        }
+        if !b.is_empty() {
+            tx.send_to(b, None).unwrap().map_err(|_| ()).expect("B");
+        }
+
+        read.release(len);
 
         Poll::Pending
     });
