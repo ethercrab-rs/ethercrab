@@ -27,6 +27,10 @@ pub enum Error {
     /// A fixed size array was not large enough to hold a given item.
     Capacity(Capacity),
     Other,
+    StringTooLong {
+        desired: usize,
+        required: usize,
+    },
 }
 
 impl From<BorrowError> for Error {
