@@ -56,6 +56,7 @@ pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> 
     // No, at least not with BBQueue; the received data needs to be written back into the grant, but
     // that means the grant lives too long and blocks the sending of any other data from the
     // BBBuffer.
+    frame_data: [UnsafeCell<heapless::Vec<u8, MAX_PDU_DATA>>; MAX_FRAMES],
     frames: [UnsafeCell<pdu_frame::Frame<MAX_PDU_DATA>>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: RefCell<Option<Waker>>,
@@ -92,9 +93,11 @@ where
 
     pub const fn new() -> Self {
         let frames = unsafe { MaybeUninit::uninit().assume_init() };
+        let frame_data = unsafe { MaybeUninit::uninit().assume_init() };
 
         Self {
             frames,
+            frame_data,
             tx_waker: RefCell::new(None),
             idx: AtomicU8::new(0),
             _timeout: PhantomData,
@@ -109,15 +112,17 @@ where
 
     pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), ()>
     where
-        F: FnMut(&SendableFrame<MAX_PDU_DATA>) -> Result<(), ()>,
+        F: FnMut(&SendableFrame<MAX_PDU_DATA>, &[u8]) -> Result<(), ()>,
     {
         self.frames.iter().try_for_each(|frame| {
             let frame = unsafe { &mut *frame.get() };
 
             if let Some(ref mut frame) = frame.sendable() {
+                let data = self.frame_data(frame.index()).unwrap();
+
                 frame.mark_sending();
 
-                send(frame)
+                send(frame, data)
             } else {
                 Ok(())
             }
@@ -137,17 +142,29 @@ where
         Ok(unsafe { &mut *req.get() })
     }
 
+    fn frame_data(&self, idx: u8) -> Result<&mut heapless::Vec<u8, MAX_PDU_DATA>, Error> {
+        let req = self
+            .frame_data
+            .get(usize::from(idx))
+            .ok_or(PduError::InvalidIndex(idx))?;
+
+        Ok(unsafe { &mut *req.get() })
+    }
+
     pub async fn pdu_tx(
         &self,
         command: Command,
         data: &[u8],
         data_length: u16,
-    ) -> Result<Pdu<MAX_PDU_DATA>, Error> {
+    ) -> Result<(heapless::Vec<u8, MAX_PDU_DATA>, u16), Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
         let frame = self.frame(idx)?;
 
-        frame.replace(command, data_length, idx, data)?;
+        frame.replace(command, data_length, idx)?;
+
+        let frame_data = self.frame_data(idx)?;
+        *frame_data = heapless::Vec::from_slice(data).map_err(|_| Error::Pdu(PduError::TooLong))?;
 
         // Tell the packet sender there is data ready to send
         match self.tx_waker.try_borrow() {
@@ -162,7 +179,12 @@ where
         // TODO: Configurable timeout
         let timer = core::time::Duration::from_micros(30_000);
 
-        timeout::<TIMEOUT, _, _>(timer, frame).await
+        let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
+
+        Ok((
+            frame_data.as_slice().try_into().unwrap(),
+            res.working_counter(),
+        ))
     }
 
     pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
@@ -205,6 +227,9 @@ where
 
         // `_i` should be empty as we `take()`d an exact amount above.
         debug_assert_eq!(i.len(), 0);
+
+        let frame_data = self.frame_data(index)?;
+        *frame_data = heapless::Vec::from_slice(data).map_err(|_| Error::Pdu(PduError::TooLong))?;
 
         frame.wake_done(flags, irq, data, working_counter)?;
 

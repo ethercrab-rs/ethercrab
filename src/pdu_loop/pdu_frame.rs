@@ -25,7 +25,7 @@ pub(crate) enum FrameState {
 pub(crate) struct Frame<const MAX_PDU_DATA: usize> {
     state: FrameState,
     waker: Option<Waker>,
-    pdu: Pdu<MAX_PDU_DATA>,
+    pub pdu: Pdu<MAX_PDU_DATA>,
 }
 
 impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
@@ -34,7 +34,7 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         command: Command,
         data_length: u16,
         index: u8,
-        data: &[u8],
+        // data: &[u8],
     ) -> Result<(), PduError> {
         if self.state != FrameState::None {
             trace!("Expected {:?}, got {:?}", FrameState::None, self.state);
@@ -43,7 +43,8 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
 
         self.state = FrameState::Created;
         self.waker = None;
-        self.pdu.replace(command, data_length, index, data)?;
+        // self.pdu.replace(command, data_length, index, data)?;
+        self.pdu.replace(command, data_length, index)?;
 
         Ok(())
     }
@@ -58,7 +59,11 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
         self.pdu.ethercat_payload_len() + mem::size_of::<FrameHeader>()
     }
 
-    pub fn to_ethernet_frame<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8], PduError> {
+    pub fn to_ethernet_frame<'a>(
+        &self,
+        buf: &'a mut [u8],
+        data: &[u8],
+    ) -> Result<&'a [u8], PduError> {
         let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len());
 
         let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
@@ -71,7 +76,7 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
 
         let ethernet_payload = ethernet_frame.payload_mut();
 
-        self.pdu.to_ethernet_payload(ethernet_payload)?;
+        self.pdu.to_ethernet_payload(ethernet_payload, data)?;
 
         Ok(ethernet_frame.into_inner())
     }
@@ -97,7 +102,7 @@ impl<const MAX_PDU_DATA: usize> Frame<MAX_PDU_DATA> {
             PduError::InvalidFrameState
         })?;
 
-        self.pdu.set_response(flags, irq, data, working_counter)?;
+        self.pdu.set_response(flags, irq, working_counter)?;
 
         self.state = FrameState::Done;
 
@@ -125,11 +130,16 @@ impl<'a, const MAX_PDU_DATA: usize> SendableFrame<'a, MAX_PDU_DATA> {
         self.frame.state = FrameState::Sending;
     }
 
+    pub(crate) fn index(&self) -> u8 {
+        self.frame.pdu.index
+    }
+
     pub(crate) fn write_ethernet_packet<'buf>(
         &self,
         buf: &'buf mut [u8],
+        data: &[u8],
     ) -> Result<&'buf [u8], PduError> {
-        self.frame.to_ethernet_frame(buf)
+        self.frame.to_ethernet_frame(buf, data)
     }
 }
 
