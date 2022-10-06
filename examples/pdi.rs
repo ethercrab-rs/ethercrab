@@ -7,7 +7,7 @@ use async_ctrlc::CtrlC;
 use ethercrab::error::Error;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
-use ethercrab::Pdi;
+// use ethercrab::Pdi;
 use ethercrab::SlaveGroup;
 use ethercrab::SlaveState;
 use futures_lite::stream::StreamExt;
@@ -28,15 +28,25 @@ const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
 #[cfg(not(target_os = "windows"))]
 const INTERFACE: &str = "eth1";
 
+const MAX_SLAVES: usize = 16;
+const MAX_PDU_DATA: usize = 16;
+const MAX_FRAMES: usize = 16;
+const PDI_LEN: usize = 16;
+
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
-    let client = Arc::new(Client::<16, 16, smol::Timer>::new());
+    let client = Arc::new(Client::<MAX_FRAMES, MAX_PDU_DATA, smol::Timer>::new());
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
 
     // let num_slaves = client.num_slaves();
 
-    let _groups = client
-        .init([SlaveGroup::<16>::default(); 1], |groups, slave| {
+    let groups =
+        [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _, _>::new(|_, _| async {
+            println!("Group init")
+        }); 1];
+
+    let mut groups = client
+        .init(groups, |groups, slave| {
             groups[0].push(slave).expect("Too many slaves");
 
             // TODO: Return Result
@@ -44,7 +54,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         .await
         .expect("Init");
 
-    let _slaves = &_groups[0].slaves();
+    // let _slaves = &_groups[0].slaves();
+    let group = groups.get_mut(0).expect("No group!");
 
     // log::info!("Discovered {num_slaves} slaves");
 
@@ -60,10 +71,9 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     async_io::Timer::after(Duration::from_millis(100)).await;
 
-    // TODO: Groups will have an offset address; use it instead of zero
-    let mut group = Pdi::<16, 16>::new(0);
-
     let mut interval = async_io::Timer::interval(Duration::from_millis(50));
+
+    log::info!("Group has {} slaves", group.slaves().len());
 
     while let Some(_) = interval.next().await {
         group.tx_rx(&client).await.unwrap();

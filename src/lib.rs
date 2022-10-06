@@ -47,11 +47,10 @@ use error::Error;
 use smoltcp::wire::{EthernetAddress, EthernetProtocol};
 use timer_factory::TimerFactory;
 
-// TODO: Remove, or make a "low_level" module to allow inner access to services
-pub use pdu_loop::CheckWorkingCounter;
+// // TODO: Remove, or make a "low_level" module to allow inner access to services
+// pub use pdu_loop::CheckWorkingCounter;
 
 pub use client::Client;
-pub use pdi::Pdi;
 pub use slave_group::SlaveGroup;
 pub use slave_state::SlaveState;
 
