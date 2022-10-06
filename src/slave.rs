@@ -17,6 +17,7 @@ use crate::{
     PduData, PduRead,
 };
 use core::fmt::Debug;
+use core::fmt::Write;
 use core::{fmt, time::Duration};
 use nom::{number::complete::le_u32, IResult};
 use packed_struct::PackedStruct;
@@ -86,29 +87,25 @@ impl Slave {
 
         slave_ref.wait_for_state(SlaveState::Init).await?;
 
+        // Will be/should be set to SiiOwner::Pdi after init
         slave_ref.set_eeprom_mode(SiiOwner::Master).await?;
 
         let eep = slave_ref.eeprom();
 
         let identity = eep.identity().await?;
 
-        let name: heapless::String<64> = {
-            // Uncomment to read longer, but correct, name string from EEPROM
-            // let general = eep.general().await?;
-            // let idx = general.name_string_idx;
+        let name = eep.device_name().await?.unwrap_or_else(|| {
+            let mut s = heapless::String::new();
 
-            // NOTE: Hard coded to the first string. This mirrors SOEM's behaviour. Reading the
-            // string index from EEPROM gives a different value in my testing - still a name, but
-            // longer.
-            let idx = 1;
+            write!(
+                s,
+                "manu. {:#010x}, device {:#010x}, serial {:#010x}",
+                identity.vendor_id, identity.product_id, identity.serial
+            )
+            .unwrap();
 
-            let name = eep
-                .find_string(idx)
-                .await?
-                .unwrap_or_else(|| "(unknown)".into());
-
-            name
-        };
+            s
+        });
 
         log::debug!("Slave name {}", name);
 
