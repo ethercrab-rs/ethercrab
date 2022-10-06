@@ -74,20 +74,6 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    // // TODO: Make this a const fn so we can store the PDU loop in a static. This will let us give
-    // // `Client` and other stuff to other threads, without using scoped threads. I'll need to use
-    // // MaybeUninit for `frames`. I also need to move all the methods to `PduLoopRef`, similar to how
-    // // BBQueue does it, then initialise the maybeuninit on that call. Maybe we can only get one ref,
-    // // but allow `Clone` on it?
-    // pub fn new() -> Self {
-    //     Self {
-    //         frames: [(); MAX_FRAMES].map(|_| UnsafeCell::new(pdu_frame::Frame::default())),
-    //         tx_waker: RefCell::new(None),
-    //         idx: AtomicU8::new(0),
-    //         _timeout: PhantomData,
-    //     }
-    // }
-
     pub const fn new() -> Self {
         let frames = unsafe { MaybeUninit::uninit().assume_init() };
         let frame_data = unsafe { MaybeUninit::uninit().assume_init() };
@@ -234,10 +220,9 @@ where
         debug_assert_eq!(i.len(), 0);
 
         let frame_data = self.frame_data(index)?;
-        // *frame_data = heapless::Vec::from_slice(data).map_err(|_| Error::Pdu(PduError::TooLong))?;
         frame_data[0..usize::from(flags.len())].copy_from_slice(data);
 
-        frame.wake_done(flags, irq, data, working_counter)?;
+        frame.wake_done(flags, irq, working_counter)?;
 
         Ok(())
     }

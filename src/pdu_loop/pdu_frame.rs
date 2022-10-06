@@ -83,7 +83,6 @@ impl Frame {
         &mut self,
         flags: PduFlags,
         irq: u16,
-        data: &[u8],
         working_counter: u16,
     ) -> Result<(), PduError> {
         if self.state != FrameState::Sending {
