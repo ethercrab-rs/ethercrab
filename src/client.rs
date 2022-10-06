@@ -22,7 +22,7 @@ use packed_struct::PackedStruct;
 
 pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: un-pub
-    pub pdu_loop: PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    pub pdu_loop: PduLoop<'static, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
     // // TODO: UnsafeCell instead of RefCell?
@@ -287,14 +287,15 @@ where
     where
         T: PduData,
     {
-        let pdu = self
-            .pdu_loop
-            .pdu_tx(command, value.as_slice(), T::len())
-            .await?;
+        // TODO: Grants from BBQUEUE?
+        let mut buf = heapless::Vec::<u8, MAX_PDU_DATA>::from_slice(value.as_slice())
+            .map_err(|_| Error::Pdu(PduError::TooLong))?;
 
-        let res = T::try_from_slice(pdu.data()).map_err(|_| PduError::Decode)?;
+        let (data, working_counter) = self.pdu_loop.pdu_tx2(command, &mut buf, T::len()).await?;
 
-        Ok((res, pdu.working_counter()))
+        let res = T::try_from_slice(data).map_err(|_| PduError::Decode)?;
+
+        Ok((res, working_counter))
     }
 
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, Error>
