@@ -1,94 +1,94 @@
 use crate::{error::Error, timer_factory::TimerFactory, Client};
 use core::{cell::UnsafeCell, fmt, ops::Range};
 
-/// A slave group with its own PDI.
-pub struct Pdi<const MAX_PDI: usize, const MAX_SLAVES: usize> {
-    // TODO: heapless::Vec when we can put references in a PDO
-    data: UnsafeCell<[u8; MAX_PDI]>,
-    start_address: u32,
-    // TODO: Un-pub, calculate during initialisation
-    pub io: heapless::Vec<(Option<PdiSegment>, Option<PdiSegment>), MAX_SLAVES>,
-}
+// /// A slave group with its own PDI.
+// pub struct Pdi<const MAX_PDI: usize, const MAX_SLAVES: usize> {
+//     // TODO: heapless::Vec when we can put references in a PDO
+//     data: UnsafeCell<[u8; MAX_PDI]>,
+//     start_address: u32,
+//     // TODO: Un-pub, calculate during initialisation
+//     pub io: heapless::Vec<(Option<PdiSegment>, Option<PdiSegment>), MAX_SLAVES>,
+// }
 
-impl<const MAX_PDI: usize, const MAX_SLAVES: usize> Pdi<MAX_PDI, MAX_SLAVES> {
-    pub fn new(start_address: u32) -> Self {
-        let mut self_ = Self {
-            data: UnsafeCell::new([0u8; MAX_PDI]),
-            start_address,
-            io: heapless::Vec::new(),
-        };
+// impl<const MAX_PDI: usize, const MAX_SLAVES: usize> Pdi<MAX_PDI, MAX_SLAVES> {
+//     pub fn new(start_address: u32) -> Self {
+//         let mut self_ = Self {
+//             data: UnsafeCell::new([0u8; MAX_PDI]),
+//             start_address,
+//             io: heapless::Vec::new(),
+//         };
 
-        // DELETEME
-        // Hard coded for EL2004, EL2004, EL1004
-        self_.io = {
-            let mut vec = heapless::Vec::new();
+//         // DELETEME
+//         // Hard coded for EL2004, EL2004, EL1004
+//         self_.io = {
+//             let mut vec = heapless::Vec::new();
 
-            vec.push((
-                None,
-                Some(PdiSegment {
-                    bytes: 0..1,
-                    bit_len: 4,
-                }),
-            ))
-            .unwrap();
+//             vec.push((
+//                 None,
+//                 Some(PdiSegment {
+//                     bytes: 0..1,
+//                     bit_len: 4,
+//                 }),
+//             ))
+//             .unwrap();
 
-            vec.push((
-                None,
-                Some(PdiSegment {
-                    bytes: 1..2,
-                    bit_len: 4,
-                }),
-            ))
-            .unwrap();
+//             vec.push((
+//                 None,
+//                 Some(PdiSegment {
+//                     bytes: 1..2,
+//                     bit_len: 4,
+//                 }),
+//             ))
+//             .unwrap();
 
-            vec.push((
-                Some(PdiSegment {
-                    bytes: 2..3,
-                    bit_len: 4,
-                }),
-                None,
-            ))
-            .unwrap();
+//             vec.push((
+//                 Some(PdiSegment {
+//                     bytes: 2..3,
+//                     bit_len: 4,
+//                 }),
+//                 None,
+//             ))
+//             .unwrap();
 
-            vec
-        };
+//             vec
+//         };
 
-        self_
-    }
+//         self_
+//     }
 
-    pub fn io(&self, idx: usize) -> Option<(Option<&mut [u8]>, Option<&mut [u8]>)> {
-        let (input_range, output_range) = self.io.get(idx)?;
+//     pub fn io(&self, idx: usize) -> Option<(Option<&mut [u8]>, Option<&mut [u8]>)> {
+//         let (input_range, output_range) = self.io.get(idx)?;
 
-        // SAFETY: Multiple mutable references are ok as long as I and O ranges do not overlap.
-        let data = unsafe { &mut *self.data.get() };
-        let data2 = unsafe { &mut *self.data.get() };
+//         // SAFETY: Multiple mutable references are ok as long as I and O ranges do not overlap.
+//         let data = unsafe { &mut *self.data.get() };
+//         let data2 = unsafe { &mut *self.data.get() };
 
-        let i = input_range
-            .clone()
-            .and_then(|range| data.get_mut(range.bytes.clone()));
-        let o = output_range
-            .clone()
-            .and_then(|range| data2.get_mut(range.bytes.clone()));
+//         let i = input_range
+//             .clone()
+//             .and_then(|range| data.get_mut(range.bytes.clone()));
+//         let o = output_range
+//             .clone()
+//             .and_then(|range| data2.get_mut(range.bytes.clone()));
 
-        Some((i, o))
-    }
+//         Some((i, o))
+//     }
 
-    pub async fn tx_rx<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
-        &mut self,
-        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-    ) -> Result<(), Error>
-    where
-        TIMEOUT: TimerFactory,
-    {
-        let (_res, _wkc) = client
-            .lrw_buf(self.start_address, unsafe { &mut *self.data.get() })
-            .await?;
+//     pub async fn tx_rx<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
+//         &mut self,
+//         client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+//     ) -> Result<(), Error>
+//     where
+//         TIMEOUT: TimerFactory,
+//     {
+//         let (_res, _wkc) = client
+//             .lrw_buf(self.start_address, unsafe { &mut *self.data.get() })
+//             .await?;
 
-        // TODO: Check working counter = (slaves with outputs) + (slaves with inputs * 2)
+//         // TODO: Check working counter = (slaves with outputs) + (slaves with inputs * 2)
 
-        Ok(())
-    }
-}
+//         Ok(())
+//     }
+// }
 
 /// An accumulator that stores the bit and byte offsets in the PDI so slave IO data can be mapped
 /// to/from the PDI using FMMUs.

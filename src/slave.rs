@@ -25,50 +25,50 @@ pub struct Slave {
     // TODO: Un-pub
     pub configured_address: u16,
     /// Index into PDI map corresponding to slave inputs.
-    pub(crate) input_range: PdiSegment,
+    pub(crate) input_range: Option<PdiSegment>,
     /// Index into PDI map corresponding to slave outputs.
-    pub(crate) output_range: PdiSegment,
+    pub(crate) output_range: Option<PdiSegment>,
 }
 
 impl Slave {
     pub(crate) fn new(configured_address: u16) -> Self {
         Self {
             configured_address,
-            input_range: PdiSegment::default(),
-            output_range: PdiSegment::default(),
+            input_range: None,
+            output_range: None,
         }
     }
 
-    pub async fn configure_from_eeprom<
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-        O,
-    >(
-        &mut self,
-        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        offset: PdiOffset,
-        mut slave_preop_safeop: impl FnMut() -> O,
-    ) -> Result<PdiOffset, Error>
-    where
-        TIMEOUT: TimerFactory,
-        O: core::future::Future<Output = Result<(), Error>>,
-    {
-        // TODO: I don't think we need SlaveRef anymore
-        let slave_ref = SlaveRef::new(client, self.configured_address);
-
-        let (offset, input_range, output_range) = slave_ref
-            .configure_from_eeprom(offset, &mut slave_preop_safeop)
-            .await?;
-
-        self.input_range = input_range;
-        self.output_range = output_range;
-
-        Ok(offset)
+    pub(crate) fn io_segments(&self) -> (Option<PdiSegment>, Option<PdiSegment>) {
+        (self.input_range.clone(), self.output_range.clone())
     }
+
+    // pub async fn configure_from_eeprom<
+    //     const MAX_FRAMES: usize,
+    //     const MAX_PDU_DATA: usize,
+    //     TIMEOUT,
+    // >(
+    //     &mut self,
+    //     client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    //     offset: PdiOffset,
+    // ) -> Result<PdiOffset, Error>
+    // where
+    //     TIMEOUT: TimerFactory,
+    // {
+    //     // TODO: I don't think we need SlaveRef anymore
+    //     let slave_ref = SlaveRef::new(client, self.configured_address);
+
+    //     let (offset, input_range, output_range) = slave_ref.configure_from_eeprom(offset).await?;
+
+    //     self.input_range = input_range;
+    //     self.output_range = output_range;
+
+    //     Ok(offset)
+    // }
 }
 
 pub struct SlaveRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+    slave: &'a mut Slave,
     client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     configured_address: u16,
 }
@@ -81,8 +81,10 @@ where
     pub fn new(
         client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
         configured_address: u16,
+        slave: &'a mut Slave,
     ) -> Self {
         Self {
+            slave,
             client,
             configured_address,
         }
@@ -214,37 +216,13 @@ where
         Ok(sm_config)
     }
 
-    // TODO: PO2SO callback for configuring SDOs
-    /// Configure slave from EEPROM configuration. Once complete, the slave will be in PRE-OP state
-    /// and can be transitioned into SAFE-OP and beyond with [`request_slave_state`].
-    ///
-    /// The slave must be in INIT state before calling this method.
-    async fn configure_from_eeprom<O>(
-        &self,
-        mut offset: PdiOffset,
-        mut slave_preop_safeop: impl FnMut() -> O,
-    ) -> Result<(PdiOffset, PdiSegment, PdiSegment), Error>
-    where
-        O: core::future::Future<Output = Result<(), Error>>,
-    {
+    pub(crate) async fn configure_from_eeprom_safe_op(&self) -> Result<(), Error> {
         // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
         // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
         // to master mode here, now that the transition is complete.
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
-        // RX from the perspective of the slave device
-        let master_write_pdos = self.eeprom().master_write_pdos().await?;
-        let master_read_pdos = self.eeprom().master_read_pdos().await?;
-
         let sync_managers = self.eeprom().sync_managers().await?;
-        let fmmu_usage = self.eeprom().fmmus().await?;
-        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
-
-        log::debug!(
-            "Slave {:#06x} PDOs for outputs: {:#?}",
-            self.configured_address,
-            master_write_pdos
-        );
 
         // Mailboxes must be configured in INIT state
         self.configure_mailboxes(&sync_managers).await?;
@@ -257,7 +235,20 @@ where
 
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
-        slave_preop_safeop().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn configure_from_eeprom_pre_op(
+        &mut self,
+        mut offset: PdiOffset,
+    ) -> Result<PdiOffset, Error> {
+        // RX from the perspective of the slave device
+        let master_write_pdos = self.eeprom().master_write_pdos().await?;
+        let master_read_pdos = self.eeprom().master_read_pdos().await?;
+
+        let sync_managers = self.eeprom().sync_managers().await?;
+        let fmmu_usage = self.eeprom().fmmus().await?;
+        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
         // PDOs must be configurd in PRE-OP state
         // TODO: I think I need to read the PDOs out of CoE (if supported?), not EEPROM
@@ -288,7 +279,10 @@ where
 
         self.request_slave_state(SlaveState::SafeOp).await?;
 
-        Ok((offset, inputs_range, outputs_range))
+        self.slave.input_range = inputs_range.clone();
+        self.slave.output_range = outputs_range.clone();
+
+        Ok(offset)
     }
 
     async fn configure_mailboxes(&self, sync_managers: &[SyncManager]) -> Result<(), Error> {
@@ -348,7 +342,7 @@ where
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         offset: &mut PdiOffset,
-    ) -> Result<PdiSegment, Error> {
+    ) -> Result<Option<PdiSegment>, Error> {
         let start_offset = *offset;
         let mut total_bit_len = 0;
 
@@ -425,10 +419,14 @@ where
             *offset = offset.increment_byte_aligned(bit_len);
         }
 
-        Ok(PdiSegment {
+        Ok((total_bit_len > 0).then_some(PdiSegment {
             bit_len: total_bit_len.into(),
             bytes: start_offset.up_to(*offset),
-        })
+        }))
+    }
+
+    pub(crate) fn io_segments(&self) -> (Option<PdiSegment>, Option<PdiSegment>) {
+        self.slave.io_segments()
     }
 }
 

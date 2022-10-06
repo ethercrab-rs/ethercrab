@@ -34,20 +34,35 @@ unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
 {
 }
 
-pub trait SlaveGroupContainer<'a> {
+pub trait SlaveGroupContainer<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O> {
     fn num_groups(&self) -> usize;
 
-    fn group(&'a mut self, index: usize) -> Option<SlaveGroupRef<'a>>;
+    fn group(
+        &'a mut self,
+        index: usize,
+    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>>;
 }
 
-impl<'a, const MAX_SLAVES: usize, const N: usize> SlaveGroupContainer<'a>
-    for [SlaveGroup<MAX_SLAVES>; N]
+impl<
+        'a,
+        const N: usize,
+        const MAX_SLAVES: usize,
+        const MAX_PDI: usize,
+        const MAX_FRAMES: usize,
+        const MAX_PDU_DATA: usize,
+        TIMEOUT,
+        O,
+    > SlaveGroupContainer<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
+    for [SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>; N]
 {
     fn num_groups(&self) -> usize {
         N
     }
 
-    fn group(&'a mut self, index: usize) -> Option<SlaveGroupRef<'a>> {
+    fn group(
+        &'a mut self,
+        index: usize,
+    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>> {
         self.get_mut(index).map(|group| group.as_mut_ref())
     }
 }
@@ -110,13 +125,14 @@ where
     }
 
     /// Detect slaves and set their configured station addresses.
-    pub async fn init<G>(
+    pub async fn init<G, O>(
         &self,
         mut groups: G,
         mut group_filter: impl FnMut(&mut G, Slave),
     ) -> Result<G, Error>
     where
-        G: for<'a> SlaveGroupContainer<'a>,
+        G: for<'a> SlaveGroupContainer<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>,
+        O: core::future::Future<Output = ()>,
     {
         self.reset_slaves().await?;
 
