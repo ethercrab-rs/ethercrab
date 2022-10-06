@@ -7,33 +7,25 @@ use cookie_factory::{
 use packed_struct::prelude::*;
 
 #[derive(Debug, Clone, Default)]
-pub struct Pdu<const MAX_DATA: usize> {
+pub struct Pdu {
     command: Command,
     pub index: u8,
     pub flags: PduFlags,
     irq: u16,
-    // data: heapless::Vec<u8, MAX_DATA>,
     working_counter: u16,
 }
 
-impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
+impl Pdu {
     pub fn replace(
         &mut self,
         command: Command,
         data_length: u16,
         index: u8,
-        // data: &[u8],
     ) -> Result<(), PduError> {
         self.command = command;
         self.flags = PduFlags::with_len(data_length);
         self.irq = 0;
         self.index = index;
-
-        // self.data
-        //     .resize(usize::from(data_length), 0u8)
-        //     .map_err(|_| PduError::TooLong)?;
-        // self.data[0..data.len()].copy_from_slice(data);
-
         self.working_counter = 0;
 
         Ok(())
@@ -43,17 +35,10 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
         &mut self,
         flags: PduFlags,
         irq: u16,
-        // data: &[u8],
         working_counter: u16,
     ) -> Result<(), PduError> {
         self.flags = flags;
         self.irq = irq;
-
-        // self.data
-        //     .resize(data.len(), 0u8)
-        //     .map_err(|_| PduError::TooLong)?;
-        // self.data.copy_from_slice(data);
-
         self.working_counter = working_counter;
 
         Ok(())
@@ -65,7 +50,6 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
             index: 0,
             flags: PduFlags::with_len(0),
             irq: 0,
-            // data: heapless::Vec::new(),
             working_counter: 0,
         }
     }
@@ -127,10 +111,6 @@ impl<const MAX_DATA: usize> Pdu<MAX_DATA> {
     pub fn command(&self) -> Command {
         self.command
     }
-
-    // pub(crate) fn data(&self) -> &[u8] {
-    //     self.data.as_slice()
-    // }
 
     pub(crate) fn working_counter(&self) -> u16 {
         self.working_counter
