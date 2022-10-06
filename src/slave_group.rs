@@ -1,12 +1,80 @@
-use crate::{error::Error, pdi::PdiOffset, slave::Slave, timer_factory::TimerFactory, Client};
+use crate::{
+    error::Error,
+    pdi::{PdiOffset, PdiSegment},
+    slave::{Slave, SlaveRef},
+    timer_factory::TimerFactory,
+    Client,
+};
+use core::cell::UnsafeCell;
 
-// TODO: Can probably dedupe with pdi::Pdi?
-#[derive(Debug, Default)]
-pub struct SlaveGroup<const MAX_SLAVES: usize> {
+pub struct SlaveGroup<
+    const MAX_SLAVES: usize,
+    const MAX_PDI: usize,
+    const MAX_FRAMES: usize,
+    const MAX_PDU_DATA: usize,
+    TIMEOUT,
+    O,
+> {
     slaves: heapless::Vec<Slave, MAX_SLAVES>,
+    io: heapless::Vec<(Option<PdiSegment>, Option<PdiSegment>), MAX_SLAVES>,
+    preop_safeop_hook: Option<
+        fn(
+            client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+            &SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        ) -> O,
+    >,
+    pdi: UnsafeCell<[u8; MAX_PDI]>,
+    pdi_len: usize,
+    start_address: u32,
+    /// Expected working counter when performing a read/write to all slaves in this group.
+    ///
+    /// This should be equivalent to `(slaves with inputs) + (2 * slaves with outputs)`.
+    group_working_counter: u16,
 }
 
-impl<const MAX_SLAVES: usize> SlaveGroup<MAX_SLAVES> {
+impl<
+        const MAX_SLAVES: usize,
+        const MAX_PDI: usize,
+        const MAX_FRAMES: usize,
+        const MAX_PDU_DATA: usize,
+        TIMEOUT,
+        O,
+    > Default for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
+{
+    fn default() -> Self {
+        Self {
+            slaves: Default::default(),
+            preop_safeop_hook: Default::default(),
+            pdi: UnsafeCell::new([0u8; MAX_PDI]),
+            pdi_len: Default::default(),
+            io: heapless::Vec::new(),
+            start_address: 0,
+            group_working_counter: 0,
+        }
+    }
+}
+
+impl<
+        const MAX_SLAVES: usize,
+        const MAX_PDI: usize,
+        const MAX_FRAMES: usize,
+        const MAX_PDU_DATA: usize,
+        TIMEOUT,
+        O,
+    > SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
+{
+    pub fn new(
+        preop_safeop_hook: fn(
+            client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+            &SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        ) -> O,
+    ) -> Self {
+        Self {
+            preop_safeop_hook: Some(preop_safeop_hook),
+            ..Default::default()
+        }
+    }
+
     pub fn push(&mut self, slave: Slave) -> Result<(), Error> {
         self.slaves.push(slave).map_err(|_| Error::TooManySlaves)
     }
@@ -15,27 +83,82 @@ impl<const MAX_SLAVES: usize> SlaveGroup<MAX_SLAVES> {
         &self.slaves
     }
 
+    fn pdi(&self) -> &mut [u8] {
+        unsafe { &mut *self.pdi.get() }
+    }
+
+    pub fn io(&self, idx: usize) -> Option<(Option<&mut [u8]>, Option<&mut [u8]>)> {
+        let (input_range, output_range) = self.slaves.get(idx)?.io_segments();
+
+        // SAFETY: Multiple mutable references are ok as long as I and O ranges do not overlap.
+        let data = self.pdi();
+        let data2 = self.pdi();
+
+        let i = input_range
+            .clone()
+            .and_then(|range| data.get_mut(range.bytes.clone()));
+        let o = output_range
+            .clone()
+            .and_then(|range| data2.get_mut(range.bytes.clone()));
+
+        Some((i, o))
+    }
+
+    pub async fn tx_rx(
+        &mut self,
+        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    ) -> Result<(), Error>
+    where
+        TIMEOUT: TimerFactory,
+    {
+        let (_res, _wkc) = client.lrw_buf(self.start_address, self.pdi()).await?;
+
+        // TODO: Check working counter = (slaves with outputs) + (slaves with inputs * 2)
+
+        if _wkc != self.group_working_counter {
+            return Err(Error::WorkingCounter {
+                expected: self.group_working_counter,
+                received: _wkc,
+                context: Some("group working counter"),
+            });
+        } else {
+            Ok(())
+        }
+    }
+
     // TODO: AsRef or AsMut trait?
-    pub fn as_mut_ref(&mut self) -> SlaveGroupRef<'_> {
+    pub(crate) fn as_mut_ref(&mut self) -> SlaveGroupRef<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O> {
         SlaveGroupRef {
             slaves: self.slaves.as_mut(),
+            preop_safeop_hook: self.preop_safeop_hook,
+            pdi_len: &mut self.pdi_len,
+            start_address: &mut self.start_address,
+            group_working_counter: &mut self.group_working_counter,
         }
     }
 }
 
 /// A reference to a [`SlaveGroup`] with elided `MAX_SLAVES` constant.
-#[derive(Debug)]
-pub struct SlaveGroupRef<'a> {
-    // TODO: Un-pub?
+pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O> {
     pub(crate) slaves: &'a mut [Slave],
+    pdi_len: &'a mut usize,
+    start_address: &'a mut u32,
+    group_working_counter: &'a mut u16,
+    pub(crate) preop_safeop_hook: Option<
+        fn(
+            client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+            &SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        ) -> O,
+    >,
 }
 
-impl<'a> SlaveGroupRef<'a> {
-    pub(crate) async fn configure_from_eeprom<
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-    >(
+impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O>
+    SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
+where
+    TIMEOUT: TimerFactory,
+    O: core::future::Future<Output = ()>,
+{
+    pub(crate) async fn configure_from_eeprom(
         &mut self,
         mut offset: PdiOffset,
         client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
@@ -43,14 +166,25 @@ impl<'a> SlaveGroupRef<'a> {
     where
         TIMEOUT: TimerFactory,
     {
+        *self.start_address = offset.start_address;
+
         for slave in self.slaves.iter_mut() {
-            offset = slave
-                .configure_from_eeprom(&client, offset, &mut || async {
-                    // TODO: Store PO2SO hook on slave. Currently blocked by `Client` having so many const generics
-                    Ok(())
-                })
-                .await?;
+            let mut slave = SlaveRef::new(client, slave.configured_address, slave);
+
+            slave.configure_from_eeprom_safe_op().await?;
+
+            if let Some(hook) = self.preop_safeop_hook {
+                (hook)(&client, &slave);
+            }
+
+            offset = slave.configure_from_eeprom_pre_op(offset).await?;
+
+            let (i, o) = slave.io_segments();
+
+            *self.group_working_counter += i.map(|_| 1).unwrap_or(0) + o.map(|_| 2).unwrap_or(0);
         }
+
+        *self.pdi_len = (offset.start_address - *self.start_address) as usize;
 
         Ok(offset)
     }
