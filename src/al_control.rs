@@ -36,7 +36,14 @@ impl PduRead for AlControl {
     type Error = PackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
+        match Self::unpack_from_slice(slice) {
+            Err(PackingError::InvalidValue) => Ok(Self {
+                state: SlaveState::Unknown,
+                ..Default::default()
+            }),
+            Err(e) => Err(e),
+            Ok(res) => Ok(res),
+        }
     }
 }
 
