@@ -49,7 +49,9 @@ where
             .send_frames_blocking(ctx.waker(), |frame, data| {
                 let mut packet_buf = [0u8; 1536];
 
-                let packet = frame.write_ethernet_packet(&mut packet_buf, data).unwrap();
+                let packet = frame
+                    .write_ethernet_packet(&mut packet_buf, data)
+                    .expect("Write Ethernet frame");
 
                 tx.send_to(packet, None).unwrap().map_err(|_| ())
             })

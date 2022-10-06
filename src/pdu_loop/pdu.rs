@@ -10,7 +10,7 @@ use packed_struct::prelude::*;
 pub struct Pdu<const MAX_DATA: usize> {
     command: Command,
     pub index: u8,
-    flags: PduFlags,
+    pub flags: PduFlags,
     irq: u16,
     // data: heapless::Vec<u8, MAX_DATA>,
     working_counter: u16,
