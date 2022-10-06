@@ -47,9 +47,10 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     let mut groups = client
         .init(groups, |groups, slave| {
+            // All slaves MUST end up in a group or they'll remain uninitialised
             groups[0].push(slave).expect("Too many slaves");
 
-            // TODO: Return Result
+            // TODO: Return a group key so the user has to put the slave somewhere
         })
         .await
         .expect("Init");
@@ -78,13 +79,13 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     while let Some(_) = interval.next().await {
         group.tx_rx(&client).await.unwrap();
 
-        group.io(0).and_then(|(_i, o)| o).map(|o| {
+        group.io(1).and_then(|(_i, o)| o).map(|o| {
             o[0] += 1;
         });
 
-        let switches = group.io(2).and_then(|(i, _o)| i).map(|i| i[0]).unwrap();
+        let switches = group.io(3).and_then(|(i, _o)| i).map(|i| i[0]).unwrap();
 
-        group.io(1).and_then(|(_i, o)| o).map(|o| {
+        group.io(2).and_then(|(_i, o)| o).map(|o| {
             o[0] = switches;
         });
     }
