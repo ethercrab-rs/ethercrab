@@ -271,15 +271,15 @@ where
     where
         T: PduRead,
     {
-        let pdu = self.pdu_loop.pdu_tx(command, &[], T::len()).await?;
+        let (data, working_counter) = self.pdu_loop.pdu_tx(command, &[], T::len()).await?;
 
-        let res = T::try_from_slice(pdu.data()).map_err(|_e| {
+        let res = T::try_from_slice(&data).map_err(|_e| {
             log::error!("PDU data decode");
 
             PduError::Decode
         })?;
 
-        Ok((res, pdu.working_counter()))
+        Ok((res, working_counter))
     }
 
     // TODO: Support different I and O types; some things can return different data
@@ -287,14 +287,14 @@ where
     where
         T: PduData,
     {
-        let pdu = self
+        let (data, working_counter) = self
             .pdu_loop
             .pdu_tx(command, value.as_slice(), T::len())
             .await?;
 
-        let res = T::try_from_slice(pdu.data()).map_err(|_| PduError::Decode)?;
+        let res = T::try_from_slice(&data).map_err(|_| PduError::Decode)?;
 
-        Ok((res, pdu.working_counter()))
+        Ok((res, working_counter))
     }
 
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, Error>
@@ -419,17 +419,17 @@ where
         address: u32,
         value: &'buf mut [u8],
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
-        let pdu = self
+        let (data, working_counter) = self
             .pdu_loop
             .pdu_tx(Command::Lrw { address }, value, value.len() as u16)
             .await?;
 
-        if pdu.data().len() != value.len() {
+        if data.len() != value.len() {
             return Err(Error::Pdu(PduError::Decode));
         }
 
-        value.copy_from_slice(pdu.data());
+        value.copy_from_slice(&data);
 
-        Ok((value, pdu.working_counter()))
+        Ok((value, working_counter))
     }
 }
