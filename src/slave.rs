@@ -76,8 +76,8 @@ pub struct Slave {
 }
 
 impl Slave {
-    pub(crate) async fn new<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
-        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    pub(crate) async fn new<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
+        client: &'client Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
         configured_address: u16,
     ) -> Result<Self, Error>
     where
@@ -124,7 +124,7 @@ impl Slave {
 }
 
 pub struct SlaveRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     configured_address: u16,
 }
 
