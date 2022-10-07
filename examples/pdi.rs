@@ -7,6 +7,7 @@ use async_ctrlc::CtrlC;
 use ethercrab::error::Error;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
+use ethercrab::PduLoop;
 // use ethercrab::Pdi;
 use ethercrab::SlaveGroup;
 use ethercrab::SlaveState;
@@ -33,8 +34,12 @@ const MAX_PDU_DATA: usize = 16;
 const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 16;
 
+static PDU_LOOP: PduLoop<MAX_FRAMES, MAX_PDU_DATA, smol::Timer> = PduLoop::new();
+
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
-    let client = Arc::new(Client::<MAX_FRAMES, MAX_PDU_DATA, smol::Timer>::new());
+    let client = Arc::new(Client::<MAX_FRAMES, MAX_PDU_DATA, smol::Timer>::new(
+        &PDU_LOOP,
+    ));
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
 
