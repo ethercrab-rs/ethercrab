@@ -46,6 +46,7 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
     }
 }
 
+// TODO: Move TIMEOUT out of PduLoop. Use it in Client and Eeprom instead
 pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: Can we have a single buffer that gives out variable length slices instead of wasting
     // space with lots of potentially huge PDUs?
@@ -155,10 +156,10 @@ where
     }
 
     // TX
-    pub async fn pdu_tx<'a>(
+    pub async fn pdu_tx_readonly<'a>(
         &'a self,
         command: Command,
-        data: &[u8],
+        // data: &[u8],
         data_length: u16,
     ) -> Result<(&'a [u8], u16), Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
@@ -168,10 +169,6 @@ where
         frame.replace(command, data_length, idx)?;
 
         let frame_data = self.frame_data(idx)?;
-
-        // TODO: .min(data.len()) is weird. We should split `pdu_tx` out into something that only
-        // reads data, or something that sends too.
-        frame_data[0..usize::from(data_length).min(data.len())].copy_from_slice(data);
 
         // Tell the packet sender there is data ready to send
         match self.tx_waker.try_borrow() {
@@ -190,6 +187,44 @@ where
 
         Ok((
             &frame_data[0..usize::from(data_length)],
+            res.working_counter(),
+        ))
+    }
+
+    // TX
+    pub async fn pdu_tx_readwrite<'a>(
+        &'a self,
+        command: Command,
+        data: &[u8],
+        // data_length: u16,
+    ) -> Result<(&'a [u8], u16), Error> {
+        let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
+
+        let frame = self.frame(idx)?;
+
+        frame.replace(command, data.len() as u16, idx)?;
+
+        let frame_data = self.frame_data(idx)?;
+
+        frame_data[0..data.len()].copy_from_slice(data);
+
+        // Tell the packet sender there is data ready to send
+        match self.tx_waker.try_borrow() {
+            Ok(waker) => {
+                if let Some(waker) = &*waker {
+                    waker.wake_by_ref()
+                }
+            }
+            Err(_) => warn!("Send waker is already borrowed"),
+        }
+
+        // TODO: Configurable timeout
+        let timer = core::time::Duration::from_micros(30_000);
+
+        let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
+
+        Ok((
+            &frame_data[0..usize::from(data.len())],
             res.working_counter(),
         ))
     }

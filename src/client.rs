@@ -175,13 +175,12 @@ where
         .await
     }
 
-    // TODO: Dedupe with write_service when refactoring allows
     async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
         <T as PduRead>::Error: Debug,
     {
-        let (data, working_counter) = self.pdu_loop.pdu_tx(command, &[], T::len()).await?;
+        let (data, working_counter) = self.pdu_loop.pdu_tx_readonly(command, T::len()).await?;
 
         let res = T::try_from_slice(&data).map_err(|e| {
             log::error!(
@@ -204,7 +203,7 @@ where
     {
         let (data, working_counter) = self
             .pdu_loop
-            .pdu_tx(command, value.as_slice(), T::len())
+            .pdu_tx_readwrite(command, value.as_slice())
             .await?;
 
         let res = T::try_from_slice(&data).map_err(|_| PduError::Decode)?;
@@ -339,7 +338,7 @@ where
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
         let (data, working_counter) = self
             .pdu_loop
-            .pdu_tx(Command::Lrw { address }, value, value.len() as u16)
+            .pdu_tx_readwrite(Command::Lrw { address }, value)
             .await?;
 
         if data.len() != value.len() {
