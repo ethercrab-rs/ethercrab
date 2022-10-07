@@ -75,8 +75,8 @@ where
     TIMEOUT: TimerFactory,
 {
     pub const fn new() -> Self {
-        // TODO: When MaybeUninit::zeroed is stablised, use it.
-        let frames = unsafe { MaybeUninit::uninit().assume_init() };
+        // MSRV: Nightly
+        let frames = unsafe { MaybeUninit::zeroed().assume_init() };
 
         Self {
             frames,
