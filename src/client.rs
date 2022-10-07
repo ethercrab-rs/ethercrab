@@ -15,20 +15,21 @@ use core::{any::type_name, fmt::Debug};
 use core::{cell::RefCell, marker::PhantomData, time::Duration};
 use packed_struct::PackedStruct;
 
-pub struct Client<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+pub struct Client<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: un-pub
     pub pdu_loop: PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
+    _pd: PhantomData<&'client ()>,
 }
 
-unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
-    for Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+unsafe impl<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
+    for Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
 }
 
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
@@ -44,6 +45,7 @@ where
             // slaves: UnsafeCell::new(heapless::Vec::new()),
             num_slaves: RefCell::new(0),
             _timeout: PhantomData,
+            _pd: PhantomData,
         }
     }
 
