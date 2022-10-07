@@ -1,3 +1,4 @@
+#![feature(const_maybe_uninit_zeroed)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 // This mod MUST go first, so that the others see its macros.
