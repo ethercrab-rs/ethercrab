@@ -52,6 +52,7 @@ use timer_factory::TimerFactory;
 // pub use pdu_loop::CheckWorkingCounter;
 
 pub use client::Client;
+pub use pdu_loop::PduLoop;
 pub use slave_group::SlaveGroup;
 pub use slave_state::SlaveState;
 
