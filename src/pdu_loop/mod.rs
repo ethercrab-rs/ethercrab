@@ -87,12 +87,14 @@ where
         }
     }
 
+    // TX
     fn set_send_waker(&self, waker: &Waker) {
         if self.tx_waker.borrow().is_none() {
             self.tx_waker.borrow_mut().replace(waker.clone());
         }
     }
 
+    // TX
     pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), ()>
     where
         F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
@@ -116,6 +118,7 @@ where
         Ok(())
     }
 
+    // BOTH
     fn frame(&self, idx: u8) -> Result<&mut pdu_frame::Frame, Error> {
         let req = self
             .frames
@@ -125,6 +128,7 @@ where
         Ok(unsafe { &mut *req.get() })
     }
 
+    // BOTH
     fn frame_data(&self, idx: u8) -> Result<&mut [u8], Error> {
         let start = usize::from(idx) * MAX_PDU_DATA;
 
@@ -139,6 +143,7 @@ where
         Ok(frame)
     }
 
+    // TX
     pub async fn pdu_tx(
         &self,
         command: Command,
@@ -178,6 +183,7 @@ where
         ))
     }
 
+    // RX
     pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 

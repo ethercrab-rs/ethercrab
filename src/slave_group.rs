@@ -135,9 +135,9 @@ impl<
         Some((i, o))
     }
 
-    pub async fn tx_rx(
+    pub async fn tx_rx<'client>(
         &mut self,
-        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        client: &'client Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     ) -> Result<(), Error>
     where
         TIMEOUT: TimerFactory,
@@ -189,10 +189,10 @@ where
     TIMEOUT: TimerFactory,
     O: core::future::Future<Output = ()>,
 {
-    pub(crate) async fn configure_from_eeprom(
+    pub(crate) async fn configure_from_eeprom<'client>(
         &mut self,
         mut offset: PdiOffset,
-        client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        client: &'client Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     ) -> Result<PdiOffset, Error>
     where
         TIMEOUT: TimerFactory,
