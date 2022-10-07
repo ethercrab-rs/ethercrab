@@ -52,8 +52,7 @@ pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> 
     // No, at least not with BBQueue; the received data needs to be written back into the grant, but
     // that means the grant lives too long and blocks the sending of any other data from the
     // BBBuffer.
-    // TODO: Compute length with `MAX_PDU_DATA * MAX_FRAMES
-    frame_data: UnsafeCell<[u8; 1024]>,
+    frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
     frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: RefCell<Option<Waker>>,
@@ -77,10 +76,11 @@ where
     pub const fn new() -> Self {
         // MSRV: Nightly
         let frames = unsafe { MaybeUninit::zeroed().assume_init() };
+        let frame_data = unsafe { MaybeUninit::zeroed().assume_init() };
 
         Self {
             frames,
-            frame_data: UnsafeCell::new([0u8; 1024]),
+            frame_data,
             tx_waker: RefCell::new(None),
             idx: AtomicU8::new(0),
             _timeout: PhantomData,
@@ -130,17 +130,12 @@ where
 
     // BOTH
     fn frame_data(&self, idx: u8) -> Result<&mut [u8], Error> {
-        let start = usize::from(idx) * MAX_PDU_DATA;
-
-        let range = start..(start + MAX_PDU_DATA);
-
-        let frames = self.frame_data.get();
-
-        let frame = unsafe { &mut *frames }
-            .get_mut(range)
+        let req = self
+            .frame_data
+            .get(usize::from(idx))
             .ok_or(PduError::InvalidIndex(idx))?;
 
-        Ok(frame)
+        Ok(unsafe { &mut *req.get() })
     }
 
     // TX
