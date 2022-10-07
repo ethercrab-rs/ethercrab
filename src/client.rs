@@ -17,7 +17,7 @@ use packed_struct::PackedStruct;
 
 pub struct Client<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: un-pub
-    pub pdu_loop: PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    pub pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
     _pd: PhantomData<&'client ()>,
@@ -33,7 +33,7 @@ impl<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub fn new() -> Self {
+    pub fn new(pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> Self {
         // MSRV: Make `MAX_FRAMES` a `u8` when `generic_const_exprs` is stablised
         assert!(
             MAX_FRAMES <= u8::MAX.into(),
@@ -41,7 +41,7 @@ where
         );
 
         Self {
-            pdu_loop: PduLoop::new(),
+            pdu_loop,
             // slaves: UnsafeCell::new(heapless::Vec::new()),
             num_slaves: RefCell::new(0),
             _timeout: PhantomData,
