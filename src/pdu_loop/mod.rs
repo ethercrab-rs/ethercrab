@@ -139,12 +139,12 @@ where
     }
 
     // TX
-    pub async fn pdu_tx(
-        &self,
+    pub async fn pdu_tx<'a>(
+        &'a self,
         command: Command,
         data: &[u8],
         data_length: u16,
-    ) -> Result<(heapless::Vec<u8, MAX_PDU_DATA>, u16), Error> {
+    ) -> Result<(&'a [u8], u16), Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
         let frame = self.frame(idx)?;
@@ -173,7 +173,7 @@ where
         let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
 
         Ok((
-            frame_data[0..usize::from(data_length)].try_into().unwrap(),
+            &frame_data[0..usize::from(data_length)],
             res.working_counter(),
         ))
     }
