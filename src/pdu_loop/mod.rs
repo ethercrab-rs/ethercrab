@@ -61,8 +61,6 @@ pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> 
     _timeout: PhantomData<TIMEOUT>,
 }
 
-// If we don't impl Send, does this guarantee we can have a PduLoopRef and not invalidate the
-// pointer? BBQueue does this.
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
     for PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
@@ -84,6 +82,24 @@ where
             tx_waker: RefCell::new(None),
             idx: AtomicU8::new(0),
             _timeout: PhantomData,
+        }
+    }
+
+    pub fn as_ref<'a>(&'a self) -> PduLoopRef<'a> {
+        let frame_data = unsafe {
+            core::slice::from_raw_parts(
+                self.frame_data.as_ptr() as *const _,
+                MAX_PDU_DATA * MAX_FRAMES,
+            )
+        };
+
+        PduLoopRef {
+            frame_data,
+            frames: &self.frames,
+            tx_waker: &self.tx_waker,
+            idx: &self.idx,
+            max_pdu_data: MAX_PDU_DATA,
+            max_frames: MAX_FRAMES,
         }
     }
 
@@ -227,4 +243,14 @@ where
 
         Ok(())
     }
+}
+
+// TODO: Figure out what to do with this
+pub struct PduLoopRef<'a> {
+    frame_data: &'a [UnsafeCell<&'a mut [u8]>],
+    frames: &'a [UnsafeCell<pdu_frame::Frame>],
+    tx_waker: &'a RefCell<Option<Waker>>,
+    idx: &'a AtomicU8,
+    max_pdu_data: usize,
+    max_frames: usize,
 }
