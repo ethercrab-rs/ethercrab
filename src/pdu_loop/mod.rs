@@ -77,6 +77,8 @@ where
         let frames = unsafe { MaybeUninit::zeroed().assume_init() };
         let frame_data = unsafe { MaybeUninit::zeroed().assume_init() };
 
+        assert!(MAX_FRAMES <= u8::MAX as usize);
+
         Self {
             frames,
             frame_data,
@@ -105,54 +107,39 @@ where
     }
 
     // TX
-    fn set_send_waker(&self, waker: &Waker) {
-        if self.tx_waker.borrow().is_none() {
-            self.tx_waker.borrow_mut().replace(waker.clone());
-        }
-    }
-
-    // TX
-    pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), ()>
+    pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), Error>
     where
         F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
     {
-        self.frames.iter().try_for_each(|frame| {
-            let frame = unsafe { &mut *frame.get() };
+        for idx in 0..(MAX_FRAMES as u8) {
+            let (frame, data) = self.frame(idx)?;
 
             if let Some(ref mut frame) = frame.sendable() {
-                let data = self.frame_data(frame.index()).unwrap();
-
                 frame.mark_sending();
 
-                send(frame, &data[0..frame.data_len()])
-            } else {
-                Ok(())
+                send(frame, &data[0..frame.data_len()]).map_err(|_| Error::SendFrame)?;
             }
-        })?;
+        }
 
-        self.set_send_waker(waker);
+        if self.tx_waker.borrow().is_none() {
+            self.tx_waker.borrow_mut().replace(waker.clone());
+        }
 
         Ok(())
     }
 
     // BOTH
-    fn frame(&self, idx: u8) -> Result<&mut pdu_frame::Frame, Error> {
-        let req = self
-            .frames
-            .get(usize::from(idx))
-            .ok_or(PduError::InvalidIndex(idx))?;
+    fn frame(&self, idx: u8) -> Result<(&mut pdu_frame::Frame, &mut [u8]), Error> {
+        let idx = usize::from(idx);
 
-        Ok(unsafe { &mut *req.get() })
-    }
+        if idx > MAX_FRAMES {
+            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
+        }
 
-    // BOTH
-    fn frame_data(&self, idx: u8) -> Result<&mut [u8], Error> {
-        let req = self
-            .frame_data
-            .get(usize::from(idx))
-            .ok_or(PduError::InvalidIndex(idx))?;
+        let frame = unsafe { &mut *self.frames[idx].get() };
+        let data = unsafe { &mut *self.frame_data[idx].get() };
 
-        Ok(unsafe { &mut *req.get() })
+        Ok((frame, data))
     }
 
     // TX
@@ -164,11 +151,9 @@ where
     ) -> Result<(&'a [u8], u16), Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
-        let frame = self.frame(idx)?;
+        let (frame, frame_data) = self.frame(idx)?;
 
         frame.replace(command, data_length, idx)?;
-
-        let frame_data = self.frame_data(idx)?;
 
         // Tell the packet sender there is data ready to send
         match self.tx_waker.try_borrow() {
@@ -200,11 +185,9 @@ where
     ) -> Result<(&'a [u8], u16), Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
-        let frame = self.frame(idx)?;
+        let (frame, frame_data) = self.frame(idx)?;
 
         frame.replace(command, data.len() as u16, idx)?;
-
-        let frame_data = self.frame_data(idx)?;
 
         frame_data[0..data.len()].copy_from_slice(data);
 
@@ -248,7 +231,7 @@ where
         let (i, command_code) = map_res(u8, CommandCode::try_from)(i)?;
         let (i, index) = u8(i)?;
 
-        let frame = self.frame(index)?;
+        let (frame, frame_data) = self.frame(index)?;
 
         let (i, command) = command_code.parse_address(i)?;
 
@@ -271,7 +254,6 @@ where
         // `_i` should be empty as we `take()`d an exact amount above.
         debug_assert_eq!(i.len(), 0);
 
-        let frame_data = self.frame_data(index)?;
         frame_data[0..usize::from(flags.len())].copy_from_slice(data);
 
         frame.wake_done(flags, irq, working_counter)?;
