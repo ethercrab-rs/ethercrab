@@ -31,6 +31,7 @@ pub enum Error {
         desired: usize,
         required: usize,
     },
+    SendFrame,
 }
 
 impl From<BorrowError> for Error {
@@ -66,7 +67,7 @@ pub enum PduError {
     CreateFrame(smoltcp::Error),
     Encode(cookie_factory::GenError),
     Address,
-    InvalidIndex(u8),
+    InvalidIndex(usize),
     Validation(PduValidationError),
     Parse,
     InvalidFrameState,
