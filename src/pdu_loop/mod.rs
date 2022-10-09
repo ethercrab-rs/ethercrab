@@ -1,6 +1,6 @@
 mod frame_header;
 mod pdu;
-mod pdu_frame;
+pub mod pdu_frame;
 
 use crate::{
     command::{Command, CommandCode},

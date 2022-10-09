@@ -22,6 +22,7 @@ mod al_control;
 mod al_status_code;
 mod base_data_types;
 mod client;
+mod coe;
 mod command;
 mod eeprom;
 pub mod error;
