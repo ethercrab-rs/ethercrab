@@ -49,7 +49,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     let groups =
         [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(Box::new(|slave| {
-            Box::pin(async move {
+            Box::pin(async {
                 slave.write_sdo(0x1c12, 0, 0, true).await.unwrap();
 
                 // client.fpwr(0, 0u16, 0u16).await;
