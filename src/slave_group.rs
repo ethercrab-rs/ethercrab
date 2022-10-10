@@ -49,12 +49,7 @@ pub struct SlaveGroup<
     O,
 > {
     slaves: heapless::Vec<Slave, MAX_SLAVES>,
-    preop_safeop_hook: Option<
-        fn(
-            client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-            &SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        ) -> O,
-    >,
+    preop_safeop_hook: Option<fn(&SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> O>,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
     pdi_len: usize,
     start_address: u32,
@@ -94,12 +89,7 @@ impl<
         O,
     > SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
 {
-    pub fn new(
-        preop_safeop_hook: fn(
-            client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-            &SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        ) -> O,
-    ) -> Self {
+    pub fn new(preop_safeop_hook: fn(&SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> O) -> Self {
         Self {
             preop_safeop_hook: Some(preop_safeop_hook),
             ..Default::default()
@@ -175,12 +165,7 @@ pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize,
     start_address: &'a mut u32,
     group_working_counter: &'a mut u16,
     slaves: &'a mut [Slave],
-    preop_safeop_hook: Option<
-        fn(
-            client: &Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-            &SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        ) -> O,
-    >,
+    preop_safeop_hook: Option<fn(&SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> O>,
 }
 
 impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O>
@@ -205,7 +190,7 @@ where
             slave_ref.configure_from_eeprom_safe_op().await?;
 
             if let Some(hook) = self.preop_safeop_hook {
-                (hook)(&client, &slave_ref);
+                (hook)(&slave_ref);
             }
 
             let (new_offset, i, o) = slave_ref.configure_from_eeprom_pre_op(offset).await?;
