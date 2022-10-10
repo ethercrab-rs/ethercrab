@@ -8,7 +8,7 @@ use crate::{
 use core::future::Future;
 use core::{cell::UnsafeCell, pin::Pin};
 
-type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), ()>> + 'any>>;
+type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + 'any>>;
 
 type HookFn<TIMEOUT, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> =
     Box<dyn for<'any> Fn(&'any SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> HookFuture<'any>>;
