@@ -7,6 +7,9 @@ use crate::{
 };
 use core::cell::UnsafeCell;
 
+type HookFn<TIMEOUT, O, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> =
+    fn(&SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> O;
+
 pub trait SlaveGroupContainer<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O> {
     fn num_groups(&self) -> usize;
 
@@ -49,7 +52,7 @@ pub struct SlaveGroup<
     O,
 > {
     slaves: heapless::Vec<Slave, MAX_SLAVES>,
-    preop_safeop_hook: Option<fn(&SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> O>,
+    preop_safeop_hook: Option<HookFn<TIMEOUT, O, MAX_FRAMES, MAX_PDU_DATA>>,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
     pdi_len: usize,
     start_address: u32,
@@ -165,7 +168,7 @@ pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize,
     start_address: &'a mut u32,
     group_working_counter: &'a mut u16,
     slaves: &'a mut [Slave],
-    preop_safeop_hook: Option<fn(&SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> O>,
+    preop_safeop_hook: Option<HookFn<TIMEOUT, O, MAX_FRAMES, MAX_PDU_DATA>>,
 }
 
 impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O>
