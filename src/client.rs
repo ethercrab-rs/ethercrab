@@ -93,8 +93,7 @@ where
         mut group_filter: impl FnMut(&mut G, Slave),
     ) -> Result<G, Error>
     where
-        G: for<'a> SlaveGroupContainer<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        // O: core::future::Future<Output = ()>,
+        G: SlaveGroupContainer<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     {
         self.reset_slaves().await?;
 
