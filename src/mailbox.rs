@@ -1,4 +1,3 @@
-use crate::coe::{CoeHeader, SdoHeader};
 use packed_struct::prelude::*;
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
@@ -31,46 +30,27 @@ pub enum MailboxType {
     VendorSpecific = 0x0f,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PackedStruct)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "6", bit_numbering = "msb0", endian = "lsb")]
 pub struct MailboxHeader {
     /// Mailbox data payload length.
     #[packed_field(bytes = "0..=1")]
-    length: u16,
+    pub length: u16,
     #[packed_field(bytes = "2..=3")]
-    address: u16,
+    pub address: u16,
     // reserved6: u8,
     #[packed_field(bits = "38..=39", ty = "enum")]
-    priority: Priority,
-    // #[packed_field(bits = "40..=43", ty = "enum")]
+    pub priority: Priority,
     #[packed_field(bits = "44..=47", ty = "enum")]
-    mailbox_type: MailboxType,
-    // #[packed_field(bits = "44..=46")]
+    pub mailbox_type: MailboxType,
     #[packed_field(bits = "41..=43")]
-    counter: u8,
+    pub counter: u8,
     // _reserved1: u8
-}
-
-// TODO: Rename to `CoEMailboxHeader`? I'll have to see what happens when other protocols are
-// implemented.
-#[derive(Clone, Debug, PartialEq, Eq, PackedStruct)]
-#[packed_struct(size_bytes = "25", bit_numbering = "msb0", endian = "lsb")]
-struct Mailbox {
-    #[packed_field(bytes = "0..=5")]
-    header: MailboxHeader,
-    #[packed_field(bytes = "6..=7")]
-    coe_header: CoeHeader,
-    #[packed_field(bytes = "8..=11")]
-    sdo_header: SdoHeader,
-    #[packed_field(bytes = "12..25")]
-    // "complete size DWORD" + 10 bytes of data
-    data: [u8; 14],
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::coe::{CoeService, SdoFlags, SdoHeader};
     use chrono::Utc;
     use pcap::{Capture, Linktype, Packet, PacketHeader};
     use std::path::PathBuf;
@@ -157,85 +137,5 @@ mod tests {
         let parsed = MailboxHeader::unpack(&raw).unwrap();
 
         assert_eq!(parsed, expected);
-    }
-
-    #[test]
-    fn decode_mailbox_upload_response() {
-        // From Wireshark capture "soem-single-lan9252.pcapng", packet #301
-        let raw = [
-            0x0au8, 0x00, 0x00, 0x00, 0x00, 0x13, 0x00, 0x20, 0x50, 0x00, 0x1c, 0x00, 0x00, 0x00,
-            0x00, 0x00, //
-            // Data
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
-
-        let expected = Mailbox {
-            header: MailboxHeader {
-                length: 10,
-                address: 0x0000,
-                priority: Priority::Lowest,
-                mailbox_type: MailboxType::Coe,
-                counter: 1,
-            },
-            coe_header: CoeHeader {
-                number: 0,
-                service: CoeService::SdoRequest,
-            },
-            sdo_header: SdoHeader {
-                flags: SdoFlags {
-                    // The size field does NOT indicate the data size
-                    size_indicator: false,
-                    expedited_transfer: false,
-                    size: 0,
-                    complete_access: true,
-                    // 0x02 = initiate upload
-                    // TODO: consts
-                    command: 0x02,
-                },
-                index: 0x1c00,
-                sub_index: 0,
-            },
-            data: [0u8; 14],
-        };
-
-        let parsed = Mailbox::unpack(&raw).unwrap();
-
-        assert_eq!(parsed, expected);
-    }
-
-    #[test]
-    fn encode_mailbox_frame() {
-        // Download expedited response (ETF1000.6 table 31)
-        let mbox = Mailbox {
-            header: MailboxHeader {
-                length: 10,
-                address: 0x0000,
-                priority: Priority::Lowest,
-                mailbox_type: MailboxType::Coe,
-                counter: 2,
-            },
-            coe_header: CoeHeader {
-                number: 0,
-                service: CoeService::SdoRequest,
-            },
-            sdo_header: SdoHeader {
-                flags: SdoFlags {
-                    // The size field does NOT indicate the data size
-                    size_indicator: false,
-                    expedited_transfer: false,
-                    size: 0,
-                    complete_access: false,
-                    command: 0x02,
-                },
-                index: 0x1c12,
-                sub_index: 0,
-            },
-            // data: [0x40, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-            data: [0xff; 14],
-        };
-
-        let packed = mbox.pack().unwrap();
-
-        write_bytes_to_file("mailbox-encode_mailbox_frame.pcapng", &packed);
     }
 }

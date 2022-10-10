@@ -38,3 +38,7 @@
 - [x] Make pdu_loop accept mutable slice references so we don't copy so much data around
   - [x] Also allows creation of `PduLoopRef` which will (hopefully) elide all the const generics,
         making passing it around much cleaner - likely with just a lifetime.
+- [ ] Extremely basic AKD initialisation:
+  - Write 0x00 to 0x1c12:00
+  - Write 0x1701 to 0x1c12:01
+  - Write 0x01 to 0x1c12:02
