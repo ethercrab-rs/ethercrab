@@ -13,34 +13,27 @@ type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), ()>> + 'any>>;
 type HookFn<TIMEOUT, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> =
     Box<dyn for<'any> Fn(&'any SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> HookFuture<'any>>;
 
-pub trait SlaveGroupContainer<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+pub trait SlaveGroupContainer<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     fn num_groups(&self) -> usize;
 
-    fn group(
-        &'a mut self,
-        index: usize,
-    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>;
+    fn group(&mut self, index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>;
 }
 
 impl<
-        'a,
         const N: usize,
         const MAX_SLAVES: usize,
         const MAX_PDI: usize,
         const MAX_FRAMES: usize,
         const MAX_PDU_DATA: usize,
         TIMEOUT,
-    > SlaveGroupContainer<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+    > SlaveGroupContainer<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
     for [SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>; N]
 {
     fn num_groups(&self) -> usize {
         N
     }
 
-    fn group(
-        &'a mut self,
-        index: usize,
-    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
+    fn group(&mut self, index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
         self.get_mut(index).map(|group| group.as_mut_ref())
     }
 }
