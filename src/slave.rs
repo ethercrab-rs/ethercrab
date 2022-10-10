@@ -2,12 +2,14 @@ use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
     client::Client,
+    coe::{services::DownloadExpeditedRequest, CoeHeader, CoeService, InitSdoFlags, InitSdoHeader},
     eeprom::{
         types::{FmmuUsage, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType},
         Eeprom,
     },
     error::Error,
     fmmu::Fmmu,
+    mailbox::{MailboxHeader, MailboxType, Priority},
     pdi::{PdiOffset, PdiSegment},
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
@@ -162,7 +164,7 @@ where
     /// A wrapper around an FPWR service to this slave's configured address.
     pub(crate) async fn write<T>(
         &self,
-        register: RegisterAddress,
+        register: impl Into<u16>,
         value: T,
         context: &'static str,
     ) -> Result<T, Error>
@@ -173,6 +175,66 @@ where
             .fpwr(self.configured_address, register, value)
             .await?
             .wkc(1, context)
+    }
+
+    pub async fn write_sdo<T>(
+        &self,
+        index: u16,
+        sub_index: u8,
+        value: T,
+        complete_access: bool,
+    ) -> Result<(), Error>
+    where
+        T: PduData,
+        <T as PduRead>::Error: Debug,
+    {
+        // Only expedited requests for now
+        if T::len() > 4 {
+            // TODO: Error::Sdo(SdoError::DataTooLong) or something
+            panic!("Data too long");
+        }
+
+        let mut data = [0u8; 4];
+
+        let len = usize::from(T::len());
+
+        data[0..len].copy_from_slice(value.as_slice());
+
+        let request = DownloadExpeditedRequest {
+            header: MailboxHeader {
+                length: 0x0a,
+                address: 0x0000,
+                priority: Priority::Lowest,
+                mailbox_type: MailboxType::Coe,
+                counter: 0,
+            },
+            coe_header: CoeHeader {
+                // TODO: Keep a mailbox counter of 1-7 in `Client` or `PduLoop`. 0 is a reserved value
+                number: 1,
+                service: CoeService::SdoRequest,
+            },
+            sdo_header: InitSdoHeader {
+                flags: InitSdoFlags {
+                    size_indicator: true,
+                    expedited_transfer: true,
+                    size: (len - 4) as u8,
+                    complete_access,
+                    command: InitSdoFlags::DOWNLOAD_REQUEST,
+                },
+                index,
+                sub_index,
+            },
+            data: data,
+        };
+
+        let payload = request.pack().unwrap();
+
+        // TODO: Store mailbox read/write address in slave structure
+        let response = self.write(0x1800u16, payload, "SDO write").await?;
+
+        dbg!(response);
+
+        Ok(())
     }
 
     async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {

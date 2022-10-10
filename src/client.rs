@@ -297,7 +297,7 @@ where
     pub async fn fpwr<T>(
         &self,
         address: u16,
-        register: RegisterAddress,
+        register: impl Into<u16>,
         value: T,
     ) -> Result<PduResponse<T>, Error>
     where
