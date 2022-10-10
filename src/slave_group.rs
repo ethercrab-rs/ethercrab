@@ -5,18 +5,21 @@ use crate::{
     timer_factory::TimerFactory,
     Client,
 };
-use core::cell::UnsafeCell;
+use core::future::Future;
+use core::{cell::UnsafeCell, pin::Pin};
 
-type HookFn<TIMEOUT, O, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> =
-    fn(&SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> O;
+type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), ()>> + 'any>>;
 
-pub trait SlaveGroupContainer<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O> {
+type HookFn<TIMEOUT, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> =
+    Box<dyn for<'any> Fn(SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> HookFuture>;
+
+pub trait SlaveGroupContainer<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     fn num_groups(&self) -> usize;
 
     fn group(
         &'a mut self,
         index: usize,
-    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>>;
+    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>;
 }
 
 impl<
@@ -27,9 +30,8 @@ impl<
         const MAX_FRAMES: usize,
         const MAX_PDU_DATA: usize,
         TIMEOUT,
-        O,
-    > SlaveGroupContainer<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
-    for [SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>; N]
+    > SlaveGroupContainer<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+    for [SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>; N]
 {
     fn num_groups(&self) -> usize {
         N
@@ -38,7 +40,7 @@ impl<
     fn group(
         &'a mut self,
         index: usize,
-    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>> {
+    ) -> Option<SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
         self.get_mut(index).map(|group| group.as_mut_ref())
     }
 }
@@ -49,10 +51,9 @@ pub struct SlaveGroup<
     const MAX_FRAMES: usize,
     const MAX_PDU_DATA: usize,
     TIMEOUT,
-    O,
 > {
     slaves: heapless::Vec<Slave, MAX_SLAVES>,
-    preop_safeop_hook: Option<HookFn<TIMEOUT, O, MAX_FRAMES, MAX_PDU_DATA>>,
+    preop_safeop_hook: Option<HookFn<TIMEOUT, MAX_FRAMES, MAX_PDU_DATA>>,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
     pdi_len: usize,
     start_address: u32,
@@ -68,8 +69,7 @@ impl<
         const MAX_FRAMES: usize,
         const MAX_PDU_DATA: usize,
         TIMEOUT,
-        O,
-    > Default for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
+    > Default for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
     fn default() -> Self {
         Self {
@@ -89,10 +89,9 @@ impl<
         const MAX_FRAMES: usize,
         const MAX_PDU_DATA: usize,
         TIMEOUT,
-        O,
-    > SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
+    > SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 {
-    pub fn new(preop_safeop_hook: fn(&SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> O) -> Self {
+    pub fn new(preop_safeop_hook: HookFn<TIMEOUT, MAX_FRAMES, MAX_PDU_DATA>) -> Self {
         Self {
             preop_safeop_hook: Some(preop_safeop_hook),
             ..Default::default()
@@ -151,10 +150,10 @@ impl<
     }
 
     // TODO: AsRef or AsMut trait?
-    pub(crate) fn as_mut_ref(&mut self) -> SlaveGroupRef<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O> {
+    pub(crate) fn as_mut_ref(&mut self) -> SlaveGroupRef<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
         SlaveGroupRef {
             slaves: self.slaves.as_mut(),
-            preop_safeop_hook: self.preop_safeop_hook,
+            preop_safeop_hook: self.preop_safeop_hook.as_ref(),
             pdi_len: &mut self.pdi_len,
             start_address: &mut self.start_address,
             group_working_counter: &mut self.group_working_counter,
@@ -163,19 +162,19 @@ impl<
 }
 
 /// A reference to a [`SlaveGroup`] with elided `MAX_SLAVES` constant.
-pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O> {
+pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     pdi_len: &'a mut usize,
     start_address: &'a mut u32,
     group_working_counter: &'a mut u16,
     slaves: &'a mut [Slave],
-    preop_safeop_hook: Option<HookFn<TIMEOUT, O, MAX_FRAMES, MAX_PDU_DATA>>,
+    preop_safeop_hook: Option<&'a HookFn<TIMEOUT, MAX_FRAMES, MAX_PDU_DATA>>,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT, O>
-    SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT, O>
+impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
+    SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
-    O: core::future::Future<Output = ()>,
+    // O: core::future::Future<Output = ()>,
 {
     pub(crate) async fn configure_from_eeprom<'client>(
         &mut self,
@@ -192,8 +191,10 @@ where
 
             slave_ref.configure_from_eeprom_safe_op().await?;
 
-            if let Some(hook) = self.preop_safeop_hook {
-                (hook)(&slave_ref);
+            if let Some(hook) = self.preop_safeop_hook.as_ref() {
+                (hook)(SlaveRef::new(client, slave.configured_address))
+                    .await
+                    .unwrap();
             }
 
             let (new_offset, i, o) = slave_ref.configure_from_eeprom_pre_op(offset).await?;
