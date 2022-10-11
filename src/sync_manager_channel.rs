@@ -2,21 +2,23 @@ use core::fmt;
 
 use packed_struct::prelude::*;
 
+use crate::PduRead;
+
 /// Sync manager channel.
 ///
 /// Defined in ETG1000.4 6.7.2
 #[derive(Default, Copy, Clone, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "8", bit_numbering = "msb0", endian = "lsb")]
 pub struct SyncManagerChannel {
-    #[packed_field(bits = "0..=15")]
+    #[packed_field(size_bytes = "2")]
     pub physical_start_address: u16,
-    #[packed_field(bits = "16..=31")]
+    #[packed_field(size_bytes = "2")]
     pub length_bytes: u16,
-    #[packed_field(bits = "32..=39")]
+    #[packed_field(size_bytes = "1")]
     pub control: Control,
-    #[packed_field(bits = "40..=47")]
+    #[packed_field(size_bytes = "1")]
     pub status: Status,
-    #[packed_field(bits = "48..=63", element_size_bytes = "2")]
+    #[packed_field(size_bytes = "2")]
     pub enable: Enable,
 }
 
@@ -32,6 +34,16 @@ impl fmt::Debug for SyncManagerChannel {
             .field("status", &self.status)
             .field("enable", &self.enable)
             .finish()
+    }
+}
+
+impl PduRead for SyncManagerChannel {
+    const LEN: u16 = 8;
+
+    type Error = PackingError;
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        Self::unpack_from_slice(slice)
     }
 }
 
@@ -114,7 +126,7 @@ pub enum Direction {
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
 pub enum BufferState {
     #[default]
-    First = 0x00,
+    Read = 0x00,
     Second = 0x01,
     Third = 0x02,
     Locked = 0x03,
@@ -185,6 +197,15 @@ mod tests {
     }
 
     #[test]
+    fn decode_mailbox_event() {
+        let raw = [0x09];
+
+        let parsed = Status::unpack_from_slice(&raw).unwrap();
+
+        assert_eq!(parsed.mailbox_full, true)
+    }
+
+    #[test]
     fn encode_enable() {
         let raw = Enable {
             enable: true,
@@ -235,7 +256,7 @@ mod tests {
                     has_write_event: false,
                     has_read_event: false,
                     mailbox_full: false,
-                    buffer_state: BufferState::First,
+                    buffer_state: BufferState::Read,
                     read_buffer_open: false,
                     write_buffer_open: false,
                 },

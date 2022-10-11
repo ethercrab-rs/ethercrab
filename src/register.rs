@@ -1,7 +1,7 @@
+use crate::{PduData, PduRead};
 use packed_struct::prelude::*;
 
-use crate::{PduData, PduRead};
-
+#[derive(Copy, Clone, Debug)]
 #[repr(u16)]
 pub enum RegisterAddress {
     Type = 0x0000u16,

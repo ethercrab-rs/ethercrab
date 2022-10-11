@@ -1,4 +1,3 @@
-use crate::{command::Command, error::PduError, pdu_loop::frame_header::FrameHeader};
 use crate::{command::Command, error::PduError, pdu_loop::frame_header::FrameHeader, LEN_MASK};
 use cookie_factory::{
     bytes::{le_u16, le_u8},

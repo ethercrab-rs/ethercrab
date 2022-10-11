@@ -4,6 +4,7 @@
 //! to a pile of hard-coding.
 
 use async_ctrlc::CtrlC;
+use ethercrab::coe::SdoAccess;
 use ethercrab::error::Error;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
@@ -28,13 +29,15 @@ const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
 const INTERFACE: &str = "eth1";
 
 const MAX_SLAVES: usize = 16;
-const MAX_PDU_DATA: usize = 16;
+const MAX_PDU_DATA: usize = 1100;
 const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 16;
 
 static PDU_LOOP: PduLoop<MAX_FRAMES, MAX_PDU_DATA, smol::Timer> = PduLoop::new();
 
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
+    log::info!("Starting SDO demo...");
+
     let client = Arc::new(Client::<MAX_FRAMES, MAX_PDU_DATA, smol::Timer>::new(
         &PDU_LOOP,
     ));
@@ -46,13 +49,19 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let groups =
         [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(Box::new(|slave| {
             Box::pin(async {
-                slave.write_sdo(0x1c12, 0, 0, true).await?;
-                slave.write_sdo(0x1c12, 1, 0x1701u16, false).await?;
-                slave.write_sdo(0x1c12, 0, 0x01, false).await?;
+                dbg!(slave.read_sdo::<u32>(0x1c00, SdoAccess::Index(0)).await?);
+                dbg!(slave.read_sdo::<u32>(0x1018, SdoAccess::Index(0)).await?);
+                dbg!(slave.read_sdo::<u32>(0x1c12, SdoAccess::Index(0)).await?);
+                dbg!(slave.read_sdo::<u32>(0x1600, SdoAccess::Index(0)).await?);
+                dbg!(slave.read_sdo::<u32>(0x1c10, SdoAccess::Index(0)).await?);
 
-                println!("Group init");
+                // slave.write_sdo(0x1c12, 0, SdoAccess::Complete).await?;
+                // slave
+                //     .write_sdo(0x1c12, 0x1701u16, SdoAccess::Index(1))
+                //     .await?;
+                // slave.write_sdo(0x1c12, 0x01, SdoAccess::Index(0)).await?;
 
-                smol::Timer::after(Duration::from_millis(10)).await;
+                // smol::Timer::after(Duration::from_millis(10)).await;
 
                 Ok(())
             })
