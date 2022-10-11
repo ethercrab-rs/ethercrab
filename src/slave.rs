@@ -216,9 +216,8 @@ where
     {
         let read_address = self.config.mailbox.read_address.ok_or(Error::NoMailbox)?;
 
-        // Only expedited requests for now
         if T::len() > 4 {
-            // TODO: Error::Sdo(SdoError::DataTooLong) or something
+            // TODO: Normal SDO download. Only expedited requests for now
             panic!("Data too long");
         }
 
@@ -234,11 +233,9 @@ where
                 address: 0x0000,
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
-                counter: 0,
+                counter: self.client.mailbox_counter(),
             },
             coe_header: CoeHeader {
-                // TODO: Keep a mailbox counter of 1-7 in `Client` or `PduLoop`. 0 is a reserved value
-                number: 1,
                 service: CoeService::SdoRequest,
             },
             sdo_header: InitSdoHeader {
@@ -257,7 +254,6 @@ where
 
         let payload = request.pack().unwrap();
 
-        // TODO: Store mailbox read/write address in slave structure
         let _response = self.write(read_address, payload, "SDO write").await?;
 
         // dbg!(response);
