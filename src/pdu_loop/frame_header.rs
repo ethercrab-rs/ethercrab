@@ -34,14 +34,14 @@ pub struct FrameHeader(pub u16);
 
 impl FrameHeader {
     /// Create a new PDU frame header.
-    pub fn pdu(len: usize) -> Self {
+    pub fn pdu(len: u16) -> Self {
         assert!(
             len <= LEN_MASK.into(),
             "Frame length may not exceed {} bytes",
             LEN_MASK
         );
 
-        let len = (len as u16) & LEN_MASK;
+        let len = len & LEN_MASK;
 
         let protocol_type = (ProtocolType::DlPdu as u16) << 12;
 
