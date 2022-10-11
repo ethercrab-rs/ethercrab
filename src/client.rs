@@ -11,7 +11,11 @@ use crate::{
     timer_factory::TimerFactory,
     PduData, PduRead, BASE_SLAVE_ADDR,
 };
-use core::{any::type_name, fmt::Debug};
+use core::{
+    any::type_name,
+    fmt::Debug,
+    sync::atomic::{AtomicU8, Ordering},
+};
 use core::{cell::RefCell, marker::PhantomData, time::Duration};
 use packed_struct::PackedStruct;
 
@@ -20,7 +24,10 @@ pub struct Client<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, T
     pub pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
+    // DELETEME
     _pd: PhantomData<&'client ()>,
+    /// The 1-7 cyclic counter used when working with mailbox requests.
+    mailbox_counter: AtomicU8,
 }
 
 unsafe impl<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
@@ -46,7 +53,24 @@ where
             num_slaves: RefCell::new(0),
             _timeout: PhantomData,
             _pd: PhantomData,
+            mailbox_counter: AtomicU8::new(0),
         }
+    }
+
+    /// Return the current cyclic mailbox counter value, from 0-7.
+    ///
+    /// Calling this method internally increments the counter, so subequent calls will produce a new
+    /// value.
+    pub(crate) fn mailbox_counter(&self) -> u8 {
+        self.mailbox_counter
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+                if n >= 7 {
+                    Some(1)
+                } else {
+                    Some(n + 1)
+                }
+            })
+            .unwrap()
     }
 
     /// Write zeroes to every slave's memory in chunks of [`MAX_PDU_DATA`].
