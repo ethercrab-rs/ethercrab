@@ -18,7 +18,13 @@ pub fn get_tx_rx(
 
     // dbg!(interface.mac);
 
-    let (tx, rx) = match datalink::channel(&interface, Default::default()) {
+    let config = pnet::datalink::Config {
+        write_buffer_size: 16384,
+        read_buffer_size: 16384,
+        ..Default::default()
+    };
+
+    let (tx, rx) = match datalink::channel(&interface, config) {
         Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
         // FIXME
         Ok(_) => panic!("Unhandled channel type"),
@@ -73,7 +79,7 @@ where
                         .pdu_loop
                         .pdu_rx(ethernet_frame)
                         .map_err(|e| {
-                            dbg!(ethernet_frame.len(), ethernet_frame);
+                            dbg!(ethernet_frame.len());
 
                             e
                         })
