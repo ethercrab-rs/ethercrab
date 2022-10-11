@@ -2,12 +2,16 @@ use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
     client::Client,
-    coe::{services::DownloadExpeditedRequest, CoeHeader, CoeService, InitSdoFlags, InitSdoHeader},
+    coe::{
+        services::{DownloadExpeditedRequest, UploadExpeditedRequest, UploadExpeditedResponse},
+        CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SdoAccess,
+    },
+    command::Command,
     eeprom::{
         types::{FmmuUsage, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType},
         Eeprom,
     },
-    error::Error,
+    error::{Error, PduError},
     fmmu::Fmmu,
     mailbox::{MailboxHeader, MailboxType, Priority},
     pdi::{PdiOffset, PdiSegment},
@@ -18,11 +22,11 @@ use crate::{
     timer_factory::TimerFactory,
     PduData, PduRead,
 };
-use core::fmt::Debug;
 use core::fmt::Write;
+use core::{any::type_name, fmt::Debug};
 use core::{fmt, time::Duration};
 use nom::{number::complete::le_u32, IResult};
-use packed_struct::PackedStruct;
+use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
 #[derive(Default)]
 pub struct SlaveIdentity {
@@ -196,6 +200,7 @@ where
     ) -> Result<T, Error>
     where
         T: PduData,
+        <T as PduRead>::Error: Debug,
     {
         self.client
             .fpwr(self.configured_address, register, value)
@@ -203,18 +208,12 @@ where
             .wkc(1, context)
     }
 
-    pub async fn write_sdo<T>(
-        &self,
-        index: u16,
-        sub_index: u8,
-        value: T,
-        complete_access: bool,
-    ) -> Result<(), Error>
+    pub async fn write_sdo<T>(&self, index: u16, value: T, access: SdoAccess) -> Result<(), Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
-        let read_address = self.config.mailbox.read_address.ok_or(Error::NoMailbox)?;
+        let write_address = self.config.mailbox.write_address.ok_or(Error::NoMailbox)?;
 
         if T::len() > 4 {
             // TODO: Normal SDO download. Only expedited requests for now
@@ -243,22 +242,134 @@ where
                     size_indicator: true,
                     expedited_transfer: true,
                     size: (len - 4) as u8,
-                    complete_access,
+                    complete_access: access.complete_access(),
                     command: InitSdoFlags::DOWNLOAD_REQUEST,
                 },
                 index,
-                sub_index,
+                sub_index: access.sub_index(),
             },
             data: data,
         };
 
         let payload = request.pack().unwrap();
 
-        let _response = self.write(read_address, payload, "SDO write").await?;
+        let _response = self.write(write_address, payload, "SDO write").await?;
+
+        // TODO: Confirm SDO was successfully downloaded by the slave
 
         // dbg!(response);
 
         Ok(())
+    }
+
+    pub async fn read_sdo<T>(&self, index: u16, access: SdoAccess) -> Result<T, Error>
+    where
+        T: PduData,
+        <T as PduRead>::Error: Debug,
+    {
+        let write_address = self.config.mailbox.write_address.ok_or(Error::NoMailbox)?;
+
+        if T::len() > 4 {
+            // TODO: Normal SDO download. Only expedited requests for now
+            panic!("Data too long");
+        }
+
+        let request = UploadExpeditedRequest {
+            header: MailboxHeader {
+                length: 0x0a,
+                address: 0x0000,
+                priority: Priority::Lowest,
+                mailbox_type: MailboxType::Coe,
+                counter: self.client.mailbox_counter(),
+            },
+            coe_header: CoeHeader {
+                service: CoeService::SdoRequest,
+            },
+            sdo_header: InitSdoHeader {
+                flags: InitSdoFlags {
+                    // Hard coded to false when using UploadExpedited
+                    size_indicator: false,
+                    expedited_transfer: false,
+                    // Hard coded to zero when using UploadExpedited
+                    size: 0,
+                    complete_access: access.complete_access(),
+                    command: InitSdoFlags::UPLOAD_REQUEST,
+                },
+                index,
+                sub_index: access.sub_index(),
+            },
+        };
+
+        // TODO: Allow overriding length in `pdu_tx_readwrite` so we don't have to hack this longer buffer
+        // 1024 hard coded to AKD mailbox size. Smaller sizes seem to prevent the receive mailbox from flagging.
+        let mut expedited_buffer = [0u8; 1024];
+
+        request.pack_to_slice(&mut expedited_buffer[0..12]).unwrap();
+
+        self.client
+            .pdu_loop
+            .pdu_tx_readwrite(
+                Command::Fpwr {
+                    address: self.configured_address,
+                    register: write_address,
+                },
+                &expedited_buffer,
+            )
+            .await?
+            .wkc(1, "SDO upload request")?;
+
+        // Wait for slave send mailbox to be ready
+        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
+            // TODO: Store sync manager index on slave instead of hard coding it from ETG1000.4
+            // Table 59 footnotes, although it does SHALL, not SHOULD...
+            let mailbox_read_sm = RegisterAddress::sync_manager(1);
+
+            loop {
+                let sm = self
+                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                    .await?;
+
+                if sm.status.mailbox_full {
+                    break Result::<(), _>::Ok(());
+                }
+
+                TIMEOUT::timer(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .map_err(|e| {
+            log::error!("Mailbox read ready timeout");
+
+            e
+        })?;
+
+        // Receive data from slave send mailbox
+
+        // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
+
+        // let (headers, data) = response.split_at(headers_len);
+        // let data = &data[0..4];
+
+        // let response = UploadExpeditedResponse::unpack_from_slice(
+        //     &response[0..(UploadExpeditedResponse::packed_bits() / 8)],
+        // )?;
+
+        // // TODO: Validate headers
+        // // dbg!(headers);
+
+        // let res = T::try_from_slice(&response.data).map_err(|e| {
+        //     log::error!(
+        //         "PDU data decode: {:?}, T: {} data {:?}",
+        //         e,
+        //         type_name::<T>(),
+        //         response.data
+        //     );
+
+        //     PduError::Decode
+        // })?;
+
+        // Ok(res)
+        todo!();
     }
 
     async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
@@ -472,7 +583,7 @@ where
                     )
                     .await?;
 
-                    read_mailbox_address = Some(sync_manager.start_addr);
+                    write_mailbox_address = Some(sync_manager.start_addr);
                 }
                 SyncManagerType::MailboxRead => {
                     self.write_sm_config(
@@ -482,7 +593,7 @@ where
                     )
                     .await?;
 
-                    write_mailbox_address = Some(sync_manager.start_addr);
+                    read_mailbox_address = Some(sync_manager.start_addr);
                 }
                 _ => continue,
             }

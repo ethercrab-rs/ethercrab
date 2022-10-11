@@ -253,6 +253,8 @@ Note that TX/RX is from the slave's point of view.
 When we write to e.g. 0x1C12 we're actually configuring a sync manager's PDO mappings, which is then
 read back out of the dictionary during auto config. Pretty neat.
 
+ETG1000.5 Section 6.1.4.1.3 SDO interactions lists different request/response scenarios.
+
 # Mailbox/CANOpen
 
 ETG1000.4 section 5.6 describes mailbox structure.

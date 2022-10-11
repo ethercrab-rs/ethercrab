@@ -53,7 +53,8 @@ where
             num_slaves: RefCell::new(0),
             _timeout: PhantomData,
             _pd: PhantomData,
-            mailbox_counter: AtomicU8::new(0),
+            // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
+            mailbox_counter: AtomicU8::new(1),
         }
     }
 
@@ -223,13 +224,23 @@ where
     async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
+        <T as PduRead>::Error: Debug,
     {
         let (data, working_counter) = self
             .pdu_loop
             .pdu_tx_readwrite(command, value.as_slice())
             .await?;
 
-        let res = T::try_from_slice(&data).map_err(|_| PduError::Decode)?;
+        let res = T::try_from_slice(&data).map_err(|e| {
+            log::error!(
+                "PDU data decode: {:?}, T: {} data {:?}",
+                e,
+                type_name::<T>(),
+                data
+            );
+
+            PduError::Decode
+        })?;
 
         Ok((res, working_counter))
     }
@@ -251,6 +262,7 @@ where
     pub async fn bwr<T>(&self, register: RegisterAddress, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
+        <T as PduRead>::Error: Debug,
     {
         self.write_service(
             Command::Bwr {
@@ -288,6 +300,7 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
+        <T as PduRead>::Error: Debug,
     {
         self.write_service(
             Command::Apwr {
@@ -325,6 +338,7 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
+        <T as PduRead>::Error: Debug,
     {
         self.write_service(
             Command::Fpwr {
@@ -340,6 +354,7 @@ where
     pub async fn lwr<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
+        <T as PduRead>::Error: Debug,
     {
         self.write_service(Command::Lwr { address }, value).await
     }
@@ -348,6 +363,7 @@ where
     pub async fn lrw<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
+        <T as PduRead>::Error: Debug,
     {
         self.write_service(Command::Lrw { address }, value).await
     }
@@ -365,6 +381,11 @@ where
             .await?;
 
         if data.len() != value.len() {
+            log::error!(
+                "Data length {} does not match value length {}",
+                data.len(),
+                value.len()
+            );
             return Err(Error::Pdu(PduError::Decode));
         }
 
