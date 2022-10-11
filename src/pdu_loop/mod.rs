@@ -143,12 +143,12 @@ where
     }
 
     // TX
+    /// Read data back from one or more slave devices.
     pub async fn pdu_tx_readonly<'a>(
         &'a self,
         command: Command,
-        // data: &[u8],
         data_length: u16,
-    ) -> Result<(&'a [u8], u16), Error> {
+    ) -> Result<PduResponse<&'a [u8]>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
         let (frame, frame_data) = self.frame(idx)?;
@@ -177,19 +177,19 @@ where
     }
 
     // TX
+    /// Send data to and read data back from multiple slaves.
     pub async fn pdu_tx_readwrite<'a>(
         &'a self,
         command: Command,
-        data: &[u8],
-        // data_length: u16,
-    ) -> Result<(&'a [u8], u16), Error> {
+        send_data: &[u8],
+    ) -> Result<PduResponse<&'a [u8]>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
         let (frame, frame_data) = self.frame(idx)?;
 
-        frame.replace(command, data.len() as u16, idx)?;
+        frame.replace(command, send_data.len() as u16, idx)?;
 
-        frame_data[0..data.len()].copy_from_slice(data);
+        frame_data[0..send_data.len()].copy_from_slice(send_data);
 
         // Tell the packet sender there is data ready to send
         match self.tx_waker.try_borrow() {
@@ -207,7 +207,7 @@ where
         let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
 
         Ok((
-            &frame_data[0..usize::from(data.len())],
+            &frame_data[0..usize::from(send_data.len())],
             res.working_counter(),
         ))
     }
