@@ -127,10 +127,6 @@ impl<'a> SendableFrame<'a> {
         self.frame.state = FrameState::Sending;
     }
 
-    pub(crate) fn index(&self) -> u8 {
-        self.frame.pdu.index
-    }
-
     pub(crate) fn data_len(&self) -> usize {
         usize::from(self.frame.pdu.flags.len())
     }
