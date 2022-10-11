@@ -187,7 +187,7 @@ where
             slave_ref.configure_from_eeprom_safe_op().await?;
 
             if let Some(hook) = self.preop_safeop_hook {
-                (hook)(&slave_ref).await.unwrap();
+                (hook)(&slave_ref).await?;
             }
 
             let new_offset = slave_ref.configure_from_eeprom_pre_op(offset).await?;
