@@ -111,8 +111,21 @@ impl From<smoltcp::Error> for Error {
     }
 }
 
-impl<I> From<nom::Err<nom::error::Error<I>>> for Error {
-    fn from(_: nom::Err<nom::error::Error<I>>) -> Self {
+impl<I> From<nom::Err<nom::error::Error<I>>> for Error
+where
+    I: core::fmt::Debug,
+{
+    fn from(e: nom::Err<nom::error::Error<I>>) -> Self {
+        log::error!("Nom error {:?}", e);
+
+        Self::Pdu(PduError::Decode)
+    }
+}
+
+impl From<packed_struct::PackingError> for Error {
+    fn from(e: packed_struct::PackingError) -> Self {
+        log::error!("Packing error {:?}", e);
+
         Self::Pdu(PduError::Decode)
     }
 }

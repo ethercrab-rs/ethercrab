@@ -51,18 +51,24 @@ pub struct DownloadSegmentResponse {
     pub data: [u8; 7],
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PackedStruct)]
 pub struct UploadExpeditedRequest {
+    #[packed_field(size_bytes = "6")]
     pub header: MailboxHeader,
+    #[packed_field(size_bytes = "2")]
     pub coe_header: CoeHeader,
+    #[packed_field(size_bytes = "4")]
     pub sdo_header: InitSdoHeader,
     // _reserved: u32
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PackedStruct)]
 pub struct UploadExpeditedResponse {
+    #[packed_field(size_bytes = "6")]
     pub header: MailboxHeader,
+    #[packed_field(size_bytes = "2")]
     pub coe_header: CoeHeader,
+    #[packed_field(size_bytes = "4")]
     pub sdo_header: InitSdoHeader,
     pub data: [u8; 4],
 }
