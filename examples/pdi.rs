@@ -5,17 +5,14 @@
 
 use async_ctrlc::CtrlC;
 use ethercrab::error::Error;
-use ethercrab::slave::SlaveRef;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
 use ethercrab::PduLoop;
-// use ethercrab::Pdi;
 use ethercrab::SlaveGroup;
 use ethercrab::SlaveState;
 use futures_lite::stream::StreamExt;
 use futures_lite::FutureExt;
 use smol::LocalExecutor;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -48,18 +45,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     // let num_slaves = client.num_slaves();
 
     let groups =
-        [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(Box::new(|slave| {
-            Box::pin(async {
-                slave.write_sdo(0x1c12, 0, 0, true).await?;
-
-                // client.fpwr(0, 0u16, 0u16).await;
-
-                println!("Group init");
-
-                smol::Timer::after(Duration::from_millis(10)).await;
-
-                Ok(())
-            })
+        [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(Box::new(|_slave| {
+            Box::pin(async { Ok(()) })
         })); 1];
 
     let mut groups = client
