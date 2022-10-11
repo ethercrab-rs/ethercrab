@@ -1,4 +1,5 @@
 use crate::{command::Command, error::PduError, pdu_loop::frame_header::FrameHeader};
+use crate::{command::Command, error::PduError, pdu_loop::frame_header::FrameHeader, LEN_MASK};
 use cookie_factory::{
     bytes::{le_u16, le_u8},
     combinator::{skip, slice},
@@ -45,13 +46,13 @@ impl Pdu {
     }
 
     /// The size of the total payload to be insterted into an EtherCAT frame.
-    pub(crate) fn ethercat_payload_len(&self) -> usize {
+    pub(crate) fn ethercat_payload_len(&self) -> u16 {
         // TODO: Add unit test to stop regressions
         let pdu_overhead = 12;
 
         // NOTE: Sometimes data length is zero (e.g. for read-only ops), so we'll look at the actual
         // packet length in flags instead.
-        usize::from(self.flags.len()) + pdu_overhead
+        self.flags.len() + pdu_overhead
     }
 
     /// Write an EtherCAT frame into `buf`.
@@ -107,22 +108,44 @@ impl Pdu {
     }
 }
 
-#[derive(Default, Copy, Clone, Debug, PackedStruct, PartialEq, Eq)]
-#[packed_struct(size_bytes = "2", bit_numbering = "msb0", endian = "lsb")]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct PduFlags {
     /// Data length of this PDU.
-    #[packed_field(bits = "0..=10")]
     pub(crate) length: u16,
     /// Circulating frame
     ///
     /// 0: Frame is not circulating,
     /// 1: Frame has circulated once
-    #[packed_field(bits = "14")]
     circulated: bool,
     /// 0: last EtherCAT PDU in EtherCAT frame
     /// 1: EtherCAT PDU in EtherCAT frame follows
-    #[packed_field(bits = "15")]
     is_not_last: bool,
+}
+
+impl PackedStruct for PduFlags {
+    type ByteArray = [u8; 2];
+
+    fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
+        let raw = self.length & LEN_MASK
+            | (self.circulated as u16) << 14
+            | (self.is_not_last as u16) << 15;
+
+        Ok(raw.to_le_bytes())
+    }
+
+    fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
+        let src = u16::from_le_bytes(*src);
+
+        let length = src & LEN_MASK;
+        let circulated = (src >> 14) & 0x01 == 0x01;
+        let is_not_last = (src >> 15) & 0x01 == 0x01;
+
+        Ok(Self {
+            length,
+            circulated,
+            is_not_last,
+        })
+    }
 }
 
 impl PduFlags {
@@ -136,5 +159,41 @@ impl PduFlags {
 
     pub const fn len(self) -> u16 {
         self.length
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pdu_flags_round_trip() {
+        let flags = PduFlags {
+            length: 0x110,
+            circulated: false,
+            is_not_last: true,
+        };
+
+        let packed = flags.pack().unwrap();
+
+        assert_eq!(packed, [0x10, 0x81]);
+
+        let unpacked = PduFlags::unpack(&packed).unwrap();
+
+        assert_eq!(unpacked, flags);
+    }
+
+    #[test]
+    fn correct_length() {
+        let flags = PduFlags {
+            length: 1036,
+            circulated: false,
+            is_not_last: false,
+        };
+
+        assert_eq!(flags.len(), 1036);
+
+        assert_eq!(flags.pack().unwrap(), [0b0000_1100, 0b0000_0100]);
+        assert_eq!(flags.pack().unwrap(), [0x0c, 0x04]);
     }
 }

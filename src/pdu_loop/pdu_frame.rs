@@ -54,7 +54,7 @@ impl Frame {
     /// The size of the total payload to be insterted into an Ethernet frame, i.e. EtherCAT frame
     /// payload and header.
     fn ethernet_payload_len(&self) -> usize {
-        self.pdu.ethercat_payload_len() + mem::size_of::<FrameHeader>()
+        usize::from(self.pdu.ethercat_payload_len()) + mem::size_of::<FrameHeader>()
     }
 
     pub fn to_ethernet_frame<'a>(
