@@ -1,7 +1,7 @@
 use crate::{
     error::Error,
     pdi::PdiOffset,
-    slave::{Slave, SlaveRef},
+    slave::{IoRanges, Slave, SlaveRef},
     timer_factory::TimerFactory,
     Client,
 };
@@ -104,7 +104,10 @@ impl<
     }
 
     pub fn io(&self, idx: usize) -> Option<(Option<&mut [u8]>, Option<&mut [u8]>)> {
-        let (input_range, output_range) = self.slaves.get(idx)?.io_segments();
+        let IoRanges {
+            input: input_range,
+            output: output_range,
+        } = self.slaves.get(idx)?.io_segments();
 
         // SAFETY: Multiple mutable references are ok as long as I and O ranges do not overlap.
         let data = self.pdi();
@@ -154,7 +157,7 @@ impl<
     }
 }
 
-/// A reference to a [`SlaveGroup`] with elided `MAX_SLAVES` constant.
+/// A reference to a [`SlaveGroup`] with erased `MAX_SLAVES` constant.
 pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     pdi_len: &'a mut usize,
     start_address: &'a mut u32,
@@ -167,7 +170,6 @@ impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
     SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
-    // O: core::future::Future<Output = ()>,
 {
     pub(crate) async fn configure_from_eeprom<'client>(
         &mut self,
@@ -180,22 +182,19 @@ where
         *self.start_address = offset.start_address;
 
         for slave in self.slaves.iter_mut() {
-            let mut slave_ref = SlaveRef::new(client, slave.configured_address);
+            let mut slave_ref = SlaveRef::new(client, &mut slave.config, slave.configured_address);
 
             slave_ref.configure_from_eeprom_safe_op().await?;
 
-            if let Some(hook) = self.preop_safeop_hook.as_ref() {
+            if let Some(hook) = self.preop_safeop_hook {
                 (hook)(&slave_ref).await.unwrap();
             }
 
-            let (new_offset, i, o) = slave_ref.configure_from_eeprom_pre_op(offset).await?;
-
-            slave.input_range = i.clone();
-            slave.output_range = o.clone();
+            let new_offset = slave_ref.configure_from_eeprom_pre_op(offset).await?;
 
             offset = new_offset;
 
-            *self.group_working_counter += i.map(|_| 1).unwrap_or(0) + o.map(|_| 2).unwrap_or(0);
+            *self.group_working_counter += slave.config.io.working_counter_sum();
         }
 
         *self.pdi_len = (offset.start_address - *self.start_address) as usize;
