@@ -232,7 +232,7 @@ where
         // TODO: Store mailbox read/write address in slave structure
         let response = self.write(0x1800u16, payload, "SDO write").await?;
 
-        dbg!(response);
+        // dbg!(response);
 
         Ok(())
     }
@@ -358,9 +358,11 @@ where
         &mut self,
         mut offset: PdiOffset,
     ) -> Result<(PdiOffset, Option<PdiSegment>, Option<PdiSegment>), Error> {
-        // RX from the perspective of the slave device
         let master_write_pdos = self.eeprom().master_write_pdos().await?;
         let master_read_pdos = self.eeprom().master_read_pdos().await?;
+
+        log::trace!("Slave RX PDOs {:#?}", master_write_pdos);
+        log::trace!("Slave TX PDOs {:#?}", master_read_pdos);
 
         let sync_managers = self.eeprom().sync_managers().await?;
         let fmmu_usage = self.eeprom().fmmus().await?;
@@ -368,6 +370,7 @@ where
 
         // PDOs must be configurd in PRE-OP state
         // TODO: I think I need to read the PDOs out of CoE (if supported?), not EEPROM
+        // Outputs are configured first, so will be before inputs in the PDI
         let outputs_range = self
             .configure_pdos(
                 &sync_managers,
@@ -394,9 +397,6 @@ where
         self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
         self.request_slave_state(SlaveState::SafeOp).await?;
-
-        // self.slave.input_range = inputs_range.clone();
-        // self.slave.output_range = outputs_range.clone();
 
         Ok((offset, inputs_range, outputs_range))
     }
@@ -464,7 +464,6 @@ where
 
         let (sm_type, fmmu_type) = direction.filter_terms();
 
-        // Configure output bits first so they're before inputs in the PDI
         for (sync_manager_index, sync_manager) in sync_managers
             .iter()
             .enumerate()
