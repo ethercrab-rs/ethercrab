@@ -32,6 +32,8 @@ pub enum Error {
         required: usize,
     },
     SendFrame,
+    /// A slave has no mailbox but requires one for a given action.
+    NoMailbox,
 }
 
 impl From<BorrowError> for Error {

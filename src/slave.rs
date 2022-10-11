@@ -62,14 +62,36 @@ impl SlaveIdentity {
     }
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct SlaveConfig {
+    pub io: IoRanges,
+    pub mailbox: MailboxAddresses,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct IoRanges {
+    pub input: Option<PdiSegment>,
+    pub output: Option<PdiSegment>,
+}
+
+impl IoRanges {
+    pub fn working_counter_sum(&self) -> u16 {
+        self.input.as_ref().map(|_| 1).unwrap_or(0) + self.output.as_ref().map(|_| 2).unwrap_or(0)
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct MailboxAddresses {
+    pub(crate) read_address: Option<u16>,
+    pub(crate) write_address: Option<u16>,
+}
+
 #[derive(Debug)]
 pub struct Slave {
     /// Configured station address.
     pub(crate) configured_address: u16,
-    /// Index into PDI map corresponding to slave inputs.
-    pub(crate) input_range: Option<PdiSegment>,
-    /// Index into PDI map corresponding to slave outputs.
-    pub(crate) output_range: Option<PdiSegment>,
+
+    pub(crate) config: SlaveConfig,
 
     pub identity: SlaveIdentity,
 
@@ -85,7 +107,9 @@ impl Slave {
     where
         TIMEOUT: TimerFactory,
     {
-        let slave_ref = SlaveRef::new(client, configured_address);
+        let mut config = SlaveConfig::default();
+
+        let slave_ref = SlaveRef::new(client, &mut config, configured_address);
 
         slave_ref.wait_for_state(SlaveState::Init).await?;
 
@@ -113,20 +137,20 @@ impl Slave {
 
         Ok(Self {
             configured_address,
-            input_range: None,
-            output_range: None,
             identity,
             name,
+            config,
         })
     }
 
-    pub(crate) fn io_segments(&self) -> (Option<PdiSegment>, Option<PdiSegment>) {
-        (self.input_range.clone(), self.output_range.clone())
+    pub(crate) fn io_segments(&self) -> IoRanges {
+        self.config.io.clone()
     }
 }
 
 pub struct SlaveRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    pub(crate) config: &'a mut SlaveConfig,
     configured_address: u16,
 }
 
@@ -137,10 +161,12 @@ where
 {
     pub fn new(
         client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        config: &'a mut SlaveConfig,
         configured_address: u16,
     ) -> Self {
         Self {
             client,
+            config,
             configured_address,
         }
     }
@@ -188,6 +214,8 @@ where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
+        let read_address = self.config.mailbox.read_address.ok_or(Error::NoMailbox)?;
+
         // Only expedited requests for now
         if T::len() > 4 {
             // TODO: Error::Sdo(SdoError::DataTooLong) or something
@@ -230,7 +258,7 @@ where
         let payload = request.pack().unwrap();
 
         // TODO: Store mailbox read/write address in slave structure
-        let response = self.write(0x1800u16, payload, "SDO write").await?;
+        let _response = self.write(read_address, payload, "SDO write").await?;
 
         // dbg!(response);
 
@@ -332,7 +360,7 @@ where
         Ok(sm_config)
     }
 
-    pub(crate) async fn configure_from_eeprom_safe_op(&self) -> Result<(), Error> {
+    pub(crate) async fn configure_from_eeprom_safe_op(&mut self) -> Result<(), Error> {
         // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
         // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
         // to master mode here, now that the transition is complete.
@@ -341,7 +369,7 @@ where
         let sync_managers = self.eeprom().sync_managers().await?;
 
         // Mailboxes must be configured in INIT state
-        self.configure_mailboxes(&sync_managers).await?;
+        let (read_address, write_address) = self.configure_mailboxes(&sync_managers).await?;
 
         // Some slaves must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
@@ -351,13 +379,18 @@ where
 
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
+        self.config.mailbox = MailboxAddresses {
+            read_address,
+            write_address,
+        };
+
         Ok(())
     }
 
     pub(crate) async fn configure_from_eeprom_pre_op(
         &mut self,
         mut offset: PdiOffset,
-    ) -> Result<(PdiOffset, Option<PdiSegment>, Option<PdiSegment>), Error> {
+    ) -> Result<PdiOffset, Error> {
         let master_write_pdos = self.eeprom().master_write_pdos().await?;
         let master_read_pdos = self.eeprom().master_read_pdos().await?;
 
@@ -371,7 +404,7 @@ where
         // PDOs must be configurd in PRE-OP state
         // TODO: I think I need to read the PDOs out of CoE (if supported?), not EEPROM
         // Outputs are configured first, so will be before inputs in the PDI
-        let outputs_range = self
+        let output_range = self
             .configure_pdos(
                 &sync_managers,
                 &master_write_pdos,
@@ -382,7 +415,7 @@ where
             )
             .await?;
 
-        let inputs_range = self
+        let input_range = self
             .configure_pdos(
                 &sync_managers,
                 &master_read_pdos,
@@ -398,10 +431,18 @@ where
 
         self.request_slave_state(SlaveState::SafeOp).await?;
 
-        Ok((offset, inputs_range, outputs_range))
+        self.config.io = IoRanges {
+            input: input_range,
+            output: output_range,
+        };
+
+        Ok(offset)
     }
 
-    async fn configure_mailboxes(&self, sync_managers: &[SyncManager]) -> Result<(), Error> {
+    async fn configure_mailboxes(
+        &self,
+        sync_managers: &[SyncManager],
+    ) -> Result<(Option<u16>, Option<u16>), Error> {
         let mailbox_config = self.eeprom().mailbox_config().await?;
 
         log::trace!(
@@ -416,8 +457,11 @@ where
                 self.configured_address
             );
 
-            return Ok(());
+            return Ok((None, None));
         }
+
+        let mut read_mailbox_address = None;
+        let mut write_mailbox_address = None;
 
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
@@ -431,6 +475,8 @@ where
                         mailbox_config.slave_receive_size,
                     )
                     .await?;
+
+                    read_mailbox_address = Some(sync_manager.start_addr);
                 }
                 SyncManagerType::MailboxRead => {
                     self.write_sm_config(
@@ -439,12 +485,14 @@ where
                         mailbox_config.slave_send_size,
                     )
                     .await?;
+
+                    write_mailbox_address = Some(sync_manager.start_addr);
                 }
                 _ => continue,
             }
         }
 
-        Ok(())
+        Ok((read_mailbox_address, write_mailbox_address))
     }
 
     /// Configure SM and FMMU mappings for either TX or RX PDOs.
