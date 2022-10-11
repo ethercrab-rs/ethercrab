@@ -5,7 +5,6 @@ use packed_struct::{prelude::*, PackingResult};
 /// Defined in ETG1000.6 5.6.1
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CoeHeader {
-    pub number: u16,
     pub service: CoeService,
 }
 
@@ -13,7 +12,12 @@ impl PackedStruct for CoeHeader {
     type ByteArray = [u8; 2];
 
     fn pack(&self) -> PackingResult<Self::ByteArray> {
-        let number = self.number & 0b1_1111_1111;
+        // NOTE: The spec hard codes this value for every CoE service to 0x00, however it's a
+        // defined field so I'll leave it in the code to hopefully make things a bit clearer when
+        // referring to the spec.
+        let number = 0;
+        let number = number & 0b1_1111_1111;
+
         let service = self.service as u16;
 
         let raw = number | (service << 12);
@@ -24,12 +28,10 @@ impl PackedStruct for CoeHeader {
     fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
         let raw = u16::from_le_bytes(*src);
 
-        let number = raw & 0b1_1111_1111;
-
         let service =
             CoeService::from_primitive((raw >> 12) as u8).ok_or(PackingError::InvalidValue)?;
 
-        Ok(Self { number, service })
+        Ok(Self { service })
     }
 }
 
@@ -125,9 +127,6 @@ mod tests {
     #[test]
     fn pack_coe_header() {
         let header = CoeHeader {
-            // number: 0b1010_1010_1,
-            // number: 0x155,
-            number: 0,
             service: CoeService::SdoRequest,
         };
 
