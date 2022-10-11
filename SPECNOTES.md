@@ -221,6 +221,38 @@ SM control byte mentioned in ETG2010 Table 11 corresponds to `Sm/@ControlByte` (
 which then points to addres 0x0800 + 0x0004, i.e. ETG1000.4 Table 58, starting from `Buffer type`
 row.
 
+## Slaves with CoE
+
+CoE (CANOpen over EtherCAT) slaves need to map SDOs into the PDI. This is done after the preop ->
+safeop hook is called so the user has a chance to configure the slave correctly.
+
+ETG1000.5 Section 6.1.4.1.6 describes some mappings
+
+ETG1000.6 Section 5.6.7.4 CoE Communication Area / Table 67 – CoE Communication Area lists items and
+locations that can be read for configuration.
+
+SOEM sets the slave's `Obits` and `Ibits` in `ecx_map_coe_soe`. If they're greater than zero (i.e.
+we have PDI mapping from CoE), the `ecx_map_sii` call in `ecx_config_find_mappings` will be a noop.
+
+The only thing CoE changes for sync managers is the data length - the FMMUs must be altered
+according to the CoE dictionary.
+
+> The tables are located in the object directory at index 0x1600 to 0x17FF for the RxPDOs and at
+> 0x1A00 to 0x1BFF for the TxPDOs.
+
+Note that TX/RX is from the slave's point of view.
+
+- ETG1000.6 Section 5.6.7.4 shows the CoE comms area.
+- We need to read sync manager usage from this area under index `0x1c00` -
+  `Sync Manager Communication Type`
+- ETG1000.6 Section 5.6.7.4.9 describes `Sync Manager Communication Type` structure
+- There are a bunch of TX/RX PDO mappings also in this table.
+- SOEM reads sync manager configs from the SDOs. Because `Ibits` and `Obits` are set, the SM config
+  is not clobbered because the EEPROM config doesn't run.
+
+When we write to e.g. 0x1C12 we're actually configuring a sync manager's PDO mappings, which is then
+read back out of the dictionary during auto config. Pretty neat.
+
 # Mailbox/CANOpen
 
 ETG1000.4 section 5.6 describes mailbox structure.
