@@ -38,6 +38,8 @@ pub enum Error {
     ///
     /// E.g. converting `99_999usize` into a `u16` will fail as the value is larger than `u16::MAX`.
     IntegerTypeConversion,
+    // TODO: SDO sub error enum to include this, `NoMailbox`, etc
+    SdoAborted(AbortCode),
 }
 
 impl From<BorrowError> for Error {
