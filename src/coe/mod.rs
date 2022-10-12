@@ -1,3 +1,4 @@
+pub mod abort_code;
 pub mod services;
 
 use core::num::NonZeroU8;
