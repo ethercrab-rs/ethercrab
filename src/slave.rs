@@ -8,7 +8,9 @@ use crate::{
     },
     command::Command,
     eeprom::{
-        types::{FmmuUsage, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType},
+        types::{
+            DefaultMailbox, FmmuUsage, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType,
+        },
         Eeprom,
     },
     error::{Error, PduError},
@@ -69,7 +71,19 @@ impl SlaveIdentity {
 #[derive(Debug, Default, Clone)]
 pub struct SlaveConfig {
     pub io: IoRanges,
-    pub mailbox: MailboxAddresses,
+    pub mailbox: MailboxConfig,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MailboxConfig {
+    read: Option<Mailbox>,
+    write: Option<Mailbox>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Mailbox {
+    address: u16,
+    len: u16,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -82,12 +96,6 @@ impl IoRanges {
     pub fn working_counter_sum(&self) -> u16 {
         self.input.as_ref().map(|_| 1).unwrap_or(0) + self.output.as_ref().map(|_| 2).unwrap_or(0)
     }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct MailboxAddresses {
-    pub(crate) read_address: Option<u16>,
-    pub(crate) write_address: Option<u16>,
 }
 
 #[derive(Debug)]
@@ -213,7 +221,7 @@ where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
-        let write_address = self.config.mailbox.write_address.ok_or(Error::NoMailbox)?;
+        let write_mailbox = self.config.mailbox.write.ok_or(Error::NoMailbox)?;
 
         if T::len() > 4 {
             // TODO: Normal SDO download. Only expedited requests for now
@@ -253,7 +261,9 @@ where
 
         let payload = request.pack().unwrap();
 
-        let _response = self.write(write_address, payload, "SDO write").await?;
+        let _response = self
+            .write(write_mailbox.address, payload, "SDO write")
+            .await?;
 
         // TODO: Confirm SDO was successfully downloaded by the slave
 
@@ -476,7 +486,7 @@ where
         let sync_managers = self.eeprom().sync_managers().await?;
 
         // Mailboxes must be configured in INIT state
-        let (read_address, write_address) = self.configure_mailboxes(&sync_managers).await?;
+        let (read, write) = self.configure_mailboxes(&sync_managers).await?;
 
         // Some slaves must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
@@ -486,10 +496,7 @@ where
 
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
-        self.config.mailbox = MailboxAddresses {
-            read_address,
-            write_address,
-        };
+        self.config.mailbox = MailboxConfig { read, write };
 
         Ok(())
     }
@@ -549,7 +556,7 @@ where
     async fn configure_mailboxes(
         &self,
         sync_managers: &[SyncManager],
-    ) -> Result<(Option<u16>, Option<u16>), Error> {
+    ) -> Result<(Option<Mailbox>, Option<Mailbox>), Error> {
         let mailbox_config = self.eeprom().mailbox_config().await?;
 
         log::trace!(
@@ -567,8 +574,8 @@ where
             return Ok((None, None));
         }
 
-        let mut read_mailbox_address = None;
-        let mut write_mailbox_address = None;
+        let mut read_mailbox = None;
+        let mut write_mailbox = None;
 
         for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
@@ -583,7 +590,10 @@ where
                     )
                     .await?;
 
-                    write_mailbox_address = Some(sync_manager.start_addr);
+                    write_mailbox = Some(Mailbox {
+                        address: sync_manager.start_addr,
+                        len: mailbox_config.slave_receive_size,
+                    });
                 }
                 SyncManagerType::MailboxRead => {
                     self.write_sm_config(
@@ -593,13 +603,16 @@ where
                     )
                     .await?;
 
-                    read_mailbox_address = Some(sync_manager.start_addr);
+                    read_mailbox = Some(Mailbox {
+                        address: sync_manager.start_addr,
+                        len: mailbox_config.slave_receive_size,
+                    });
                 }
                 _ => continue,
             }
         }
 
-        Ok((read_mailbox_address, write_mailbox_address))
+        Ok((read_mailbox, write_mailbox))
     }
 
     /// Configure SM and FMMU mappings for either TX or RX PDOs.
