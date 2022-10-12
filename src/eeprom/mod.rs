@@ -2,7 +2,7 @@ mod reader;
 // TODO: Un-pub
 pub mod types;
 
-use self::types::{FmmuEx, MailboxConfig};
+use self::types::{DefaultMailbox, FmmuEx};
 use crate::{
     eeprom::{
         reader::EepromSectionReader,
@@ -156,14 +156,14 @@ where
         self.find_string(name_idx).await
     }
 
-    pub async fn mailbox_config(&self) -> Result<MailboxConfig, Error> {
+    pub async fn mailbox_config(&self) -> Result<DefaultMailbox, Error> {
         // Start reading standard mailbox config. Raw start address defined in ETG2010 Table 2.
         // Mailbox config is 10 bytes long.
         let mut reader = EepromSectionReader::start_at(self, 0x0018, 10);
 
         let buf = reader.take_vec_exact::<10>().await?;
 
-        let (_, config) = MailboxConfig::parse(&buf).expect("General parse");
+        let (_, config) = DefaultMailbox::parse(&buf).expect("General parse");
 
         Ok(config)
     }
