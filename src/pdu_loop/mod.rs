@@ -178,18 +178,23 @@ where
 
     // TX
     /// Send data to and read data back from multiple slaves.
-    pub async fn pdu_tx_readwrite<'a>(
+    ///
+    /// The PDU data length will be the large of `send_data.len()` and `data_length`. If a larger
+    /// response than `send_data` is desired, set the expected response length in `data_length`.
+    pub async fn pdu_tx_readwrite_len<'a>(
         &'a self,
         command: Command,
         send_data: &[u8],
+        data_length: u16,
     ) -> Result<PduResponse<&'a [u8]>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
+        let send_data_len = usize::from(send_data.len());
+        let payload_length = u16::try_from(send_data.len())?.max(data_length);
+
         let (frame, frame_data) = self.frame(idx)?;
 
-        frame.replace(command, send_data.len() as u16, idx)?;
-
-        let send_data_len = usize::from(send_data.len());
+        frame.replace(command, payload_length, idx)?;
 
         let frame_data = frame_data
             .get_mut(0..send_data_len)
@@ -213,6 +218,17 @@ where
         let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
 
         Ok((&frame_data[0..send_data_len], res.working_counter()))
+    }
+
+    // TX
+    /// Send data to and read data back from multiple slaves.
+    pub async fn pdu_tx_readwrite<'a>(
+        &'a self,
+        command: Command,
+        send_data: &[u8],
+    ) -> Result<PduResponse<&'a [u8]>, Error> {
+        self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?)
+            .await
     }
 
     // RX
