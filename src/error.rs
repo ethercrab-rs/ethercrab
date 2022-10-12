@@ -1,4 +1,4 @@
-use core::cell::BorrowError;
+use core::{cell::BorrowError, num::TryFromIntError};
 
 use crate::command::Command;
 
@@ -34,6 +34,10 @@ pub enum Error {
     SendFrame,
     /// A slave has no mailbox but requires one for a given action.
     NoMailbox,
+    /// A value may be too large or otherwise could not be converted into a target type.
+    ///
+    /// E.g. converting `99_999usize` into a `u16` will fail as the value is larger than `u16::MAX`.
+    IntegerTypeConversion,
 }
 
 impl From<BorrowError> for Error {
@@ -127,5 +131,13 @@ impl From<packed_struct::PackingError> for Error {
         log::error!("Packing error {:?}", e);
 
         Self::Pdu(PduError::Decode)
+    }
+}
+
+impl From<TryFromIntError> for Error {
+    fn from(e: TryFromIntError) -> Self {
+        log::error!("Integer conversion error: {}", e);
+
+        Self::IntegerTypeConversion
     }
 }
