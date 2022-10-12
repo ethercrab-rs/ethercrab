@@ -3,6 +3,7 @@ use crate::{
     al_status_code::AlStatusCode,
     client::Client,
     coe::{
+        abort_code::AbortCode,
         services::{DownloadExpeditedRequest, UploadExpeditedRequest, UploadExpeditedResponse},
         CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SdoAccess,
     },
@@ -28,6 +29,7 @@ use core::fmt::Write;
 use core::{any::type_name, fmt::Debug};
 use core::{fmt, time::Duration};
 use nom::{number::complete::le_u32, IResult};
+use num_enum::TryFromPrimitive;
 use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
 #[derive(Default)]
@@ -277,10 +279,14 @@ where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
-        let write_address = self.config.mailbox.write_address.ok_or(Error::NoMailbox)?;
+        let write_mailbox = self.config.mailbox.write.ok_or(Error::NoMailbox)?;
+        let read_mailbox = self.config.mailbox.read.ok_or(Error::NoMailbox)?;
+
+        let counter = self.client.mailbox_counter();
 
         if T::len() > 4 {
             // TODO: Normal SDO download. Only expedited requests for now
+            // TODO: Check if mailbox size is too big to fit in a `MAX_PDU` buffer
             panic!("Data too long");
         }
 
@@ -290,7 +296,7 @@ where
                 address: 0x0000,
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
-                counter: self.client.mailbox_counter(),
+                counter,
             },
             coe_header: CoeHeader {
                 service: CoeService::SdoRequest,
@@ -310,20 +316,21 @@ where
             },
         };
 
-        // TODO: Allow overriding length in `pdu_tx_readwrite` so we don't have to hack this longer buffer
-        // 1024 hard coded to AKD mailbox size. Smaller sizes seem to prevent the receive mailbox from flagging.
+        // 1024 hard coded to AKD mailbox size. This needs to be the size of the mailbox reported by
+        // the slave or the `status.mailbox_full` flag will never fire.
         let mut expedited_buffer = [0u8; 1024];
 
         request.pack_to_slice(&mut expedited_buffer[0..12]).unwrap();
 
         self.client
             .pdu_loop
-            .pdu_tx_readwrite(
+            .pdu_tx_readwrite_len(
                 Command::Fpwr {
                     address: self.configured_address,
-                    register: write_address,
+                    register: write_mailbox.address,
                 },
                 &expedited_buffer,
+                write_mailbox.len,
             )
             .await?
             .wkc(1, "SDO upload request")?;
@@ -354,32 +361,63 @@ where
         })?;
 
         // Receive data from slave send mailbox
+        let response = self
+            .client
+            .pdu_loop
+            .pdu_tx_readonly(
+                Command::Fprd {
+                    address: self.configured_address,
+                    register: read_mailbox.address,
+                },
+                read_mailbox.len,
+            )
+            .await?
+            .wkc(1, "SDO read mailbox")?;
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
 
-        // let (headers, data) = response.split_at(headers_len);
-        // let data = &data[0..4];
+        let headers_len = UploadExpeditedResponse::packed_bits() / 8;
 
-        // let response = UploadExpeditedResponse::unpack_from_slice(
-        //     &response[0..(UploadExpeditedResponse::packed_bits() / 8)],
-        // )?;
+        let (headers, data) = response.split_at(headers_len);
 
-        // // TODO: Validate headers
-        // // dbg!(headers);
+        let headers = UploadExpeditedResponse::unpack_from_slice(headers)?;
 
-        // let res = T::try_from_slice(&response.data).map_err(|e| {
-        //     log::error!(
-        //         "PDU data decode: {:?}, T: {} data {:?}",
-        //         e,
-        //         type_name::<T>(),
-        //         response.data
-        //     );
+        if headers.sdo_header.flags.command == InitSdoFlags::ABORT_REQUEST {
+            let code = data[0..4]
+                .try_into()
+                .map_err(|_| ())
+                .and_then(|arr| {
+                    AbortCode::try_from_primitive(u32::from_le_bytes(arr)).map_err(|_| ())
+                })
+                .unwrap_or(AbortCode::General);
 
-        //     PduError::Decode
-        // })?;
+            return Err(Error::SdoAborted(code));
+        }
 
-        // Ok(res)
-        todo!();
+        // Validate that the mailbox response is to the request we just sent
+        if headers.header.mailbox_type != MailboxType::Coe || headers.header.counter != counter {
+            return Err(Error::SdoResponseInvalid);
+        }
+
+        if headers.sdo_header.flags.expedited_transfer {
+            let data_len = 4u8.saturating_sub(headers.sdo_header.flags.size);
+
+            let data = &data[0..usize::from(data_len)];
+
+            T::try_from_slice(data).map_err(|_| {
+                log::error!(
+                    "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
+                    type_name::<T>(),
+                    T::len(),
+                    data,
+                    data.len()
+                );
+
+                Error::Pdu(PduError::Decode)
+            })
+        } else {
+            unreachable!("Only expedited transfers are supported at this time");
+        }
     }
 
     async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
