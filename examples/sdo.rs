@@ -49,11 +49,13 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let groups =
         [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(Box::new(|slave| {
             Box::pin(async {
-                dbg!(slave.read_sdo::<u32>(0x1c00, SdoAccess::Index(0)).await?);
-                dbg!(slave.read_sdo::<u32>(0x1018, SdoAccess::Index(0)).await?);
-                dbg!(slave.read_sdo::<u32>(0x1c12, SdoAccess::Index(0)).await?);
-                dbg!(slave.read_sdo::<u32>(0x1600, SdoAccess::Index(0)).await?);
-                dbg!(slave.read_sdo::<u32>(0x1c10, SdoAccess::Index(0)).await?);
+                dbg!(slave.read_sdo::<u32>(0x1000, SdoAccess::Index(0)).await?);
+                dbg!(slave.read_sdo::<u8>(0x1001, SdoAccess::Index(0)).await?);
+                // 0x1018:1 = vendor ID
+                dbg!(slave.read_sdo::<u32>(0x1018, SdoAccess::Index(1)).await?);
+                dbg!(slave.read_sdo::<u8>(0x1c12, SdoAccess::Index(0)).await?);
+                dbg!(slave.read_sdo::<u8>(0x1600, SdoAccess::Index(0)).await?);
+                dbg!(slave.read_sdo::<u8>(0x1c10, SdoAccess::Index(0)).await?);
 
                 // slave.write_sdo(0x1c12, 0, SdoAccess::Complete).await?;
                 // slave
