@@ -1,6 +1,5 @@
+use crate::{coe::abort_code::AbortCode, command::Command};
 use core::{cell::BorrowError, num::TryFromIntError};
-
-use crate::command::Command;
 
 #[derive(Debug)]
 pub enum Error {
@@ -34,6 +33,7 @@ pub enum Error {
     SendFrame,
     /// A slave has no mailbox but requires one for a given action.
     NoMailbox,
+    SdoResponseInvalid,
     /// A value may be too large or otherwise could not be converted into a target type.
     ///
     /// E.g. converting `99_999usize` into a `u16` will fail as the value is larger than `u16::MAX`.

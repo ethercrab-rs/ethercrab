@@ -1,6 +1,6 @@
 use packed_struct::prelude::PackedStruct;
 
-use super::{CoeHeader, InitSdoHeader, SegmentSdoHeader};
+use super::{abort_code::AbortCode, CoeHeader, InitSdoHeader, SegmentSdoHeader};
 use crate::mailbox::MailboxHeader;
 
 #[derive(Debug, Copy, Clone, PackedStruct)]
@@ -70,7 +70,7 @@ pub struct UploadExpeditedResponse {
     pub coe_header: CoeHeader,
     #[packed_field(size_bytes = "4")]
     pub sdo_header: InitSdoHeader,
-    pub data: [u8; 4],
+    // pub data: [u8; 4],
 }
 
 #[derive(Debug, Copy, Clone)]

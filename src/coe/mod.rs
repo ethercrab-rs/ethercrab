@@ -1,8 +1,6 @@
 pub mod abort_code;
 pub mod services;
 
-use core::num::NonZeroU8;
-
 use packed_struct::{prelude::*, PackingResult};
 
 /// Defined in ETG1000.6 5.6.1
@@ -81,6 +79,7 @@ impl InitSdoFlags {
     pub const DOWNLOAD_RESPONSE: u8 = 0x03;
     pub const UPLOAD_REQUEST: u8 = 0x02;
     pub const UPLOAD_RESPONSE: u8 = 0x02;
+    pub const ABORT_REQUEST: u8 = 0x04;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PackedStruct)]
@@ -112,8 +111,8 @@ pub struct SegmentSdoHeader {
 impl SegmentSdoHeader {
     const DOWNLOAD_SEGMENT_REQUEST: u8 = 0x00;
     const DOWNLOAD_SEGMENT_RESPONSE: u8 = 0x01;
-    const UPLOAD_SEGMENT_RESPONSE: u8 = 0x02;
-    const UPLOAD_SEGMENT_REQUEST: u8 = 0x03;
+    const UPLOAD_SEGMENT_REQUEST: u8 = 0x02;
+    const UPLOAD_SEGMENT_RESPONSE: u8 = 0x03;
 }
 
 pub enum SdoAccess {
