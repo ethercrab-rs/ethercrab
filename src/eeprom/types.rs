@@ -650,6 +650,7 @@ bitflags::bitflags! {
     /// Supported mailbox category.
     ///
     /// Defined in ETG1000.6 Table 18 or ETG2010 Table 4.
+    #[derive(Default)]
     pub struct MailboxProtocols: u16 {
         /// ADS over EtherCAT (routing and parallel services).
         const AOE = 0x0001;
@@ -666,8 +667,8 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Clone)]
-pub struct MailboxConfig {
+#[derive(Clone, Default)]
+pub struct DefaultMailbox {
     /// Master to slave receive mailbox address offset.
     pub slave_receive_offset: u16,
     /// Master to slave receive mailbox size.
@@ -680,14 +681,14 @@ pub struct MailboxConfig {
     pub supported_protocols: MailboxProtocols,
 }
 
-impl MailboxConfig {
+impl DefaultMailbox {
     pub fn has_mailbox(&self) -> bool {
         !self.supported_protocols.is_empty() && self.slave_receive_size > 0
             || self.slave_send_size > 0
     }
 }
 
-impl fmt::Debug for MailboxConfig {
+impl fmt::Debug for DefaultMailbox {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("MailboxConfig")
             .field(
@@ -711,7 +712,7 @@ impl fmt::Debug for MailboxConfig {
     }
 }
 
-impl MailboxConfig {
+impl DefaultMailbox {
     // TODO: `all_consuming`, and for all other `parse()` methods
     pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, receive_offset) = le_u16(i)?;
