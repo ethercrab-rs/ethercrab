@@ -28,7 +28,7 @@ use crate::{
 use core::fmt::Write;
 use core::{any::type_name, fmt::Debug};
 use core::{fmt, time::Duration};
-use nom::{number::complete::le_u32, IResult};
+use nom::{bytes::complete::take, number::complete::le_u32, IResult};
 use num_enum::TryFromPrimitive;
 use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
@@ -86,6 +86,7 @@ pub struct MailboxConfig {
 pub struct Mailbox {
     address: u16,
     len: u16,
+    sync_manager: u8,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -284,12 +285,6 @@ where
 
         let counter = self.client.mailbox_counter();
 
-        if T::len() > 4 {
-            // TODO: Normal SDO download. Only expedited requests for now
-            // TODO: Check if mailbox size is too big to fit in a `MAX_PDU` buffer
-            panic!("Data too long");
-        }
-
         let request = UploadExpeditedRequest::upload(counter, index, access);
 
         self.client
@@ -299,7 +294,7 @@ where
                     address: self.configured_address,
                     register: write_mailbox.address,
                 },
-                &expedited_buffer,
+                &request.pack().unwrap(),
                 write_mailbox.len,
             )
             .await?
@@ -307,9 +302,7 @@ where
 
         // Wait for slave send mailbox to be ready
         crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
-            // TODO: Store sync manager index on slave instead of hard coding it from ETG1000.4
-            // Table 59 footnotes, although it does SHALL, not SHOULD...
-            let mailbox_read_sm = RegisterAddress::sync_manager(1);
+            let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
 
             loop {
                 let sm = self
@@ -350,7 +343,11 @@ where
 
         let (headers, data) = response.split_at(headers_len);
 
-        let headers = UploadExpeditedResponse::unpack_from_slice(headers)?;
+        let headers = UploadExpeditedResponse::unpack_from_slice(headers).map_err(|e| {
+            log::error!("Failed to unpack UploadExpeditedResponse: {e}");
+
+            e
+        })?;
 
         if headers.sdo_header.flags.command == InitSdoFlags::ABORT_REQUEST {
             let code = data[0..4]
@@ -386,7 +383,29 @@ where
                 Error::Pdu(PduError::Decode)
             })
         } else {
-            unreachable!("Only expedited transfers are supported at this time");
+            let data_length = headers.header.length.saturating_sub(0x0a);
+
+            let (data, complete_size) = le_u32(data)?;
+
+            dbg!(headers, complete_size, data_length);
+
+            if complete_size > u32::from(data_length) {
+                todo!("Segmented uploads not yet supported")
+            } else {
+                let (_rest, data) = take(data_length)(data)?;
+
+                T::try_from_slice(data).map_err(|_| {
+                    log::error!(
+                        "SDO normal data decode T: {} (len {}) data {:?} (len {})",
+                        type_name::<T>(),
+                        T::len(),
+                        data,
+                        data.len()
+                    );
+
+                    Error::Pdu(PduError::Decode)
+                })
+            }
         }
     }
 
@@ -601,6 +620,7 @@ where
                     write_mailbox = Some(Mailbox {
                         address: sync_manager.start_addr,
                         len: mailbox_config.slave_receive_size,
+                        sync_manager: sync_manager_index,
                     });
                 }
                 SyncManagerType::MailboxRead => {
@@ -614,6 +634,7 @@ where
                     read_mailbox = Some(Mailbox {
                         address: sync_manager.start_addr,
                         len: mailbox_config.slave_receive_size,
+                        sync_manager: sync_manager_index,
                     });
                 }
                 _ => continue,

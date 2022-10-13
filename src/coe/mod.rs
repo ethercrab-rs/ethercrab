@@ -130,7 +130,8 @@ impl SdoAccess {
 
     pub(crate) fn sub_index(&self) -> u8 {
         match self {
-            SdoAccess::Complete => 0,
+            // 0th sub-index counts number of sub-indices in object, so we'll start from 1
+            SdoAccess::Complete => 1,
             SdoAccess::Index(idx) => *idx,
         }
     }

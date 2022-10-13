@@ -175,6 +175,7 @@ impl<const N: usize> PduData for heapless::String<N> {
     }
 }
 
+#[derive(Debug)]
 pub enum VisibleStringError {
     Decode(Utf8Error),
     TooLong,
