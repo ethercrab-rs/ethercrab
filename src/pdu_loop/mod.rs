@@ -196,11 +196,14 @@ where
 
         frame.replace(command, payload_length, idx)?;
 
-        let frame_data = frame_data
-            .get_mut(0..send_data_len)
+        let payload = frame_data
+            .get_mut(0..usize::from(payload_length))
             .ok_or(Error::Pdu(PduError::TooLong))?;
 
-        frame_data.copy_from_slice(send_data);
+        let (data, fill) = payload.split_at_mut(send_data_len);
+
+        data.copy_from_slice(send_data);
+        fill.fill(0);
 
         // Tell the packet sender there is data ready to send
         match self.tx_waker.try_borrow() {
@@ -217,7 +220,7 @@ where
 
         let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
 
-        Ok((&frame_data[0..send_data_len], res.working_counter()))
+        Ok((&payload[0..send_data_len], res.working_counter()))
     }
 
     // TX
