@@ -294,3 +294,18 @@ Expedited (4 bytes or less) requests just get a send/receive pair
 
 SOEM calls `ecx_readPDOmapCA` or `ecx_readPDOmap` during initialisation. This then calls
 `ecx_readPDOassignCA` which reads SDOs but doesn't write anything. Hm.
+
+## SDO upload
+
+- Request is sent like Table 35 - set `size_indicator`, `expedited_transfer`, `size` to false/0.
+- Response can either be expedited with up to 4 bytes of data (Table 36)
+  - In this case, just take the 4 and convert into `T`
+- Or the response can return a "normal" response with up to mailbox length - 10 bytes of data
+  (table 37)
+  - Note that the mailbox header length changes here
+  - Length field in header should have 10 subtracted from it when comparing with "complete size" to
+    account for what appears to only be _some_ of the header(s). Hm.
+  - If the "complete size" field is greater than the length header, this is the first part of a
+    segmented upload and we need to sit in a loop after reading this data, making segment upload
+    request/responses (table 38/table 39)
+  - If "complete size" <= length, we don't need to loop
