@@ -200,10 +200,13 @@ where
             .get_mut(0..usize::from(payload_length))
             .ok_or(Error::Pdu(PduError::TooLong))?;
 
-        let (data, fill) = payload.split_at_mut(send_data_len);
+        let (data, rest) = payload.split_at_mut(send_data_len);
 
         data.copy_from_slice(send_data);
-        fill.fill(0);
+        // If we write fewer bytes than the requested payload length (e.g. write SDO with data
+        // payload section reserved for reply), make sure the remaining data is zeroed out from any
+        // previous request.
+        rest.fill(0);
 
         // Tell the packet sender there is data ready to send
         match self.tx_waker.try_borrow() {
