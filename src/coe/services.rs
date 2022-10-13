@@ -1,7 +1,6 @@
+use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SdoAccess, SegmentSdoHeader};
+use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 use packed_struct::prelude::PackedStruct;
-
-use super::{abort_code::AbortCode, CoeHeader, InitSdoHeader, SegmentSdoHeader};
-use crate::mailbox::MailboxHeader;
 
 #[derive(Debug, Copy, Clone, PackedStruct)]
 pub struct DownloadExpeditedRequest {
@@ -60,6 +59,34 @@ pub struct UploadExpeditedRequest {
     #[packed_field(size_bytes = "4")]
     pub sdo_header: InitSdoHeader,
     // _reserved: u32
+}
+
+impl UploadExpeditedRequest {
+    pub fn upload(counter: u8, index: u16, access: SdoAccess) -> Self {
+        Self {
+            header: MailboxHeader {
+                length: 0x0a,
+                address: 0x0000,
+                priority: Priority::Lowest,
+                mailbox_type: MailboxType::Coe,
+                counter,
+            },
+            coe_header: CoeHeader {
+                service: CoeService::SdoRequest,
+            },
+            sdo_header: InitSdoHeader {
+                flags: InitSdoFlags {
+                    size_indicator: false,
+                    expedited_transfer: false,
+                    size: 0,
+                    complete_access: access.complete_access(),
+                    command: InitSdoFlags::UPLOAD_REQUEST,
+                },
+                index,
+                sub_index: access.sub_index(),
+            },
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PackedStruct)]
