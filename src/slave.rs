@@ -290,37 +290,7 @@ where
             panic!("Data too long");
         }
 
-        let request = UploadExpeditedRequest {
-            header: MailboxHeader {
-                length: 0x0a,
-                address: 0x0000,
-                priority: Priority::Lowest,
-                mailbox_type: MailboxType::Coe,
-                counter,
-            },
-            coe_header: CoeHeader {
-                service: CoeService::SdoRequest,
-            },
-            sdo_header: InitSdoHeader {
-                flags: InitSdoFlags {
-                    // Hard coded to false when using UploadExpedited
-                    size_indicator: false,
-                    expedited_transfer: false,
-                    // Hard coded to zero when using UploadExpedited
-                    size: 0,
-                    complete_access: access.complete_access(),
-                    command: InitSdoFlags::UPLOAD_REQUEST,
-                },
-                index,
-                sub_index: access.sub_index(),
-            },
-        };
-
-        // 1024 hard coded to AKD mailbox size. This needs to be the size of the mailbox reported by
-        // the slave or the `status.mailbox_full` flag will never fire.
-        let mut expedited_buffer = [0u8; 1024];
-
-        request.pack_to_slice(&mut expedited_buffer[0..12]).unwrap();
+        let request = UploadExpeditedRequest::upload(counter, index, access);
 
         self.client
             .pdu_loop
