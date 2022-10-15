@@ -42,3 +42,5 @@
   - Write 0x00 to 0x1c12:00
   - Write 0x1701 to 0x1c12:01
   - Write 0x01 to 0x1c12:02
+- [ ] Benchmarks
+  - Look into Iai <https://github.com/bheisler/iai>
