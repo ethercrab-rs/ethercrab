@@ -49,13 +49,40 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let groups =
         [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(Box::new(|slave| {
             Box::pin(async {
-                dbg!(slave.read_sdo::<u32>(0x1000, SdoAccess::Index(0)).await?);
-                dbg!(slave.read_sdo::<u8>(0x1001, SdoAccess::Index(0)).await?);
-                // 0x1018:1 = vendor ID
-                dbg!(slave.read_sdo::<u32>(0x1018, SdoAccess::Index(1)).await?);
-                dbg!(slave.read_sdo::<u8>(0x1c12, SdoAccess::Index(0)).await?);
-                dbg!(slave.read_sdo::<u8>(0x1600, SdoAccess::Index(0)).await?);
-                dbg!(slave.read_sdo::<u8>(0x1c10, SdoAccess::Index(0)).await?);
+                // dbg!(slave.read_sdo::<u32>(0x1000, SdoAccess::Index(0)).await?);
+                // dbg!(slave.read_sdo::<u8>(0x1001, SdoAccess::Index(0)).await?);
+                // // 0x1018 = identity, 0x1018:1 = vendor ID
+                // dbg!(slave.read_sdo::<u32>(0x1018, SdoAccess::Index(1)).await?);
+                // dbg!(slave.read_sdo::<u8>(0x1c12, SdoAccess::Index(0)).await?);
+
+                // // Name
+                // dbg!(slave
+                //     .read_sdo::<heapless::String<64>>(0x1008, SdoAccess::Index(0))
+                //     .await
+                //     .unwrap());
+
+                // Software version, I think this should equal "M_01-20-00-003"
+                dbg!(slave
+                    .read_sdo::<heapless::String<64>>(0x100a, SdoAccess::Index(0))
+                    .await
+                    .unwrap());
+
+                // dbg!(slave
+                //     .read_sdo::<heapless::String<64>>(0x100a, SdoAccess::Index(0))
+                //     .await
+                //     .unwrap());
+
+                // let receive_pdos = slave.read_sdo::<u8>(0x1600, SdoAccess::Index(0)).await?;
+
+                // dbg!(receive_pdos);
+
+                // let rx_pdo_mapping = slave.read_sdo::<u32>(0x1600, SdoAccess::Index(1)).await?;
+
+                // log::info!(
+                //     "Receive PDOs ({receive_pdos}): {rx_pdo_mapping:#010x} ({rx_pdo_mapping:032b})"
+                // );
+
+                // dbg!(slave.read_sdo::<u8>(0x1c10, SdoAccess::Index(0)).await?);
 
                 // slave.write_sdo(0x1c12, 0, SdoAccess::Complete).await?;
                 // slave

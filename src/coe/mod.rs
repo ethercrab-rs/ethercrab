@@ -95,23 +95,23 @@ pub struct InitSdoHeader {
 
 /// Defined in ETG1000.6 5.6.2.3.1
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PackedStruct)]
-#[packed_struct(size_bytes = "1", bit_numbering = "msb0", endian = "lsb")]
+#[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
 pub struct SegmentSdoHeader {
-    #[packed_field(size_bits = "1")]
-    pub more_follows: bool,
-    #[packed_field(size_bits = "3")]
+    #[packed_field(bits = "0")]
+    pub is_last_segment: bool,
+    #[packed_field(bits = "1..=3")]
     /// Segment data size, `0x00` to `0x07`.
     pub segment_data_size: u8,
-    #[packed_field(size_bits = "1")]
+    #[packed_field(bits = "4")]
     pub toggle: bool,
-    #[packed_field(size_bits = "3")]
+    #[packed_field(bits = "5..=7")]
     command: u8,
 }
 
 impl SegmentSdoHeader {
     const DOWNLOAD_SEGMENT_REQUEST: u8 = 0x00;
     const DOWNLOAD_SEGMENT_RESPONSE: u8 = 0x01;
-    const UPLOAD_SEGMENT_REQUEST: u8 = 0x02;
+    const UPLOAD_SEGMENT_REQUEST: u8 = 0x03;
     const UPLOAD_SEGMENT_RESPONSE: u8 = 0x03;
 }
 
