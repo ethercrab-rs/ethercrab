@@ -66,7 +66,7 @@ const BASE_SLAVE_ADDR: u16 = 0x1000;
 pub trait PduRead: Sized {
     const LEN: u16;
 
-    type Error;
+    type Error: core::fmt::Debug;
 
     fn len() -> u16 {
         Self::LEN & LEN_MASK
