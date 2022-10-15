@@ -113,12 +113,8 @@ impl<
         let data = self.pdi();
         let data2 = self.pdi();
 
-        let i = input_range
-            .clone()
-            .and_then(|range| data.get_mut(range.bytes.clone()));
-        let o = output_range
-            .clone()
-            .and_then(|range| data2.get_mut(range.bytes.clone()));
+        let i = input_range.and_then(|range| data.get_mut(range.bytes));
+        let o = output_range.and_then(|range| data2.get_mut(range.bytes));
 
         Some((i, o))
     }
@@ -130,16 +126,14 @@ impl<
     where
         TIMEOUT: TimerFactory,
     {
-        let (_res, _wkc) = client.lrw_buf(self.start_address, self.pdi()).await?;
+        let (_res, wkc) = client.lrw_buf(self.start_address, self.pdi()).await?;
 
-        // TODO: Check working counter = (slaves with outputs) + (slaves with inputs * 2)
-
-        if _wkc != self.group_working_counter {
-            return Err(Error::WorkingCounter {
+        if wkc != self.group_working_counter {
+            Err(Error::WorkingCounter {
                 expected: self.group_working_counter,
-                received: _wkc,
+                received: wkc,
                 context: Some("group working counter"),
-            });
+            })
         } else {
             Ok(())
         }

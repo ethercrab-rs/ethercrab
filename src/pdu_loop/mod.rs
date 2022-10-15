@@ -88,7 +88,7 @@ where
         }
     }
 
-    pub fn as_ref<'a>(&'a self) -> PduLoopRef<'a> {
+    pub fn as_ref(&self) -> PduLoopRef<'_> {
         let frame_data = unsafe {
             core::slice::from_raw_parts(
                 self.frame_data.as_ptr() as *const _,
@@ -144,11 +144,11 @@ where
 
     // TX
     /// Read data back from one or more slave devices.
-    pub async fn pdu_tx_readonly<'a>(
-        &'a self,
+    pub async fn pdu_tx_readonly(
+        &self,
         command: Command,
         data_length: u16,
-    ) -> Result<PduResponse<&'a [u8]>, Error> {
+    ) -> Result<PduResponse<&'_ [u8]>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
         let (frame, frame_data) = self.frame(idx)?;
@@ -189,7 +189,7 @@ where
     ) -> Result<PduResponse<&'a [u8]>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
-        let send_data_len = usize::from(send_data.len());
+        let send_data_len = send_data.len();
         let payload_length = u16::try_from(send_data.len())?.max(data_length);
 
         let (frame, frame_data) = self.frame(idx)?;

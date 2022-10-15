@@ -5,17 +5,12 @@ use crate::{
     coe::{
         self,
         abort_code::AbortCode,
-        services::{
-            CoeServiceTrait, DownloadExpeditedRequest, UploadExpeditedRequest,
-            UploadExpeditedResponse, UploadRequest, UploadSegmentRequest,
-        },
+        services::{CoeServiceTrait, DownloadExpeditedRequest},
         CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SdoAccess,
     },
     command::Command,
     eeprom::{
-        types::{
-            DefaultMailbox, FmmuUsage, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType,
-        },
+        types::{FmmuUsage, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType},
         Eeprom,
     },
     error::{Error, PduError},
@@ -34,7 +29,7 @@ use core::{any::type_name, fmt::Debug};
 use core::{fmt, time::Duration};
 use nom::{bytes::complete::take, number::complete::le_u32, IResult};
 use num_enum::TryFromPrimitive;
-use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
+use packed_struct::{PackedStruct, PackedStructSlice};
 
 #[derive(Default)]
 pub struct SlaveIdentity {
@@ -241,6 +236,7 @@ where
 
         data[0..len].copy_from_slice(value.as_slice());
 
+        // TODO: Move into a helper function
         let request = DownloadExpeditedRequest {
             header: MailboxHeader {
                 length: 0x0a,
@@ -263,7 +259,7 @@ where
                 index,
                 sub_index: access.sub_index(),
             },
-            data: data,
+            data,
         };
 
         let payload = request.pack().unwrap();
@@ -273,8 +269,6 @@ where
             .await?;
 
         // TODO: Confirm SDO was successfully downloaded by the slave
-
-        // dbg!(response);
 
         Ok(())
     }
@@ -523,7 +517,7 @@ where
 
     // TODO: Separate TIMEOUT for EEPROM specifically
     pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
-        Eeprom::new(&self)
+        Eeprom::new(self)
     }
 
     async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {

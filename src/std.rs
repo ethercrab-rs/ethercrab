@@ -61,8 +61,6 @@ where
 
                 tx.send_to(packet, None).unwrap().map_err(|e| {
                     log::error!("Failed to send packet: {e}");
-
-                    ()
                 })
             })
             .unwrap();
