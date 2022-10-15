@@ -24,6 +24,17 @@ pub struct UploadRequest {
 }
 
 #[derive(Debug, Copy, Clone, PackedStruct)]
+pub struct DownloadRequest {
+    #[packed_field(size_bytes = "6")]
+    pub header: MailboxHeader,
+    #[packed_field(size_bytes = "2")]
+    pub coe_header: CoeHeader,
+    #[packed_field(size_bytes = "4")]
+    pub sdo_header: InitSdoHeader,
+    pub data: [u8; 4],
+}
+
+#[derive(Debug, Copy, Clone, PackedStruct)]
 pub struct SegmentedUploadRequest {
     #[packed_field(size_bytes = "6")]
     pub header: MailboxHeader,
@@ -50,6 +61,17 @@ impl CoeServiceTrait for UploadRequest {
         self.header.mailbox_type
     }
 }
+impl CoeServiceTrait for DownloadRequest {
+    fn counter(&self) -> u8 {
+        self.header.counter
+    }
+    fn is_aborted(&self) -> bool {
+        self.sdo_header.flags.command == InitSdoFlags::ABORT_REQUEST
+    }
+    fn mailbox_type(&self) -> MailboxType {
+        self.header.mailbox_type
+    }
+}
 impl CoeServiceTrait for SegmentedUploadRequest {
     fn counter(&self) -> u8 {
         self.header.counter
@@ -59,6 +81,39 @@ impl CoeServiceTrait for SegmentedUploadRequest {
     }
     fn mailbox_type(&self) -> MailboxType {
         self.header.mailbox_type
+    }
+}
+
+pub fn download(
+    counter: u8,
+    index: u16,
+    access: SdoAccess,
+    data: [u8; 4],
+    len: u8,
+) -> DownloadRequest {
+    DownloadRequest {
+        header: MailboxHeader {
+            length: 0x0a,
+            address: 0x0000,
+            priority: Priority::Lowest,
+            mailbox_type: MailboxType::Coe,
+            counter,
+        },
+        coe_header: CoeHeader {
+            service: CoeService::SdoRequest,
+        },
+        sdo_header: InitSdoHeader {
+            flags: InitSdoFlags {
+                size_indicator: true,
+                expedited_transfer: true,
+                size: 4u8.saturating_sub(len),
+                complete_access: access.complete_access(),
+                command: InitSdoFlags::DOWNLOAD_REQUEST,
+            },
+            index,
+            sub_index: access.sub_index(),
+        },
+        data,
     }
 }
 
@@ -84,8 +139,8 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SegmentedUploadRequest {
     }
 }
 
-pub fn upload(counter: u8, index: u16, access: SdoAccess) -> UploadRequest {
-    UploadRequest {
+pub fn upload(counter: u8, index: u16, access: SdoAccess) -> DownloadRequest {
+    DownloadRequest {
         header: MailboxHeader {
             length: 0x0a,
             address: 0x0000,
@@ -107,5 +162,6 @@ pub fn upload(counter: u8, index: u16, access: SdoAccess) -> UploadRequest {
             index,
             sub_index: access.sub_index(),
         },
+        data: [0u8; 4],
     }
 }

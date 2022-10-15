@@ -31,7 +31,7 @@ where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
-        let write_mailbox = self.config.mailbox.write.ok_or(Error::NoMailbox)?;
+        let counter = self.client.mailbox_counter();
 
         if T::len() > 4 {
             // TODO: Normal SDO download. Only expedited requests for now
@@ -44,39 +44,11 @@ where
 
         data[0..len].copy_from_slice(value.as_slice());
 
-        // TODO: Move into a helper function
-        let request = DownloadExpeditedRequest {
-            header: MailboxHeader {
-                length: 0x0a,
-                address: 0x0000,
-                priority: Priority::Lowest,
-                mailbox_type: MailboxType::Coe,
-                counter: self.client.mailbox_counter(),
-            },
-            coe_header: CoeHeader {
-                service: CoeService::SdoRequest,
-            },
-            sdo_header: InitSdoHeader {
-                flags: InitSdoFlags {
-                    size_indicator: true,
-                    expedited_transfer: true,
-                    size: (len - 4) as u8,
-                    complete_access: access.complete_access(),
-                    command: InitSdoFlags::DOWNLOAD_REQUEST,
-                },
-                index,
-                sub_index: access.sub_index(),
-            },
-            data,
-        };
+        let request = coe::services::download(counter, index, access, data, len as u8);
 
-        let payload = request.pack().unwrap();
+        let (response, _data) = self.send_coe_service(request).await?;
 
-        let _response = self
-            .write(write_mailbox.address, payload, "SDO write")
-            .await?;
-
-        // TODO: Confirm SDO was successfully downloaded by the slave
+        dbg!(response, _data);
 
         Ok(())
     }
