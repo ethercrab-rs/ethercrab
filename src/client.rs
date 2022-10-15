@@ -139,7 +139,7 @@ where
             .await?
             .wkc(1, "set station address")?;
 
-            let slave = Slave::new(&self, configured_address).await?;
+            let slave = Slave::new(self, configured_address).await?;
 
             group_filter(&mut groups, slave);
         }
@@ -149,9 +149,9 @@ where
         // Loop through groups and configure the slaves in each one.
         for i in 0..groups.num_groups() {
             // TODO: Better error type for broken group index calculation
-            let mut group = groups.group(i).ok_or_else(|| Error::Other)?;
+            let mut group = groups.group(i).ok_or(Error::Other)?;
 
-            offset = group.configure_from_eeprom(offset, &self).await?;
+            offset = group.configure_from_eeprom(offset, self).await?;
 
             log::debug!("After group #{i} offset: {:?}", offset);
         }
@@ -206,7 +206,7 @@ where
     {
         let (data, working_counter) = self.pdu_loop.pdu_tx_readonly(command, T::len()).await?;
 
-        let res = T::try_from_slice(&data).map_err(|e| {
+        let res = T::try_from_slice(data).map_err(|e| {
             log::error!(
                 "PDU data decode: {:?}, T: {} data {:?}",
                 e,
@@ -231,7 +231,7 @@ where
             .pdu_tx_readwrite(command, value.as_slice())
             .await?;
 
-        let res = T::try_from_slice(&data).map_err(|e| {
+        let res = T::try_from_slice(data).map_err(|e| {
             log::error!(
                 "PDU data decode: {:?}, T: {} data {:?}",
                 e,
@@ -375,6 +375,8 @@ where
         address: u32,
         value: &'buf mut [u8],
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
+        assert!(value.len() <= MAX_PDU_DATA, "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame",value.len(), MAX_PDU_DATA);
+
         let (data, working_counter) = self
             .pdu_loop
             .pdu_tx_readwrite(Command::Lrw { address }, value)
@@ -389,7 +391,7 @@ where
             return Err(Error::Pdu(PduError::Decode));
         }
 
-        value.copy_from_slice(&data);
+        value.copy_from_slice(data);
 
         Ok((value, working_counter))
     }

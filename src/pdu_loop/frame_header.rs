@@ -36,7 +36,7 @@ impl FrameHeader {
     /// Create a new PDU frame header.
     pub fn pdu(len: u16) -> Self {
         assert!(
-            len <= LEN_MASK.into(),
+            len <= LEN_MASK,
             "Frame length may not exceed {} bytes",
             LEN_MASK
         );

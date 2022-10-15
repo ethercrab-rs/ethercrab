@@ -55,6 +55,8 @@ mod tests {
     use pcap::{Capture, Linktype, Packet, PacketHeader};
     use std::path::PathBuf;
 
+    // Keep this around so we can write test data to files for debugging
+    #[allow(unused)]
     fn write_bytes_to_file(name: &str, data: &[u8]) {
         let mut frame = crate::pdu_loop::pdu_frame::Frame::default();
 
@@ -69,8 +71,7 @@ mod tests {
             )
             .unwrap();
 
-        let mut buffer = Vec::with_capacity(1536);
-        buffer.resize(1536, 0);
+        let mut buffer = vec![0; 1536];
 
         frame
             .to_ethernet_frame(buffer.as_mut_slice(), data)
