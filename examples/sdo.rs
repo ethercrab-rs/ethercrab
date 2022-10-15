@@ -49,11 +49,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let groups =
         [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(Box::new(|slave| {
             Box::pin(async {
-                // dbg!(slave.read_sdo::<u32>(0x1000, SdoAccess::Index(0)).await?);
-                // dbg!(slave.read_sdo::<u8>(0x1001, SdoAccess::Index(0)).await?);
-                // // 0x1018 = identity, 0x1018:1 = vendor ID
-                // dbg!(slave.read_sdo::<u32>(0x1018, SdoAccess::Index(1)).await?);
-                // dbg!(slave.read_sdo::<u8>(0x1c12, SdoAccess::Index(0)).await?);
+                // --- Reads ---
 
                 // // Name
                 // dbg!(slave
@@ -61,34 +57,19 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                 //     .await
                 //     .unwrap());
 
-                // Software version, I think this should equal "M_01-20-00-003"
-                dbg!(slave
-                    .read_sdo::<heapless::String<64>>(0x100a, SdoAccess::Index(0))
-                    .await
-                    .unwrap());
-
+                // // Software version. For AKD, this should equal "M_01-20-00-003"
                 // dbg!(slave
                 //     .read_sdo::<heapless::String<64>>(0x100a, SdoAccess::Index(0))
                 //     .await
                 //     .unwrap());
 
-                // let receive_pdos = slave.read_sdo::<u8>(0x1600, SdoAccess::Index(0)).await?;
+                // --- Writes ---
 
-                // dbg!(receive_pdos);
-
-                // let rx_pdo_mapping = slave.read_sdo::<u32>(0x1600, SdoAccess::Index(1)).await?;
-
-                // log::info!(
-                //     "Receive PDOs ({receive_pdos}): {rx_pdo_mapping:#010x} ({rx_pdo_mapping:032b})"
-                // );
-
-                // dbg!(slave.read_sdo::<u8>(0x1c10, SdoAccess::Index(0)).await?);
-
-                // slave.write_sdo(0x1c12, 0, SdoAccess::Complete).await?;
-                // slave
-                //     .write_sdo(0x1c12, 0x1701u16, SdoAccess::Index(1))
-                //     .await?;
-                // slave.write_sdo(0x1c12, 0x01, SdoAccess::Index(0)).await?;
+                slave.write_sdo(0x1c12, 0u8, SdoAccess::Index(0)).await?;
+                slave
+                    .write_sdo(0x1c12, 0x1720u16, SdoAccess::Index(1))
+                    .await?;
+                slave.write_sdo(0x1c12, 0x01u8, SdoAccess::Index(0)).await?;
 
                 // smol::Timer::after(Duration::from_millis(10)).await;
 
