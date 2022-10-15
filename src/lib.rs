@@ -63,9 +63,6 @@ const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x
 
 const BASE_SLAVE_ADDR: u16 = 0x1000;
 
-#[cfg(not(target_endian = "little"))]
-compile_error!("Only little-endian targets are supported at this time as primitive integers are cast to slices as-is");
-
 pub trait PduRead: Sized {
     const LEN: u16;
 
@@ -95,17 +92,7 @@ macro_rules! impl_pdudata {
 
         impl PduData for $ty {
             fn as_slice<'a>(&'a self) -> &'a [u8] {
-                // SAFETY: Copied from `safe-transmute` crate so I'm assuming...
-                // SAFETY: EtherCAT is little-endian on the wire, so this will ONLY work on
-                // little-endian targets, hence the `compile_error!()` above.
-                // Clippy: "error: found a count of bytes instead of a count of elements of `T`"
-                #[allow(clippy::size_of_in_element_count)]
-                unsafe {
-                    core::slice::from_raw_parts(
-                        self as *const Self as *const u8,
-                        core::mem::size_of::<Self>(),
-                    )
-                }
+                safe_transmute::to_bytes::transmute_one_to_bytes(self)
             }
         }
     };
