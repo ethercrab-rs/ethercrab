@@ -82,7 +82,7 @@ impl Pdu {
         // Working counter is always zero when sending
         let buf = gen_simple(le_u16(0u16), buf)?;
 
-        if buf.len() != 0 {
+        if !buf.is_empty() {
             log::error!(
                 "Expected fully used buffer, got {} bytes left instead",
                 buf.len()

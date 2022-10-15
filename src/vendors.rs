@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 //! EtherCAT vendor ID and name list.
 //!
 //! This list is extracted from [ethercat.org](https://www.ethercat.org/en/vendor_id_list.html).
