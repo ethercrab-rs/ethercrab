@@ -13,7 +13,6 @@ use crate::{
 };
 use core::{
     any::type_name,
-    fmt::Debug,
     sync::atomic::{AtomicU8, Ordering},
 };
 use core::{cell::RefCell, marker::PhantomData, time::Duration};
@@ -24,8 +23,6 @@ pub struct Client<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, T
     pub pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
-    // DELETEME
-    _pd: PhantomData<&'client ()>,
     /// The 1-7 cyclic counter used when working with mailbox requests.
     mailbox_counter: AtomicU8,
 }
@@ -52,7 +49,6 @@ where
             // slaves: UnsafeCell::new(heapless::Vec::new()),
             num_slaves: RefCell::new(0),
             _timeout: PhantomData,
-            _pd: PhantomData,
             // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
             mailbox_counter: AtomicU8::new(1),
         }
@@ -202,7 +198,6 @@ where
     async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: Debug,
     {
         let (data, working_counter) = self.pdu_loop.pdu_tx_readonly(command, T::len()).await?;
 
@@ -224,7 +219,6 @@ where
     async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         let (data, working_counter) = self
             .pdu_loop
@@ -248,7 +242,6 @@ where
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: Debug,
     {
         self.read_service(Command::Brd {
             // Address is always zero when sent from master
@@ -262,7 +255,6 @@ where
     pub async fn bwr<T>(&self, register: RegisterAddress, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.write_service(
             Command::Bwr {
@@ -282,7 +274,6 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: Debug,
     {
         self.read_service(Command::Aprd {
             address: 0u16.wrapping_sub(address),
@@ -300,7 +291,6 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.write_service(
             Command::Apwr {
@@ -320,7 +310,6 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: Debug,
     {
         self.read_service(Command::Fprd {
             address,
@@ -338,7 +327,6 @@ where
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.write_service(
             Command::Fpwr {
@@ -354,7 +342,6 @@ where
     pub async fn lwr<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.write_service(Command::Lwr { address }, value).await
     }
@@ -363,7 +350,6 @@ where
     pub async fn lrw<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.write_service(Command::Lrw { address }, value).await
     }
