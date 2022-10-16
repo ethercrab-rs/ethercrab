@@ -4,7 +4,9 @@
 //! to a pile of hard-coding.
 
 use async_ctrlc::CtrlC;
+use ethercrab::coe::abort_code::AbortCode;
 use ethercrab::coe::SdoAccess;
+use ethercrab::eeprom::types::SyncManagerType;
 use ethercrab::error::Error;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
@@ -12,6 +14,7 @@ use ethercrab::PduLoop;
 use ethercrab::SlaveGroup;
 use ethercrab::SlaveState;
 use futures_lite::FutureExt;
+use num_enum::FromPrimitive;
 use smol::LocalExecutor;
 use std::sync::Arc;
 use std::time::Duration;
@@ -46,8 +49,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     // let num_slaves = client.num_slaves();
 
-    let groups =
-        [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(Box::new(|slave| {
+    let groups = [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(Box::new(
+        |slave| {
             Box::pin(async {
                 // --- Reads ---
 
@@ -71,11 +74,59 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                     .await?;
                 slave.write_sdo(0x1c12, 0x01u8, SdoAccess::Index(0)).await?;
 
-                // smol::Timer::after(Duration::from_millis(10)).await;
+                // slave.write_sdo(0x1c13, 0u8, SdoAccess::Index(0)).await?;
+                // slave
+                //     .write_sdo(0x1c13, 0x1B22u16, SdoAccess::Index(1))
+                //     .await?;
+                // slave.write_sdo(0x1c13, 0x01u8, SdoAccess::Index(0)).await?;
+
+                // ---
+
+                let mut start = 0x1c12;
+                let num_sms = slave.read_sdo::<u8>(0x1c00, SdoAccess::Index(0)).await?;
+
+                for i in 1..=num_sms {
+                    // Skip over SM0/SM1, used for mailbox write/read
+                    let sm_idx = i + 2;
+
+                    let sm_type = slave
+                        .read_sdo::<u8>(0x1c00, SdoAccess::Index(sm_idx))
+                        .await
+                        .map(|raw| SyncManagerType::from_primitive(raw))?;
+
+                    let sub_indices = slave.read_sdo::<u8>(start, SdoAccess::Index(0)).await?;
+
+                    log::info!("SDO {start:#06x} {sm_type:?}, sub indices: {sub_indices}");
+
+                    for i in 1..=sub_indices {
+                        let pdo = slave.read_sdo::<u16>(start, SdoAccess::Index(i)).await?;
+                        let num_mappings = slave.read_sdo::<u8>(pdo, SdoAccess::Index(0)).await?;
+
+                        log::info!("--> #{i} data: {pdo:#06x} ({num_mappings} mappings):");
+
+                        for i in 1..=num_mappings {
+                            let mapping = slave.read_sdo::<u32>(pdo, SdoAccess::Index(i)).await?;
+
+                            // Yes, big-endian
+                            let parts = mapping.to_be_bytes();
+
+                            let index = u16::from_le_bytes(parts[0..=1].try_into().unwrap());
+                            let sub_index = parts[2];
+                            let bit_len = parts[3];
+
+                            log::info!("----> index {index:#06x}, sub index {sub_index}, bit length {bit_len}");
+                        }
+                    }
+
+                    start += 1;
+                }
+
+                panic!("Nope");
 
                 Ok(())
             })
-        })); 1];
+        },
+    )); 1];
 
     let mut groups = client
         .init(groups, |groups, slave| {

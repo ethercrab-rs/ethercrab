@@ -24,7 +24,8 @@ mod base_data_types;
 mod client;
 pub mod coe;
 mod command;
-mod eeprom;
+// TODO: Un-pub
+pub mod eeprom;
 pub mod error;
 mod fmmu;
 mod mailbox;
