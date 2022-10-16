@@ -128,8 +128,8 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SegmentedUploadRequest {
     }
 }
 
-pub fn upload(counter: u8, index: u16, access: SdoAccess) -> DownloadExpeditedRequest {
-    DownloadExpeditedRequest {
+pub fn upload(counter: u8, index: u16, access: SdoAccess) -> UploadRequest {
+    UploadRequest {
         header: MailboxHeader {
             length: 0x0a,
             address: 0x0000,
@@ -151,6 +151,5 @@ pub fn upload(counter: u8, index: u16, access: SdoAccess) -> DownloadExpeditedRe
             index,
             sub_index: access.sub_index(),
         },
-        data: [0u8; 4],
     }
 }
