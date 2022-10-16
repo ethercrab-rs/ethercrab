@@ -5,7 +5,9 @@ use crate::{
     al_status_code::AlStatusCode,
     client::Client,
     eeprom::{
-        types::{FmmuUsage, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType},
+        types::{
+            FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType,
+        },
         Eeprom,
     },
     error::Error,
@@ -72,6 +74,7 @@ pub struct SlaveConfig {
 pub struct MailboxConfig {
     read: Option<Mailbox>,
     write: Option<Mailbox>,
+    supported_protocols: MailboxProtocols,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -178,7 +181,6 @@ where
         }
     }
 
-    /// A wrapper around an FPRD service to this slave's configured address.
     pub(crate) async fn read<T>(
         &self,
         register: RegisterAddress,
@@ -315,7 +317,7 @@ where
         let sync_managers = self.eeprom().sync_managers().await?;
 
         // Mailboxes must be configured in INIT state
-        let (read, write) = self.configure_mailboxes(&sync_managers).await?;
+        self.configure_mailboxes(&sync_managers).await?;
 
         // Some slaves must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
@@ -324,8 +326,6 @@ where
         self.request_slave_state(SlaveState::PreOp).await?;
 
         self.set_eeprom_mode(SiiOwner::Master).await?;
-
-        self.config.mailbox = MailboxConfig { read, write };
 
         Ok(())
     }
@@ -382,10 +382,8 @@ where
         Ok(offset)
     }
 
-    async fn configure_mailboxes(
-        &self,
-        sync_managers: &[SyncManager],
-    ) -> Result<(Option<Mailbox>, Option<Mailbox>), Error> {
+    async fn configure_mailboxes(&mut self, sync_managers: &[SyncManager]) -> Result<(), Error> {
+        // Read default mailbox configuration from slave information area
         let mailbox_config = self.eeprom().mailbox_config().await?;
 
         log::trace!(
@@ -400,7 +398,7 @@ where
                 self.configured_address
             );
 
-            return Ok((None, None));
+            return Ok(());
         }
 
         let mut read_mailbox = None;
@@ -443,7 +441,13 @@ where
             }
         }
 
-        Ok((read_mailbox, write_mailbox))
+        self.config.mailbox = MailboxConfig {
+            read: read_mailbox,
+            write: write_mailbox,
+            supported_protocols: mailbox_config.supported_protocols,
+        };
+
+        Ok(())
     }
 
     /// Configure SM and FMMU mappings for either TX or RX PDOs.
@@ -460,6 +464,8 @@ where
     ) -> Result<Option<PdiSegment>, Error> {
         let start_offset = *offset;
         let mut total_bit_len = 0;
+
+        // TODO: If self.config.mailbox.supported_protocols has CoE, configure PDOs from SDO reads
 
         let (sm_type, fmmu_type) = direction.filter_terms();
 
