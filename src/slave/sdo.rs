@@ -180,9 +180,11 @@ where
             let data_len = 4usize.saturating_sub(usize::from(headers.sdo_header.flags.size));
             let data = &data[0..data_len];
 
+            let buf = &mut buf[0..data_len];
+
             buf.copy_from_slice(data);
 
-            Ok(&buf[0..data_len])
+            Ok(buf)
         }
         // Data is either a normal upload or a segmented upload
         else {
