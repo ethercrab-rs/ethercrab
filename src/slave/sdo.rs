@@ -48,98 +48,6 @@ where
         Ok(())
     }
 
-    async fn send_coe_service<H>(&self, request: H) -> Result<(H, &[u8]), Error>
-    where
-        H: CoeServiceTrait + packed_struct::PackedStructInfo,
-        <H as PackedStruct>::ByteArray: AsRef<[u8]>,
-    {
-        let write_mailbox = self.config.mailbox.write.ok_or(Error::NoMailbox)?;
-        let read_mailbox = self.config.mailbox.read.ok_or(Error::NoMailbox)?;
-
-        let counter = request.counter();
-
-        self.client
-            .pdu_loop
-            .pdu_tx_readwrite_len(
-                Command::Fpwr {
-                    address: self.configured_address,
-                    register: write_mailbox.address,
-                },
-                request.pack().unwrap().as_ref(),
-                write_mailbox.len,
-            )
-            .await?
-            .wkc(1, "SDO upload request")?;
-
-        // Wait for slave send mailbox to be ready
-        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
-            let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
-
-            loop {
-                let sm = self
-                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
-                    .await?;
-
-                if sm.status.mailbox_full {
-                    break Result::<(), _>::Ok(());
-                }
-
-                TIMEOUT::timer(Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .map_err(|e| {
-            log::error!("Mailbox read ready timeout");
-
-            e
-        })?;
-
-        // Receive data from slave send mailbox
-        let response = self
-            .client
-            .pdu_loop
-            .pdu_tx_readonly(
-                Command::Fprd {
-                    address: self.configured_address,
-                    register: read_mailbox.address,
-                },
-                read_mailbox.len,
-            )
-            .await?
-            .wkc(1, "SDO read mailbox")?;
-
-        // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
-
-        let headers_len = H::packed_bits() / 8;
-
-        let (headers, data) = response.split_at(headers_len);
-
-        // TODO: Ability to use segmented headers
-        let headers = H::unpack_from_slice(headers).map_err(|e| {
-            log::error!("Failed to unpack mailbox response headers: {e}");
-
-            e
-        })?;
-
-        if headers.is_aborted() {
-            let code = data[0..4]
-                .try_into()
-                .map_err(|_| ())
-                .and_then(|arr| {
-                    AbortCode::try_from_primitive(u32::from_le_bytes(arr)).map_err(|_| ())
-                })
-                .unwrap_or(AbortCode::General);
-
-            Err(Error::SdoAborted(code))
-        } else if
-        // Validate that the mailbox response is to the request we just sent
-        headers.mailbox_type() != MailboxType::Coe || headers.counter() != counter {
-            Err(Error::SdoResponseInvalid)
-        } else {
-            Ok((headers, data))
-        }
-    }
-
     pub async fn read_sdo<T>(&self, index: u16, access: SdoAccess) -> Result<T, Error>
     where
         T: PduData,
@@ -242,6 +150,102 @@ where
 
                 Ok(&buf[0..total_len])
             }
+        }
+    }
+
+    /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
+    /// and return as a slice.
+    async fn send_coe_service<H>(&self, request: H) -> Result<(H, &[u8]), Error>
+    where
+        H: CoeServiceTrait + packed_struct::PackedStructInfo,
+        <H as PackedStruct>::ByteArray: AsRef<[u8]>,
+    {
+        let write_mailbox = self.config.mailbox.write.ok_or(Error::NoMailbox)?;
+        let read_mailbox = self.config.mailbox.read.ok_or(Error::NoMailbox)?;
+
+        let counter = request.counter();
+
+        // TODO: Abstract this into a method that returns a slice
+        self.client
+            .pdu_loop
+            .pdu_tx_readwrite_len(
+                Command::Fpwr {
+                    address: self.configured_address,
+                    register: write_mailbox.address,
+                },
+                request.pack().unwrap().as_ref(),
+                write_mailbox.len,
+            )
+            .await?
+            .wkc(1, "SDO upload request")?;
+
+        // Wait for slave send mailbox to be ready
+        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
+            let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
+
+            loop {
+                let sm = self
+                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                    .await?;
+
+                if sm.status.mailbox_full {
+                    break Result::<(), _>::Ok(());
+                }
+
+                TIMEOUT::timer(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .map_err(|e| {
+            log::error!("Mailbox read ready timeout");
+
+            e
+        })?;
+
+        // Receive data from slave send mailbox
+        // TODO: Abstract this into a method that returns a slice
+        let response = self
+            .client
+            .pdu_loop
+            .pdu_tx_readonly(
+                Command::Fprd {
+                    address: self.configured_address,
+                    register: read_mailbox.address,
+                },
+                read_mailbox.len,
+            )
+            .await?
+            .wkc(1, "SDO read mailbox")?;
+
+        // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
+
+        let headers_len = H::packed_bits() / 8;
+
+        let (headers, data) = response.split_at(headers_len);
+
+        // TODO: Ability to use segmented headers
+        let headers = H::unpack_from_slice(headers).map_err(|e| {
+            log::error!("Failed to unpack mailbox response headers: {e}");
+
+            e
+        })?;
+
+        if headers.is_aborted() {
+            let code = data[0..4]
+                .try_into()
+                .map_err(|_| ())
+                .and_then(|arr| {
+                    AbortCode::try_from_primitive(u32::from_le_bytes(arr)).map_err(|_| ())
+                })
+                .unwrap_or(AbortCode::General);
+
+            Err(Error::SdoAborted(code))
+        } else if
+        // Validate that the mailbox response is to the request we just sent
+        headers.mailbox_type() != MailboxType::Coe || headers.counter() != counter {
+            Err(Error::SdoResponseInvalid)
+        } else {
+            Ok((headers, data))
         }
     }
 }
