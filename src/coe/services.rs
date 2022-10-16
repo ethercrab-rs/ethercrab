@@ -24,17 +24,6 @@ pub struct UploadRequest {
 }
 
 #[derive(Debug, Copy, Clone, PackedStruct)]
-pub struct DownloadRequest {
-    #[packed_field(size_bytes = "6")]
-    pub header: MailboxHeader,
-    #[packed_field(size_bytes = "2")]
-    pub coe_header: CoeHeader,
-    #[packed_field(size_bytes = "4")]
-    pub sdo_header: InitSdoHeader,
-    pub data: [u8; 4],
-}
-
-#[derive(Debug, Copy, Clone, PackedStruct)]
 pub struct SegmentedUploadRequest {
     #[packed_field(size_bytes = "6")]
     pub header: MailboxHeader,
@@ -61,7 +50,7 @@ impl CoeServiceTrait for UploadRequest {
         self.header.mailbox_type
     }
 }
-impl CoeServiceTrait for DownloadRequest {
+impl CoeServiceTrait for DownloadExpeditedRequest {
     fn counter(&self) -> u8 {
         self.header.counter
     }
@@ -90,8 +79,8 @@ pub fn download(
     access: SdoAccess,
     data: [u8; 4],
     len: u8,
-) -> DownloadRequest {
-    DownloadRequest {
+) -> DownloadExpeditedRequest {
+    DownloadExpeditedRequest {
         header: MailboxHeader {
             length: 0x0a,
             address: 0x0000,
@@ -139,8 +128,8 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SegmentedUploadRequest {
     }
 }
 
-pub fn upload(counter: u8, index: u16, access: SdoAccess) -> DownloadRequest {
-    DownloadRequest {
+pub fn upload(counter: u8, index: u16, access: SdoAccess) -> DownloadExpeditedRequest {
+    DownloadExpeditedRequest {
         header: MailboxHeader {
             length: 0x0a,
             address: 0x0000,
