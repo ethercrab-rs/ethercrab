@@ -41,9 +41,9 @@ where
 
         let request = coe::services::download(counter, index, access, data, len as u8);
 
-        let (response, _data) = self.send_coe_service(request).await?;
+        let (_response, _data) = self.send_coe_service(request).await?;
 
-        dbg!(response, _data);
+        // TODO: Validate reply?
 
         Ok(())
     }
