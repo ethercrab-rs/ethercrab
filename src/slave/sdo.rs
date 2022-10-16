@@ -1,14 +1,9 @@
 use super::SlaveRef;
 use crate::{
-    coe::{
-        self,
-        abort_code::AbortCode,
-        services::{CoeServiceTrait, DownloadExpeditedRequest},
-        CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SdoAccess,
-    },
+    coe::{self, abort_code::AbortCode, services::CoeServiceTrait, SdoAccess},
     command::Command,
     error::{Error, PduError},
-    mailbox::{MailboxHeader, MailboxType, Priority},
+    mailbox::MailboxType,
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
     sync_manager_channel::SyncManagerChannel,
