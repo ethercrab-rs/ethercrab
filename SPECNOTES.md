@@ -234,8 +234,8 @@ locations that can be read for configuration.
 SOEM sets the slave's `Obits` and `Ibits` in `ecx_map_coe_soe`. If they're greater than zero (i.e.
 we have PDI mapping from CoE), the `ecx_map_sii` call in `ecx_config_find_mappings` will be a noop.
 
-The only thing CoE changes for sync managers is the data length - the FMMUs must be altered
-according to the CoE dictionary.
+The only thing CoE changes for sync managers is the data length. The FMMUs must be altered according
+to the CoE dictionary.
 
 > The tables are located in the object directory at index 0x1600 to 0x17FF for the RxPDOs and at
 > 0x1A00 to 0x1BFF for the TxPDOs.
@@ -254,6 +254,26 @@ When we write to e.g. 0x1C12 we're actually configuring a sync manager's PDO map
 read back out of the dictionary during auto config. Pretty neat.
 
 ETG1000.5 Section 6.1.4.1.3 SDO interactions lists different request/response scenarios.
+
+### Configuring from SDOs
+
+- `0x1c00` index 0 returns SM count.
+  - Sub-indices return type
+- CoE sync manager assignment (u16) returns an address to read which is the PDO mapping for that SM
+- SMs start at 0x1c10, but we should be skipping the first two because they're now mailbox,
+  therefore starts at 0x1c12
+  - Stop looping over SMs when index count is zero, or if the SDO was not found (this is an error,
+    catch it)
+- Find the PDO mapping from that sync manager address (e.g. 0x1720)
+- Read the number of mappings from index 0
+- Loop through mappings. Each one is a u32 that decodes into (see ETG1000.6 Table 74 – Receive PDO
+  Mapping):
+  - Bit length of the mapped object
+  - Subindex of mapped object
+  - Index of mapped object
+- TX and RX PDO mappings have identical structures
+- If index or subindex are zero, this mapping is unused. SOEM doesn't increment the bit length or
+  anything with unused PDOs.
 
 # Mailbox/CANOpen
 
