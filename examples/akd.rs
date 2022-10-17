@@ -69,8 +69,9 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                 // AKD config
                 if slave.name() == "AKD" {
                     slave.write_sdo(0x1c12, 0u8, SdoAccess::Index(0)).await?;
+                    // 0x1702 = fixed velocity mapping
                     slave
-                        .write_sdo(0x1c12, 0x1701u16, SdoAccess::Index(1))
+                        .write_sdo(0x1c12, 0x1702u16, SdoAccess::Index(1))
                         .await?;
                     slave.write_sdo(0x1c12, 0x01u8, SdoAccess::Index(0)).await?;
 
@@ -286,6 +287,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         }
     }
 
+    let mut velocity: i32 = 0;
+
     while let Some(_) = cyclic_interval.next().await {
         group.tx_rx(&client).await.expect("TX/RX");
 
@@ -310,8 +313,12 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         o.map(|o| {
             let (pos_cmd, _control) = o.split_at_mut(4);
 
-            pos_cmd.copy_from_slice(&pos.to_le_bytes());
+            pos_cmd.copy_from_slice(&velocity.to_le_bytes());
         });
+
+        if velocity < 100_000_0 {
+            velocity += 200;
+        }
     }
 
     Ok(())
