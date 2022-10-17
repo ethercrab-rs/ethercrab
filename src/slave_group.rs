@@ -106,7 +106,7 @@ impl<
     /// Get the input and output segments of the PDI for a given slave.
     ///
     /// If the slave index does not resolve to a discovered slave, this method will return `None`.
-    pub fn io(&self, idx: usize) -> Option<(Option<&mut [u8]>, Option<&mut [u8]>)> {
+    pub fn io(&self, idx: usize) -> Option<(Option<&[u8]>, Option<&mut [u8]>)> {
         let IoRanges {
             input: input_range,
             output: output_range,
@@ -118,7 +118,7 @@ impl<
 
         let i = input_range
             .as_ref()
-            .and_then(|range| data.get_mut(range.bytes.clone()));
+            .and_then(|range| data.get(range.bytes.clone()));
         let o = output_range
             .as_ref()
             .and_then(|range| data2.get_mut(range.bytes.clone()));
