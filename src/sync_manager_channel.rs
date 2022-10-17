@@ -29,11 +29,27 @@ impl fmt::Debug for SyncManagerChannel {
                 "physical_start_address",
                 &format_args!("{:#06x}", self.physical_start_address),
             )
-            .field("length_bytes", &format_args!("{:#06x}", self.length_bytes))
+            .field(
+                "length_bytes",
+                &format_args!("{:#06x} ({})", self.length_bytes, self.length_bytes),
+            )
             .field("control", &self.control)
             .field("status", &self.status)
             .field("enable", &self.enable)
             .finish()
+    }
+}
+
+impl fmt::Display for SyncManagerChannel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "start {:#06x}, size {:#06x} ({}), direction {:?}, mode {:?}",
+            self.physical_start_address,
+            self.length_bytes,
+            self.length_bytes,
+            self.control.direction,
+            self.control.operation_mode
+        ))
     }
 }
 
@@ -111,7 +127,7 @@ pub struct Enable {
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
 pub enum OperationMode {
     #[default]
-    Buffered = 0x00,
+    Normal = 0x00,
     Mailbox = 0x02,
 }
 

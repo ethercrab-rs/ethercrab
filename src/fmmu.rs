@@ -63,6 +63,23 @@ impl fmt::Debug for Fmmu {
     }
 }
 
+impl fmt::Display for Fmmu {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "logical start {:#010x}:{}, size {}, logical end bit {}, physical start {:#06x}:{}, {}{}, {}",
+            self.logical_start_address,
+            self.logical_start_bit,
+            self.length_bytes,
+            self.logical_end_bit,
+            self.physical_start_address,
+            self.physical_start_bit,
+            if self.read_enable { "R" } else { "" },
+            if self.write_enable { "W" } else { "" },
+            if self.enable{ "enabled" } else { "disabled" },
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
