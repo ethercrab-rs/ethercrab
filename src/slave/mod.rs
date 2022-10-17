@@ -121,7 +121,7 @@ impl Slave {
     {
         let mut config = SlaveConfig::default();
 
-        let slave_ref = SlaveRef::new(client, &mut config, configured_address);
+        let slave_ref = SlaveRef::new(client, &mut config, configured_address, "");
 
         slave_ref.wait_for_state(SlaveState::Init).await?;
 
@@ -164,6 +164,7 @@ pub struct SlaveRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIME
     client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     pub(crate) config: &'a mut SlaveConfig,
     configured_address: u16,
+    name: &'a str,
 }
 
 impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
@@ -175,12 +176,18 @@ where
         client: &'a Client<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
         config: &'a mut SlaveConfig,
         configured_address: u16,
+        name: &'a str,
     ) -> Self {
         Self {
             client,
             config,
             configured_address,
+            name,
         }
+    }
+
+    pub fn name(&self) -> &str {
+        self.name
     }
 
     pub(crate) async fn read<T>(
