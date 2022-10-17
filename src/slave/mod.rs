@@ -4,6 +4,7 @@ use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
     client::Client,
+    coe::SdoAccess,
     eeprom::{
         types::{
             FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType,
@@ -24,6 +25,7 @@ use core::fmt::Debug;
 use core::fmt::Write;
 use core::{fmt, time::Duration};
 use nom::{number::complete::le_u32, IResult};
+use num_enum::FromPrimitive;
 use packed_struct::PackedStruct;
 
 #[derive(Default)]
@@ -214,7 +216,7 @@ where
     }
 
     async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
+        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(5000), async {
             loop {
                 let status = self
                     .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
@@ -300,10 +302,11 @@ where
         .await?;
 
         log::debug!(
-            "Slave {:#06x} SM{sync_manager_index}: {:#?}",
+            "Slave {:#06x} SM{sync_manager_index}: {}",
             self.configured_address,
             sm_config
         );
+        log::trace!("{:#?}", sm_config);
 
         Ok(sm_config)
     }
@@ -344,11 +347,24 @@ where
         let fmmu_usage = self.eeprom().fmmus().await?;
         let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
+        let has_coe = self
+            .config
+            .mailbox
+            .supported_protocols
+            .contains(MailboxProtocols::COE);
+
         // PDOs must be configurd in PRE-OP state
-        // TODO: I think I need to read the PDOs out of CoE (if supported?), not EEPROM
         // Outputs are configured first, so will be before inputs in the PDI
-        let output_range = self
-            .configure_pdos(
+        let output_range = if has_coe {
+            self.configure_pdos_coe(
+                &sync_managers,
+                &fmmu_usage,
+                PdoDirection::MasterWrite,
+                &mut offset,
+            )
+            .await?
+        } else {
+            self.configure_pdos_eeprom(
                 &sync_managers,
                 &master_write_pdos,
                 &fmmu_sm_mappings,
@@ -356,10 +372,19 @@ where
                 PdoDirection::MasterWrite,
                 &mut offset,
             )
-            .await?;
+            .await?
+        };
 
-        let input_range = self
-            .configure_pdos(
+        let input_range = if has_coe {
+            self.configure_pdos_coe(
+                &sync_managers,
+                &fmmu_usage,
+                PdoDirection::MasterRead,
+                &mut offset,
+            )
+            .await?
+        } else {
+            self.configure_pdos_eeprom(
                 &sync_managers,
                 &master_read_pdos,
                 &fmmu_sm_mappings,
@@ -367,7 +392,8 @@ where
                 PdoDirection::MasterRead,
                 &mut offset,
             )
-            .await?;
+            .await?
+        };
 
         // Restore EEPROM mode
         self.set_eeprom_mode(SiiOwner::Pdi).await?;
@@ -450,10 +476,146 @@ where
         Ok(())
     }
 
-    /// Configure SM and FMMU mappings for either TX or RX PDOs.
-    ///
-    /// PDOs must be configured with the slave in PRE-OP state
-    async fn configure_pdos(
+    /// Configure PDOs from CoE registers.
+    async fn configure_pdos_coe(
+        &self,
+        sync_managers: &[SyncManager],
+        fmmu_usage: &[FmmuUsage],
+        direction: PdoDirection,
+        offset: &mut PdiOffset,
+    ) -> Result<Option<PdiSegment>, Error> {
+        // SM0 address
+        // TODO: Const
+        let sm_base_address = 0x1c10;
+
+        let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
+
+        // ETG1000.6 Table 67 – CoE Communication Area
+        let num_sms = self.read_sdo::<u8>(0x1c00, SdoAccess::Index(0)).await?;
+
+        log::trace!("Found {num_sms} SMs from CoE");
+
+        let start_offset = *offset;
+
+        // We must ignore the first two SM indices (SM0, SM1, sub-index 1 and 2, start at sub-index
+        // 3) as these are used for mailbox communication.
+        let sm_range = 3..=num_sms;
+
+        let mut total_bit_len = 0;
+
+        // NOTE: This is a 1-based SDO sub-index
+        for sm_mapping_sub_index in sm_range {
+            let sm_type = self
+                // TODO: 0x1c00 const: SM_COMM_TYPE
+                .read_sdo::<u8>(0x1c00, SdoAccess::Index(sm_mapping_sub_index))
+                .await
+                .map(|raw| SyncManagerType::from_primitive(raw))?;
+
+            let sync_manager_index = sm_mapping_sub_index - 1;
+
+            let sm_address = sm_base_address + u16::from(sync_manager_index);
+
+            let sync_manager = sync_managers
+                .get(usize::from(sync_manager_index))
+                // TODO: Better error type
+                .ok_or(Error::Other)?;
+
+            if sm_type != desired_sm_type {
+                continue;
+            }
+
+            // Total number of PDO assignments for this sync manager
+            let num_sm_assignments = self.read_sdo::<u8>(sm_address, SdoAccess::Index(0)).await?;
+
+            log::trace!("SDO sync manager {sync_manager_index} (sub index #{sm_mapping_sub_index}) {sm_address:#06x} {sm_type:?}, sub indices: {num_sm_assignments}");
+
+            let mut sm_bit_len = 0u16;
+
+            for i in 1..=num_sm_assignments {
+                let pdo = self
+                    .read_sdo::<u16>(sm_address, SdoAccess::Index(i))
+                    .await?;
+                let num_mappings = self.read_sdo::<u8>(pdo, SdoAccess::Index(0)).await?;
+
+                log::trace!("--> #{i} data: {pdo:#06x} ({num_mappings} mappings):");
+
+                for i in 1..=num_mappings {
+                    let mapping = self.read_sdo::<u32>(pdo, SdoAccess::Index(i)).await?;
+
+                    // Yes, big-endian. Makes life easier when mapping from debug prints to actual
+                    // data fields.
+                    let parts = mapping.to_be_bytes();
+
+                    let index = u16::from_le_bytes(parts[0..=1].try_into().unwrap());
+                    let sub_index = parts[2];
+                    let mapping_bit_len = parts[3];
+
+                    log::trace!(
+                        "----> index {index:#06x}, sub index {sub_index}, bit length {mapping_bit_len}"
+                    );
+
+                    sm_bit_len += u16::from(mapping_bit_len);
+                }
+            }
+
+            log::trace!(
+                "----= total SM bit length {sm_bit_len} ({} bytes)",
+                (sm_bit_len + 7) / 8
+            );
+
+            {
+                let sm_config = self
+                    .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
+                    .await?;
+
+                let fmmu_index = fmmu_usage
+                    .iter()
+                    .position(|usage| *usage == desired_fmmu_type)
+                    // TODO: Better error type
+                    .ok_or(Error::Other)?;
+
+                let fmmu_config = Fmmu {
+                    logical_start_address: offset.start_address,
+                    length_bytes: sm_config.length_bytes,
+                    // Mapping into PDI is byte-aligned until/if we support bit-oriented slaves
+                    logical_start_bit: 0,
+                    // logical_start_bit: offset.start_bit,
+                    logical_end_bit: offset.end_bit(total_bit_len),
+                    physical_start_address: sm_config.physical_start_address,
+                    physical_start_bit: 0x0,
+                    read_enable: desired_sm_type == SyncManagerType::ProcessDataRead,
+                    write_enable: desired_sm_type == SyncManagerType::ProcessDataWrite,
+                    enable: true,
+                };
+
+                self.write(
+                    RegisterAddress::fmmu(fmmu_index as u8),
+                    fmmu_config.pack().unwrap(),
+                    "PDI FMMU",
+                )
+                .await?;
+
+                log::debug!(
+                    "Slave {:#06x} FMMU{fmmu_index}: {}",
+                    self.configured_address,
+                    fmmu_config
+                );
+                log::trace!("{:#?}", fmmu_config);
+
+                *offset = offset.increment_byte_aligned(sm_bit_len);
+            }
+
+            total_bit_len += sm_bit_len;
+        }
+
+        Ok((total_bit_len > 0).then_some(PdiSegment {
+            bit_len: total_bit_len.into(),
+            bytes: start_offset.up_to(*offset),
+        }))
+    }
+
+    /// Configure PDOs from EEPROM
+    async fn configure_pdos_eeprom(
         &self,
         sync_managers: &[SyncManager],
         pdos: &[crate::eeprom::types::Pdo],
@@ -464,8 +626,6 @@ where
     ) -> Result<Option<PdiSegment>, Error> {
         let start_offset = *offset;
         let mut total_bit_len = 0;
-
-        // TODO: If self.config.mailbox.supported_protocols has CoE, configure PDOs from SDO reads
 
         let (sm_type, fmmu_type) = direction.filter_terms();
 
@@ -505,38 +665,46 @@ where
                 })
                 .ok_or(Error::Other)?;
 
-            let sm_config = self
-                .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
+            {
+                let sm_config = self
+                    .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
+                    .await?;
+
+                // TODO: Move this FMMU config into a method and dedupe with COE config
+                // TODO: I may need to read and mutate any existing FMMU config; slaves with
+                // multiple SMs that point to the same FMMU I think will end up clobbering previous
+                // config. This also means I need to configure SMs in this loop, and configure the
+                // FMMU ONCE after the loop.
+                let fmmu_config = Fmmu {
+                    logical_start_address: offset.start_address,
+                    length_bytes: sm_config.length_bytes,
+                    // Mapping into PDI is byte-aligned until/if we support bit-oriented slaves
+                    logical_start_bit: 0,
+                    // logical_start_bit: offset.start_bit,
+                    logical_end_bit: offset.end_bit(bit_len),
+                    physical_start_address: sm_config.physical_start_address,
+                    physical_start_bit: 0x0,
+                    read_enable: sm_type == SyncManagerType::ProcessDataRead,
+                    write_enable: sm_type == SyncManagerType::ProcessDataWrite,
+                    enable: true,
+                };
+
+                self.write(
+                    RegisterAddress::fmmu(fmmu_index),
+                    fmmu_config.pack().unwrap(),
+                    "PDI FMMU",
+                )
                 .await?;
 
-            let fmmu_config = Fmmu {
-                logical_start_address: offset.start_address,
-                length_bytes: sm_config.length_bytes,
-                // Mapping into PDI is byte-aligned
-                logical_start_bit: 0,
-                // logical_start_bit: offset.start_bit,
-                logical_end_bit: offset.end_bit(bit_len),
-                physical_start_address: sm_config.physical_start_address,
-                physical_start_bit: 0x0,
-                read_enable: sm_type == SyncManagerType::ProcessDataRead,
-                write_enable: sm_type == SyncManagerType::ProcessDataWrite,
-                enable: true,
-            };
+                log::debug!(
+                    "Slave {:#06x} FMMU{fmmu_index}: {}",
+                    self.configured_address,
+                    fmmu_config
+                );
+                log::trace!("{:#?}", fmmu_config);
 
-            self.write(
-                RegisterAddress::fmmu(fmmu_index),
-                fmmu_config.pack().unwrap(),
-                "PDI FMMU",
-            )
-            .await?;
-
-            log::debug!(
-                "Slave {:#06x} FMMU{fmmu_index}: {:#?}",
-                self.configured_address,
-                fmmu_config
-            );
-
-            *offset = offset.increment_byte_aligned(bit_len);
+                *offset = offset.increment_byte_aligned(bit_len);
+            }
         }
 
         Ok((total_bit_len > 0).then_some(PdiSegment {

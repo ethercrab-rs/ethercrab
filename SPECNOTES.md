@@ -258,7 +258,7 @@ ETG1000.5 Section 6.1.4.1.3 SDO interactions lists different request/response sc
 ### Configuring from SDOs
 
 - `0x1c00` index 0 returns SM count.
-  - Sub-indices return type
+  - Sub-indices return type (PDO read/write, etc)
 - CoE sync manager assignment (u16) returns an address to read which is the PDO mapping for that SM
 - SMs start at 0x1c10, but we should be skipping the first two because they're now mailbox,
   therefore starts at 0x1c12
