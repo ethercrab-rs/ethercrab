@@ -16,7 +16,8 @@ The MSRV for EtherCrab is 1.64.
       [EtherCAT Technologies Group (ETG)](https://www.ethercat.org/default.htm) and get access to
       the EtherCAT specification.
 - [x] Explore basic master architecture to support current design goals
-- [ ] (in progress) Autoconfigure slaves from their EEPROM data
+- [x] Autoconfigure slaves from their EEPROM data
+  - [x] Also support configuration using CoE data
 - [ ] `async` API usable in no_std environments with either [RTIC](https://rtic.rs) (once async
       support is released) or [Embassy](https://embassy.dev/)
 - [ ] Usable in multi-threaded Linux systems with optional realtime support via the PREEMPT-RT
