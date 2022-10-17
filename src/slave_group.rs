@@ -103,6 +103,9 @@ impl<
         unsafe { &mut *self.pdi.get() }
     }
 
+    /// Get the input and output segments of the PDI for a given slave.
+    ///
+    /// If the slave index does not resolve to a discovered slave, this method will return `None`.
     pub fn io(&self, idx: usize) -> Option<(Option<&mut [u8]>, Option<&mut [u8]>)> {
         let IoRanges {
             input: input_range,
@@ -113,8 +116,12 @@ impl<
         let data = self.pdi();
         let data2 = self.pdi();
 
-        let i = input_range.and_then(|range| data.get_mut(range.bytes));
-        let o = output_range.and_then(|range| data2.get_mut(range.bytes));
+        let i = input_range
+            .as_ref()
+            .and_then(|range| data.get_mut(range.bytes.clone()));
+        let o = output_range
+            .as_ref()
+            .and_then(|range| data2.get_mut(range.bytes.clone()));
 
         Some((i, o))
     }
@@ -143,6 +150,7 @@ impl<
     pub(crate) fn as_mut_ref(&mut self) -> SlaveGroupRef<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
         SlaveGroupRef {
             slaves: self.slaves.as_mut(),
+            max_pdi_len: MAX_PDI,
             preop_safeop_hook: self.preop_safeop_hook.as_ref(),
             pdi_len: &mut self.pdi_len,
             start_address: &mut self.start_address,
@@ -154,6 +162,7 @@ impl<
 /// A reference to a [`SlaveGroup`] with erased `MAX_SLAVES` constant.
 pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     pdi_len: &'a mut usize,
+    max_pdi_len: usize,
     start_address: &'a mut u32,
     group_working_counter: &'a mut u16,
     slaves: &'a mut [Slave],
@@ -202,8 +211,17 @@ where
             *self.group_working_counter += slave.config.io.working_counter_sum();
         }
 
-        *self.pdi_len = (offset.start_address - *self.start_address) as usize;
+        let pdi_len = (offset.start_address - *self.start_address) as usize;
 
-        Ok(offset)
+        if pdi_len > self.max_pdi_len {
+            Err(Error::PdiTooLong {
+                desired: self.max_pdi_len,
+                required: pdi_len,
+            })
+        } else {
+            *self.pdi_len = pdi_len;
+
+            Ok(offset)
+        }
     }
 }
