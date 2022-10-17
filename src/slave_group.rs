@@ -180,11 +180,17 @@ where
 
             slave_ref.configure_from_eeprom_safe_op().await?;
 
+            log::debug!("Slave group configured SAFE-OP");
+
             if let Some(hook) = self.preop_safeop_hook {
                 (hook)(&slave_ref).await?;
             }
 
+            log::debug!("Slave group configuration hook executed");
+
             let new_offset = slave_ref.configure_from_eeprom_pre_op(offset).await?;
+
+            log::debug!("Slave group configured PRE-OP");
 
             offset = new_offset;
 
