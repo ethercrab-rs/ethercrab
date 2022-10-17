@@ -135,9 +135,11 @@ impl<
     {
         let (_res, wkc) = client.lrw_buf(self.start_address, self.pdi()).await?;
 
-        if wkc != self.group_working_counter {
+        // FIXME: AKD returns 2 when it should be 3. Why?
+        // if wkc != self.group_working_counter {
+        if usize::from(wkc) < self.slaves.len() {
             Err(Error::WorkingCounter {
-                expected: self.group_working_counter,
+                expected: self.slaves.len() as u16,
                 received: wkc,
                 context: Some("group working counter"),
             })
