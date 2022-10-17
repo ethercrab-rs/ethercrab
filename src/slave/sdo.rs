@@ -21,6 +21,7 @@ impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
+    // TODO: Reorder so value is last field.
     pub async fn write_sdo<T>(&self, index: u16, value: T, access: SdoAccess) -> Result<(), Error>
     where
         T: PduData,
