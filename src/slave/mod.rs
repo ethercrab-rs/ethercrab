@@ -546,7 +546,7 @@ where
                     // data fields.
                     let parts = mapping.to_be_bytes();
 
-                    let index = u16::from_le_bytes(parts[0..=1].try_into().unwrap());
+                    let index = u16::from_be_bytes(parts[0..=1].try_into().unwrap());
                     let sub_index = parts[2];
                     let mapping_bit_len = parts[3];
 
