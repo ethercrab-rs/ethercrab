@@ -176,7 +176,12 @@ where
         *self.start_address = offset.start_address;
 
         for slave in self.slaves.iter_mut() {
-            let mut slave_ref = SlaveRef::new(client, &mut slave.config, slave.configured_address);
+            let mut slave_ref = SlaveRef::new(
+                client,
+                &mut slave.config,
+                slave.configured_address,
+                &slave.name,
+            );
 
             slave_ref.configure_from_eeprom_safe_op().await?;
 
