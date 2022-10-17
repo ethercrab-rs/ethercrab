@@ -230,8 +230,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                 })
                 .unwrap();
 
-            dbg!(status);
-
             if status.contains(AkdStatusWord::READY_TO_SWITCH_ON) {
                 log::info!("Drive is shut down");
 
@@ -288,40 +286,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         }
     }
 
-    // // Enable operation
-    // {
-    //     let (_i, o) = group.io(0).unwrap();
-
-    //     o.map(|o| {
-    //         let (_pos_cmd, control) = o.split_at_mut(4);
-    //         let reset = AkdControlWord::SWITCH_ON
-    //             | AkdControlWord::DISABLE_VOLTAGE
-    //             | AkdControlWord::QUICK_STOP;
-    //         let reset = reset.bits().to_le_bytes();
-    //         control.copy_from_slice(&reset);
-    //     });
-
-    //     while let Some(_) = cyclic_interval.next().await {
-    //         group.tx_rx(&client).await.expect("TX/RX");
-
-    //         let (i, _o) = group.io(0).unwrap();
-
-    //         let status = i
-    //             .map(|i| {
-    //                 let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
-
-    //                 unsafe { AkdStatusWord::from_bits_unchecked(status) }
-    //             })
-    //             .unwrap();
-
-    //         if !status.contains(AkdStatusWord::OP_ENABLED) {
-    //             log::info!("Drive enabled");
-
-    //             break;
-    //         }
-    //     }
-    // }
-
     while let Some(_) = cyclic_interval.next().await {
         group.tx_rx(&client).await.expect("TX/RX");
 
@@ -347,13 +311,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             let (pos_cmd, _control) = o.split_at_mut(4);
 
             pos_cmd.copy_from_slice(&pos.to_le_bytes());
-
-            // let state = AkdControlWord::SWITCH_ON
-            //     | AkdControlWord::DISABLE_VOLTAGE
-            //     | AkdControlWord::QUICK_STOP
-            //     | AkdControlWord::ENABLE_OP;
-            // let state = state.bits().to_le_bytes();
-            // control.copy_from_slice(&state);
         });
     }
 
