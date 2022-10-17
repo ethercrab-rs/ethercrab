@@ -42,6 +42,12 @@ pub enum Error {
     SdoAborted(AbortCode),
     /// Mailbox data is too long to fit in the given type.
     MailboxTooLong,
+    /// The allotted storage for a group's PDI is too small for the calculated length read from all
+    /// slaves in the group.
+    PdiTooLong {
+        desired: usize,
+        required: usize,
+    },
 }
 
 impl From<BorrowError> for Error {

@@ -155,8 +155,8 @@ impl Slave {
         })
     }
 
-    pub(crate) fn io_segments(&self) -> IoRanges {
-        self.config.io.clone()
+    pub(crate) fn io_segments(&self) -> &IoRanges {
+        &self.config.io
     }
 }
 
