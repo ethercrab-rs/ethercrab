@@ -42,18 +42,15 @@ mod vendors;
 #[cfg(feature = "std")]
 pub mod std;
 
-use core::time::Duration;
-use embassy_futures::select::{select, Either};
-use error::Error;
 use nom::IResult;
 use smoltcp::wire::{EthernetAddress, EthernetProtocol};
-use timer_factory::TimerFactory;
 
 pub use client::Client;
 pub use coe::SdoAccess;
 pub use pdu_loop::PduLoop;
 pub use slave_group::SlaveGroup;
 pub use slave_state::SlaveState;
+pub use timer_factory::Timeouts;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
@@ -62,19 +59,6 @@ const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x
 /// Starting address for discovered slaves.
 // TODO: i16 so it can wrap around nicely on overflow. Need to do wrapping_add in various places too.
 const BASE_SLAVE_ADDR: u16 = 0x1000;
-
-pub(crate) async fn timeout<TIMEOUT, O, F>(timeout: Duration, future: F) -> Result<O, Error>
-where
-    TIMEOUT: TimerFactory,
-    F: core::future::Future<Output = Result<O, Error>>,
-{
-    pin!(future);
-
-    match select(future, TIMEOUT::timer(timeout)).await {
-        Either::First(res) => res,
-        Either::Second(_timeout) => Err(Error::Timeout),
-    }
-}
 
 /// Ensure that a buffer passed to a parsing function is fully consumed.
 ///

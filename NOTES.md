@@ -377,9 +377,5 @@ impl SlaveGroup {
     pub async fn tx_rx(&self, &client) -> Result<(), Error> {
         //
     }
-
-    // TODO: Iterator over slaves to get IO
-
-    // TODO: API to get slave by index
 }
 ```

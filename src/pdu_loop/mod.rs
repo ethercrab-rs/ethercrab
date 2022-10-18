@@ -6,8 +6,7 @@ use crate::{
     command::{Command, CommandCode},
     error::{Error, PduError, PduValidationError},
     pdu_loop::{frame_header::FrameHeader, pdu::PduFlags, pdu_frame::SendableFrame},
-    timeout,
-    timer_factory::TimerFactory,
+    timer_factory::{timeout, Timeouts, TimerFactory},
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
@@ -46,13 +45,7 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
     }
 }
 
-// TODO: Move TIMEOUT out of PduLoop. Use it in Client and Eeprom instead
 pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    // TODO: Can we have a single buffer that gives out variable length slices instead of wasting
-    // space with lots of potentially huge PDUs?
-    // No, at least not with BBQueue; the received data needs to be written back into the grant, but
-    // that means the grant lives too long and blocks the sending of any other data from the
-    // BBBuffer.
     frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
     frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
@@ -148,6 +141,7 @@ where
         &self,
         command: Command,
         data_length: u16,
+        timeouts: &Timeouts,
     ) -> Result<PduResponse<&'_ [u8]>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
@@ -165,10 +159,7 @@ where
             Err(_) => warn!("Send waker is already borrowed"),
         }
 
-        // TODO: Configurable timeout
-        let timer = core::time::Duration::from_micros(30_000);
-
-        let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
+        let res = timeout::<TIMEOUT, _, _>(timeouts.pdu, frame).await?;
 
         Ok((
             &frame_data[0..usize::from(data_length)],
@@ -179,13 +170,17 @@ where
     // TX
     /// Send data to and read data back from multiple slaves.
     ///
-    /// The PDU data length will be the large of `send_data.len()` and `data_length`. If a larger
+    /// Unlike [`pdu_tx_readwrite`], this method allows overriding the minimum data length of the
+    /// payload.
+    ///
+    /// The PDU data length will be the larger of `send_data.len()` and `data_length`. If a larger
     /// response than `send_data` is desired, set the expected response length in `data_length`.
     pub async fn pdu_tx_readwrite_len<'a>(
         &'a self,
         command: Command,
         send_data: &[u8],
         data_length: u16,
+        timeouts: &Timeouts,
     ) -> Result<PduResponse<&'a [u8]>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
@@ -218,10 +213,7 @@ where
             Err(_) => warn!("Send waker is already borrowed"),
         }
 
-        // TODO: Configurable timeout
-        let timer = core::time::Duration::from_micros(30_000);
-
-        let res = timeout::<TIMEOUT, _, _>(timer, frame).await?;
+        let res = timeout::<TIMEOUT, _, _>(timeouts.pdu, frame).await?;
 
         Ok((&payload[0..send_data_len], res.working_counter()))
     }
@@ -232,8 +224,9 @@ where
         &'a self,
         command: Command,
         send_data: &[u8],
+        timeouts: &Timeouts,
     ) -> Result<PduResponse<&'a [u8]>, Error> {
-        self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?)
+        self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?, timeouts)
             .await
     }
 
@@ -288,6 +281,7 @@ where
 }
 
 // TODO: Figure out what to do with this
+#[allow(unused)]
 pub struct PduLoopRef<'a> {
     frame_data: &'a [UnsafeCell<&'a mut [u8]>],
     frames: &'a [UnsafeCell<pdu_frame::Frame>],

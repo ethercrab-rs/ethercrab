@@ -3,7 +3,7 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduLoop, SdoAccess, SlaveGroup, SlaveState,
+    error::Error, std::tx_rx_task, Client, PduLoop, SdoAccess, SlaveGroup, SlaveState, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
@@ -33,6 +33,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     let client = Arc::new(Client::<MAX_FRAMES, MAX_PDU_DATA, smol::Timer>::new(
         &PDU_LOOP,
+        Timeouts::default(),
     ));
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
