@@ -12,7 +12,7 @@ use crate::{
         },
         Eeprom,
     },
-    error::Error,
+    error::{Error, Item},
     fmmu::Fmmu,
     pdi::{PdiOffset, PdiSegment},
     pdu_data::{PduData, PduRead},
@@ -525,10 +525,13 @@ where
 
             let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
 
-            let sync_manager = sync_managers
-                .get(usize::from(sync_manager_index))
-                // TODO: Better error type
-                .ok_or(Error::Other)?;
+            let sync_manager =
+                sync_managers
+                    .get(usize::from(sync_manager_index))
+                    .ok_or(Error::NotFound {
+                        item: Item::SyncManager,
+                        index: Some(usize::from(sync_manager_index)),
+                    })?;
 
             if sm_type != desired_sm_type {
                 continue;
@@ -582,8 +585,10 @@ where
                 let fmmu_index = fmmu_usage
                     .iter()
                     .position(|usage| *usage == desired_fmmu_type)
-                    // TODO: Better error type
-                    .ok_or(Error::Other)?;
+                    .ok_or(Error::NotFound {
+                        item: Item::Fmmu,
+                        index: None,
+                    })?;
 
                 let fmmu_config = Fmmu {
                     logical_start_address: offset.start_address,
@@ -674,7 +679,10 @@ where
                             idx as u8
                         })
                 })
-                .ok_or(Error::Other)?;
+                .ok_or(Error::NotFound {
+                    item: Item::Fmmu,
+                    index: None,
+                })?;
 
             {
                 let sm_config = self

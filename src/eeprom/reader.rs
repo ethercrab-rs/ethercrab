@@ -1,6 +1,6 @@
 use crate::{
     eeprom::{types::SiiCategory, Eeprom},
-    error::Error,
+    error::{EepromError, Error},
     timer_factory::TimerFactory,
 };
 
@@ -53,7 +53,7 @@ where
                 self.read.push_back(*byte).map_err(|_| {
                     log::error!("EEPROM read queue is full");
 
-                    Error::EepromSectionOverrun
+                    Error::Eeprom(EepromError::SectionOverrun)
                 })?;
             }
 
@@ -85,8 +85,7 @@ where
     pub async fn try_next(&mut self) -> Result<u8, Error> {
         match self.next().await {
             Ok(Some(value)) => Ok(value),
-            // TODO: New error type
-            Ok(None) => Err(Error::EepromSectionOverrun),
+            Ok(None) => Err(Error::Eeprom(EepromError::SectionOverrun)),
             Err(e) => Err(e),
         }
     }
@@ -100,7 +99,7 @@ where
     pub async fn take_vec_exact<const N: usize>(&mut self) -> Result<heapless::Vec<u8, N>, Error> {
         self.take_n_vec(N)
             .await?
-            .ok_or(Error::EepromSectionUnderrun)
+            .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
     }
 
     pub async fn take_n_vec_exact<const N: usize>(
@@ -109,7 +108,7 @@ where
     ) -> Result<heapless::Vec<u8, N>, Error> {
         self.take_n_vec(len)
             .await?
-            .ok_or(Error::EepromSectionUnderrun)
+            .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
     }
 
     /// Try to take `len` bytes, returning an error if the buffer length `N` is too small.
@@ -139,7 +138,7 @@ where
             if buf.is_full() {
                 log::error!("take_n_vec output buffer is full");
 
-                break Err(Error::EepromSectionOverrun);
+                break Err(Error::Eeprom(EepromError::SectionOverrun));
             }
 
             if let Some(byte) = self.next().await? {
