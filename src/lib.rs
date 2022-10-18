@@ -22,7 +22,7 @@ mod al_control;
 mod al_status_code;
 mod base_data_types;
 mod client;
-pub mod coe;
+mod coe;
 mod command;
 mod eeprom;
 pub mod error;
@@ -42,16 +42,18 @@ mod vendors;
 #[cfg(feature = "std")]
 pub mod std;
 
-pub use client::Client;
 use core::time::Duration;
 use embassy_futures::select::{select, Either};
 use error::Error;
 use nom::IResult;
+use smoltcp::wire::{EthernetAddress, EthernetProtocol};
+use timer_factory::TimerFactory;
+
+pub use client::Client;
+pub use coe::SdoAccess;
 pub use pdu_loop::PduLoop;
 pub use slave_group::SlaveGroup;
 pub use slave_state::SlaveState;
-use smoltcp::wire::{EthernetAddress, EthernetProtocol};
-use timer_factory::TimerFactory;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);

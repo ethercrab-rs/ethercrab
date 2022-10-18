@@ -2,18 +2,12 @@
 
 use async_ctrlc::CtrlC;
 use async_io::Timer;
-use ethercrab::coe::SdoAccess;
-use ethercrab::error::Error;
-use ethercrab::std::tx_rx_task;
-use ethercrab::Client;
-use ethercrab::PduLoop;
-use ethercrab::SlaveGroup;
-use ethercrab::SlaveState;
-use futures_lite::FutureExt;
-use futures_lite::StreamExt;
+use ethercrab::{
+    error::Error, std::tx_rx_task, Client, PduLoop, SdoAccess, SlaveGroup, SlaveState,
+};
+use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 #[cfg(target_os = "windows")]
 // ASRock NIC
@@ -86,22 +80,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                     //  slave.write_sdo(0x6060, 0x08, SdoAccess::Index(0)).await?;
                     // Opmode - Cyclic Synchronous Velocity
                     slave.write_sdo(0x6060, 0x09u8, SdoAccess::Index(0)).await?;
-
-                    // DELETEME: Read this later, after init
-                    {
-                        let base = slave.read_sdo::<u8>(0x60c2, SdoAccess::Index(1)).await?;
-                        let x10 = slave.read_sdo::<i8>(0x60c2, SdoAccess::Index(2)).await?;
-
-                        let base = f32::from(base);
-                        let x10 = 10.0f32.powi(i32::from(x10));
-
-                        let cycle_time_ms = (base * x10) * 1000.0;
-                        let cycle_time_ms = Duration::from_millis(unsafe {
-                            cycle_time_ms.round().to_int_unchecked()
-                        });
-
-                        log::debug!("Cycle time: {} ms", cycle_time_ms.as_millis());
-                    }
                 }
 
                 if slave.name() == "ELP-EC400S" {
@@ -146,16 +124,25 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     // Run twice to prime PDI
     group.tx_rx(&client).await.expect("TX/RX");
 
-    // TODO: API to get individual slave from group. Requires splitting up `SlaveRef` first.
-    // {
-    //     let slave = &group.slave(&client, 0).unwrap();
+    let cycle_time = {
+        let slave = group.slave(0, &client).unwrap();
 
-    //     // let cycle_x10 =
-    // }
+        let base = slave.read_sdo::<u8>(0x60c2, SdoAccess::Index(1)).await?;
+        let x10 = slave.read_sdo::<i8>(0x60c2, SdoAccess::Index(2)).await?;
+
+        let base = f32::from(base);
+        let x10 = 10.0f32.powi(i32::from(x10));
+
+        let cycle_time_ms = (base * x10) * 1000.0;
+
+        Duration::from_millis(unsafe { cycle_time_ms.round().to_int_unchecked() })
+    };
+
+    log::debug!("Cycle time: {} ms", cycle_time.as_millis());
 
     // TODO: Read from AKD 0x60c1
     // AKD will error with F706 if cycle time is not 2ms or less
-    let mut cyclic_interval = Timer::interval(Duration::from_millis(2));
+    let mut cyclic_interval = Timer::interval(cycle_time);
 
     // Check for and clear faults
     {

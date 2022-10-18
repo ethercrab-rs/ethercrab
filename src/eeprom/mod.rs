@@ -12,7 +12,7 @@ use crate::{
     },
     error::{EepromError, Error, Item},
     register::RegisterAddress,
-    slave::{slave_client::SlaveClient, SlaveIdentity, SlaveRef},
+    slave::{slave_client::SlaveClient, SlaveIdentity},
     timer_factory::TimerFactory,
 };
 use core::{mem, ops::RangeInclusive, str::FromStr};

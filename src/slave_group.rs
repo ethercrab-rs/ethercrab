@@ -1,7 +1,9 @@
 use crate::{
     error::{Error, Item},
     pdi::PdiOffset,
-    slave::{IoRanges, Slave, SlaveRef},
+    slave::{
+        configurator::SlaveConfigurator, slave_client::SlaveClient, IoRanges, Slave, SlaveRef,
+    },
     timer_factory::TimerFactory,
     Client,
 };
@@ -100,6 +102,22 @@ impl<
         &self.slaves
     }
 
+    pub fn slave<'a>(
+        &'a self,
+        index: usize,
+        client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    ) -> Option<SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>
+    where
+        TIMEOUT: TimerFactory,
+    {
+        let slave = self.slaves.get(index)?;
+
+        Some(SlaveRef::new(
+            SlaveClient::new(client, slave.configured_address),
+            slave,
+        ))
+    }
+
     fn pdi_mut(&self) -> &mut [u8] {
         unsafe { &mut *self.pdi.get() }
     }
@@ -191,24 +209,19 @@ where
         *self.start_address = offset.start_address;
 
         for slave in self.slaves.iter_mut() {
-            let mut slave_ref = SlaveRef::new(
-                client,
-                &mut slave.config,
-                slave.configured_address,
-                &slave.name,
-            );
+            let mut slave_config = SlaveConfigurator::new(client, slave);
 
-            slave_ref.configure_mailboxes().await?;
+            slave_config.configure_mailboxes().await?;
 
             log::debug!("Slave group configured SAFE-OP");
 
             if let Some(hook) = self.preop_safeop_hook {
-                (hook)(&slave_ref).await?;
+                (hook)(&slave_config.as_ref()).await?;
             }
 
             log::debug!("Slave group configuration hook executed");
 
-            let new_offset = slave_ref.configure_fmmus(offset).await?;
+            let new_offset = slave_config.configure_fmmus(offset).await?;
 
             log::debug!("Slave group configured PRE-OP");
 

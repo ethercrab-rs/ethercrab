@@ -1,19 +1,21 @@
 use crate::{
     al_control::AlControl,
+    al_status_code::AlStatusCode,
     client::Client,
-    command::Command,
+    eeprom::{types::SiiOwner, Eeprom},
     error::Error,
     pdu_data::{PduData, PduRead},
-    pdu_loop::{CheckWorkingCounter, PduLoopRef, PduResponse},
+    pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
     slave_state::SlaveState,
     timer_factory::TimerFactory,
     PduLoop,
 };
 use core::{fmt::Debug, time::Duration};
+use packed_struct::PackedStruct;
 
 pub struct SlaveClient<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    pub(in crate::slave) client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     configured_address: u16,
 }
 
@@ -73,7 +75,7 @@ where
             .wkc(1, context)
     }
 
-    async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
+    pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(5000), async {
             loop {
                 let status = self
@@ -88,5 +90,49 @@ where
             }
         })
         .await
+    }
+
+    pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
+        debug!(
+            "Set state {} for slave address {:#04x}",
+            desired_state, self.configured_address
+        );
+
+        // Send state request
+        self.write(
+            RegisterAddress::AlControl,
+            AlControl::new(desired_state).pack().unwrap(),
+            "AL control",
+        )
+        .await?;
+
+        self.wait_for_state(desired_state).await
+    }
+
+    pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
+        let status = self
+            .read::<AlControl>(RegisterAddress::AlStatus, "AL Status")
+            .await
+            .map(|ctl| ctl.state)?;
+
+        let code = self
+            .read::<AlStatusCode>(RegisterAddress::AlStatusCode, "AL Status Code")
+            .await?;
+
+        Ok((status, code))
+    }
+
+    // TODO: Separate TIMEOUT for EEPROM specifically
+    pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
+        Eeprom::new(&self)
+    }
+
+    pub async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
+        self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
+            .await?;
+        self.write::<u16>(RegisterAddress::SiiConfig, mode as u16, "debug write 2")
+            .await?;
+
+        Ok(())
     }
 }
