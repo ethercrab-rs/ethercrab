@@ -9,10 +9,13 @@ use crate::{
 };
 use core::{cell::UnsafeCell, future::Future, pin::Pin};
 
-type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + 'any>>;
+// TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
+// `Box`ing here, and make this work without an allocator. See also
+// <https://users.rust-lang.org/t/store-async-closure-on-struct-in-no-std/82929>
+type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'any>>;
 
 type HookFn<TIMEOUT, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> =
-    Box<dyn for<'any> Fn(&'any SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> HookFuture<'any>>;
+    for<'any> fn(&'any SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> HookFuture<'any>;
 
 pub trait SlaveGroupContainer<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     fn num_groups(&self) -> usize;
@@ -36,6 +39,24 @@ impl<
 
     fn group(&mut self, index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
         self.get_mut(index).map(|group| group.as_mut_ref())
+    }
+}
+
+impl<
+        const MAX_SLAVES: usize,
+        const MAX_PDI: usize,
+        const MAX_FRAMES: usize,
+        const MAX_PDU_DATA: usize,
+        TIMEOUT,
+    > SlaveGroupContainer<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+{
+    fn num_groups(&self) -> usize {
+        1
+    }
+
+    fn group(&mut self, _index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
+        Some(self.as_mut_ref())
     }
 }
 
@@ -216,7 +237,11 @@ where
             log::debug!("Slave group configured SAFE-OP");
 
             if let Some(hook) = self.preop_safeop_hook {
-                (hook)(&slave_config.as_ref()).await?;
+                let conf = slave_config.as_ref();
+
+                let fut = (hook)(&conf);
+
+                fut.await?;
             }
 
             log::debug!("Slave group configuration hook executed");

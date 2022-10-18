@@ -40,71 +40,70 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     // let num_slaves = client.num_slaves();
 
-    let groups =
-        [SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(Box::new(|slave| {
-            Box::pin(async {
-                // --- Reads ---
+    let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(|slave| {
+        Box::pin(async {
+            // --- Reads ---
 
-                // // Name
-                // dbg!(slave
-                //     .read_sdo::<heapless::String<64>>(0x1008, SdoAccess::Index(0))
-                //     .await
-                //     .unwrap());
+            // // Name
+            // dbg!(slave
+            //     .read_sdo::<heapless::String<64>>(0x1008, SdoAccess::Index(0))
+            //     .await
+            //     .unwrap());
 
-                // // Software version. For AKD, this should equal "M_01-20-00-003"
-                // dbg!(slave
-                //     .read_sdo::<heapless::String<64>>(0x100a, SdoAccess::Index(0))
-                //     .await
-                //     .unwrap());
+            // // Software version. For AKD, this should equal "M_01-20-00-003"
+            // dbg!(slave
+            //     .read_sdo::<heapless::String<64>>(0x100a, SdoAccess::Index(0))
+            //     .await
+            //     .unwrap());
 
-                // --- Writes ---
+            // --- Writes ---
 
-                log::info!("Found {}", slave.name());
+            log::info!("Found {}", slave.name());
 
-                // AKD config
-                if slave.name() == "AKD" {
-                    slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
-                    // 0x1702 = fixed velocity mapping
-                    slave
-                        .write_sdo(0x1c12, SubIndex::Index(1), 0x1702u16)
-                        .await?;
-                    slave.write_sdo(0x1c12, SubIndex::Index(0), 0x01u8).await?;
+            // AKD config
+            if slave.name() == "AKD" {
+                slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
+                // 0x1702 = fixed velocity mapping
+                slave
+                    .write_sdo(0x1c12, SubIndex::Index(1), 0x1702u16)
+                    .await?;
+                slave.write_sdo(0x1c12, SubIndex::Index(0), 0x01u8).await?;
 
-                    // Must set both read AND write SDOs for AKD otherwise it times out going into OP
-                    slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
-                    slave
-                        .write_sdo(0x1c13, SubIndex::Index(1), 0x1B01u16)
-                        .await?;
-                    slave.write_sdo(0x1c13, SubIndex::Index(0), 0x01u8).await?;
+                // Must set both read AND write SDOs for AKD otherwise it times out going into OP
+                slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
+                slave
+                    .write_sdo(0x1c13, SubIndex::Index(1), 0x1B01u16)
+                    .await?;
+                slave.write_sdo(0x1c13, SubIndex::Index(0), 0x01u8).await?;
 
-                    // Opmode - Cyclic Synchronous Position
-                    //  slave.write_sdo(0x6060, SdoAccess::Index(0),0x08).await?;
-                    // Opmode - Cyclic Synchronous Velocity
-                    slave.write_sdo(0x6060, SubIndex::Index(0), 0x09u8).await?;
-                }
+                // Opmode - Cyclic Synchronous Position
+                //  slave.write_sdo(0x6060, SdoAccess::Index(0),0x08).await?;
+                // Opmode - Cyclic Synchronous Velocity
+                slave.write_sdo(0x6060, SubIndex::Index(0), 0x09u8).await?;
+            }
 
-                if slave.name() == "ELP-EC400S" {
-                    slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
-                    slave
-                        .write_sdo(0x1c12, SubIndex::Index(1), 0x1601u16)
-                        .await?;
-                    slave.write_sdo(0x1c12, SubIndex::Index(0), 0x01u8).await?;
+            if slave.name() == "ELP-EC400S" {
+                slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
+                slave
+                    .write_sdo(0x1c12, SubIndex::Index(1), 0x1601u16)
+                    .await?;
+                slave.write_sdo(0x1c12, SubIndex::Index(0), 0x01u8).await?;
 
-                    slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
-                    slave
-                        .write_sdo(0x1c13, SubIndex::Index(1), 0x1A00u16)
-                        .await?;
-                    slave.write_sdo(0x1c13, SubIndex::Index(0), 0x01u8).await?;
-                }
+                slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
+                slave
+                    .write_sdo(0x1c13, SubIndex::Index(1), 0x1A00u16)
+                    .await?;
+                slave.write_sdo(0x1c13, SubIndex::Index(0), 0x01u8).await?;
+            }
 
-                Ok(())
-            })
-        })); 1];
+            Ok(())
+        })
+    });
 
-    let mut groups = client
+    let mut group = client
         .init(groups, |groups, slave| {
             // All slaves MUST end up in a group or they'll remain uninitialised
-            groups[0].push(slave).expect("Too many slaves");
+            groups.push(slave).expect("Too many slaves");
 
             // TODO: Return a group key so the user has to put the slave somewhere
         })
@@ -117,8 +116,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         .expect("OP");
 
     log::info!("Slaves moved to OP state");
-
-    let group = groups.get_mut(0).expect("No group!");
 
     log::info!("Group has {} slaves", group.slaves().len());
 
@@ -274,6 +271,9 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             }
         }
     }
+
+    // Checking for group movability
+    // std::thread::spawn(move || group);
 
     let mut velocity: i32 = 0;
 
