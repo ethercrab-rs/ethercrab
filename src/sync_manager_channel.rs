@@ -1,8 +1,12 @@
+use crate::pdu_data::PduRead;
 use core::fmt;
-
 use packed_struct::prelude::*;
 
-use crate::PduRead;
+/// ETG1000.6 Table 67 – CoE Communication Area, "Sync Manager Communication Type".
+pub const SM_TYPE_ADDRESS: u16 = 0x1c00;
+
+/// // ETG1000.6 Table 67 – CoE Communication Area, the address of the first sync manager.
+pub const SM_BASE_ADDRESS: u16 = 0x1c10;
 
 /// Sync manager channel.
 ///

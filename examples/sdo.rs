@@ -4,9 +4,7 @@
 //! to a pile of hard-coding.
 
 use async_ctrlc::CtrlC;
-use ethercrab::coe::abort_code::AbortCode;
 use ethercrab::coe::SdoAccess;
-use ethercrab::eeprom::types::SyncManagerType;
 use ethercrab::error::Error;
 use ethercrab::std::tx_rx_task;
 use ethercrab::Client;
@@ -14,7 +12,6 @@ use ethercrab::PduLoop;
 use ethercrab::SlaveGroup;
 use ethercrab::SlaveState;
 use futures_lite::FutureExt;
-use num_enum::FromPrimitive;
 use smol::LocalExecutor;
 use std::sync::Arc;
 use std::time::Duration;
@@ -114,9 +111,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         .await
         .expect("Init");
 
-    // let _slaves = &_groups[0].slaves();
-    let group = groups.get_mut(0).expect("No group!");
-
     // log::info!("Discovered {num_slaves} slaves");
 
     // NOTE: Valid outputs must be provided before moving into operational state
@@ -134,14 +128,12 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Group has {} slaves", group.slaves().len());
 
     loop {
-        let (i, o) = group.io(0).unwrap();
+        let (i, _o) = group.io(0).unwrap();
 
         println!("{:?}", i.unwrap());
 
         async_io::Timer::after(Duration::from_millis(100)).await;
     }
-
-    Ok(())
 }
 
 fn main() -> Result<(), Error> {

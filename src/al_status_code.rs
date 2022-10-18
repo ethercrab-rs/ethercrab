@@ -1,4 +1,4 @@
-use crate::PduRead;
+use crate::pdu_data::PduRead;
 use core::fmt;
 use num_enum::TryFromPrimitiveError;
 

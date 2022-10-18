@@ -99,8 +99,12 @@ impl<
         &self.slaves
     }
 
-    fn pdi(&self) -> &mut [u8] {
+    fn pdi_mut(&self) -> &mut [u8] {
         unsafe { &mut *self.pdi.get() }
+    }
+
+    fn pdi(&self) -> &[u8] {
+        unsafe { &*self.pdi.get() }
     }
 
     /// Get the input and output segments of the PDI for a given slave.
@@ -112,16 +116,16 @@ impl<
             output: output_range,
         } = self.slaves.get(idx)?.io_segments();
 
-        // SAFETY: Multiple mutable references are ok as long as I and O ranges do not overlap.
-        let data = self.pdi();
-        let data2 = self.pdi();
+        // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
+        let i_data = self.pdi();
+        let o_data = self.pdi_mut();
 
         let i = input_range
             .as_ref()
-            .and_then(|range| data.get(range.bytes.clone()));
+            .and_then(|range| i_data.get(range.bytes.clone()));
         let o = output_range
             .as_ref()
-            .and_then(|range| data2.get_mut(range.bytes.clone()));
+            .and_then(|range| o_data.get_mut(range.bytes.clone()));
 
         Some((i, o))
     }
@@ -133,7 +137,7 @@ impl<
     where
         TIMEOUT: TimerFactory,
     {
-        let (_res, wkc) = client.lrw_buf(self.start_address, self.pdi()).await?;
+        let (_res, wkc) = client.lrw_buf(self.start_address, self.pdi_mut()).await?;
 
         // FIXME: AKD returns 2 when it should be 3. Why?
         // if wkc != self.group_working_counter {
@@ -148,7 +152,6 @@ impl<
         }
     }
 
-    // TODO: AsRef or AsMut trait?
     pub(crate) fn as_mut_ref(&mut self) -> SlaveGroupRef<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
         SlaveGroupRef {
             slaves: self.slaves.as_mut(),
@@ -194,7 +197,7 @@ where
                 &slave.name,
             );
 
-            slave_ref.configure_from_eeprom_safe_op().await?;
+            slave_ref.configure_mailboxes().await?;
 
             log::debug!("Slave group configured SAFE-OP");
 
@@ -204,7 +207,7 @@ where
 
             log::debug!("Slave group configuration hook executed");
 
-            let new_offset = slave_ref.configure_from_eeprom_pre_op(offset).await?;
+            let new_offset = slave_ref.configure_fmmus(offset).await?;
 
             log::debug!("Slave group configured PRE-OP");
 

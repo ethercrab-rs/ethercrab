@@ -3,6 +3,7 @@ mod sdo;
 use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
+    all_consumed,
     client::Client,
     coe::SdoAccess,
     eeprom::{
@@ -14,16 +15,18 @@ use crate::{
     error::Error,
     fmmu::Fmmu,
     pdi::{PdiOffset, PdiSegment},
+    pdu_data::{PduData, PduRead},
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
     slave_state::SlaveState,
-    sync_manager_channel::{self, SyncManagerChannel},
+    sync_manager_channel::{self, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
     timer_factory::TimerFactory,
-    PduData, PduRead,
 };
-use core::fmt::Debug;
-use core::fmt::Write;
-use core::{fmt, time::Duration};
+use core::{
+    fmt,
+    fmt::{Debug, Write},
+    time::Duration,
+};
 use nom::{number::complete::le_u32, IResult};
 use num_enum::FromPrimitive;
 use packed_struct::PackedStruct;
@@ -53,6 +56,8 @@ impl SlaveIdentity {
         let (i, product_id) = le_u32(i)?;
         let (i, revision) = le_u32(i)?;
         let (i, serial) = le_u32(i)?;
+
+        all_consumed(i)?;
 
         Ok((
             i,
@@ -318,7 +323,7 @@ where
         Ok(sm_config)
     }
 
-    pub(crate) async fn configure_from_eeprom_safe_op(&mut self) -> Result<(), Error> {
+    pub(crate) async fn configure_mailboxes(&mut self) -> Result<(), Error> {
         // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
         // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
         // to master mode here, now that the transition is complete.
@@ -327,7 +332,7 @@ where
         let sync_managers = self.eeprom().sync_managers().await?;
 
         // Mailboxes must be configured in INIT state
-        self.configure_mailboxes(&sync_managers).await?;
+        self.configure_mailbox_sms(&sync_managers).await?;
 
         // Some slaves must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
@@ -340,7 +345,7 @@ where
         Ok(())
     }
 
-    pub(crate) async fn configure_from_eeprom_pre_op(
+    pub(crate) async fn configure_fmmus(
         &mut self,
         mut offset: PdiOffset,
     ) -> Result<PdiOffset, Error> {
@@ -415,7 +420,8 @@ where
         Ok(offset)
     }
 
-    async fn configure_mailboxes(&mut self, sync_managers: &[SyncManager]) -> Result<(), Error> {
+    /// Configure SM0 and SM1 for mailbox communication.
+    async fn configure_mailbox_sms(&mut self, sync_managers: &[SyncManager]) -> Result<(), Error> {
         // Read default mailbox configuration from slave information area
         let mailbox_config = self.eeprom().mailbox_config().await?;
 
@@ -491,14 +497,12 @@ where
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<Option<PdiSegment>, Error> {
-        // SM0 address
-        // TODO: Const
-        let sm_base_address = 0x1c10;
-
         let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
 
         // ETG1000.6 Table 67 – CoE Communication Area
-        let num_sms = self.read_sdo::<u8>(0x1c00, SdoAccess::Index(0)).await?;
+        let num_sms = self
+            .read_sdo::<u8>(SM_TYPE_ADDRESS, SdoAccess::Index(0))
+            .await?;
 
         log::trace!("Found {num_sms} SMs from CoE");
 
@@ -513,14 +517,13 @@ where
         // NOTE: This is a 1-based SDO sub-index
         for sm_mapping_sub_index in sm_range {
             let sm_type = self
-                // TODO: 0x1c00 const: SM_COMM_TYPE
-                .read_sdo::<u8>(0x1c00, SdoAccess::Index(sm_mapping_sub_index))
+                .read_sdo::<u8>(SM_TYPE_ADDRESS, SdoAccess::Index(sm_mapping_sub_index))
                 .await
                 .map(|raw| SyncManagerType::from_primitive(raw))?;
 
             let sync_manager_index = sm_mapping_sub_index - 1;
 
-            let sm_address = sm_base_address + u16::from(sync_manager_index);
+            let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
 
             let sync_manager = sync_managers
                 .get(usize::from(sync_manager_index))
@@ -570,6 +573,7 @@ where
                 (sm_bit_len + 7) / 8
             );
 
+            // TODO: Refactor into method call, dedupe with other config place
             {
                 let sm_config = self
                     .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)

@@ -1,5 +1,4 @@
 mod reader;
-// TODO: Un-pub
 pub mod types;
 
 use self::types::{DefaultMailbox, FmmuEx};
@@ -256,14 +255,11 @@ where
         if let Some(mut reader) = self.find_category(category).await? {
             // TODO: Define a trait that gives the number of bytes to take to parse the type.
             while let Some(pdo) = reader.take_n_vec::<8>(8).await? {
-                let (i, mut pdo) = Pdo::parse(&pdo).map_err(|e| {
+                let (_, mut pdo) = Pdo::parse(&pdo).map_err(|e| {
                     log::error!("PDO: {}", e);
 
                     Error::EepromDecode
                 })?;
-
-                // TODO: nom's all_consuming; no extra bytes should remain
-                assert_eq!(i.len(), 0);
 
                 log::trace!("Range {:?} value {}", valid_range, pdo.index);
 
@@ -273,14 +269,11 @@ where
 
                 for _ in 0..pdo.num_entries {
                     let entry = reader.take_n_vec_exact::<8>(8).await.and_then(|bytes| {
-                        let (i, entry) = PdoEntry::parse(&bytes).map_err(|e| {
+                        let (_, entry) = PdoEntry::parse(&bytes).map_err(|e| {
                             log::error!("PDO entry: {}", e);
 
                             Error::EepromDecode
                         })?;
-
-                        // TODO: nom's all_consuming; no extra bytes should remain
-                        assert_eq!(i.len(), 0);
 
                         Ok(entry)
                     })?;
