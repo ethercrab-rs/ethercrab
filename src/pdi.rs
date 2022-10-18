@@ -82,13 +82,13 @@ impl fmt::Display for PdiSegment {
     }
 }
 
-impl PdiSegment {
-    /// If this segment contains less than 8 bits, this method will calculate the bit mask for the
-    /// used bits.
-    pub fn bit_mask(self) -> Option<u8> {
-        (self.bit_len < 8).then(|| 2u8.pow(self.bit_len as u32) - 1)
-    }
-}
+// impl PdiSegment {
+//     /// If this segment contains less than 8 bits, this method will calculate the bit mask for the
+//     /// used bits.
+//     pub fn bit_mask(self) -> Option<u8> {
+//         (self.bit_len < 8).then(|| 2u8.pow(self.bit_len as u32) - 1)
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
