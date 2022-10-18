@@ -1,6 +1,8 @@
 mod configuration;
 mod sdo;
+pub mod slave_client;
 
+use self::slave_client::SlaveClient;
 use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
@@ -161,7 +163,7 @@ impl Slave {
 }
 
 pub struct SlaveRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    client: SlaveClient<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     pub(crate) config: &'a mut SlaveConfig,
     configured_address: u16,
     name: &'a str,
@@ -179,7 +181,7 @@ where
         name: &'a str,
     ) -> Self {
         Self {
-            client,
+            client: SlaveClient::new(client, configured_address),
             config,
             configured_address,
             name,
@@ -190,42 +192,11 @@ where
         self.name
     }
 
-    pub(crate) async fn read<T>(
-        &self,
-        register: RegisterAddress,
-        context: &'static str,
-    ) -> Result<T, Error>
-    where
-        T: PduRead,
-        <T as PduRead>::Error: Debug,
-    {
-        self.client
-            .fprd(self.configured_address, register)
-            .await?
-            .wkc(1, context)
-    }
-
-    /// A wrapper around an FPWR service to this slave's configured address.
-    pub(crate) async fn write<T>(
-        &self,
-        register: impl Into<u16>,
-        value: T,
-        context: &'static str,
-    ) -> Result<T, Error>
-    where
-        T: PduData,
-        <T as PduRead>::Error: Debug,
-    {
-        self.client
-            .fpwr(self.configured_address, register, value)
-            .await?
-            .wkc(1, context)
-    }
-
     async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(5000), async {
             loop {
                 let status = self
+                    .client
                     .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
                     .await?;
 
@@ -246,23 +217,26 @@ where
         );
 
         // Send state request
-        self.write(
-            RegisterAddress::AlControl,
-            AlControl::new(desired_state).pack().unwrap(),
-            "AL control",
-        )
-        .await?;
+        self.client
+            .write(
+                RegisterAddress::AlControl,
+                AlControl::new(desired_state).pack().unwrap(),
+                "AL control",
+            )
+            .await?;
 
         self.wait_for_state(desired_state).await
     }
 
     pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
         let status = self
+            .client
             .read::<AlControl>(RegisterAddress::AlStatus, "AL Status")
             .await
             .map(|ctl| ctl.state)?;
 
         let code = self
+            .client
             .read::<AlStatusCode>(RegisterAddress::AlStatusCode, "AL Status Code")
             .await?;
 
@@ -271,13 +245,15 @@ where
 
     // TODO: Separate TIMEOUT for EEPROM specifically
     pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
-        Eeprom::new(self)
+        Eeprom::new(&self.client)
     }
 
     async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
-        self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
+        self.client
+            .write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
             .await?;
-        self.write::<u16>(RegisterAddress::SiiConfig, mode as u16, "debug write 2")
+        self.client
+            .write::<u16>(RegisterAddress::SiiConfig, mode as u16, "debug write 2")
             .await?;
 
         Ok(())
