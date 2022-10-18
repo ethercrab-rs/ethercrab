@@ -174,8 +174,9 @@ where
         let counter = request.counter();
 
         // TODO: Abstract this into a method that returns a slice
+
         self.client
-            .pdu_loop
+            .pdu_loop()
             .pdu_tx_readwrite_len(
                 Command::Fpwr {
                     address: self.configured_address,
@@ -193,6 +194,7 @@ where
 
             loop {
                 let sm = self
+                    .client
                     .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
                     .await?;
 
@@ -214,7 +216,7 @@ where
         // TODO: Abstract this into a method that returns a slice
         let response = self
             .client
-            .pdu_loop
+            .pdu_loop()
             .pdu_tx_readonly(
                 Command::Fprd {
                     address: self.configured_address,
