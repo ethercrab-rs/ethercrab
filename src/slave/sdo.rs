@@ -2,7 +2,7 @@ use super::SlaveRef;
 use crate::{
     coe::{self, abort_code::AbortCode, services::CoeServiceTrait, SdoAccess},
     command::Command,
-    error::{Error, PduError},
+    error::{Error, MailboxError, PduError},
     mailbox::MailboxType,
     pdu_data::{PduData, PduRead},
     pdu_loop::CheckWorkingCounter,
@@ -102,7 +102,7 @@ where
 
             // The provided buffer isn't long enough to contain all mailbox data.
             if complete_size > buf.len() as u32 {
-                return Err(Error::MailboxTooLong);
+                return Err(Error::Mailbox(MailboxError::TooLong));
             }
 
             // If it's a normal upload, the response payload is returned in the initial mailbox read
@@ -160,8 +160,16 @@ where
         H: CoeServiceTrait + packed_struct::PackedStructInfo,
         <H as PackedStruct>::ByteArray: AsRef<[u8]>,
     {
-        let write_mailbox = self.config.mailbox.write.ok_or(Error::NoMailbox)?;
-        let read_mailbox = self.config.mailbox.read.ok_or(Error::NoMailbox)?;
+        let write_mailbox = self
+            .config
+            .mailbox
+            .write
+            .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
+        let read_mailbox = self
+            .config
+            .mailbox
+            .read
+            .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
 
         let counter = request.counter();
 
@@ -238,11 +246,11 @@ where
                 })
                 .unwrap_or(AbortCode::General);
 
-            Err(Error::SdoAborted(code))
+            Err(Error::Mailbox(MailboxError::Aborted(code)))
         } else if
         // Validate that the mailbox response is to the request we just sent
         headers.mailbox_type() != MailboxType::Coe || headers.counter() != counter {
-            Err(Error::SdoResponseInvalid)
+            Err(Error::Mailbox(MailboxError::SdoResponseInvalid))
         } else {
             Ok((headers, data))
         }

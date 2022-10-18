@@ -1,7 +1,7 @@
 use crate::{
     al_control::AlControl,
     command::Command,
-    error::{Error, PduError},
+    error::{Error, Item, PduError},
     pdi::PdiOffset,
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
@@ -14,9 +14,11 @@ use crate::{
 };
 use core::{
     any::type_name,
+    cell::RefCell,
+    marker::PhantomData,
     sync::atomic::{AtomicU8, Ordering},
+    time::Duration,
 };
-use core::{cell::RefCell, marker::PhantomData, time::Duration};
 use packed_struct::PackedStruct;
 
 pub struct Client<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
@@ -145,8 +147,10 @@ where
 
         // Loop through groups and configure the slaves in each one.
         for i in 0..groups.num_groups() {
-            // TODO: Better error type for broken group index calculation
-            let mut group = groups.group(i).ok_or(Error::Other)?;
+            let mut group = groups.group(i).ok_or(Error::NotFound {
+                item: Item::Group,
+                index: Some(i),
+            })?;
 
             offset = group.configure_from_eeprom(offset, self).await?;
 

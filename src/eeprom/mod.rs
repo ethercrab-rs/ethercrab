@@ -10,7 +10,7 @@ use crate::{
             SiiReadSize, SiiRequest, SyncManager, RX_PDO_RANGE, TX_PDO_RANGE,
         },
     },
-    error::{Capacity, Error},
+    error::{EepromError, Error, Item},
     register::RegisterAddress,
     slave::{SlaveIdentity, SlaveRef},
     timer_factory::TimerFactory,
@@ -171,7 +171,7 @@ where
         let mut reader = self
             .find_category(CategoryType::General)
             .await?
-            .ok_or(Error::EepromNoCategory)?;
+            .ok_or(Error::Eeprom(EepromError::NoCategory))?;
 
         let buf = reader
             .take_vec_exact::<{ mem::size_of::<SiiGeneral>() }>()
@@ -203,7 +203,7 @@ where
 
                 sync_managers
                     .push(sm)
-                    .map_err(|_| Error::Capacity(Capacity::SyncManager))?;
+                    .map_err(|_| Error::Capacity(Item::SyncManager))?;
             }
         }
 
@@ -218,11 +218,10 @@ where
 
         if let Some(mut reader) = category {
             while let Some(byte) = reader.next().await? {
-                let fmmu = FmmuUsage::try_from_primitive(byte).map_err(|_| Error::EepromDecode)?;
+                let fmmu = FmmuUsage::try_from_primitive(byte)
+                    .map_err(|_| Error::Eeprom(EepromError::Decode))?;
 
-                fmmus
-                    .push(fmmu)
-                    .map_err(|_| Error::Capacity(Capacity::Fmmu))?;
+                fmmus.push(fmmu).map_err(|_| Error::Capacity(Item::Fmmu))?;
             }
         }
 
@@ -238,7 +237,7 @@ where
 
                 mappings
                     .push(fmmu)
-                    .map_err(|_| Error::Capacity(Capacity::FmmuEx))?;
+                    .map_err(|_| Error::Capacity(Item::FmmuEx))?;
             }
         }
 
@@ -258,13 +257,13 @@ where
                 let (_, mut pdo) = Pdo::parse(&pdo).map_err(|e| {
                     log::error!("PDO: {}", e);
 
-                    Error::EepromDecode
+                    Error::Eeprom(EepromError::Decode)
                 })?;
 
                 log::trace!("Range {:?} value {}", valid_range, pdo.index);
 
                 if !valid_range.contains(&pdo.index) {
-                    return Err(Error::EepromDecode);
+                    return Err(Error::Eeprom(EepromError::Decode));
                 }
 
                 for _ in 0..pdo.num_entries {
@@ -272,7 +271,7 @@ where
                         let (_, entry) = PdoEntry::parse(&bytes).map_err(|e| {
                             log::error!("PDO entry: {}", e);
 
-                            Error::EepromDecode
+                            Error::Eeprom(EepromError::Decode)
                         })?;
 
                         Ok(entry)
@@ -280,10 +279,10 @@ where
 
                     pdo.entries
                         .push(entry)
-                        .map_err(|_| Error::Capacity(Capacity::PdoEntry))?;
+                        .map_err(|_| Error::Capacity(Item::PdoEntry))?;
                 }
 
-                pdos.push(pdo).map_err(|_| Error::Capacity(Capacity::Pdo))?;
+                pdos.push(pdo).map_err(|_| Error::Capacity(Item::Pdo))?;
             }
         }
 
@@ -335,9 +334,10 @@ where
                     required: string_len,
                 })?;
 
-            let s = core::str::from_utf8(&bytes).map_err(|_| Error::EepromDecode)?;
+            let s = core::str::from_utf8(&bytes).map_err(|_| Error::Eeprom(EepromError::Decode))?;
 
-            let s = heapless::String::<N>::from_str(s).map_err(|_| Error::EepromDecode)?;
+            let s = heapless::String::<N>::from_str(s)
+                .map_err(|_| Error::Eeprom(EepromError::Decode))?;
 
             Ok(Some(s))
         } else {
