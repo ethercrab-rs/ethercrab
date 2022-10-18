@@ -1,4 +1,4 @@
-use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SdoAccess, SegmentSdoHeader};
+use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SegmentSdoHeader, SubIndex};
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 use packed_struct::prelude::PackedStruct;
 
@@ -76,7 +76,7 @@ impl CoeServiceTrait for SegmentedUploadRequest {
 pub fn download(
     counter: u8,
     index: u16,
-    access: SdoAccess,
+    access: SubIndex,
     data: [u8; 4],
     len: u8,
 ) -> DownloadExpeditedRequest {
@@ -128,7 +128,7 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SegmentedUploadRequest {
     }
 }
 
-pub fn upload(counter: u8, index: u16, access: SdoAccess) -> UploadRequest {
+pub fn upload(counter: u8, index: u16, access: SubIndex) -> UploadRequest {
     UploadRequest {
         header: MailboxHeader {
             length: 0x0a,

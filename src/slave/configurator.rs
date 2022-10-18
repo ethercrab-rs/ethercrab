@@ -3,7 +3,7 @@
 
 use super::{slave_client::SlaveClient, Slave, SlaveRef};
 use crate::{
-    coe::SdoAccess,
+    coe::SubIndex,
     eeprom::types::{
         FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType,
     },
@@ -261,7 +261,7 @@ where
 
         // ETG1000.6 Table 67 – CoE Communication Area
         let num_sms = self
-            .read_sdo::<u8>(SM_TYPE_ADDRESS, SdoAccess::Index(0))
+            .read_sdo::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
             .await?;
 
         log::trace!("Found {num_sms} SMs from CoE");
@@ -277,7 +277,7 @@ where
         // NOTE: This is a 1-based SDO sub-index
         for sm_mapping_sub_index in sm_range {
             let sm_type = self
-                .read_sdo::<u8>(SM_TYPE_ADDRESS, SdoAccess::Index(sm_mapping_sub_index))
+                .read_sdo::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(sm_mapping_sub_index))
                 .await
                 .map(|raw| SyncManagerType::from_primitive(raw))?;
 
@@ -298,22 +298,20 @@ where
             }
 
             // Total number of PDO assignments for this sync manager
-            let num_sm_assignments = self.read_sdo::<u8>(sm_address, SdoAccess::Index(0)).await?;
+            let num_sm_assignments = self.read_sdo::<u8>(sm_address, SubIndex::Index(0)).await?;
 
             log::trace!("SDO sync manager {sync_manager_index} (sub index #{sm_mapping_sub_index}) {sm_address:#06x} {sm_type:?}, sub indices: {num_sm_assignments}");
 
             let mut sm_bit_len = 0u16;
 
             for i in 1..=num_sm_assignments {
-                let pdo = self
-                    .read_sdo::<u16>(sm_address, SdoAccess::Index(i))
-                    .await?;
-                let num_mappings = self.read_sdo::<u8>(pdo, SdoAccess::Index(0)).await?;
+                let pdo = self.read_sdo::<u16>(sm_address, SubIndex::Index(i)).await?;
+                let num_mappings = self.read_sdo::<u8>(pdo, SubIndex::Index(0)).await?;
 
                 log::trace!("--> #{i} data: {pdo:#06x} ({num_mappings} mappings):");
 
                 for i in 1..=num_mappings {
-                    let mapping = self.read_sdo::<u32>(pdo, SdoAccess::Index(i)).await?;
+                    let mapping = self.read_sdo::<u32>(pdo, SubIndex::Index(i)).await?;
 
                     // Yes, big-endian. Makes life easier when mapping from debug prints to actual
                     // data fields.
@@ -501,7 +499,7 @@ where
         )
     }
 
-    pub async fn read_sdo<T>(&self, index: u16, access: SdoAccess) -> Result<T, Error>
+    pub async fn read_sdo<T>(&self, index: u16, access: SubIndex) -> Result<T, Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,
