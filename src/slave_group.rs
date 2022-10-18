@@ -1,12 +1,11 @@
 use crate::{
-    error::Error,
+    error::{Error, Item},
     pdi::PdiOffset,
     slave::{IoRanges, Slave, SlaveRef},
     timer_factory::TimerFactory,
     Client,
 };
-use core::future::Future;
-use core::{cell::UnsafeCell, pin::Pin};
+use core::{cell::UnsafeCell, future::Future, pin::Pin};
 
 type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + 'any>>;
 
@@ -92,7 +91,9 @@ impl<
     }
 
     pub fn push(&mut self, slave: Slave) -> Result<(), Error> {
-        self.slaves.push(slave).map_err(|_| Error::TooManySlaves)
+        self.slaves
+            .push(slave)
+            .map_err(|_| Error::Capacity(Item::Slave))
     }
 
     pub fn slaves(&self) -> &[Slave] {

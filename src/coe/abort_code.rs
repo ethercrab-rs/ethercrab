@@ -1,7 +1,7 @@
 use core::fmt;
 
 /// Defined in ETG1000.6 Table 41 – SDO Abort Codes
-#[derive(Debug, Copy, Clone, num_enum::TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive)]
 #[repr(u32)]
 pub enum AbortCode {
     /// Toggle bit not changed
