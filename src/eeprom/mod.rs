@@ -128,8 +128,7 @@ where
                     break Ok(());
                 }
 
-                // TODO: Configurable loop tick
-                TIMEOUT::timer(self.client.timeouts().wait_loop_delay).await;
+                self.client.timeouts().loop_tick::<TIMEOUT>().await;
             }
         })
         .await
