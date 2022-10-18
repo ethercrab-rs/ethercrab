@@ -28,6 +28,8 @@ pub struct Timeouts {
     ///
     /// Some operations require repeatedly reading something from a slave until a value changes.
     /// This duration specifies the wait time between polls.
+    ///
+    /// This defaults to a timeout of 0 to keep latency to a minimum.
     pub wait_loop_delay: Duration,
 
     /// How long to wait for a slave mailbox to become ready.
