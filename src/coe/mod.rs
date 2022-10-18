@@ -115,7 +115,7 @@ impl SegmentSdoHeader {
     // const UPLOAD_SEGMENT_RESPONSE: u8 = 0x03;
 }
 
-pub enum SdoAccess {
+pub enum SubIndex {
     /// Complete access.
     Complete,
 
@@ -123,7 +123,7 @@ pub enum SdoAccess {
     Index(u8),
 }
 
-impl SdoAccess {
+impl SubIndex {
     pub(crate) fn complete_access(&self) -> bool {
         matches!(self, Self::Complete)
     }
@@ -131,8 +131,8 @@ impl SdoAccess {
     pub(crate) fn sub_index(&self) -> u8 {
         match self {
             // 0th sub-index counts number of sub-indices in object, so we'll start from 1
-            SdoAccess::Complete => 1,
-            SdoAccess::Index(idx) => *idx,
+            SubIndex::Complete => 1,
+            SubIndex::Index(idx) => *idx,
         }
     }
 }
