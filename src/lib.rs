@@ -57,7 +57,6 @@ const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
 const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
 
 /// Starting address for discovered slaves.
-// TODO: i16 so it can wrap around nicely on overflow. Need to do wrapping_add in various places too.
 const BASE_SLAVE_ADDR: u16 = 0x1000;
 
 /// Ensure that a buffer passed to a parsing function is fully consumed.

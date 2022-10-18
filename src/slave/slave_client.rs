@@ -129,7 +129,6 @@ where
         Ok((status, code))
     }
 
-    // TODO: Separate TIMEOUT for EEPROM specifically
     pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
         Eeprom::new(&self)
     }
