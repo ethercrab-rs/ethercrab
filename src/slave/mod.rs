@@ -22,7 +22,6 @@ use core::{
     any::type_name,
     fmt,
     fmt::{Debug, Write},
-    time::Duration,
 };
 use nom::{bytes::complete::take, number::complete::le_u32, IResult};
 use num_enum::TryFromPrimitive;
@@ -351,12 +350,13 @@ where
                 },
                 request.pack().unwrap().as_ref(),
                 write_mailbox.len,
+                self.client.timeouts(),
             )
             .await?
             .wkc(1, "SDO upload request")?;
 
         // Wait for slave send mailbox to be ready
-        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(1000), async {
+        crate::timer_factory::timeout::<TIMEOUT, _, _>(self.client.timeouts().mailbox, async {
             let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
 
             loop {
@@ -369,7 +369,7 @@ where
                     break Result::<(), _>::Ok(());
                 }
 
-                TIMEOUT::timer(Duration::from_millis(10)).await;
+                TIMEOUT::timer(self.client.timeouts().wait_loop_delay).await;
             }
         })
         .await
@@ -390,6 +390,7 @@ where
                     register: read_mailbox.address,
                 },
                 read_mailbox.len,
+                self.client.timeouts(),
             )
             .await?
             .wkc(1, "SDO read mailbox")?;

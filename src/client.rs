@@ -9,7 +9,7 @@ use crate::{
     slave::Slave,
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
-    timer_factory::TimerFactory,
+    timer_factory::{Timeouts, TimerFactory},
     BASE_SLAVE_ADDR,
 };
 use core::{
@@ -17,7 +17,6 @@ use core::{
     cell::RefCell,
     marker::PhantomData,
     sync::atomic::{AtomicU8, Ordering},
-    time::Duration,
 };
 use packed_struct::PackedStruct;
 
@@ -27,6 +26,7 @@ pub struct Client<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, T
     pub pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
+    pub(crate) timeouts: Timeouts,
     /// The 1-7 cyclic counter used when working with mailbox requests.
     mailbox_counter: AtomicU8,
 }
@@ -41,7 +41,10 @@ impl<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub fn new(pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> Self {
+    pub fn new(
+        pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        timeouts: Timeouts,
+    ) -> Self {
         // MSRV: Make `MAX_FRAMES` a `u8` when `generic_const_exprs` is stablised
         assert!(
             MAX_FRAMES <= u8::MAX.into(),
@@ -53,6 +56,7 @@ where
             // slaves: UnsafeCell::new(heapless::Vec::new()),
             num_slaves: RefCell::new(0),
             _timeout: PhantomData,
+            timeouts,
             // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
             mailbox_counter: AtomicU8::new(1),
         }
@@ -184,8 +188,7 @@ where
     pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         let num_slaves = *self.num_slaves.borrow();
 
-        // TODO: Configurable timeout depending on current -> next states
-        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(5000), async {
+        crate::timer_factory::timeout::<TIMEOUT, _, _>(self.timeouts.state_transition, async {
             loop {
                 let status = self
                     .brd::<AlControl>(RegisterAddress::AlStatus)
@@ -195,7 +198,7 @@ where
                     break Result::<(), Error>::Ok(());
                 }
 
-                TIMEOUT::timer(Duration::from_millis(10)).await;
+                self.timeouts.loop_tick::<TIMEOUT>().await;
             }
         })
         .await
@@ -205,7 +208,10 @@ where
     where
         T: PduRead,
     {
-        let (data, working_counter) = self.pdu_loop.pdu_tx_readonly(command, T::len()).await?;
+        let (data, working_counter) = self
+            .pdu_loop
+            .pdu_tx_readonly(command, T::len(), &self.timeouts)
+            .await?;
 
         let res = T::try_from_slice(data).map_err(|e| {
             log::error!(
@@ -228,7 +234,7 @@ where
     {
         let (data, working_counter) = self
             .pdu_loop
-            .pdu_tx_readwrite(command, value.as_slice())
+            .pdu_tx_readwrite(command, value.as_slice(), &self.timeouts)
             .await?;
 
         let res = T::try_from_slice(data).map_err(|e| {
@@ -371,7 +377,7 @@ where
 
         let (data, working_counter) = self
             .pdu_loop
-            .pdu_tx_readwrite(Command::Lrw { address }, value)
+            .pdu_tx_readwrite(Command::Lrw { address }, value, &self.timeouts)
             .await?;
 
         if data.len() != value.len() {

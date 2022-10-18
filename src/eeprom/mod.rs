@@ -117,10 +117,7 @@ where
 
     /// Wait for EEPROM read or write operation to finish and clear the busy flag.
     async fn wait(&self) -> Result<(), Error> {
-        // TODO: Configurable timeout
-        let timeout = core::time::Duration::from_millis(10);
-
-        crate::timeout::<TIMEOUT, _, _>(timeout, async {
+        crate::timer_factory::timeout::<TIMEOUT, _, _>(self.client.timeouts().eeprom, async {
             loop {
                 let control = self
                     .client
@@ -132,7 +129,7 @@ where
                 }
 
                 // TODO: Configurable loop tick
-                TIMEOUT::timer(core::time::Duration::from_millis(1)).await;
+                TIMEOUT::timer(self.client.timeouts().wait_loop_delay).await;
             }
         })
         .await
