@@ -4,17 +4,12 @@
 //! to a pile of hard-coding.
 
 use async_ctrlc::CtrlC;
-use ethercrab::coe::SdoAccess;
-use ethercrab::error::Error;
-use ethercrab::std::tx_rx_task;
-use ethercrab::Client;
-use ethercrab::PduLoop;
-use ethercrab::SlaveGroup;
-use ethercrab::SlaveState;
+use ethercrab::{
+    coe::SubIndex, error::Error, std::tx_rx_task, Client, PduLoop, SlaveGroup, SlaveState,
+};
 use futures_lite::FutureExt;
 use smol::LocalExecutor;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 #[cfg(target_os = "windows")]
 // ASRock NIC
@@ -69,32 +64,32 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
                 // AKD config
                 if slave.name() == "AKD" {
-                    slave.write_sdo(0x1c12, 0u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c12, 0u8, SubIndex::Index(0)).await?;
                     slave
-                        .write_sdo(0x1c12, 0x1720u16, SdoAccess::Index(1))
+                        .write_sdo(0x1c12, 0x1720u16, SubIndex::Index(1))
                         .await?;
-                    slave.write_sdo(0x1c12, 0x01u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c12, 0x01u8, SubIndex::Index(0)).await?;
 
                     // Must set both read AND write SDOs for AKD otherwise it times out going into OP
-                    slave.write_sdo(0x1c13, 0u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c13, 0u8, SubIndex::Index(0)).await?;
                     slave
-                        .write_sdo(0x1c13, 0x1B22u16, SdoAccess::Index(1))
+                        .write_sdo(0x1c13, 0x1B22u16, SubIndex::Index(1))
                         .await?;
-                    slave.write_sdo(0x1c13, 0x01u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c13, 0x01u8, SubIndex::Index(0)).await?;
                 }
 
                 if slave.name() == "ELP-EC400S" {
-                    slave.write_sdo(0x1c12, 0u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c12, 0u8, SubIndex::Index(0)).await?;
                     slave
-                        .write_sdo(0x1c12, 0x1601u16, SdoAccess::Index(1))
+                        .write_sdo(0x1c12, 0x1601u16, SubIndex::Index(1))
                         .await?;
-                    slave.write_sdo(0x1c12, 0x01u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c12, 0x01u8, SubIndex::Index(0)).await?;
 
-                    slave.write_sdo(0x1c13, 0u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c13, 0u8, SubIndex::Index(0)).await?;
                     slave
-                        .write_sdo(0x1c13, 0x1A00u16, SdoAccess::Index(1))
+                        .write_sdo(0x1c13, 0x1A00u16, SubIndex::Index(1))
                         .await?;
-                    slave.write_sdo(0x1c13, 0x01u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c13, 0x01u8, SubIndex::Index(0)).await?;
                 }
 
                 Ok(())

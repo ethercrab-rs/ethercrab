@@ -5,7 +5,7 @@ use self::slave_client::SlaveClient;
 use crate::{
     all_consumed,
     client::Client,
-    coe::{self, abort_code::AbortCode, services::CoeServiceTrait, SdoAccess},
+    coe::{self, abort_code::AbortCode, services::CoeServiceTrait, SubIndex},
     command::Command,
     eeprom::types::{MailboxProtocols, SiiOwner},
     error::{Error, MailboxError, PduError},
@@ -184,8 +184,7 @@ where
         self.slave.name.as_str()
     }
 
-    // TODO: Reorder so value is last field.
-    pub async fn write_sdo<T>(&self, index: u16, value: T, access: SdoAccess) -> Result<(), Error>
+    pub async fn write_sdo<T>(&self, index: u16, sub_index: SubIndex, value: T) -> Result<(), Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,
@@ -203,7 +202,7 @@ where
 
         data[0..len].copy_from_slice(value.as_slice());
 
-        let request = coe::services::download(counter, index, access, data, len as u8);
+        let request = coe::services::download(counter, index, sub_index, data, len as u8);
 
         let (_response, _data) = self.send_coe_service(request).await?;
 
@@ -212,14 +211,14 @@ where
         Ok(())
     }
 
-    pub async fn read_sdo<T>(&self, index: u16, access: SdoAccess) -> Result<T, Error>
+    pub async fn read_sdo<T>(&self, index: u16, sub_index: SubIndex) -> Result<T, Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
         let mut buf = [0u8; MAX_PDU_DATA];
 
-        self.read_sdo_buf(index, access, &mut buf)
+        self.read_sdo_buf(index, sub_index, &mut buf)
             .await
             .and_then(|data| {
                 T::try_from_slice(data).map_err(|_| {
@@ -239,10 +238,10 @@ where
     async fn read_sdo_buf<'buf>(
         &self,
         index: u16,
-        access: SdoAccess,
+        sub_index: SubIndex,
         buf: &'buf mut [u8],
     ) -> Result<&'buf [u8], Error> {
-        let request = coe::services::upload(self.client.mailbox_counter(), index, access);
+        let request = coe::services::upload(self.client.mailbox_counter(), index, sub_index);
 
         let (headers, data) = self.send_coe_service(request).await?;
 

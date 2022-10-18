@@ -3,7 +3,7 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduLoop, SdoAccess, SlaveGroup, SlaveState, Timeouts,
+    error::Error, std::tx_rx_task, Client, PduLoop, SlaveGroup, SlaveState, SubIndex, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
@@ -63,38 +63,38 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
                 // AKD config
                 if slave.name() == "AKD" {
-                    slave.write_sdo(0x1c12, 0u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
                     // 0x1702 = fixed velocity mapping
                     slave
-                        .write_sdo(0x1c12, 0x1702u16, SdoAccess::Index(1))
+                        .write_sdo(0x1c12, SubIndex::Index(1), 0x1702u16)
                         .await?;
-                    slave.write_sdo(0x1c12, 0x01u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c12, SubIndex::Index(0), 0x01u8).await?;
 
                     // Must set both read AND write SDOs for AKD otherwise it times out going into OP
-                    slave.write_sdo(0x1c13, 0u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
                     slave
-                        .write_sdo(0x1c13, 0x1B01u16, SdoAccess::Index(1))
+                        .write_sdo(0x1c13, SubIndex::Index(1), 0x1B01u16)
                         .await?;
-                    slave.write_sdo(0x1c13, 0x01u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c13, SubIndex::Index(0), 0x01u8).await?;
 
                     // Opmode - Cyclic Synchronous Position
-                    //  slave.write_sdo(0x6060, 0x08, SdoAccess::Index(0)).await?;
+                    //  slave.write_sdo(0x6060, SdoAccess::Index(0),0x08).await?;
                     // Opmode - Cyclic Synchronous Velocity
-                    slave.write_sdo(0x6060, 0x09u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x6060, SubIndex::Index(0), 0x09u8).await?;
                 }
 
                 if slave.name() == "ELP-EC400S" {
-                    slave.write_sdo(0x1c12, 0u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
                     slave
-                        .write_sdo(0x1c12, 0x1601u16, SdoAccess::Index(1))
+                        .write_sdo(0x1c12, SubIndex::Index(1), 0x1601u16)
                         .await?;
-                    slave.write_sdo(0x1c12, 0x01u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c12, SubIndex::Index(0), 0x01u8).await?;
 
-                    slave.write_sdo(0x1c13, 0u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
                     slave
-                        .write_sdo(0x1c13, 0x1A00u16, SdoAccess::Index(1))
+                        .write_sdo(0x1c13, SubIndex::Index(1), 0x1A00u16)
                         .await?;
-                    slave.write_sdo(0x1c13, 0x01u8, SdoAccess::Index(0)).await?;
+                    slave.write_sdo(0x1c13, SubIndex::Index(0), 0x01u8).await?;
                 }
 
                 Ok(())
@@ -128,8 +128,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let cycle_time = {
         let slave = group.slave(0, &client).unwrap();
 
-        let base = slave.read_sdo::<u8>(0x60c2, SdoAccess::Index(1)).await?;
-        let x10 = slave.read_sdo::<i8>(0x60c2, SdoAccess::Index(2)).await?;
+        let base = slave.read_sdo::<u8>(0x60c2, SubIndex::Index(1)).await?;
+        let x10 = slave.read_sdo::<i8>(0x60c2, SubIndex::Index(2)).await?;
 
         let base = f32::from(base);
         let x10 = 10.0f32.powi(i32::from(x10));

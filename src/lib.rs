@@ -46,7 +46,7 @@ use nom::IResult;
 use smoltcp::wire::{EthernetAddress, EthernetProtocol};
 
 pub use client::Client;
-pub use coe::SdoAccess;
+pub use coe::SubIndex;
 pub use pdu_loop::PduLoop;
 pub use slave_group::SlaveGroup;
 pub use slave_state::SlaveState;
