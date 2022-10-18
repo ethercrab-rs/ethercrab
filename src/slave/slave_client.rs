@@ -8,10 +8,10 @@ use crate::{
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
     slave_state::SlaveState,
-    timer_factory::TimerFactory,
+    timer_factory::{Timeouts, TimerFactory},
     PduLoop,
 };
-use core::{fmt::Debug, time::Duration};
+use core::fmt::Debug;
 use packed_struct::PackedStruct;
 
 pub struct SlaveClient<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
@@ -41,6 +41,10 @@ where
     // DELETEME: Leaky abstraction
     pub fn pdu_loop(&self) -> &PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
         &self.client.pdu_loop
+    }
+
+    pub fn timeouts(&self) -> &Timeouts {
+        &self.client.timeouts
     }
 
     pub(crate) async fn read<T>(
@@ -76,19 +80,22 @@ where
     }
 
     pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        crate::timeout::<TIMEOUT, _, _>(Duration::from_millis(5000), async {
-            loop {
-                let status = self
-                    .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
-                    .await?;
+        crate::timer_factory::timeout::<TIMEOUT, _, _>(
+            self.client.timeouts.state_transition,
+            async {
+                loop {
+                    let status = self
+                        .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
+                        .await?;
 
-                if status.state == desired_state {
-                    break Result::<(), _>::Ok(());
+                    if status.state == desired_state {
+                        break Result::<(), _>::Ok(());
+                    }
+
+                    TIMEOUT::timer(self.client.timeouts.wait_loop_delay).await;
                 }
-
-                TIMEOUT::timer(Duration::from_millis(10)).await;
-            }
-        })
+            },
+        )
         .await
     }
 
