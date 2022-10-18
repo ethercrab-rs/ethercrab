@@ -4,14 +4,13 @@ use crate::{
     command::Command,
     error::{Error, PduError},
     mailbox::MailboxType,
+    pdu_data::{PduData, PduRead},
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
     sync_manager_channel::SyncManagerChannel,
     timer_factory::TimerFactory,
-    PduData, PduRead,
 };
-use core::time::Duration;
-use core::{any::type_name, fmt::Debug};
+use core::{any::type_name, fmt::Debug, time::Duration};
 use nom::{bytes::complete::take, number::complete::le_u32};
 use num_enum::TryFromPrimitive;
 use packed_struct::{PackedStruct, PackedStructSlice};
@@ -224,7 +223,6 @@ where
 
         let (headers, data) = response.split_at(headers_len);
 
-        // TODO: Ability to use segmented headers
         let headers = H::unpack_from_slice(headers).map_err(|e| {
             log::error!("Failed to unpack mailbox response headers: {e}");
 

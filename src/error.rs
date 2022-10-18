@@ -1,5 +1,5 @@
 use crate::{coe::abort_code::AbortCode, command::Command};
-use core::{cell::BorrowError, num::TryFromIntError};
+use core::{cell::BorrowError, num::TryFromIntError, str::Utf8Error};
 
 #[derive(Debug)]
 pub enum Error {
@@ -87,6 +87,12 @@ pub enum PduError {
     Validation(PduValidationError),
     Parse,
     InvalidFrameState,
+}
+
+#[derive(Debug)]
+pub enum VisibleStringError {
+    Decode(Utf8Error),
+    TooLong,
 }
 
 #[derive(Copy, Clone, Debug)]

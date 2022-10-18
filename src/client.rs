@@ -3,13 +3,14 @@ use crate::{
     command::Command,
     error::{Error, PduError},
     pdi::PdiOffset,
+    pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
     timer_factory::TimerFactory,
-    PduData, PduRead, BASE_SLAVE_ADDR,
+    BASE_SLAVE_ADDR,
 };
 use core::{
     any::type_name,

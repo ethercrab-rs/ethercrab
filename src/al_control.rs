@@ -1,4 +1,4 @@
-use crate::{slave_state::SlaveState, PduRead};
+use crate::{pdu_data::PduRead, slave_state::SlaveState};
 use packed_struct::prelude::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PackedStruct)]

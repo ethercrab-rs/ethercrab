@@ -8,7 +8,9 @@ becoming a sponsor!
 
 ## MSRV
 
-The MSRV for EtherCrab is 1.64.
+Unfortunately, nightly Rust is currently required.
+
+The MSRV for EtherCrab can be found in `rust-toolchain.toml`.
 
 ## Current goals
 

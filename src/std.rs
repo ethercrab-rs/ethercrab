@@ -26,7 +26,6 @@ pub fn get_tx_rx(
 
     let (tx, rx) = match datalink::channel(&interface, config) {
         Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
-        // FIXME
         Ok(_) => panic!("Unhandled channel type"),
         Err(e) => return Err(e),
     };
@@ -69,6 +68,7 @@ where
     });
 
     // TODO: Unwraps
+    // TODO: Segmented packet handling
     let rx_task = smol::unblock(move || {
         loop {
             match rx.next() {
