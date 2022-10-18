@@ -39,12 +39,13 @@ where
             },
         };
 
-        self.write(
-            RegisterAddress::sync_manager(sync_manager_index),
-            sm_config.pack().unwrap(),
-            "SM config",
-        )
-        .await?;
+        self.client
+            .write(
+                RegisterAddress::sync_manager(sync_manager_index),
+                sm_config.pack().unwrap(),
+                "SM config",
+            )
+            .await?;
 
         log::debug!(
             "Slave {:#06x} SM{sync_manager_index}: {}",
@@ -337,12 +338,13 @@ where
                     enable: true,
                 };
 
-                self.write(
-                    RegisterAddress::fmmu(fmmu_index as u8),
-                    fmmu_config.pack().unwrap(),
-                    "PDI FMMU",
-                )
-                .await?;
+                self.client
+                    .write(
+                        RegisterAddress::fmmu(fmmu_index as u8),
+                        fmmu_config.pack().unwrap(),
+                        "PDI FMMU",
+                    )
+                    .await?;
 
                 log::debug!(
                     "Slave {:#06x} FMMU{fmmu_index}: {}",
@@ -441,12 +443,13 @@ where
                     enable: true,
                 };
 
-                self.write(
-                    RegisterAddress::fmmu(fmmu_index),
-                    fmmu_config.pack().unwrap(),
-                    "PDI FMMU",
-                )
-                .await?;
+                self.client
+                    .write(
+                        RegisterAddress::fmmu(fmmu_index),
+                        fmmu_config.pack().unwrap(),
+                        "PDI FMMU",
+                    )
+                    .await?;
 
                 log::debug!(
                     "Slave {:#06x} FMMU{fmmu_index}: {}",

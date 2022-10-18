@@ -12,7 +12,7 @@ use crate::{
     },
     error::{EepromError, Error, Item},
     register::RegisterAddress,
-    slave::{SlaveIdentity, SlaveRef},
+    slave::{slave_client::SlaveClient, SlaveIdentity, SlaveRef},
     timer_factory::TimerFactory,
 };
 use core::{mem, ops::RangeInclusive, str::FromStr};
@@ -23,7 +23,7 @@ use num_enum::TryFromPrimitive;
 const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 
 pub struct Eeprom<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    client: &'a SlaveClient<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
 }
 
 impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
@@ -31,13 +31,13 @@ impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub(crate) fn new(slave: &'a SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> Self {
-        Self { slave }
+    pub(crate) fn new(client: &'a SlaveClient<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> Self {
+        Self { client }
     }
 
     async fn read_eeprom_raw(&self, eeprom_address: u16) -> Result<[u8; 8], Error> {
         let status = self
-            .slave
+            .client
             .read::<SiiControl>(RegisterAddress::SiiControl, "Read SII control")
             .await?;
 
@@ -45,7 +45,7 @@ where
         if status.has_error() {
             log::trace!("Resetting EEPROM error flags");
 
-            self.slave
+            self.client
                 .write(
                     RegisterAddress::SiiControl,
                     status.error_reset().as_array(),
@@ -57,7 +57,7 @@ where
         // Set up an SII read. This writes the control word and the register word after it
         // TODO: Consider either removing context strings or using defmt or something to avoid
         // bloat.
-        self.slave
+        self.client
             .write(
                 RegisterAddress::SiiControl,
                 SiiRequest::read(eeprom_address).as_array(),
@@ -71,7 +71,7 @@ where
             // If slave uses 4 octet reads, do two reads so we can always return a chunk of 8 bytes
             SiiReadSize::Octets4 => {
                 let chunk1 = self
-                    .slave
+                    .client
                     .read::<[u8; 4]>(RegisterAddress::SiiData, "Read SII data")
                     .await?;
 
@@ -80,7 +80,7 @@ where
                     // NOTE: We must compute offset in 16 bit words, not bytes, hence the divide by 2
                     let setup = SiiRequest::read(eeprom_address + (chunk1.len() / 2) as u16);
 
-                    self.slave
+                    self.client
                         .write(
                             RegisterAddress::SiiControl,
                             setup.as_array(),
@@ -92,7 +92,7 @@ where
                 }
 
                 let chunk2 = self
-                    .slave
+                    .client
                     .read::<[u8; 4]>(RegisterAddress::SiiData, "SII data 2")
                     .await?;
 
@@ -104,7 +104,7 @@ where
                 data
             }
             SiiReadSize::Octets8 => {
-                self.slave
+                self.client
                     .read::<[u8; 8]>(RegisterAddress::SiiData, "SII data")
                     .await?
             }
@@ -123,7 +123,7 @@ where
         crate::timeout::<TIMEOUT, _, _>(timeout, async {
             loop {
                 let control = self
-                    .slave
+                    .client
                     .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
                     .await?;
 

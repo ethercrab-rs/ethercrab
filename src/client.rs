@@ -23,6 +23,7 @@ use packed_struct::PackedStruct;
 
 pub struct Client<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: un-pub
+    // TODO: Experiment with taking a dyn trait reference
     pub pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
