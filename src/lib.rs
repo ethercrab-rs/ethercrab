@@ -24,16 +24,15 @@ mod base_data_types;
 mod client;
 pub mod coe;
 mod command;
-// TODO: Un-pub
-pub mod eeprom;
+mod eeprom;
 pub mod error;
 mod fmmu;
 mod mailbox;
 mod pdi;
+mod pdu_data;
 mod pdu_loop;
 mod register;
-// TODO: Un-pub
-pub mod slave;
+mod slave;
 mod slave_group;
 mod slave_state;
 mod sync_manager_channel;
@@ -43,131 +42,24 @@ mod vendors;
 #[cfg(feature = "std")]
 pub mod std;
 
-use core::str::Utf8Error;
-use core::{array::TryFromSliceError, time::Duration};
+pub use client::Client;
+use core::time::Duration;
 use embassy_futures::select::{select, Either};
 use error::Error;
-use smoltcp::wire::{EthernetAddress, EthernetProtocol};
-use timer_factory::TimerFactory;
-
-// // TODO: Remove, or make a "low_level" module to allow inner access to services
-// pub use pdu_loop::CheckWorkingCounter;
-
-pub use client::Client;
+use nom::IResult;
 pub use pdu_loop::PduLoop;
 pub use slave_group::SlaveGroup;
 pub use slave_state::SlaveState;
+use smoltcp::wire::{EthernetAddress, EthernetProtocol};
+use timer_factory::TimerFactory;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
 const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
 
+/// Starting address for discovered slaves.
+// TODO: i16 so it can wrap around nicely on overflow. Need to do wrapping_add in various places too.
 const BASE_SLAVE_ADDR: u16 = 0x1000;
-
-pub trait PduRead: Sized {
-    const LEN: u16;
-
-    type Error: core::fmt::Debug;
-
-    fn len() -> u16 {
-        Self::LEN & LEN_MASK
-    }
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error>;
-}
-
-pub trait PduData: PduRead {
-    fn as_slice(&self) -> &[u8];
-}
-
-macro_rules! impl_pdudata {
-    ($ty:ty) => {
-        impl PduRead for $ty {
-            const LEN: u16 = Self::BITS as u16 / 8;
-            type Error = TryFromSliceError;
-
-            fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-                Ok(Self::from_le_bytes(slice.try_into()?))
-            }
-        }
-
-        impl PduData for $ty {
-            fn as_slice<'a>(&'a self) -> &'a [u8] {
-                safe_transmute::to_bytes::transmute_one_to_bytes(self)
-            }
-        }
-    };
-}
-
-impl_pdudata!(u8);
-impl_pdudata!(u16);
-impl_pdudata!(u32);
-impl_pdudata!(u64);
-impl_pdudata!(i8);
-impl_pdudata!(i16);
-impl_pdudata!(i32);
-impl_pdudata!(i64);
-
-impl<const N: usize> PduRead for [u8; N] {
-    const LEN: u16 = N as u16;
-
-    type Error = TryFromSliceError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        slice.try_into()
-    }
-}
-
-impl<const N: usize> PduData for [u8; N] {
-    fn as_slice(&self) -> &[u8] {
-        self
-    }
-}
-
-impl PduRead for () {
-    const LEN: u16 = 0;
-
-    type Error = TryFromSliceError;
-
-    fn try_from_slice(_slice: &[u8]) -> Result<Self, Self::Error> {
-        Ok(())
-    }
-}
-
-impl PduData for () {
-    fn as_slice(&self) -> &[u8] {
-        &[]
-    }
-}
-
-impl<const N: usize> PduRead for heapless::String<N> {
-    const LEN: u16 = N as u16;
-
-    type Error = VisibleStringError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let mut out = heapless::String::new();
-
-        out.push_str(core::str::from_utf8(slice).map_err(VisibleStringError::Decode)?)
-            .map_err(|_| VisibleStringError::TooLong)?;
-
-        Ok(out)
-    }
-}
-
-/// A "Visible String" representation. Characters are specified to be within the ASCII range.
-// TODO: Implement for `std::String` with a feature switch
-impl<const N: usize> PduData for heapless::String<N> {
-    fn as_slice(&self) -> &[u8] {
-        self.as_bytes()
-    }
-}
-
-#[derive(Debug)]
-pub enum VisibleStringError {
-    Decode(Utf8Error),
-    TooLong,
-}
 
 pub(crate) async fn timeout<TIMEOUT, O, F>(timeout: Duration, future: F) -> Result<O, Error>
 where
@@ -179,5 +71,22 @@ where
     match select(future, TIMEOUT::timer(timeout)).await {
         Either::First(res) => res,
         Either::Second(_timeout) => Err(Error::Timeout),
+    }
+}
+
+/// Ensure that a buffer passed to a parsing function is fully consumed.
+///
+/// This mostly checks internal logic to ensure we don't miss data when parsing a struct.
+fn all_consumed<'a, E>(i: &'a [u8]) -> IResult<&'a [u8], (), E>
+where
+    E: nom::error::ParseError<&'a [u8]>,
+{
+    if i.is_empty() {
+        Ok((i, ()))
+    } else {
+        Err(nom::Err::Error(E::from_error_kind(
+            i,
+            nom::error::ErrorKind::Eof,
+        )))
     }
 }

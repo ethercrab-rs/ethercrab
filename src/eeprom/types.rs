@@ -1,12 +1,12 @@
 //! Slave Information Interface (SII).
 
-use core::fmt;
-
 use crate::{
+    all_consumed,
     base_data_types::PrimitiveDataType,
+    pdu_data::PduRead,
     sync_manager_channel::{self},
-    PduRead,
 };
+use core::fmt;
 use nom::{
     combinator::{map, map_opt, map_res},
     number::complete::{le_i16, le_u16, le_u8},
@@ -263,7 +263,7 @@ pub enum CategoryType {
     TxPdo = 50,
     RxPdo = 51,
     DistributedClock = 60,
-    // TODO: Device specific 0x1000-0xfffe
+    // Device specific: 0x1000-0xfffe
     End = 0xffff,
 }
 
@@ -294,6 +294,8 @@ impl FmmuEx {
         let (i, _before) = le_u8(i)?;
         let (i, sync_manager) = le_u8(i)?;
         let (i, _after) = le_u8(i)?;
+
+        all_consumed(i)?;
 
         Ok((i, Self { sync_manager }))
     }
@@ -366,6 +368,8 @@ impl SiiGeneral {
 
         // let (i, physical_memory_addr) = le_u16(i)?;
         let physical_memory_addr = 0;
+
+        all_consumed(i)?;
 
         Ok((
             i,
@@ -460,6 +464,8 @@ impl SyncManager {
         let (i, enable) = map_opt(le_u8, SyncManagerEnable::from_bits)(i)?;
         let (i, usage_type) = map(le_u8, SyncManagerType::from_primitive)(i)?;
 
+        all_consumed(i)?;
+
         Ok((
             i,
             Self {
@@ -538,6 +544,8 @@ impl Pdo {
         let (i, name_string_idx) = le_u8(i)?;
         let (i, flags) = map_opt(le_u16, PdoFlags::from_bits)(i)?;
 
+        all_consumed(i)?;
+
         Ok((
             i,
             Self {
@@ -587,7 +595,6 @@ impl fmt::Debug for PdoEntry {
 }
 
 impl PdoEntry {
-    // TODO: `all_consuming`, and for all other `parse()` methods
     pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, index) = le_u16(i)?;
         let (i, sub_index) = le_u8(i)?;
@@ -595,6 +602,8 @@ impl PdoEntry {
         let (i, data_type) = map_res(le_u8, PrimitiveDataType::try_from_primitive)(i)?;
         let (i, data_length_bits) = le_u8(i)?;
         let (i, flags) = le_u16(i)?;
+
+        all_consumed(i)?;
 
         Ok((
             i,
@@ -713,13 +722,14 @@ impl fmt::Debug for DefaultMailbox {
 }
 
 impl DefaultMailbox {
-    // TODO: `all_consuming`, and for all other `parse()` methods
     pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, receive_offset) = le_u16(i)?;
         let (i, receive_size) = le_u16(i)?;
         let (i, send_offset) = le_u16(i)?;
         let (i, send_size) = le_u16(i)?;
         let (i, supported_protocols) = map_opt(le_u16, MailboxProtocols::from_bits)(i)?;
+
+        all_consumed(i)?;
 
         Ok((
             i,

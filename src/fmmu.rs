@@ -1,12 +1,15 @@
+/// Fieldbus Memory Management Unit (FMMU).
+///
+/// Used to map segments of the Process Data Image (PDI) to various parts of the slave memory space.
 use core::fmt;
-
 use packed_struct::prelude::*;
 
 /// ETG1000.4 Table 56 – Fieldbus memory management unit (FMMU) entity.
 #[derive(Default, Copy, Clone, PackedStruct, PartialEq, Eq)]
 #[packed_struct(bit_numbering = "msb0", endian = "lsb", size_bytes = "16")]
 pub struct Fmmu {
-    /// This parameter shall contain the start address in octets in the logical memory area of the memory translation.
+    /// This parameter shall contain the start address in octets in the logical memory area of the
+    /// memory translation.
     #[packed_field(bytes = "0..=3")]
     pub logical_start_address: u32,
 

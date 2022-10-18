@@ -1,4 +1,4 @@
-use crate::{PduData, PduRead};
+use crate::pdu_data::{PduData, PduRead};
 use packed_struct::prelude::*;
 
 #[derive(Copy, Clone, Debug)]
