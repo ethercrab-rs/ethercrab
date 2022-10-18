@@ -133,7 +133,7 @@ where
 
         // Set configured address for all discovered slaves
         for slave_idx in 0..num_slaves {
-            let configured_address = BASE_SLAVE_ADDR + slave_idx;
+            let configured_address = BASE_SLAVE_ADDR.wrapping_add(slave_idx);
 
             self.apwr(
                 slave_idx,
