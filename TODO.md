@@ -17,9 +17,9 @@
 - [ ] **Distributed clocks**
 - [ ] Find a way of storing PDUs in a single buffer instead of using a bunch of `heapless::Vec`s
 - [x] Byte-align each slave's PDI access for better safety
-- [ ] Mailbox support for SDOs
+- [x] Mailbox support for SDOs
 
-  - [ ] Get and store mailbox lengths from EEPROM `Standard Receive Mailbox Offset `, etc, `0x0018`
+  - [x] Get and store mailbox lengths from EEPROM `Standard Receive Mailbox Offset `, etc, `0x0018`
   - [-] If a slave has mailbox present, we need to read the PDO index/subindex out of
     rx_pdos/tx_pdos and their entries and use the mailbox to configure the PDOs. This might be why
     Ethercrab can't write to the LAN9252 outputs while SOEM can.
@@ -27,8 +27,9 @@
     Hmm maybe not. LAN9252 works now. I think for e.g. AKD config it needs to have the CANOpen
     objects configured in the PO2SO hook, then the PDOs read not from eeprom but [where?].
 
-- [ ] Remove loop ticks from timeout checker loops. SOEM doesn't delay and neither should we I
+- [x] Remove loop ticks from timeout checker loops. SOEM doesn't delay and neither should we I
       reckon. It's a spinloop, but it has async calls in it so potentially non-blocking.
+  - Loop tick is now configurable globally and defaults to zero but can be increased if desired
 - [ ] Revisit packed structs with confusing backwards bit orders. If `MailboxHeader` encodes on the
       wire correctly, I can use it's attributes elsewhere.
 - [ ] Write a bunch of MIRI tests around the PDU loop
