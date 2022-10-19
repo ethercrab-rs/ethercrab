@@ -264,7 +264,11 @@ where
     }
 
     /// Broadcast write.
-    pub async fn bwr<T>(&self, register: RegisterAddress, value: T) -> Result<PduResponse<T>, Error>
+    pub async fn bwr<T>(
+        &self,
+        register: RegisterAddress,
+        value: T,
+    ) -> Result<PduResponse<()>, Error>
     where
         T: PduData,
     {
@@ -276,6 +280,7 @@ where
             value,
         )
         .await
+        .map(|(_, wkc)| ((), wkc))
     }
 
     /// Auto Increment Physical Read.
