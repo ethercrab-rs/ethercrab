@@ -100,7 +100,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         })
     });
 
-    let mut group = client
+    let group = client
         .init(groups, |groups, slave| {
             // All slaves MUST end up in a group or they'll remain uninitialised
             groups.push(slave).expect("Too many slaves");
@@ -272,42 +272,42 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         }
     }
 
-    // Checking for group movability
-    // std::thread::spawn(move || group);
+    smol::spawn(async move {
+        let mut velocity: i32 = 0;
 
-    let mut velocity: i32 = 0;
+        while let Some(_) = cyclic_interval.next().await {
+            group.tx_rx(&client).await.expect("TX/RX");
 
-    while let Some(_) = cyclic_interval.next().await {
-        group.tx_rx(&client).await.expect("TX/RX");
+            let (i, o) = group.io(0).unwrap();
 
-        let (i, o) = group.io(0).unwrap();
+            let (pos, status) = i
+                .map(|i| {
+                    let pos = u32::from_le_bytes(i[0..=3].try_into().unwrap());
+                    let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-        let (pos, status) = i
-            .map(|i| {
-                let pos = u32::from_le_bytes(i[0..=3].try_into().unwrap());
-                let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+                    let status = unsafe { AkdStatusWord::from_bits_unchecked(status) };
 
-                let status = unsafe { AkdStatusWord::from_bits_unchecked(status) };
+                    (pos, status)
+                })
+                .unwrap();
 
-                (pos, status)
-            })
-            .unwrap();
+            println!(
+                "Position: {pos}, Status: {status:?} | {:?}",
+                o.as_ref().unwrap()
+            );
 
-        println!(
-            "Position: {pos}, Status: {status:?} | {:?}",
-            o.as_ref().unwrap()
-        );
+            o.map(|o| {
+                let (pos_cmd, _control) = o.split_at_mut(4);
 
-        o.map(|o| {
-            let (pos_cmd, _control) = o.split_at_mut(4);
+                pos_cmd.copy_from_slice(&velocity.to_le_bytes());
+            });
 
-            pos_cmd.copy_from_slice(&velocity.to_le_bytes());
-        });
-
-        if velocity < 100_000_0 {
-            velocity += 200;
+            if velocity < 100_000_0 {
+                velocity += 200;
+            }
         }
-    }
+    })
+    .await;
 
     Ok(())
 }

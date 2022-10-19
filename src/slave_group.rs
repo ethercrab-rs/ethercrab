@@ -78,6 +78,27 @@ pub struct SlaveGroup<
     group_working_counter: u16,
 }
 
+// FIXME: Remove these unsafe impls if possible. There's some weird quirkiness when moving a group
+// into an async block going on...
+unsafe impl<
+        const MAX_SLAVES: usize,
+        const MAX_PDI: usize,
+        const MAX_FRAMES: usize,
+        const MAX_PDU_DATA: usize,
+        TIMEOUT,
+    > Sync for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+{
+}
+unsafe impl<
+        const MAX_SLAVES: usize,
+        const MAX_PDI: usize,
+        const MAX_FRAMES: usize,
+        const MAX_PDU_DATA: usize,
+        TIMEOUT,
+    > Send for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+{
+}
+
 impl<
         const MAX_SLAVES: usize,
         const MAX_PDI: usize,
@@ -171,7 +192,7 @@ impl<
     }
 
     pub async fn tx_rx<'client>(
-        &mut self,
+        &self,
         client: &'client Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
     ) -> Result<(), Error>
     where
