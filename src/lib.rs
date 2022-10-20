@@ -32,13 +32,17 @@ mod mailbox;
 mod pdi;
 mod pdu_data;
 mod pdu_loop;
-mod register;
+// TODO: Un-pub
+pub mod register;
 mod slave;
 mod slave_group;
 mod slave_state;
 mod sync_manager_channel;
 mod timer_factory;
 mod vendors;
+
+// DELETEME
+pub use pdu_loop::CheckWorkingCounter;
 
 #[cfg(feature = "std")]
 pub mod std;

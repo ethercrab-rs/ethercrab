@@ -11,7 +11,7 @@ use crate::{
     fmmu::Fmmu,
     pdi::{PdiOffset, PdiSegment},
     pdu_data::{PduData, PduRead},
-    register::RegisterAddress,
+    register::{RegisterAddress, SupportFlags},
     slave::{IoRanges, Mailbox, MailboxConfig},
     slave_state::SlaveState,
     sync_manager_channel::{self, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
@@ -82,12 +82,30 @@ where
         let fmmu_usage = self.client.eeprom().fmmus().await?;
         let fmmu_sm_mappings = self.client.eeprom().fmmu_mappings().await?;
 
-        let has_coe = self
-            .slave
-            .config
-            .mailbox
-            .supported_protocols
-            .contains(MailboxProtocols::COE);
+        // let has_coe = self
+        //     .slave
+        //     .config
+        //     .mailbox
+        //     .supported_protocols
+        //     .contains(MailboxProtocols::COE);
+
+        //
+        //
+        //
+        //
+        //
+        // REEEEEE
+        //
+        //
+        //
+        //
+        //
+        //
+        //
+        //
+        // FIXME: How does SOEM decide whether to configure slaves or not? LAN9252 throws an
+        // InvalidSdoResponse error if left to configure SDOs.
+        let has_coe = false;
 
         // PDOs must be configurd in PRE-OP state
         // Outputs are configured first, so will be before inputs in the PDI

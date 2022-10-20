@@ -60,6 +60,11 @@ impl<
     }
 }
 
+// TODO: Experiment with the following type. Yes it adds a generic but it's safe now:
+// struct ItemCollection<F: Future<Output = Result<(), ()>>> {
+//     items: Vec<Item>,
+//     foo: fn(&Item) -> F,
+// }
 pub struct SlaveGroup<
     const MAX_SLAVES: usize,
     const MAX_PDI: usize,
