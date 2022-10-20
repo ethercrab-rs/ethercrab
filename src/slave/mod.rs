@@ -102,7 +102,8 @@ impl IoRanges {
 #[derive(Debug)]
 pub struct Slave {
     /// Configured station address.
-    pub(crate) configured_address: u16,
+    // TODO: Un-pub
+    pub configured_address: u16,
 
     pub(crate) config: SlaveConfig,
 

@@ -15,6 +15,7 @@
       smol or whatever I'm using now.
 - [x] Optimise find string function to not use a buffer of 255 bytes on the stack
 - [ ] **Distributed clocks**
+  - [ ] Figure out topology from 0x0110/0x0111 and support more than naive in -> out
 - [ ] Find a way of storing PDUs in a single buffer instead of using a bunch of `heapless::Vec`s
 - [x] Byte-align each slave's PDI access for better safety
 - [x] Mailbox support for SDOs
