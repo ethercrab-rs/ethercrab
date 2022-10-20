@@ -59,6 +59,12 @@ pub enum RegisterAddress {
     Sm3 = RegisterAddress::Sm2 as u16 + 0x8,
 
     DcTimePort0 = 0x0900,
+    DcTimePort1 = 0x0904,
+    DcTimePort2 = 0x0908,
+    DcTimePort3 = 0x090c,
+    DcReceiveTime = 0x0918,
+    DcSystemTimeOffset = 0x0920,
+    DcSystemTimeTransmissionDelay = 0x0928,
 }
 
 impl From<RegisterAddress> for u16 {

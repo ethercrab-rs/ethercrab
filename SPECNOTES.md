@@ -200,10 +200,50 @@ ETG1000.4 6.8 also mentions DC stuff
 
 ETG1000.4 Table 60 defines the DC stuff to start from address `0x0900`
 
+ETG1000.4 Section 8.2.7.2 Delay measurement shows the delay measurement process.
+
 The EtherCAT poster describes the setups steps quite nicely.
 
 In SOEM, `ec_configdc` seems to transparently inject some behaviour into PDU sends; commenting it
 out of `simple_test.c` stops cyclic DC output.
+
+DC registers start at 0x0900 - see ETG1000.4 Table 60
+
+System time is nanosecond-based.
+
+The DCSM in ETG100.4 8.2.7 describes the configuration process:
+
+- Add a flag for each slave to show whether it supports DC or not during config.
+  - This is read from `RegisterAddress::SupportFlags` (`0x0008`). Return type is also defined in
+    `register.rs` as `struct SupportFlags`.
+- Also add flag whether the slave uses 32 bit or 64 bit DC time. Read this from
+  `SupportFlags::has_64bit_dc`
+  - We'll error out for 32 bit time for now
+- Get system time, offset so epoch is 2000-01-01 00:00:00 as per EtherCAT spec. Convert to
+  nanoseconds.
+  - For embedded, this could just be 0, maybe?
+- `BWR` to register `0x0900` (Receive time port 0) - ETG1000.4 Table 60
+  - WKC should be the same as the number of slaves that support DC
+  - NOTE: The table specifies readonly, but a write will latch the time into it.
+  - This latches the receive time in each slave's
+- For all slaves
+
+  - Read register `0x0918` - "Receive time processing unit", whatever that means
+  - Subtract that value from the system time
+  - Write new value to `0x0920` - system time offset
+
+- Use `FRMW` to distribute this first slave's clock to everything else. Presumably slaves
+  self-filter for DC support.
+
+Limitations for now:
+
+- Assume entry port is port 0. This will need to change if we have different topologies and/or
+  redundant NICs going backwards.
+
+// ETG1000.4 Section 5.4.3.7 Table 27 – Configured address physical read multiple write (FRMW)
+
+There is also an excellent comment from SOEM
+[here](https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585)
 
 # Reading config from EEPROM
 

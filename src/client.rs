@@ -1,11 +1,12 @@
 use crate::{
     al_control::AlControl,
     command::Command,
+    dl_status::DlStatus,
     error::{Error, Item, PduError},
     pdi::PdiOffset,
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
-    register::RegisterAddress,
+    register::{PortDescriptors, RegisterAddress, SupportFlags},
     slave::Slave,
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
@@ -148,6 +149,8 @@ where
             group_filter(&mut groups, slave);
         }
 
+        self.configure_dc().await?;
+
         let mut offset = PdiOffset::default();
 
         // Loop through groups and configure the slaves in each one.
@@ -165,6 +168,128 @@ where
         self.wait_for_state(SlaveState::SafeOp).await?;
 
         Ok(groups)
+    }
+
+    async fn configure_dc(&self) -> Result<(), Error> {
+        let num_slaves = self.num_slaves();
+
+        // TODO: Read from slave list flags.dc_supported
+        let first_dc_supported_slave = 0x1000;
+
+        self.bwr(RegisterAddress::DcTimePort0, 0u32)
+            .await
+            .expect("Broadcast time")
+            .wkc(num_slaves as u16, "Broadcast time")
+            .unwrap();
+
+        // let ethercat_offset = Utc.ymd(2000, 01, 01).and_hms(0, 0, 0);
+
+        // let now_nanos =
+        //     chrono::Utc::now().timestamp_nanos() - dbg!(ethercat_offset.timestamp_nanos());
+
+        let now_nanos = 0;
+
+        for i in 0..num_slaves {
+            let slave_addr = BASE_SLAVE_ADDR.wrapping_add(i as u16);
+            let port_descriptors = self
+                .fprd::<PortDescriptors>(slave_addr, RegisterAddress::PortDescriptors)
+                .await
+                .expect("Supported flags")
+                .wkc(1, "Supported flags")
+                .unwrap();
+
+            // log::info!("Slave {:#06x} ports: {:?}", slave_addr, port_descriptors);
+
+            let dl_status = self
+                .fprd::<DlStatus>(slave_addr, RegisterAddress::DlStatus)
+                .await
+                .expect("Supported flags")
+                .wkc(1, "Supported flags")
+                .unwrap();
+
+            // dbg!(dl_status);
+
+            let flags = self
+                .fprd::<SupportFlags>(slave_addr, RegisterAddress::SupportFlags)
+                .await
+                .expect("Supported flags")
+                .wkc(1, "Supported flags")
+                .unwrap();
+
+            let time_p0 = self
+                .fprd::<u32>(slave_addr, RegisterAddress::DcTimePort0)
+                .await
+                .expect("DC time port 0")
+                .wkc(1, "DC time port 0")
+                .unwrap();
+
+            let receive_time_p0_nanos = self
+                .fprd::<i64>(slave_addr, RegisterAddress::DcReceiveTime)
+                .await
+                .expect("Receive time P0")
+                .wkc(1, "Receive time P0")
+                .unwrap();
+
+            // let offset = u64::try_from(now_nanos).expect("Why negative???") - receive_time_p0;
+            let offset = -receive_time_p0_nanos + now_nanos;
+
+            dbg!(receive_time_p0_nanos, offset);
+
+            self.fpwr(slave_addr, RegisterAddress::DcSystemTimeOffset, offset)
+                .await?
+                .wkc(1, "Write offset")
+                .expect("Write offset");
+
+            let time_p1 = self
+                .fprd::<u32>(slave_addr, RegisterAddress::DcTimePort1)
+                .await
+                .expect("DC time port 1")
+                .wkc(1, "DC time port 1")
+                .unwrap();
+
+            let time_p2 = self
+                .fprd::<u32>(slave_addr, RegisterAddress::DcTimePort2)
+                .await
+                .expect("DC time port 2")
+                .wkc(1, "DC time port 2")
+                .unwrap();
+
+            let time_p3 = self
+                .fprd::<u32>(slave_addr, RegisterAddress::DcTimePort3)
+                .await
+                .expect("DC time port 3")
+                .wkc(1, "DC time port 3")
+                .unwrap();
+
+            // This is correct to SOEM. 720 or 720ns using two LAN9252
+            let propagation_delay = (time_p1 - time_p0) / 2;
+
+            log::info!(
+                "Slave {:#06x} times: ({}, {}, {}, {})",
+                slave_addr,
+                time_p0,
+                time_p1,
+                time_p2,
+                time_p3
+            );
+
+            log::info!(
+                "Slave {:#06x} receive time: {} ns, propagation delay {propagation_delay} ns",
+                slave_addr,
+                receive_time_p0_nanos
+            );
+
+            if !flags.has_64bit_dc {
+                // TODO
+                log::warn!("Slave uses seconds instead of ns?");
+            }
+
+            if !flags.dc_supported {
+                continue;
+            }
+        }
+
+        Ok(())
     }
 
     pub fn num_slaves(&self) -> usize {
