@@ -227,8 +227,10 @@ where
                 .fprd::<i64>(slave_addr, RegisterAddress::DcReceiveTime)
                 .await
                 .expect("Receive time P0")
-                .wkc(1, "Receive time P0")
-                .unwrap();
+                // Why does this sometimes fail with wkc = 0? Looks like it's when it doesn't have an output port?
+                .0;
+            // .wkc(1, "Receive time P0")
+            // .unwrap();
 
             // let offset = u64::try_from(now_nanos).expect("Why negative???") - receive_time_p0;
             let offset = -receive_time_p0_nanos + now_nanos;
@@ -236,9 +238,10 @@ where
             dbg!(receive_time_p0_nanos, offset);
 
             self.fpwr(slave_addr, RegisterAddress::DcSystemTimeOffset, offset)
-                .await?
-                .wkc(1, "Write offset")
-                .expect("Write offset");
+                .await?;
+            // Why does this sometimes fail with wkc = 0? Looks like it's when it doesn't have an output port?
+            // .wkc(1, "Write offset")
+            // .expect("Write offset");
 
             let time_p1 = self
                 .fprd::<u32>(slave_addr, RegisterAddress::DcTimePort1)
