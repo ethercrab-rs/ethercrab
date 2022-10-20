@@ -33,7 +33,10 @@
   - Loop tick is now configurable globally and defaults to zero but can be increased if desired
 - [ ] Revisit packed structs with confusing backwards bit orders. If `MailboxHeader` encodes on the
       wire correctly, I can use it's attributes elsewhere.
-- [ ] Write a bunch of MIRI tests around the PDU loop
+- [ ] Refactor code so we can drive various parts of EtherCrab with MIRI
+  - [ ] PDU loop
+  - [ ] Slave group
+  - [ ] Check for other `unsafe` and test that too
 - [x] Group support
 - [-] Refactor FMMU mapping to group Is and Os for groups sequentially
   - Why? Each slave group will send its entire PDI anyway, as well as store each slave's PDI range
