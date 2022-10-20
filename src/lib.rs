@@ -24,6 +24,7 @@ mod base_data_types;
 mod client;
 mod coe;
 mod command;
+mod dl_status;
 mod eeprom;
 pub mod error;
 mod fmmu;
