@@ -149,7 +149,8 @@ impl Slave {
             s
         });
 
-        log::debug!("Slave name {}", name);
+        // TODO: Make debug again
+        log::info!("Slave {:#06x} name {}", configured_address, name);
 
         Ok(Self {
             configured_address,
