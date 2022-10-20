@@ -245,6 +245,19 @@ Limitations for now:
 There is also an excellent comment from SOEM
 [here](https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585)
 
+## Topology
+
+ETG1000.3 Section 4.2 Topology:
+
+> An Ethernet frame received on port n (n not zero) is forwarded to port n+1. If there is no port
+> n+1, the Ethernet frame is forwarded to port 0. If no device is connected or the port is closed by
+> the master, a request to send to that port will be processed as if the same data are received by
+> this port (i.e. loop is closed).
+
+Also some discussion in ETG1000.3 Section 4.7.2 EtherCAT modes
+
+A tree topology can be formed if a node has more than one port.
+
 # Reading config from EEPROM
 
 ## Sync managers
