@@ -22,6 +22,10 @@ pub enum RegisterAddress {
     // u16
     ConfiguredStationAlias = 0x0012,
 
+    // u16
+    /// Defined in ETG1000.4 Table 34 - DL status.
+    DlStatus = 0x0110,
+
     // u8
     // AKA DLS-user R1
     AlControl = 0x0120,
