@@ -127,20 +127,69 @@ pub enum PortType {
     Mii = 0x03,
 }
 
-#[derive(PackedStruct)]
-#[packed_struct(bit_numbering = "msb0")]
+#[derive(Debug)]
 pub struct SupportFlags {
-    #[packed_field(bits = "0")]
-    fmmu_supports_bit_ops: bool,
-    reserved_register_support: bool,
-    dc_supported: bool,
-    has_64bit_dc: bool,
-    low_jitter: bool,
-    ebus_enhanced_link_detection: bool,
-    mii_enhanced_link_detection: bool,
-    separate_fcs_error_handling: bool,
-    enhanced_dc_sync: bool,
-    lrw_supported: bool,
-    brw_aprw_fprw_supported: bool,
-    special_fmmu: bool,
+    // TODO: Un-pub all
+    pub fmmu_supports_bit_ops: bool,
+    pub reserved_register_support: bool,
+    pub dc_supported: bool,
+    pub has_64bit_dc: bool,
+    pub low_jitter: bool,
+    pub ebus_enhanced_link_detection: bool,
+    pub mii_enhanced_link_detection: bool,
+    pub separate_fcs_error_handling: bool,
+    pub enhanced_dc_sync: bool,
+    pub lrw_supported: bool,
+    pub brw_aprw_fprw_supported: bool,
+    pub special_fmmu: bool,
+}
+
+impl PackedStruct for SupportFlags {
+    type ByteArray = [u8; 2];
+
+    fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
+        let result = (self.fmmu_supports_bit_ops as u16) << 0
+            & (self.reserved_register_support as u16) << 1
+            & (self.dc_supported as u16) << 2
+            & (self.has_64bit_dc as u16) << 3
+            & (self.low_jitter as u16) << 4
+            & (self.ebus_enhanced_link_detection as u16) << 5
+            & (self.mii_enhanced_link_detection as u16) << 6
+            & (self.separate_fcs_error_handling as u16) << 7
+            & (self.enhanced_dc_sync as u16) << 8
+            & (self.lrw_supported as u16) << 9
+            & (self.brw_aprw_fprw_supported as u16) << 10
+            & (self.special_fmmu as u16) << 11;
+
+        Ok(result.to_le_bytes())
+    }
+
+    fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
+        let raw = u16::from_le_bytes(*src);
+
+        Ok(Self {
+            fmmu_supports_bit_ops: (raw >> 0 & 1) == 1,
+            reserved_register_support: (raw >> 1 & 1) == 1,
+            dc_supported: (raw >> 2 & 1) == 1,
+            has_64bit_dc: (raw >> 3 & 1) == 1,
+            low_jitter: (raw >> 4 & 1) == 1,
+            ebus_enhanced_link_detection: (raw >> 5 & 1) == 1,
+            mii_enhanced_link_detection: (raw >> 6 & 1) == 1,
+            separate_fcs_error_handling: (raw >> 7 & 1) == 1,
+            enhanced_dc_sync: (raw >> 8 & 1) == 1,
+            lrw_supported: (raw >> 9 & 1) == 1,
+            brw_aprw_fprw_supported: (raw >> 10 & 1) == 1,
+            special_fmmu: (raw >> 11 & 1) == 1,
+        })
+    }
+}
+
+impl PduRead for SupportFlags {
+    const LEN: u16 = 2;
+
+    type Error = PackingError;
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        Self::unpack_from_slice(slice)
+    }
 }
