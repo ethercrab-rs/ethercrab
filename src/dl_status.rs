@@ -1,7 +1,7 @@
 use crate::pdu_data::PduRead;
 use packed_struct::{PackedStruct, PackedStructSlice, PackingError};
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct DlStatus {
     // TODO: Un-pub all
     pub pdi_operational: bool,

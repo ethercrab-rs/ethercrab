@@ -189,6 +189,15 @@ where
 
         let now_nanos = 0;
 
+        #[derive(Debug, Default, Copy, Clone)]
+        struct PortStuff {
+            number: u8,
+            active: bool,
+            dc_time: u32,
+        }
+
+        let mut prev_slave_ports = [PortStuff::default(); 4];
+
         for i in 0..num_slaves {
             let slave_addr = BASE_SLAVE_ADDR.wrapping_add(i as u16);
             let port_descriptors = self
@@ -198,7 +207,7 @@ where
                 .wkc(1, "Supported flags")
                 .unwrap();
 
-            // log::info!("Slave {:#06x} ports: {:?}", slave_addr, port_descriptors);
+            // log::info!("Slave {:#06x} ports: {:#?}", slave_addr, port_descriptors);
 
             let dl_status = self
                 .fprd::<DlStatus>(slave_addr, RegisterAddress::DlStatus)
@@ -235,7 +244,7 @@ where
             // let offset = u64::try_from(now_nanos).expect("Why negative???") - receive_time_p0;
             let offset = -receive_time_p0_nanos + now_nanos;
 
-            dbg!(receive_time_p0_nanos, offset);
+            // dbg!(receive_time_p0_nanos, offset);
 
             self.fpwr(slave_addr, RegisterAddress::DcSystemTimeOffset, offset)
                 .await?;
@@ -264,8 +273,118 @@ where
                 .wkc(1, "DC time port 3")
                 .unwrap();
 
-            // This is correct to SOEM. 720 or 720ns using two LAN9252
-            let propagation_delay = (time_p1 - time_p0) / 2;
+            let ports = [
+                PortStuff {
+                    number: 0,
+                    dc_time: time_p0,
+                    active: dl_status.link_port0,
+                },
+                PortStuff {
+                    number: 1,
+                    dc_time: time_p1,
+                    active: dl_status.link_port1,
+                },
+                PortStuff {
+                    number: 2,
+                    dc_time: time_p2,
+                    active: dl_status.link_port2,
+                },
+                PortStuff {
+                    number: 3,
+                    dc_time: time_p3,
+                    active: dl_status.link_port3,
+                },
+            ];
+
+            /// Find the previous port on the slave given a starting port.
+            ///
+            /// Previous port order goes:
+            ///
+            /// 0 -> 2
+            /// 2 -> 1
+            /// 1 -> 3
+            /// 3 -> 0
+            fn prev_port<'port>(
+                ports: &'port [PortStuff; 4],
+                current_port: &PortStuff,
+                recurse: u8,
+            ) -> &'port PortStuff {
+                assert!(recurse < 3, "We dug too deep");
+
+                match current_port.number {
+                    0 => {
+                        if ports[2].active {
+                            &ports[2]
+                        } else {
+                            prev_port(ports, &ports[2], recurse + 1)
+                        }
+                    }
+                    2 => {
+                        if ports[1].active {
+                            &ports[1]
+                        } else {
+                            prev_port(ports, &ports[1], recurse + 1)
+                        }
+                    }
+                    1 => {
+                        if ports[3].active {
+                            &ports[3]
+                        } else {
+                            prev_port(ports, &ports[3], recurse + 1)
+                        }
+                    }
+                    3 => {
+                        if ports[0].active {
+                            &ports[0]
+                        } else {
+                            prev_port(ports, &ports[0], recurse + 1)
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+
+            // Don't look for parent port for first slave; it doesn't have one (well, it's the
+            // master)
+            let propagation_delay = if i > 0 {
+                /// Find the port on the parent slave this slave is connected to.
+                ///
+                /// Parent port order goes:
+                ///
+                /// 3 -> 1 -> 2 -> 0
+                fn parent_port<'port>(ports: &'port [PortStuff; 4]) -> &'port PortStuff {
+                    let reordered = [&ports[3], &ports[1], &ports[2], &ports[0]];
+
+                    // SAFETY: If we're talking to this slave, the data MUST have come through a parent,
+                    // so there has to be at least one active port.
+                    reordered.iter().find(|port| port.active).unwrap()
+                }
+
+                // Entry port into the slave is port with lowest latched DC time
+                let entry_port = ports
+                    .into_iter()
+                    .filter(|port| port.active)
+                    .min_by_key(|port| port.dc_time)
+                    .unwrap();
+
+                // The port on the upstream slave this slave is connected to
+                let upstream_port = parent_port(&prev_slave_ports);
+
+                // dbg!(entry_port, upstream_port);
+
+                log::info!(
+                    "Parent port {} -> this slave port {}",
+                    upstream_port.number,
+                    entry_port.number
+                );
+
+                // This is correct to SOEM. 720 or 720ns using two LAN9252
+                (time_p1 - time_p0) / 2
+            } else {
+                0
+            };
+
+            prev_slave_ports = ports;
 
             log::info!(
                 "Slave {:#06x} times: ({}, {}, {}, {})",
