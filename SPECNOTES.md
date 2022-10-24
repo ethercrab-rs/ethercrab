@@ -245,7 +245,28 @@ Limitations for now:
 There is also an excellent comment from SOEM
 [here](https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585)
 
+Webinar here: <https://www.youtube.com/watch?v=1upqqL_kBmw&list=PLAMqSJyfMRtiw6EiFdHCe6JFFgRjTZGCo>
+
+Webinar notes
+
+- The slave latches the time between seeing the frame during TX and seeing the frame during RX.
+
+  - Hence `/2` to calculate one way delay between devices
+  - This would be the receive time on port 0 and the receive time on the last open port on the slave
+    (i.e. the return port).
+  - This won't necessarily be the entire network. If we're in a branch of a tree for example, the
+    measured packet will only traverse to the leaf node.
+
+- We could represent the propagation delays as a tree
+- To calculate the delay between two nodes, we take the parent, subtract its propagation delay from
+  the current node's delay and divide it by two.
+- We need to know the entire tree structure to compute propagation delays correctly
+  - `SlaveGroupContainer` needs a way to get/establish/whatever slave relationships.
+
 ## Topology
+
+Helpful webinar:
+<https://www.youtube.com/watch?v=1upqqL_kBmw&list=PLAMqSJyfMRtiw6EiFdHCe6JFFgRjTZGCo>
 
 ETG1000.3 Section 4.2 Topology:
 
@@ -257,6 +278,8 @@ ETG1000.3 Section 4.2 Topology:
 Also some discussion in ETG1000.3 Section 4.7.2 EtherCAT modes
 
 A tree topology can be formed if a node has more than one port.
+
+If a port is in loopback, it simply means data is passed straight through it.
 
 # Reading config from EEPROM
 
