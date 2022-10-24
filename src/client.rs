@@ -120,7 +120,7 @@ where
     pub async fn init<G>(
         &self,
         mut groups: G,
-        mut group_filter: impl FnMut(&mut G, Slave),
+        mut group_filter: impl FnMut(&mut G, Slave) -> Result<(), Error>,
     ) -> Result<G, Error>
     where
         G: SlaveGroupContainer<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
@@ -145,8 +145,19 @@ where
             .wkc(1, "set station address")?;
 
             let slave = Slave::new(self, configured_address).await?;
+            let slave_name = slave.name.clone();
 
-            group_filter(&mut groups, slave);
+            let before_count = groups.total_slaves();
+
+            group_filter(&mut groups, slave)?;
+
+            if groups.total_slaves() != before_count + 1 {
+                log::error!(
+                    "Slave {:#06x} ({}) was not assigned to a group. All slaves must be assigned.",
+                    configured_address,
+                    slave_name
+                );
+            }
         }
 
         self.configure_dc().await?;

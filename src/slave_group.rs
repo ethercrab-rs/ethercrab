@@ -21,6 +21,16 @@ pub trait SlaveGroupContainer<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize
     fn num_groups(&self) -> usize;
 
     fn group(&mut self, index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>;
+
+    fn total_slaves(&mut self) -> usize {
+        let mut accum = 0;
+
+        for i in 0..self.num_groups() {
+            accum += self.group(i).map(|g| g.slaves.len()).unwrap_or(0);
+        }
+
+        accum
+    }
 }
 
 impl<
