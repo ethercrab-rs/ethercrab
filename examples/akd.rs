@@ -101,12 +101,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     });
 
     let group = client
-        .init(groups, |groups, slave| {
-            // All slaves MUST end up in a group or they'll remain uninitialised
-            groups.push(slave).expect("Too many slaves");
-
-            // TODO: Return a group key so the user has to put the slave somewhere
-        })
+        .init(groups, |groups, slave| groups.push(slave))
         .await
         .expect("Init");
 
