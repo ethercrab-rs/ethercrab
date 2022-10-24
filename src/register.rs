@@ -63,6 +63,7 @@ pub enum RegisterAddress {
     DcTimePort2 = 0x0908,
     DcTimePort3 = 0x090c,
     DcReceiveTime = 0x0918,
+    DcSystemTime = 0x0910,
     DcSystemTimeOffset = 0x0920,
     DcSystemTimeTransmissionDelay = 0x0928,
 }
