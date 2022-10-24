@@ -2,6 +2,7 @@ use crate::{client::Client, timer_factory::TimerFactory};
 use core::{future::Future, task::Poll};
 use embassy_futures::select;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
+use smoltcp::wire::EthernetFrame;
 use std::sync::Arc;
 
 pub fn get_tx_rx(
@@ -68,20 +69,43 @@ where
     });
 
     // TODO: Unwraps
-    // TODO: Segmented packet handling
     let rx_task = smol::unblock(move || {
+        let mut frame_buf: Vec<u8> = Vec::new();
+
         loop {
             match rx.next() {
                 Ok(ethernet_frame) => {
+                    match EthernetFrame::new_checked(ethernet_frame) {
+                        // We got a full frame
+                        Ok(_) => {
+                            if !frame_buf.is_empty() {
+                                log::warn!("{} existing frame bytes", frame_buf.len());
+                            }
+
+                            frame_buf.extend_from_slice(ethernet_frame);
+                        }
+                        // Truncated frame - try adding them together
+                        Err(smoltcp::Error::Truncated) => {
+                            log::warn!("Truncated frame: len {}", ethernet_frame.len());
+
+                            frame_buf.extend_from_slice(ethernet_frame);
+
+                            continue;
+                        }
+                        Err(e) => panic!("RX pre: {e}"),
+                    };
+
                     client_rx
                         .pdu_loop
-                        .pdu_rx(ethernet_frame)
+                        .pdu_rx(&frame_buf)
                         .map_err(|e| {
-                            dbg!(ethernet_frame.len());
+                            dbg!(frame_buf.len());
 
                             e
                         })
                         .expect("RX");
+
+                    frame_buf.truncate(0);
                 }
                 Err(e) => {
                     // If an error occurs, we can handle it here
