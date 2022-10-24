@@ -113,6 +113,12 @@ where
         // Clear SMs. SM memory section is 0x7f bytes long - see ETG1000.4 Table 59
         self.blank_memory(RegisterAddress::Sm0, 0x7f).await?;
 
+        self.blank_memory(
+            RegisterAddress::DcSystemTime,
+            core::mem::size_of::<u64>() as u16,
+        )
+        .await?;
+
         Ok(())
     }
 
@@ -211,6 +217,9 @@ where
 
         for i in 0..num_slaves {
             let slave_addr = BASE_SLAVE_ADDR.wrapping_add(i as u16);
+
+            log::info!("Slave {:#06x}", slave_addr);
+
             let port_descriptors = self
                 .fprd::<PortDescriptors>(slave_addr, RegisterAddress::PortDescriptors)
                 .await
@@ -257,8 +266,8 @@ where
 
             // dbg!(receive_time_p0_nanos, offset);
 
-            self.fpwr(slave_addr, RegisterAddress::DcSystemTimeOffset, offset)
-                .await?;
+            // self.fpwr(slave_addr, RegisterAddress::DcSystemTimeOffset, offset)
+            //     .await?;
             // Why does this sometimes fail with wkc = 0? Looks like it's when it doesn't have an output port?
             // .wkc(1, "Write offset")
             // .expect("Write offset");
@@ -307,53 +316,74 @@ where
                 },
             ];
 
-            /// Find the previous port on the slave given a starting port.
-            ///
-            /// Previous port order goes:
-            ///
-            /// 0 -> 2
-            /// 2 -> 1
-            /// 1 -> 3
-            /// 3 -> 0
-            fn prev_port<'port>(
-                ports: &'port [PortStuff; 4],
-                current_port: &PortStuff,
-                recurse: u8,
-            ) -> &'port PortStuff {
-                assert!(recurse < 3, "We dug too deep");
+            log::info!(
+                "--> Port times: ({}, {}, {}, {})",
+                time_p0,
+                time_p1,
+                time_p2,
+                time_p3
+            );
 
-                match current_port.number {
-                    0 => {
-                        if ports[2].active {
-                            &ports[2]
-                        } else {
-                            prev_port(ports, &ports[2], recurse + 1)
-                        }
-                    }
-                    2 => {
-                        if ports[1].active {
-                            &ports[1]
-                        } else {
-                            prev_port(ports, &ports[1], recurse + 1)
-                        }
-                    }
-                    1 => {
-                        if ports[3].active {
-                            &ports[3]
-                        } else {
-                            prev_port(ports, &ports[3], recurse + 1)
-                        }
-                    }
-                    3 => {
-                        if ports[0].active {
-                            &ports[0]
-                        } else {
-                            prev_port(ports, &ports[0], recurse + 1)
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-            }
+            let loop_propagation_time = ports
+                .iter()
+                .filter_map(|p| Some(p.dc_time).filter(|t| *t > 0))
+                .max()
+                .unwrap()
+                - ports
+                    .iter()
+                    .filter_map(|p| Some(p.dc_time).filter(|t| *t > 0))
+                    .min()
+                    .unwrap();
+
+            log::info!("--> Transit time {slave_transit_time} ns");
+
+            // /// Find the previous port on the slave given a starting port.
+            // ///
+            // /// Previous port order goes:
+            // ///
+            // /// 0 -> 2
+            // /// 2 -> 1
+            // /// 1 -> 3
+            // /// 3 -> 0
+            // fn prev_port<'port>(
+            //     ports: &'port [PortStuff; 4],
+            //     current_port: &PortStuff,
+            // ) -> &'port PortStuff {
+            //     let whatever = (current_port.number + 2) % 4;
+            //     dbg!(current_port.number, whatever);
+
+            //     match current_port.number {
+            //         0 => {
+            //             if ports[2].active {
+            //                 &ports[2]
+            //             } else {
+            //                 prev_port(ports, &ports[2])
+            //             }
+            //         }
+            //         2 => {
+            //             if ports[1].active {
+            //                 &ports[1]
+            //             } else {
+            //                 prev_port(ports, &ports[1])
+            //             }
+            //         }
+            //         1 => {
+            //             if ports[3].active {
+            //                 &ports[3]
+            //             } else {
+            //                 prev_port(ports, &ports[3])
+            //             }
+            //         }
+            //         3 => {
+            //             if ports[0].active {
+            //                 &ports[0]
+            //             } else {
+            //                 prev_port(ports, &ports[0])
+            //             }
+            //         }
+            //         _ => unreachable!(),
+            //     }
+            // }
 
             // Don't look for parent port for first slave; it doesn't have one (well, it's the
             // master)
@@ -384,7 +414,7 @@ where
                 // dbg!(entry_port, upstream_port);
 
                 log::info!(
-                    "Parent port {} -> this slave port {}",
+                    "--> Parent port {} -> this slave port {}",
                     upstream_port.number,
                     entry_port.number
                 );
@@ -397,24 +427,15 @@ where
 
             prev_slave_ports = ports;
 
-            log::info!(
-                "Slave {:#06x} times: ({}, {}, {}, {})",
-                slave_addr,
-                time_p0,
-                time_p1,
-                time_p2,
-                time_p3
-            );
-
-            log::info!(
-                "Slave {:#06x} receive time: {} ns, propagation delay {propagation_delay} ns",
-                slave_addr,
-                receive_time_p0_nanos
-            );
+            // log::info!(
+            //     "Slave {:#06x} receive time: {} ns, propagation delay {propagation_delay} ns",
+            //     slave_addr,
+            //     receive_time_p0_nanos
+            // );
 
             if !flags.has_64bit_dc {
                 // TODO
-                log::warn!("Slave uses seconds instead of ns?");
+                log::warn!("--> Slave uses seconds instead of ns?");
             }
 
             if !flags.dc_supported {
