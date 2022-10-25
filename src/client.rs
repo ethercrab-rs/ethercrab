@@ -317,25 +317,37 @@ where
             ];
 
             log::info!(
-                "--> Port times: ({}, {}, {}, {})",
-                time_p0,
-                time_p1,
-                time_p2,
-                time_p3
+                "--> Port times: ({} [{}], {} [{}], {} [{}], {} [{}])",
+                ports[0].dc_time,
+                ports[0].active as u8,
+                ports[1].dc_time,
+                ports[1].active as u8,
+                ports[2].dc_time,
+                ports[2].active as u8,
+                ports[3].dc_time,
+                ports[3].active as u8
             );
 
-            let loop_propagation_time = ports
-                .iter()
-                .filter_map(|p| Some(p.dc_time).filter(|t| *t > 0))
-                .max()
-                .unwrap()
-                - ports
-                    .iter()
-                    .filter_map(|p| Some(p.dc_time).filter(|t| *t > 0))
-                    .min()
-                    .unwrap();
+            let active_ports = ports.iter().filter_map(|p| p.active.then_some(p.dc_time));
 
-            log::info!("--> Transit time {slave_transit_time} ns");
+            let loop_propagation_time = active_ports
+                .clone()
+                .max()
+                .map(|max| max - active_ports.min().unwrap())
+                .filter(|t| *t > 0);
+
+            // let loop_propagation_time = ports
+            //     .iter()
+            //     .filter_map(|p| Some(p.dc_time).filter(|t| *t > 0))
+            //     .max()
+            //     .unwrap()
+            //     - ports
+            //         .iter()
+            //         .filter_map(|p| Some(p.dc_time).filter(|t| *t > 0))
+            //         .min()
+            //         .unwrap();
+
+            log::info!("--> Transit time {loop_propagation_time:?} ns");
 
             // /// Find the previous port on the slave given a starting port.
             // ///
