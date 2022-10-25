@@ -1,13 +1,16 @@
+mod container;
+mod group_ref;
+
 use crate::{
     error::{Error, Item},
-    pdi::PdiOffset,
-    slave::{
-        configurator::SlaveConfigurator, slave_client::SlaveClient, IoRanges, Slave, SlaveRef,
-    },
+    slave::{slave_client::SlaveClient, IoRanges, Slave, SlaveRef},
     timer_factory::TimerFactory,
     Client,
 };
 use core::{cell::UnsafeCell, future::Future, pin::Pin};
+
+pub use container::SlaveGroupContainer;
+pub use group_ref::SlaveGroupRef;
 
 // TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
 // `Box`ing here, and make this work without an allocator. See also
@@ -16,59 +19,6 @@ type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 
 
 type HookFn<TIMEOUT, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> =
     for<'any> fn(&'any SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> HookFuture<'any>;
-
-pub trait SlaveGroupContainer<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    fn num_groups(&self) -> usize;
-
-    fn group(&mut self, index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>;
-
-    fn total_slaves(&mut self) -> usize {
-        let mut accum = 0;
-
-        for i in 0..self.num_groups() {
-            accum += self.group(i).map(|g| g.slaves.len()).unwrap_or(0);
-        }
-
-        accum
-    }
-}
-
-impl<
-        const N: usize,
-        const MAX_SLAVES: usize,
-        const MAX_PDI: usize,
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-    > SlaveGroupContainer<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
-    for [SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>; N]
-{
-    fn num_groups(&self) -> usize {
-        N
-    }
-
-    fn group(&mut self, index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
-        self.get_mut(index).map(|group| group.as_mut_ref())
-    }
-}
-
-impl<
-        const MAX_SLAVES: usize,
-        const MAX_PDI: usize,
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-    > SlaveGroupContainer<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
-{
-    fn num_groups(&self) -> usize {
-        1
-    }
-
-    fn group(&mut self, _index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
-        Some(self.as_mut_ref())
-    }
-}
 
 // TODO: Experiment with the following type. Yes it adds a generic but it's safe now:
 // struct ItemCollection<F: Future<Output = Result<(), ()>>> {
@@ -236,72 +186,6 @@ impl<
             pdi_len: &mut self.pdi_len,
             start_address: &mut self.start_address,
             group_working_counter: &mut self.group_working_counter,
-        }
-    }
-}
-
-/// A reference to a [`SlaveGroup`] with erased `MAX_SLAVES` constant.
-pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    pdi_len: &'a mut usize,
-    max_pdi_len: usize,
-    start_address: &'a mut u32,
-    group_working_counter: &'a mut u16,
-    slaves: &'a mut [Slave],
-    preop_safeop_hook: Option<&'a HookFn<TIMEOUT, MAX_FRAMES, MAX_PDU_DATA>>,
-}
-
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
-{
-    pub(crate) async fn configure_from_eeprom<'client>(
-        &mut self,
-        mut offset: PdiOffset,
-        client: &'client Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-    ) -> Result<PdiOffset, Error>
-    where
-        TIMEOUT: TimerFactory,
-    {
-        *self.start_address = offset.start_address;
-
-        for slave in self.slaves.iter_mut() {
-            let mut slave_config = SlaveConfigurator::new(client, slave);
-
-            slave_config.configure_mailboxes().await?;
-
-            log::debug!("Slave group configured SAFE-OP");
-
-            if let Some(hook) = self.preop_safeop_hook {
-                let conf = slave_config.as_ref();
-
-                let fut = (hook)(&conf);
-
-                fut.await?;
-            }
-
-            log::debug!("Slave group configuration hook executed");
-
-            let new_offset = slave_config.configure_fmmus(offset).await?;
-
-            log::debug!("Slave group configured PRE-OP");
-
-            offset = new_offset;
-
-            *self.group_working_counter += slave.config.io.working_counter_sum();
-        }
-
-        let pdi_len = (offset.start_address - *self.start_address) as usize;
-
-        if pdi_len > self.max_pdi_len {
-            Err(Error::PdiTooLong {
-                desired: self.max_pdi_len,
-                required: pdi_len,
-            })
-        } else {
-            *self.pdi_len = pdi_len;
-
-            Ok(offset)
         }
     }
 }
