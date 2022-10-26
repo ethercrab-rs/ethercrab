@@ -7,7 +7,7 @@ use crate::{
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::{PortDescriptors, RegisterAddress, SupportFlags},
-    slave::Slave,
+    slave::{slave_client::SlaveClient, Slave},
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
     timer_factory::{Timeouts, TimerFactory},
@@ -123,7 +123,7 @@ where
     }
 
     /// Detect slaves and set their configured station addresses.
-    pub async fn init<G>(
+    pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
         mut groups: G,
         mut group_filter: impl FnMut(&mut G, Slave) -> Result<(), Error>,
@@ -138,6 +138,8 @@ where
 
         *self.num_slaves.borrow_mut() = num_slaves;
 
+        let mut slaves = heapless::Vec::<Slave, MAX_SLAVES>::new();
+
         // Set configured address for all discovered slaves
         for slave_idx in 0..num_slaves {
             let configured_address = BASE_SLAVE_ADDR.wrapping_add(slave_idx);
@@ -150,7 +152,17 @@ where
             .await?
             .wkc(1, "set station address")?;
 
-            let slave = Slave::new(self, configured_address).await?;
+            let slave = Slave::new(self, usize::from(slave_idx), configured_address).await?;
+
+            slaves
+                .push(slave)
+                .map_err(|_| Error::Capacity(Item::Slave))?;
+        }
+
+        self.configure_dc(&mut slaves).await?;
+
+        while let Some(slave) = slaves.pop() {
+            let configured_address = slave.configured_address;
             let slave_name = slave.name.clone();
 
             let before_count = groups.total_slaves();
@@ -165,8 +177,6 @@ where
                 );
             }
         }
-
-        self.configure_dc().await?;
 
         let mut offset = PdiOffset::default();
 
@@ -187,8 +197,8 @@ where
         Ok(groups)
     }
 
-    async fn configure_dc(&self) -> Result<(), Error> {
-        let num_slaves = self.num_slaves();
+    async fn configure_dc(&self, slaves: &mut [Slave]) -> Result<(), Error> {
+        let num_slaves = slaves.len();
 
         // TODO: Read from slave list flags.dc_supported
         let first_dc_supported_slave = 0x1000;
@@ -215,49 +225,34 @@ where
 
         let mut prev_slave_ports = [PortStuff::default(); 4];
 
-        for i in 0..num_slaves {
-            let slave_addr = BASE_SLAVE_ADDR.wrapping_add(i as u16);
+        for (i, slave) in slaves.iter_mut().enumerate() {
+            log::info!("Slave {:#06x}", slave.configured_address);
 
-            log::info!("Slave {:#06x}", slave_addr);
+            let sl = SlaveClient::new(self, slave.configured_address);
 
-            let port_descriptors = self
-                .fprd::<PortDescriptors>(slave_addr, RegisterAddress::PortDescriptors)
-                .await
-                .expect("Supported flags")
-                .wkc(1, "Supported flags")
-                .unwrap();
+            let port_descriptors = sl
+                .read(RegisterAddress::PortDescriptors, "Port descriptors")
+                .await?;
 
             // log::info!("Slave {:#06x} ports: {:#?}", slave_addr, port_descriptors);
 
-            let dl_status = self
-                .fprd::<DlStatus>(slave_addr, RegisterAddress::DlStatus)
-                .await
-                .expect("Supported flags")
-                .wkc(1, "Supported flags")
-                .unwrap();
+            let dl_status = sl
+                .read::<DlStatus>(RegisterAddress::DlStatus, "Supported flags")
+                .await?;
 
             // dbg!(dl_status);
 
-            let flags = self
-                .fprd::<SupportFlags>(slave_addr, RegisterAddress::SupportFlags)
-                .await
-                .expect("Supported flags")
-                .wkc(1, "Supported flags")
-                .unwrap();
+            let flags = sl
+                .read::<SupportFlags>(RegisterAddress::SupportFlags, "Supported flags")
+                .await?;
 
-            let time_p0 = self
-                .fprd::<u32>(slave_addr, RegisterAddress::DcTimePort0)
-                .await
-                .expect("DC time port 0")
-                .wkc(1, "DC time port 0")
-                .unwrap();
+            let time_p0 = sl
+                .read::<u32>(RegisterAddress::DcTimePort0, "DC time port 0")
+                .await?;
 
-            let receive_time_p0_nanos = self
-                .fprd::<i64>(slave_addr, RegisterAddress::DcReceiveTime)
-                .await
-                .expect("Receive time P0")
-                // Why does this sometimes fail with wkc = 0? Looks like it's when it doesn't have an output port?
-                .0;
+            let receive_time_p0_nanos = sl
+                .read::<i64>(RegisterAddress::DcReceiveTime, "Receive time P0")
+                .await?;
             // .wkc(1, "Receive time P0")
             // .unwrap();
 
@@ -266,32 +261,23 @@ where
 
             // dbg!(receive_time_p0_nanos, offset);
 
-            // self.fpwr(slave_addr, RegisterAddress::DcSystemTimeOffset, offset)
+            // sl.write(RegisterAddress::DcSystemTimeOffset, offset)
             //     .await?;
             // Why does this sometimes fail with wkc = 0? Looks like it's when it doesn't have an output port?
             // .wkc(1, "Write offset")
             // .expect("Write offset");
 
-            let time_p1 = self
-                .fprd::<u32>(slave_addr, RegisterAddress::DcTimePort1)
-                .await
-                .expect("DC time port 1")
-                .wkc(1, "DC time port 1")
-                .unwrap();
+            let time_p1 = sl
+                .read::<u32>(RegisterAddress::DcTimePort1, "DC time port 1")
+                .await?;
 
-            let time_p2 = self
-                .fprd::<u32>(slave_addr, RegisterAddress::DcTimePort2)
-                .await
-                .expect("DC time port 2")
-                .wkc(1, "DC time port 2")
-                .unwrap();
+            let time_p2 = sl
+                .read::<u32>(RegisterAddress::DcTimePort2, "DC time port 2")
+                .await?;
 
-            let time_p3 = self
-                .fprd::<u32>(slave_addr, RegisterAddress::DcTimePort3)
-                .await
-                .expect("DC time port 3")
-                .wkc(1, "DC time port 3")
-                .unwrap();
+            let time_p3 = sl
+                .read::<u32>(RegisterAddress::DcTimePort3, "DC time port 3")
+                .await?;
 
             let ports = [
                 PortStuff {
