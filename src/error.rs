@@ -37,6 +37,8 @@ pub enum Error {
         item: Item,
         index: Option<usize>,
     },
+    /// An internal error occurred. This indicates something that shouldn't happen within EtherCrab.
+    Internal,
 }
 
 impl From<BorrowError> for Error {

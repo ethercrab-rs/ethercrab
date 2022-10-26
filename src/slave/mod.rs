@@ -100,12 +100,13 @@ impl IoRanges {
     }
 }
 
+/// Flags showing which ports are active or not on the slave.
 #[derive(Default, Debug)]
 pub struct Ports {
-    port0: bool,
-    port1: bool,
-    port2: bool,
-    port3: bool,
+    pub port0: bool,
+    pub port1: bool,
+    pub port2: bool,
+    pub port3: bool,
 }
 
 #[derive(Debug)]
@@ -122,6 +123,7 @@ pub struct Slave {
 
     pub(crate) flags: SupportFlags,
 
+    // TODO: Do I need to keep this on the slave? It could move into the DC config code instead.
     pub(crate) ports: Ports,
 
     /// The index of the slave in the EtherCAT tree.
