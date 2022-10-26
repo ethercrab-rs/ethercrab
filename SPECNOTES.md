@@ -405,3 +405,28 @@ SOEM calls `ecx_readPDOmapCA` or `ecx_readPDOmap` during initialisation. This th
     segmented upload and we need to sit in a loop after reading this data, making segment upload
     request/responses (table 38/table 39)
   - If "complete size" <= length, we don't need to loop
+
+# Topology
+
+- Only _needed_ for DC, otherwise a nice to have to print it out.
+- For DC purposes, what is the parent of a node?
+  - ~~DC propagation delay times how long a packet takes to transit from a node's port 0 back
+    through its next active port, ordered like 0 -> 3 -> 1 -> 2~~
+- Need to walk up the tree of nodes to compute DC from the first DC supporting node
+  - Walking up the tree, do the following until we find a DC slave, but in a loop:
+    - If the previous node has 2 ports open, follow back along port 0
+    - If the previous node has 3 ports open (e.g. EK1100),
+- Open port counts denote type of topology:
+  1. End of line
+  2. Normal chain link
+  3. Node has children
+  4. Node has a cross structure, i.e. data comes into port 0, around port 3, around port 2, around
+     port 1 then back out through port 0
+- SOEM's logic in `ecx_config_init`, roughly `ethercatconfig.c:440`
+  - Topology number (`h` variable) is just number of open ports
+  - Look for previous
+    - If previous is an end point (e.g. EL1004)
+      - Continue iteration backwards until we meet either the master or a slave with 3 or 4 open
+        ports
+    - Else if previous is a 2 port
+      - Assign previous to current parent index and exit loop
