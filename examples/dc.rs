@@ -51,7 +51,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     });
 
     let group = client
-        .init(group, |groups, slave| groups.push(slave))
+        .init::<16, _>(group, |groups, slave| groups.push(slave))
         .await
         .expect("Init");
 

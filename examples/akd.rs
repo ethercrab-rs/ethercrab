@@ -101,7 +101,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     });
 
     let group = client
-        .init(groups, |groups, slave| groups.push(slave))
+        .init::<16, _>(groups, |groups, slave| groups.push(slave))
         .await
         .expect("Init");
 
@@ -133,7 +133,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::debug!("Cycle time: {} ms", cycle_time.as_millis());
 
-    // TODO: Read from AKD 0x60c1
     // AKD will error with F706 if cycle time is not 2ms or less
     let mut cyclic_interval = Timer::interval(cycle_time);
 
