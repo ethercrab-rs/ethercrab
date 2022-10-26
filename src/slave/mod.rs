@@ -7,13 +7,14 @@ use crate::{
     client::Client,
     coe::{self, abort_code::AbortCode, services::CoeServiceTrait, SubIndex},
     command::Command,
+    dl_status::DlStatus,
     eeprom::types::{MailboxProtocols, SiiOwner},
     error::{Error, MailboxError, PduError},
     mailbox::MailboxType,
     pdi::PdiSegment,
     pdu_data::{PduData, PduRead},
     pdu_loop::CheckWorkingCounter,
-    register::RegisterAddress,
+    register::{RegisterAddress, SupportFlags},
     slave_state::SlaveState,
     sync_manager_channel::SyncManagerChannel,
     timer_factory::TimerFactory,
@@ -99,11 +100,18 @@ impl IoRanges {
     }
 }
 
+#[derive(Default, Debug)]
+pub struct Ports {
+    port0: bool,
+    port1: bool,
+    port2: bool,
+    port3: bool,
+}
+
 #[derive(Debug)]
 pub struct Slave {
     /// Configured station address.
-    // TODO: Un-pub
-    pub configured_address: u16,
+    pub(crate) configured_address: u16,
 
     pub(crate) config: SlaveConfig,
 
@@ -111,6 +119,16 @@ pub struct Slave {
 
     // NOTE: Default length in SOEM is 40 bytes
     pub name: heapless::String<64>,
+
+    pub(crate) flags: SupportFlags,
+
+    pub(crate) ports: Ports,
+
+    /// The index of the slave in the EtherCAT tree.
+    pub(crate) index: usize,
+
+    /// The index of the previous slave in the EtherCAT tree.
+    pub(crate) parent_index: usize,
 }
 
 impl Slave {
@@ -120,6 +138,7 @@ impl Slave {
     /// the slave.
     pub(crate) async fn new<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
         client: &'client Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        index: usize,
         configured_address: u16,
     ) -> Result<Self, Error>
     where
@@ -129,7 +148,7 @@ impl Slave {
 
         slave_ref.wait_for_state(SlaveState::Init).await?;
 
-        // Will be/should be set to SiiOwner::Pdi after init
+        // Make sure master has access to slave EEPROM
         slave_ref.set_eeprom_mode(SiiOwner::Master).await?;
 
         let eep = slave_ref.eeprom();
@@ -149,14 +168,31 @@ impl Slave {
             s
         });
 
-        // TODO: Make debug again
-        log::info!("Slave {:#06x} name {}", configured_address, name);
+        let flags = slave_ref
+            .read::<SupportFlags>(RegisterAddress::SupportFlags, "support flags")
+            .await?;
+
+        let ports = slave_ref
+            .read::<DlStatus>(RegisterAddress::DlStatus, "DL status")
+            .await
+            .map(|dl_status| Ports {
+                port0: dl_status.link_port0,
+                port1: dl_status.link_port1,
+                port2: dl_status.link_port2,
+                port3: dl_status.link_port3,
+            })?;
+
+        log::debug!("Slave {:#06x} name {}", configured_address, name);
 
         Ok(Self {
             configured_address,
             identity,
             name,
             config: SlaveConfig::default(),
+            flags,
+            index,
+            parent_index: 0,
+            ports,
         })
     }
 
