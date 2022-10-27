@@ -396,7 +396,6 @@ pub enum PortStatus {
     #[default]
     Unused = 0x00,
     Mii = 0x01,
-    // TODO: Is this just a reserved value, not a port state?
     Reserved = 0x02,
     Ebus = 0x03,
     FastHotConnect = 0x04,
