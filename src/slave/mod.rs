@@ -101,12 +101,37 @@ impl IoRanges {
 }
 
 /// Flags showing which ports are active or not on the slave.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct Ports {
     pub port0: bool,
     pub port1: bool,
     pub port2: bool,
     pub port3: bool,
+}
+
+impl Ports {
+    /// The end of a segment in the tree.
+    pub const LINE_END: Self = Ports {
+        port0: true,
+        port1: false,
+        port2: false,
+        port3: false,
+    };
+    /// A "normal" connection; a single slave device with no children.
+    pub const PASS_THROUGH: Self = Ports {
+        port0: true,
+        port1: true,
+        port2: false,
+        port3: false,
+    };
+    /// A split in the topology tree, e.g. an EK1100 with multiple modules on port 1.
+    pub const SPLIT: Self = Ports {
+        port0: true,
+        port1: true,
+        port2: true,
+        port3: false,
+    };
+    // TODO: Cross points in the topology; need test devices!
 }
 
 #[derive(Debug)]
@@ -130,7 +155,9 @@ pub struct Slave {
     pub(crate) index: usize,
 
     /// The index of the previous slave in the EtherCAT tree.
-    pub(crate) parent_index: usize,
+    ///
+    /// For the first slave in the network, this will always be `None`.
+    pub(crate) parent_index: Option<usize>,
 }
 
 impl Slave {
@@ -193,7 +220,7 @@ impl Slave {
             config: SlaveConfig::default(),
             flags,
             index,
-            parent_index: 0,
+            parent_index: None,
             ports,
         })
     }
