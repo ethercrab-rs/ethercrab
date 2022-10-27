@@ -49,8 +49,6 @@ impl Pdu {
         // TODO: Add unit test to stop regressions
         let pdu_overhead = 12;
 
-        // NOTE: Sometimes data length is zero (e.g. for read-only ops), so we'll look at the actual
-        // packet length in flags instead.
         self.flags.len() + pdu_overhead
     }
 
@@ -69,8 +67,8 @@ impl Pdu {
         let buf = gen_simple(le_u16(u16::from_le_bytes(self.flags.pack().unwrap())), buf)?;
         let buf = gen_simple(le_u16(self.irq), buf)?;
 
-        // Probably a read; the sent packet's data area can be any old garbage, so we'll skip over it.
-        // TODO: Read/write flag/enum to signal this more explicitly? "Probably" is a poor word to use...
+        // Probably a read; the data area of the frame to send could be any old garbage, so we'll
+        // skip over it.
         let buf = if data.is_empty() {
             gen_simple(skip(usize::from(self.flags.len())), buf)?
         }

@@ -499,7 +499,6 @@ where
         Ok((res, working_counter))
     }
 
-    // TODO: Support different I and O types; some things can return different data
     async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
