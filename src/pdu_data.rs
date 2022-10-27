@@ -47,16 +47,6 @@ impl_pdudata!(i16);
 impl_pdudata!(i32);
 impl_pdudata!(i64);
 
-impl<const N: usize> PduRead for [u8; N] {
-    const LEN: u16 = N as u16;
-
-    type Error = TryFromSliceError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        slice.try_into()
-    }
-}
-
 impl<const N: usize> PduData for [u8; N] {
     fn as_slice(&self) -> &[u8] {
         self
@@ -76,6 +66,28 @@ impl PduRead for () {
 impl PduData for () {
     fn as_slice(&self) -> &[u8] {
         &[]
+    }
+}
+
+impl<const N: usize, T> PduRead for [T; N]
+where
+    T: PduRead,
+{
+    const LEN: u16 = T::LEN * N as u16;
+
+    type Error = ();
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        let chunks = slice.chunks_exact(usize::from(T::LEN));
+
+        let mut res = heapless::Vec::<T, N>::new();
+
+        for chunk in chunks {
+            res.push(T::try_from_slice(chunk).map_err(|_| ())?)
+                .map_err(|_| ())?;
+        }
+
+        res.into_array().map_err(|_| ())
     }
 }
 
