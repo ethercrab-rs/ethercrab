@@ -77,7 +77,7 @@ impl fmt::Display for Fmmu {
             self.physical_start_address,
             self.physical_start_bit,
             if self.read_enable { "R" } else { "" },
-            if self.write_enable { "W" } else { "" },
+            if self.write_enable { "W" } else { "O" },
             if self.enable{ "enabled" } else { "disabled" },
         ))
     }

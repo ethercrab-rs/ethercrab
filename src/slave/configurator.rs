@@ -82,30 +82,12 @@ where
         let fmmu_usage = self.client.eeprom().fmmus().await?;
         let fmmu_sm_mappings = self.client.eeprom().fmmu_mappings().await?;
 
-        // let has_coe = self
-        //     .slave
-        //     .config
-        //     .mailbox
-        //     .supported_protocols
-        //     .contains(MailboxProtocols::COE);
-
-        //
-        //
-        //
-        //
-        //
-        // REEEEEE
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        // FIXME: How does SOEM decide whether to configure slaves or not? LAN9252 throws an
-        // InvalidSdoResponse error if left to configure SDOs.
-        let has_coe = false;
+        let has_coe = self
+            .slave
+            .config
+            .mailbox
+            .supported_protocols
+            .contains(MailboxProtocols::COE);
 
         // PDOs must be configurd in PRE-OP state
         // Outputs are configured first, so will be before inputs in the PDI
