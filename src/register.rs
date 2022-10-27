@@ -140,7 +140,6 @@ pub enum PortType {
 
 #[derive(Debug)]
 pub struct SupportFlags {
-    // TODO: Un-pub all
     pub fmmu_supports_bit_ops: bool,
     pub reserved_register_support: bool,
     pub dc_supported: bool,

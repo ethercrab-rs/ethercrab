@@ -3,7 +3,6 @@ use packed_struct::{PackedStruct, PackedStructSlice, PackingError};
 
 #[derive(Debug, Copy, Clone)]
 pub struct DlStatus {
-    // TODO: Un-pub all
     pub pdi_operational: bool,
     pub watchdog_ok: bool,
     pub extended_link_detection: bool,

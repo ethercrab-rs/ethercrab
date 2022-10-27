@@ -1,8 +1,9 @@
-use core::cell::RefCell;
-use core::sync::atomic::{AtomicU8, Ordering};
-use core::task::Poll;
-use core::task::Waker;
-use core::time::Duration;
+use core::{
+    cell::RefCell,
+    sync::atomic::{AtomicU8, Ordering},
+    task::{Poll, Waker},
+    time::Duration,
+};
 use heapless::FnvIndexMap;
 use smol::LocalExecutor;
 use std::sync::Arc;

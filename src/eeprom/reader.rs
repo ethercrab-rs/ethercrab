@@ -127,7 +127,6 @@ where
             N
         );
 
-        // TODO: Optimise by taking chunks instead of calling next().await until end conditions are satisfied
         loop {
             // We've collected the requested number of bytes
             if count >= len {

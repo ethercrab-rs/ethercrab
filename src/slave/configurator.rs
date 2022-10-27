@@ -352,51 +352,24 @@ where
                 (sm_bit_len + 7) / 8
             );
 
-            // TODO: Refactor into method call, dedupe with other config place
-            {
-                let sm_config = self
-                    .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
-                    .await?;
+            let fmmu_index = fmmu_usage
+                .iter()
+                .position(|usage| *usage == desired_fmmu_type)
+                .ok_or(Error::NotFound {
+                    item: Item::Fmmu,
+                    index: None,
+                })?;
 
-                let fmmu_index = fmmu_usage
-                    .iter()
-                    .position(|usage| *usage == desired_fmmu_type)
-                    .ok_or(Error::NotFound {
-                        item: Item::Fmmu,
-                        index: None,
-                    })?;
-
-                let fmmu_config = Fmmu {
-                    logical_start_address: offset.start_address,
-                    length_bytes: sm_config.length_bytes,
-                    // Mapping into PDI is byte-aligned until/if we support bit-oriented slaves
-                    logical_start_bit: 0,
-                    // logical_start_bit: offset.start_bit,
-                    logical_end_bit: offset.end_bit(total_bit_len),
-                    physical_start_address: sm_config.physical_start_address,
-                    physical_start_bit: 0x0,
-                    read_enable: desired_sm_type == SyncManagerType::ProcessDataRead,
-                    write_enable: desired_sm_type == SyncManagerType::ProcessDataWrite,
-                    enable: true,
-                };
-
-                self.client
-                    .write(
-                        RegisterAddress::fmmu(fmmu_index as u8),
-                        fmmu_config.pack().unwrap(),
-                        "PDI FMMU",
-                    )
-                    .await?;
-
-                log::debug!(
-                    "Slave {:#06x} FMMU{fmmu_index}: {}",
-                    self.slave.configured_address,
-                    fmmu_config
-                );
-                log::trace!("{:#?}", fmmu_config);
-
-                *offset = offset.increment_byte_aligned(sm_bit_len);
-            }
+            self.write_fmmu_config(
+                sync_manager_index,
+                sync_manager,
+                sm_bit_len,
+                fmmu_index,
+                offset,
+                total_bit_len,
+                desired_sm_type,
+            )
+            .await?;
 
             total_bit_len += sm_bit_len;
         }
@@ -405,6 +378,50 @@ where
             bit_len: total_bit_len.into(),
             bytes: start_offset.up_to(*offset),
         }))
+    }
+
+    async fn write_fmmu_config(
+        &self,
+        sync_manager_index: u8,
+        sync_manager: &SyncManager,
+        sm_bit_len: u16,
+        fmmu_index: usize,
+        offset: &mut PdiOffset,
+        total_bit_len: u16,
+        desired_sm_type: SyncManagerType,
+    ) -> Result<(), Error> {
+        let sm_config = self
+            .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
+            .await?;
+
+        let fmmu_config = Fmmu {
+            logical_start_address: offset.start_address,
+            length_bytes: sm_config.length_bytes,
+            // Mapping into PDI is byte-aligned until/if we support bit-oriented slaves
+            logical_start_bit: 0,
+            // logical_start_bit: offset.start_bit,
+            logical_end_bit: offset.end_bit(total_bit_len),
+            physical_start_address: sm_config.physical_start_address,
+            physical_start_bit: 0x0,
+            read_enable: desired_sm_type == SyncManagerType::ProcessDataRead,
+            write_enable: desired_sm_type == SyncManagerType::ProcessDataWrite,
+            enable: true,
+        };
+        self.client
+            .write(
+                RegisterAddress::fmmu(fmmu_index as u8),
+                fmmu_config.pack().unwrap(),
+                "PDI FMMU",
+            )
+            .await?;
+        log::debug!(
+            "Slave {:#06x} FMMU{fmmu_index}: {}",
+            self.slave.configured_address,
+            fmmu_config
+        );
+        log::trace!("{:#?}", fmmu_config);
+        *offset = offset.increment_byte_aligned(sm_bit_len);
+        Ok(())
     }
 
     /// Configure PDOs from EEPROM
@@ -461,47 +478,16 @@ where
                     index: None,
                 })?;
 
-            {
-                let sm_config = self
-                    .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
-                    .await?;
-
-                // TODO: Move this FMMU config into a method and dedupe with COE config
-                // TODO: I may need to read and mutate any existing FMMU config; slaves with
-                // multiple SMs that point to the same FMMU I think will end up clobbering previous
-                // config. This also means I need to configure SMs in this loop, and configure the
-                // FMMU ONCE after the loop.
-                let fmmu_config = Fmmu {
-                    logical_start_address: offset.start_address,
-                    length_bytes: sm_config.length_bytes,
-                    // Mapping into PDI is byte-aligned until/if we support bit-oriented slaves
-                    logical_start_bit: 0,
-                    // logical_start_bit: offset.start_bit,
-                    logical_end_bit: offset.end_bit(bit_len),
-                    physical_start_address: sm_config.physical_start_address,
-                    physical_start_bit: 0x0,
-                    read_enable: sm_type == SyncManagerType::ProcessDataRead,
-                    write_enable: sm_type == SyncManagerType::ProcessDataWrite,
-                    enable: true,
-                };
-
-                self.client
-                    .write(
-                        RegisterAddress::fmmu(fmmu_index),
-                        fmmu_config.pack().unwrap(),
-                        "PDI FMMU",
-                    )
-                    .await?;
-
-                log::debug!(
-                    "Slave {:#06x} FMMU{fmmu_index}: {}",
-                    self.slave.configured_address,
-                    fmmu_config
-                );
-                log::trace!("{:#?}", fmmu_config);
-
-                *offset = offset.increment_byte_aligned(bit_len);
-            }
+            self.write_fmmu_config(
+                sync_manager_index,
+                sync_manager,
+                bit_len,
+                usize::from(fmmu_index),
+                offset,
+                total_bit_len,
+                sm_type,
+            )
+            .await?;
         }
 
         Ok((total_bit_len > 0).then_some(PdiSegment {
