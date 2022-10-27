@@ -39,6 +39,7 @@ pub enum Error {
     },
     /// An internal error occurred. This indicates something that shouldn't happen within EtherCrab.
     Internal,
+    Topology,
 }
 
 impl From<BorrowError> for Error {

@@ -7,7 +7,7 @@ use crate::{
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::{PortDescriptors, RegisterAddress, SupportFlags},
-    slave::{slave_client::SlaveClient, Slave},
+    slave::{slave_client::SlaveClient, Ports, Slave},
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
     timer_factory::{Timeouts, TimerFactory},
@@ -123,6 +123,9 @@ where
     }
 
     /// Detect slaves and set their configured station addresses.
+    // TODO: Find a way to retrieve a slave by index from the SlaveGroupContainer instead of
+    // requiring a temporary array of slaves. Currently blocked by weird lifetime rubbish on
+    // `SlaveGroupContainer`.
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
         mut groups: G,
@@ -226,16 +229,60 @@ where
         let mut prev_slave_ports = [PortStuff::default(); 4];
 
         for i in 0..slaves.len() {
-            let (prev, rest) = slaves.split_at_mut(i);
+            let (parents, rest) = slaves.split_at_mut(i);
             let mut slave = rest.first_mut().ok_or(Error::Internal)?;
 
-            log::info!("Slave {:#06x}", slave.configured_address);
+            {
+                // Walk back up EtherCAT chain and find parent of this slave
+                let mut parents_it = parents.iter().rev();
+
+                while let Some(parent) = parents_it.next() {
+                    // "normal" parent. We're done.
+                    if parent.ports == Ports::PASS_THROUGH {
+                        slave.parent_index = Some(parent.index);
+
+                        break;
+                    }
+                    // Previous parent in the chain is a leaf node in the tree, so we need to
+                    // continue iterating to find the common parent, i.e. the split point
+                    else if parent.ports == Ports::LINE_END {
+                        let split_point = parents_it
+                            .find(|slave| slave.ports == Ports::SPLIT)
+                            .ok_or_else(|| {
+                                log::error!(
+                                    "Did not find parent for slave {}",
+                                    slave.configured_address
+                                );
+
+                                Error::Topology
+                            })?;
+
+                        slave.parent_index = Some(split_point.index);
+                    }
+                }
+            }
+
+            log::info!("Slave {:#06x} {}", slave.configured_address, slave.name);
+
+            log::info!(
+                "--> Parent {:?} -> self {}",
+                slave.parent_index,
+                slave.index
+            );
+
+            log::info!(
+                "--> Open ports (0: {}, 1: {}, 2: {}, 3: {})",
+                slave.ports.port0,
+                slave.ports.port1,
+                slave.ports.port2,
+                slave.ports.port3,
+            );
 
             let sl = SlaveClient::new(self, slave.configured_address);
 
-            let port_descriptors = sl
-                .read(RegisterAddress::PortDescriptors, "Port descriptors")
-                .await?;
+            // let port_descriptors = sl
+            //     .read(RegisterAddress::PortDescriptors, "Port descriptors")
+            //     .await?;
 
             // log::info!("Slave {:#06x} ports: {:#?}", slave_addr, port_descriptors);
 
@@ -249,18 +296,18 @@ where
                 .read::<SupportFlags>(RegisterAddress::SupportFlags, "Supported flags")
                 .await?;
 
-            let time_p0 = sl
-                .read::<u32>(RegisterAddress::DcTimePort0, "DC time port 0")
-                .await?;
+            // let time_p0 = sl
+            //     .read::<u32>(RegisterAddress::DcTimePort0, "DC time port 0")
+            //     .await?;
 
-            let receive_time_p0_nanos = sl
-                .read::<i64>(RegisterAddress::DcReceiveTime, "Receive time P0")
-                .await?;
-            // .wkc(1, "Receive time P0")
-            // .unwrap();
+            // let receive_time_p0_nanos = sl
+            //     .read::<i64>(RegisterAddress::DcReceiveTime, "Receive time P0")
+            //     .await?;
+            // // .wkc(1, "Receive time P0")
+            // // .unwrap();
 
             // let offset = u64::try_from(now_nanos).expect("Why negative???") - receive_time_p0;
-            let offset = -receive_time_p0_nanos + now_nanos;
+            // let offset = -receive_time_p0_nanos + now_nanos;
 
             // dbg!(receive_time_p0_nanos, offset);
 
@@ -270,16 +317,20 @@ where
             // .wkc(1, "Write offset")
             // .expect("Write offset");
 
-            let time_p1 = sl
-                .read::<u32>(RegisterAddress::DcTimePort1, "DC time port 1")
-                .await?;
+            // let time_p1 = sl
+            //     .read::<u32>(RegisterAddress::DcTimePort1, "DC time port 1")
+            //     .await?;
 
-            let time_p2 = sl
-                .read::<u32>(RegisterAddress::DcTimePort2, "DC time port 2")
-                .await?;
+            // let time_p2 = sl
+            //     .read::<u32>(RegisterAddress::DcTimePort2, "DC time port 2")
+            //     .await?;
 
-            let time_p3 = sl
-                .read::<u32>(RegisterAddress::DcTimePort3, "DC time port 3")
+            // let time_p3 = sl
+            //     .read::<u32>(RegisterAddress::DcTimePort3, "DC time port 3")
+            //     .await?;
+
+            let [time_p0, time_p1, time_p2, time_p3] = sl
+                .read::<[u32; 4]>(RegisterAddress::DcTimePort0, "Port receive times")
                 .await?;
 
             let ports = [
