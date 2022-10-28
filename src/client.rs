@@ -7,7 +7,7 @@ use crate::{
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::{PortDescriptors, RegisterAddress, SupportFlags},
-    slave::{slave_client::SlaveClient, Ports, Slave},
+    slave::{slave_client::SlaveClient, Slave, Topology},
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
     timer_factory::{Timeouts, TimerFactory},
@@ -226,8 +226,6 @@ where
             dc_time: u32,
         }
 
-        let mut prev_slave_ports = [PortStuff::default(); 4];
-
         for i in 0..slaves.len() {
             let (parents, rest) = slaves.split_at_mut(i);
             let mut slave = rest.first_mut().ok_or(Error::Internal)?;
@@ -236,18 +234,20 @@ where
                 // Walk back up EtherCAT chain and find parent of this slave
                 let mut parents_it = parents.iter().rev();
 
+                // TODO: Check topology with two EK1100s, one daisychained off the other. I have a
+                // feeling that won't work properly.
                 while let Some(parent) = parents_it.next() {
                     // "normal" parent. We're done.
-                    if parent.ports == Ports::PASS_THROUGH {
+                    if parent.ports.topology() == Topology::LineEnd {
                         slave.parent_index = Some(parent.index);
 
                         break;
                     }
                     // Previous parent in the chain is a leaf node in the tree, so we need to
                     // continue iterating to find the common parent, i.e. the split point
-                    else if parent.ports == Ports::LINE_END {
+                    else if parent.ports.topology() == Topology::LineEnd {
                         let split_point = parents_it
-                            .find(|slave| slave.ports == Ports::SPLIT)
+                            .find(|slave| slave.ports.topology() == Topology::Fork)
                             .ok_or_else(|| {
                                 log::error!(
                                     "Did not find parent for slave {}",
@@ -265,17 +265,18 @@ where
             log::info!("Slave {:#06x} {}", slave.configured_address, slave.name);
 
             log::info!(
-                "--> Parent {:?} -> self {}",
+                "--> Parent {:?} -> self {} ({:?})",
                 slave.parent_index,
-                slave.index
+                slave.index,
+                slave.ports.topology()
             );
 
             log::info!(
                 "--> Open ports (0: {}, 1: {}, 2: {}, 3: {})",
-                slave.ports.port0,
-                slave.ports.port1,
-                slave.ports.port2,
-                slave.ports.port3,
+                slave.ports.0[0].active,
+                slave.ports.0[1].active,
+                slave.ports.0[2].active,
+                slave.ports.0[3].active,
             );
 
             let sl = SlaveClient::new(self, slave.configured_address);
@@ -333,50 +334,22 @@ where
                 .read::<[u32; 4]>(RegisterAddress::DcTimePort0, "Port receive times")
                 .await?;
 
-            let ports = [
-                PortStuff {
-                    number: 0,
-                    dc_time: time_p0,
-                    active: slave.ports.port0,
-                },
-                PortStuff {
-                    number: 1,
-                    dc_time: time_p1,
-                    active: slave.ports.port1,
-                },
-                PortStuff {
-                    number: 2,
-                    dc_time: time_p2,
-                    active: slave.ports.port2,
-                },
-                PortStuff {
-                    number: 3,
-                    dc_time: time_p3,
-                    active: slave.ports.port3,
-                },
-            ];
+            slave.ports.0[0].dc_receive_time = time_p0;
+            slave.ports.0[1].dc_receive_time = time_p1;
+            slave.ports.0[2].dc_receive_time = time_p2;
+            slave.ports.0[3].dc_receive_time = time_p3;
 
+            let d01 = time_p1 - time_p0;
+            let d12 = time_p2 - time_p1;
+            let d32 = time_p3 - time_p2;
+
+            let loop_propagation_time = slave.ports.propagation_time();
+            let child_delay = slave.ports.child_delay().unwrap_or(0);
+
+            log::info!("--> Times {time_p0} ({d01}) {time_p1} ({d12}) {time_p2} ({d32}) {time_p3}");
             log::info!(
-                "--> Port times: ({} [{}], {} [{}], {} [{}], {} [{}])",
-                ports[0].dc_time,
-                ports[0].active as u8,
-                ports[1].dc_time,
-                ports[1].active as u8,
-                ports[2].dc_time,
-                ports[2].active as u8,
-                ports[3].dc_time,
-                ports[3].active as u8
+                "--> Propagation time {loop_propagation_time:?} ns, child delay {child_delay} ns"
             );
-
-            let active_ports = ports.iter().filter_map(|p| p.active.then_some(p.dc_time));
-
-            let loop_propagation_time = active_ports
-                .clone()
-                .max()
-                .map(|max| max - active_ports.min().unwrap())
-                .filter(|t| *t > 0);
-
-            log::info!("--> Transit time {loop_propagation_time:?} ns");
 
             // // Don't look for parent port for first slave; it doesn't have one (well, it's the
             // // master)
