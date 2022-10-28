@@ -255,12 +255,12 @@ where
 
             log::info!("Slave {:#06x} {}", slave.configured_address, slave.name);
 
-            log::info!(
-                "--> Parent {:?} -> self {} ({:?})",
-                slave.parent_index,
-                slave.index,
-                slave.ports.topology()
-            );
+            // log::info!(
+            //     "--> Parent {:?} -> self {} ({:?})",
+            //     slave.parent_index,
+            //     slave.index,
+            //     slave.ports.topology()
+            // );
 
             log::info!(
                 "--> Open ports (0: {}, 1: {}, 2: {}, 3: {})",
@@ -302,14 +302,14 @@ where
             slave.ports.0[2].dc_receive_time = time_p2;
             slave.ports.0[3].dc_receive_time = time_p3;
 
-            // let d03 = time_p1 - time_p0;
-            // let d31 = time_p2 - time_p1;
-            // let d32 = time_p3 - time_p2;
+            let d01 = time_p1 - time_p0;
+            let d12 = time_p2 - time_p1;
+            let d32 = time_p3 - time_p2;
 
             let loop_propagation_time = slave.ports.propagation_time();
             let child_delay = slave.ports.child_delay().unwrap_or(0);
 
-            // log::info!("--> Times {time_p0} ({d01}) {time_p1} ({d12}) {time_p2} ({d32}) {time_p3}");
+            log::info!("--> Times {time_p0} ({d01}) {time_p1} ({d12}) {time_p2} ({d32}) {time_p3}");
             log::info!(
                 "--> Propagation time {loop_propagation_time:?} ns, child delay {child_delay} ns"
             );
@@ -320,12 +320,20 @@ where
                     .find(|parent| parent.index == parent_idx)
                     .unwrap();
 
-                let parent_port = parent
+                let assigned_port_idx = parent
                     .ports
                     .assign_next_downstream_port(slave.index)
                     .expect("No free ports. Logic error.");
 
-                log::info!("--> Parent port number {}", parent_port.number);
+                let parent_port = parent.ports.0[assigned_port_idx];
+
+                let prev_parent_port = parent.ports.prev_open_port(&parent_port).unwrap();
+
+                log::info!(
+                    "--> Parent port number {} (prev parent port {})",
+                    parent_port.number,
+                    prev_parent_port.number
+                );
 
                 // let prent_port = parent.downstream_port()?;
 

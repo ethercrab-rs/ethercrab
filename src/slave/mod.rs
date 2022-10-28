@@ -207,42 +207,40 @@ impl Ports {
         None
     }
 
-    // fn prev_open_port(&self, port: &Port) -> Option<&Port> {
-    //     let mut number = port.number;
+    pub fn prev_open_port(&self, port: &Port) -> Option<&Port> {
+        let mut number = port.number;
 
-    //     for _ in 0..4 {
-    //         let next_number = match number {
-    //             0 => 2usize,
-    //             2 => 1,
-    //             1 => 3,
-    //             3 => 0,
-    //             _ => unreachable!(),
-    //         };
+        for _ in 0..4 {
+            // let next_number = match number {
+            //     0 => 2usize,
+            //     2 => 1,
+            //     1 => 3,
+            //     3 => 0,
+            //     _ => unreachable!(),
+            // };
 
-    //         let next_port = &self.0[next_number];
+            let next_number = if number == 0 { 3 } else { number - 1 };
 
-    //         if next_port.active {
-    //             return Some(next_port);
-    //         }
+            let next_port = &self.0[next_number];
 
-    //         number = next_number;
-    //     }
+            if next_port.active {
+                return Some(next_port);
+            }
 
-    //     None
-    // }
-
-    pub fn assign_next_downstream_port(&mut self, downstream_slave_index: usize) -> Option<&Port> {
-        let entry_port = self.entry_port().expect("No input port? Wtf");
-
-        let next_port = self.next_assignable_port(&entry_port).expect("Logic error");
-
-        if next_port.downstream_to.is_none() {
-            next_port.downstream_to = Some(downstream_slave_index);
-
-            return Some(next_port);
+            number = next_number;
         }
 
-        Some(next_port)
+        None
+    }
+
+    pub fn assign_next_downstream_port(&mut self, downstream_slave_index: usize) -> Option<usize> {
+        let entry_port = self.entry_port().expect("No input port? Wtf");
+
+        let next_port = self.next_assignable_port(&entry_port)?;
+
+        next_port.downstream_to = Some(downstream_slave_index);
+
+        Some(next_port.number)
     }
 
     pub fn topology(&self) -> Topology {
