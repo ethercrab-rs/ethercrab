@@ -219,13 +219,6 @@ where
 
         let now_nanos = 0;
 
-        #[derive(Debug, Default, Copy, Clone)]
-        struct PortStuff {
-            number: u8,
-            active: bool,
-            dc_time: u32,
-        }
-
         for i in 0..slaves.len() {
             let (parents, rest) = slaves.split_at_mut(i);
             let mut slave = rest.first_mut().ok_or(Error::Internal)?;
@@ -237,15 +230,9 @@ where
                 // TODO: Check topology with two EK1100s, one daisychained off the other. I have a
                 // feeling that won't work properly.
                 while let Some(parent) = parents_it.next() {
-                    // "normal" parent. We're done.
-                    if parent.ports.topology() == Topology::LineEnd {
-                        slave.parent_index = Some(parent.index);
-
-                        break;
-                    }
                     // Previous parent in the chain is a leaf node in the tree, so we need to
                     // continue iterating to find the common parent, i.e. the split point
-                    else if parent.ports.topology() == Topology::LineEnd {
+                    if parent.ports.topology() == Topology::LineEnd {
                         let split_point = parents_it
                             .find(|slave| slave.ports.topology() == Topology::Fork)
                             .ok_or_else(|| {
@@ -258,6 +245,10 @@ where
                             })?;
 
                         slave.parent_index = Some(split_point.index);
+                    } else {
+                        slave.parent_index = Some(parent.index);
+
+                        break;
                     }
                 }
             }
@@ -281,25 +272,9 @@ where
 
             let sl = SlaveClient::new(self, slave.configured_address);
 
-            // let port_descriptors = sl
-            //     .read(RegisterAddress::PortDescriptors, "Port descriptors")
-            //     .await?;
-
-            // log::info!("Slave {:#06x} ports: {:#?}", slave_addr, port_descriptors);
-
-            // let dl_status = sl
-            //     .read::<DlStatus>(RegisterAddress::DlStatus, "Supported flags")
-            //     .await?;
-
-            // dbg!(dl_status);
-
             let flags = sl
                 .read::<SupportFlags>(RegisterAddress::SupportFlags, "Supported flags")
                 .await?;
-
-            // let time_p0 = sl
-            //     .read::<u32>(RegisterAddress::DcTimePort0, "DC time port 0")
-            //     .await?;
 
             // let receive_time_p0_nanos = sl
             //     .read::<i64>(RegisterAddress::DcReceiveTime, "Receive time P0")
@@ -318,18 +293,6 @@ where
             // .wkc(1, "Write offset")
             // .expect("Write offset");
 
-            // let time_p1 = sl
-            //     .read::<u32>(RegisterAddress::DcTimePort1, "DC time port 1")
-            //     .await?;
-
-            // let time_p2 = sl
-            //     .read::<u32>(RegisterAddress::DcTimePort2, "DC time port 2")
-            //     .await?;
-
-            // let time_p3 = sl
-            //     .read::<u32>(RegisterAddress::DcTimePort3, "DC time port 3")
-            //     .await?;
-
             let [time_p0, time_p1, time_p2, time_p3] = sl
                 .read::<[u32; 4]>(RegisterAddress::DcTimePort0, "Port receive times")
                 .await?;
@@ -339,17 +302,35 @@ where
             slave.ports.0[2].dc_receive_time = time_p2;
             slave.ports.0[3].dc_receive_time = time_p3;
 
-            let d01 = time_p1 - time_p0;
-            let d12 = time_p2 - time_p1;
-            let d32 = time_p3 - time_p2;
+            // let d03 = time_p1 - time_p0;
+            // let d31 = time_p2 - time_p1;
+            // let d32 = time_p3 - time_p2;
 
             let loop_propagation_time = slave.ports.propagation_time();
             let child_delay = slave.ports.child_delay().unwrap_or(0);
 
-            log::info!("--> Times {time_p0} ({d01}) {time_p1} ({d12}) {time_p2} ({d32}) {time_p3}");
+            // log::info!("--> Times {time_p0} ({d01}) {time_p1} ({d12}) {time_p2} ({d32}) {time_p3}");
             log::info!(
                 "--> Propagation time {loop_propagation_time:?} ns, child delay {child_delay} ns"
             );
+
+            if let Some(parent_idx) = slave.parent_index {
+                let parent = parents
+                    .iter_mut()
+                    .find(|parent| parent.index == parent_idx)
+                    .unwrap();
+
+                let parent_port = parent
+                    .ports
+                    .assign_next_downstream_port(slave.index)
+                    .expect("No free ports. Logic error.");
+
+                log::info!("--> Parent port number {}", parent_port.number);
+
+                // let prent_port = parent.downstream_port()?;
+
+                // log::info!("--> Parent time {parent_propagation_time}");
+            }
 
             // // Don't look for parent port for first slave; it doesn't have one (well, it's the
             // // master)
@@ -402,10 +383,6 @@ where
             if !flags.has_64bit_dc {
                 // TODO
                 log::warn!("--> Slave uses seconds instead of ns?");
-            }
-
-            if !flags.dc_supported {
-                continue;
             }
         }
 
