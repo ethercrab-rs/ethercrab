@@ -430,3 +430,10 @@ SOEM calls `ecx_readPDOmapCA` or `ecx_readPDOmap` during initialisation. This th
         ports
     - Else if previous is a 2 port
       - Assign previous to current parent index and exit loop
+
+## Delay calculation
+
+- Previous slave's propagation delay minus the current one's
+- If previous slave has children, subtract that from its delay
+- TODO: Instead of just the previous slave, walk back up the slave list and find the first
+  DC-supporting slave.
