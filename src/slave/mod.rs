@@ -102,36 +102,102 @@ impl IoRanges {
 
 /// Flags showing which ports are active or not on the slave.
 #[derive(Default, Debug, PartialEq, Eq)]
-pub struct Ports {
-    pub port0: bool,
-    pub port1: bool,
-    pub port2: bool,
-    pub port3: bool,
+pub struct Port {
+    pub active: bool,
+    pub dc_receive_time: u32,
+    /// The EtherCAT port number, ordered as 0 -> 3 -> 1 -> 2.
+    pub number: usize,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Topology {
+    Passthrough,
+    LineEnd,
+    Fork,
+}
+
+#[derive(Default, Debug)]
+pub struct Ports(pub [Port; 4]);
+
 impl Ports {
-    /// The end of a segment in the tree.
-    pub const LINE_END: Self = Ports {
-        port0: true,
-        port1: false,
-        port2: false,
-        port3: false,
-    };
-    /// A "normal" connection; a single slave device with no children.
-    pub const PASS_THROUGH: Self = Ports {
-        port0: true,
-        port1: true,
-        port2: false,
-        port3: false,
-    };
-    /// A split in the topology tree, e.g. an EK1100 with multiple modules on port 1.
-    pub const SPLIT: Self = Ports {
-        port0: true,
-        port1: true,
-        port2: true,
-        port3: false,
-    };
-    // TODO: Cross points in the topology; need test devices!
+    fn open_ports(&self) -> u8 {
+        self.0.iter().filter(|port| port.active).count() as u8
+    }
+
+    /// Input port is the port with the lowest receive time.
+    fn input_port(&self) -> Option<&Port> {
+        self.0
+            .iter()
+            .filter(|port| port.active)
+            .min_by_key(|port| port.dc_receive_time)
+    }
+
+    /// Find the next open port after the given port.
+    fn next_open_port(&self, port: &Port) -> Option<&Port> {
+        let mut number = port.number;
+
+        for _ in 0..4 {
+            let next_idx = match number {
+                0 => 3usize,
+                3 => 1,
+                1 => 2,
+                2 => 0,
+                _ => unreachable!(),
+            };
+
+            let next_port = self.0.get(next_idx).filter(|port| port.active);
+
+            if next_port.is_some() {
+                return next_port;
+            }
+
+            number = next_idx;
+        }
+
+        None
+    }
+
+    pub fn topology(&self) -> Topology {
+        match self.open_ports() {
+            1 => Topology::LineEnd,
+            2 => Topology::Passthrough,
+            3 => Topology::Fork,
+            // TODO: I need test devices!
+            4 => todo!("Cross topology not yet supported"),
+            _ => unreachable!(),
+        }
+    }
+
+    /// If the current node is a fork in the network, compute the propagation delay of all the
+    /// children.
+    ///
+    /// Returns `None` if the current node is not a fork.
+    pub fn child_delay(&self) -> Option<u32> {
+        if self.topology() == Topology::Fork {
+            let input_port = self.input_port()?;
+
+            // Because this is a fork, the slave's children will always be attached to the next open
+            // port after the input.
+            let children_port = self.next_open_port(input_port)?;
+
+            Some(children_port.dc_receive_time - input_port.dc_receive_time)
+        } else {
+            None
+        }
+    }
+
+    pub fn propagation_time(&self) -> Option<u32> {
+        let times = self
+            .0
+            .iter()
+            .filter_map(|port| port.active.then_some(port.dc_receive_time));
+
+        times
+            .clone()
+            .max()
+            .and_then(|max| times.min().map(|min| max - min))
+            .filter(|t| *t > 0)
+    }
 }
 
 #[derive(Debug)]
@@ -148,7 +214,6 @@ pub struct Slave {
 
     pub(crate) flags: SupportFlags,
 
-    // TODO: Do I need to keep this on the slave? It could move into the DC config code instead.
     pub(crate) ports: Ports,
 
     /// The index of the slave in the EtherCAT tree.
@@ -204,11 +269,30 @@ impl Slave {
         let ports = slave_ref
             .read::<DlStatus>(RegisterAddress::DlStatus, "DL status")
             .await
-            .map(|dl_status| Ports {
-                port0: dl_status.link_port0,
-                port1: dl_status.link_port1,
-                port2: dl_status.link_port2,
-                port3: dl_status.link_port3,
+            .map(|dl_status| {
+                // NOTE: dc_receive_times are populated during DC initialisation
+                Ports([
+                    Port {
+                        number: 0,
+                        active: dl_status.link_port0,
+                        dc_receive_time: 0,
+                    },
+                    Port {
+                        number: 3,
+                        active: dl_status.link_port1,
+                        dc_receive_time: 0,
+                    },
+                    Port {
+                        number: 1,
+                        active: dl_status.link_port2,
+                        dc_receive_time: 0,
+                    },
+                    Port {
+                        number: 2,
+                        active: dl_status.link_port3,
+                        dc_receive_time: 0,
+                    },
+                ])
             })?;
 
         log::debug!("Slave {:#06x} name {}", configured_address, name);
