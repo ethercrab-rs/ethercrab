@@ -30,6 +30,9 @@ pub struct SlaveGroup<
     slaves: heapless::Vec<Slave, MAX_SLAVES>,
     preop_safeop_hook: Option<HookFn<TIMEOUT, MAX_FRAMES, MAX_PDU_DATA>>,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
+    /// The number of bytes at the beginning of the PDI reserved for slave inputs.
+    read_pdi_len: usize,
+    /// The total length (I and O) of the PDI for this group.
     pdi_len: usize,
     start_address: u32,
     /// Expected working counter when performing a read/write to all slaves in this group.
@@ -72,6 +75,7 @@ impl<
             slaves: Default::default(),
             preop_safeop_hook: Default::default(),
             pdi: UnsafeCell::new([0u8; MAX_PDI]),
+            read_pdi_len: Default::default(),
             pdi_len: Default::default(),
             start_address: 0,
             group_working_counter: 0,
@@ -158,7 +162,9 @@ impl<
     where
         TIMEOUT: TimerFactory,
     {
-        let (_res, wkc) = client.lrw_buf(self.start_address, self.pdi_mut()).await?;
+        let (_res, wkc) = client
+            .lrw_buf(self.start_address, self.pdi_mut(), self.read_pdi_len)
+            .await?;
 
         // FIXME: AKD returns 2 when it should be 3. Why? I think it might be a read/write thing,
         // like if the data hasn't changed or something.
@@ -179,6 +185,7 @@ impl<
             slaves: self.slaves.as_mut(),
             max_pdi_len: MAX_PDI,
             preop_safeop_hook: self.preop_safeop_hook.as_ref(),
+            read_pdi_len: &mut self.read_pdi_len,
             pdi_len: &mut self.pdi_len,
             start_address: &mut self.start_address,
             group_working_counter: &mut self.group_working_counter,

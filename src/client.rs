@@ -578,11 +578,19 @@ where
     }
 
     /// Logical read/write, but direct from/to a mutable slice.
+    ///
+    /// Using the given `read_back_len = N`, only the first _N_ bytes will be read back into the
+    /// buffer, leaving the rest of the buffer as-transmitted.
+    ///
+    /// This is useful for only changing input data from slaves. If the passed buffer structure is
+    /// e.g. `IIIIOOOO` and a length of `4` is given, only the `I` parts will have data written into
+    /// them.
     // TODO: Chunked sends if buffer is too long for MAX_PDU_DATA
     pub async fn lrw_buf<'buf>(
         &self,
         address: u32,
         value: &'buf mut [u8],
+        read_back_len: usize,
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
         assert!(value.len() <= MAX_PDU_DATA, "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame",value.len(), MAX_PDU_DATA);
 
@@ -600,7 +608,7 @@ where
             return Err(Error::Pdu(PduError::Decode));
         }
 
-        value.copy_from_slice(data);
+        value[0..read_back_len].copy_from_slice(&data[0..read_back_len]);
 
         Ok((value, working_counter))
     }
