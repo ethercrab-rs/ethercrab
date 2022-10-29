@@ -1,10 +1,17 @@
 //! Configure Distributed Clocks (DC) for EK1100 and a couple of other modules.
 
 use async_ctrlc::CtrlC;
+use async_io::Timer;
 use ethercrab::{error::Error, std::tx_rx_task, Client, PduLoop, SlaveGroup, Timeouts};
-use futures_lite::FutureExt;
+use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 #[cfg(target_os = "windows")]
 // ASRock NIC
@@ -49,6 +56,38 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         .expect("Init");
 
     log::info!("Group has {} slaves", group.slaves().len());
+
+    for slave in 0..group.slaves().len() {
+        let (_i, o) = group.io(slave).unwrap();
+
+        log::info!("-> Slave {slave} has outputs: {}", o.is_some());
+    }
+
+    let mut tick_interval = Timer::interval(Duration::from_millis(250));
+
+    let group = Arc::new(group);
+    let group2 = group.clone();
+
+    smol::spawn(async move {
+        let mut cyclic_interval = Timer::interval(Duration::from_millis(2));
+
+        while let Some(_) = cyclic_interval.next().await {
+            group.tx_rx(&client).await.expect("TX/RX");
+        }
+    })
+    .detach();
+
+    while let Some(_) = tick_interval.next().await {
+        for slave in 0..group2.slaves().len() {
+            let (_i, o) = group2.io(slave).unwrap();
+
+            o.map(|o| {
+                for byte in o.iter_mut() {
+                    *byte = !*byte;
+                }
+            });
+        }
+    }
 
     Ok(())
 }
