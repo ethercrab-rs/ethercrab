@@ -87,7 +87,14 @@ where
             .config
             .mailbox
             .supported_protocols
-            .contains(MailboxProtocols::COE);
+            .contains(MailboxProtocols::COE)
+            && self
+                .slave
+                .config
+                .mailbox
+                .read
+                .map(|mbox| mbox.len > 0)
+                .unwrap_or(false);
 
         // PDOs must be configurd in PRE-OP state
         // Outputs are configured first, so will be before inputs in the PDI
