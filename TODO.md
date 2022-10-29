@@ -53,5 +53,5 @@
 - [ ] Create an Element room and put the link in the README
 - [ ] Support networks with slaves that don't support distributed clocks. This will likely need test
       hardware to get working properly.
-- [ ] Make inputs and outputs contiguous in PDI so we can just update inputs from response and not
+- [x] Make inputs and outputs contiguous in PDI so we can just update inputs from response and not
       clobber the outputs as currently occurs.
