@@ -434,6 +434,8 @@ SOEM calls `ecx_readPDOmapCA` or `ecx_readPDOmap` during initialisation. This th
 ## Delay calculation
 
 - Previous slave's propagation delay minus the current one's
-- If previous slave has children, subtract that from its delay
+- If previous slave has children (a fork only), subtract that time from its delay. This turns the
+  delay calculation from going through both branches to just the branch with the current slave in
+  it, e.g. EK1100 followed by LAN9252 should remove the delay of the EL2004, etc.
 - TODO: Instead of just the previous slave, walk back up the slave list and find the first
   DC-supporting slave.

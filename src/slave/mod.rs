@@ -127,7 +127,7 @@ impl Ports {
     }
 
     /// The port of the slave that first sees EtherCAT traffic.
-    fn entry_port(&self) -> Option<Port> {
+    pub fn entry_port(&self) -> Option<Port> {
         self.0
             .into_iter()
             .filter(|port| port.active)
