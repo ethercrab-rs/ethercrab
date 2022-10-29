@@ -151,7 +151,7 @@ where
 
         *self.num_slaves.borrow_mut() = num_slaves;
 
-        let mut slaves = heapless::Vec::<Slave, MAX_SLAVES>::new();
+        let mut slaves = heapless::Deque::<Slave, MAX_SLAVES>::new();
 
         // Set configured address for all discovered slaves
         for slave_idx in 0..num_slaves {
@@ -168,13 +168,13 @@ where
             let slave = Slave::new(self, usize::from(slave_idx), configured_address).await?;
 
             slaves
-                .push(slave)
+                .push_back(slave)
                 .map_err(|_| Error::Capacity(Item::Slave))?;
         }
 
-        self.configure_dc(&mut slaves).await?;
+        self.configure_dc(&mut slaves.as_mut_slices().0).await?;
 
-        while let Some(slave) = slaves.pop() {
+        while let Some(slave) = slaves.pop_front() {
             let configured_address = slave.configured_address;
             let slave_name = slave.name.clone();
 
