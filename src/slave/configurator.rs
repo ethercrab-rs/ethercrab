@@ -67,17 +67,14 @@ where
         Ok(())
     }
 
-    /// Second state configuration (PRE-OP -> SAFE-OP)
+    /// Second state configuration (PRE-OP -> SAFE-OP).
+    ///
+    /// PDOs must be configured in the PRE-OP state.
     pub(crate) async fn configure_fmmus(
         &mut self,
         mut offset: PdiOffset,
+        direction: PdoDirection,
     ) -> Result<PdiOffset, Error> {
-        let master_write_pdos = self.client.eeprom().master_write_pdos().await?;
-        let master_read_pdos = self.client.eeprom().master_read_pdos().await?;
-
-        log::trace!("Slave RX PDOs {:#?}", master_write_pdos);
-        log::trace!("Slave TX PDOs {:#?}", master_read_pdos);
-
         let sync_managers = self.client.eeprom().sync_managers().await?;
         let fmmu_usage = self.client.eeprom().fmmus().await?;
         let fmmu_sm_mappings = self.client.eeprom().fmmu_mappings().await?;
@@ -96,59 +93,73 @@ where
                 .map(|mbox| mbox.len > 0)
                 .unwrap_or(false);
 
-        // PDOs must be configurd in PRE-OP state
-        // Outputs are configured first, so will be before inputs in the PDI
-        let output_range = if has_coe {
-            self.configure_pdos_coe(
-                &sync_managers,
-                &fmmu_usage,
-                PdoDirection::MasterWrite,
-                &mut offset,
-            )
-            .await?
-        } else {
-            self.configure_pdos_eeprom(
-                &sync_managers,
-                &master_write_pdos,
-                &fmmu_sm_mappings,
-                &fmmu_usage,
-                PdoDirection::MasterWrite,
-                &mut offset,
-            )
-            .await?
-        };
+        match direction {
+            PdoDirection::MasterRead => {
+                let pdos = self.client.eeprom().master_read_pdos().await?;
 
-        let input_range = if has_coe {
-            self.configure_pdos_coe(
-                &sync_managers,
-                &fmmu_usage,
-                PdoDirection::MasterRead,
-                &mut offset,
-            )
-            .await?
-        } else {
-            self.configure_pdos_eeprom(
-                &sync_managers,
-                &master_read_pdos,
-                &fmmu_sm_mappings,
-                &fmmu_usage,
-                PdoDirection::MasterRead,
-                &mut offset,
-            )
-            .await?
-        };
+                log::trace!("Slave TX PDOs {:#?}", pdos);
 
+                let input_range = if has_coe {
+                    self.configure_pdos_coe(
+                        &sync_managers,
+                        &fmmu_usage,
+                        PdoDirection::MasterRead,
+                        &mut offset,
+                    )
+                    .await?
+                } else {
+                    self.configure_pdos_eeprom(
+                        &sync_managers,
+                        &pdos,
+                        &fmmu_sm_mappings,
+                        &fmmu_usage,
+                        PdoDirection::MasterRead,
+                        &mut offset,
+                    )
+                    .await?
+                };
+
+                self.slave.config.io.input = input_range;
+            }
+            PdoDirection::MasterWrite => {
+                let pdos = self.client.eeprom().master_write_pdos().await?;
+
+                log::trace!("Slave RX PDOs {:#?}", pdos);
+
+                let output_range = if has_coe {
+                    self.configure_pdos_coe(
+                        &sync_managers,
+                        &fmmu_usage,
+                        PdoDirection::MasterWrite,
+                        &mut offset,
+                    )
+                    .await?
+                } else {
+                    self.configure_pdos_eeprom(
+                        &sync_managers,
+                        &pdos,
+                        &fmmu_sm_mappings,
+                        &fmmu_usage,
+                        PdoDirection::MasterWrite,
+                        &mut offset,
+                    )
+                    .await?
+                };
+
+                self.slave.config.io.output = output_range;
+            }
+        }
+
+        Ok(offset)
+    }
+
+    pub async fn request_safe_op(&self) -> Result<(), Error> {
         // Restore EEPROM mode
         self.client.set_eeprom_mode(SiiOwner::Pdi).await?;
 
         self.client.request_slave_state(SlaveState::SafeOp).await?;
 
-        self.slave.config.io = IoRanges {
-            input: input_range,
-            output: output_range,
-        };
-
-        Ok(offset)
+        Ok(())
     }
 
     async fn write_sm_config(
@@ -501,7 +512,7 @@ where
     }
 }
 
-enum PdoDirection {
+pub(crate) enum PdoDirection {
     MasterRead,
     MasterWrite,
 }
