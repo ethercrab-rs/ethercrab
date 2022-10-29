@@ -14,8 +14,8 @@
 - [x] Use [embassy-futures](https://crates.io/crates/embassy-futures) for some things instead of
       smol or whatever I'm using now.
 - [x] Optimise find string function to not use a buffer of 255 bytes on the stack
-- [ ] **Distributed clocks**
-  - [ ] Figure out topology from 0x0110/0x0111 and support more than naive in -> out
+- [x] **Distributed clocks**
+  - [x] Figure out topology from 0x0110/0x0111 and support more than naive in -> out
 - [ ] Find a way of storing PDUs in a single buffer instead of using a bunch of `heapless::Vec`s
 - [x] Byte-align each slave's PDI access for better safety
 - [x] Mailbox support for SDOs
@@ -51,3 +51,7 @@
 - [ ] Benchmarks
   - Look into Iai <https://github.com/bheisler/iai>
 - [ ] Create an Element room and put the link in the README
+- [ ] Support networks with slaves that don't support distributed clocks. This will likely need test
+      hardware to get working properly.
+- [ ] Make inputs and outputs contiguous in PDI so we can just update inputs from response and not
+      clobber the outputs as currently occurs.
