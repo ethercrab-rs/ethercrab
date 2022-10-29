@@ -134,6 +134,13 @@ impl Ports {
             .min_by_key(|port| port.dc_receive_time)
     }
 
+    fn last_port(&self) -> Option<Port> {
+        self.0
+            .into_iter()
+            .filter(|port| port.active)
+            .max_by_key(|port| port.dc_receive_time)
+    }
+
     // fn port_by_number(&self, number: impl Into<usize>) -> &Port {
     //     let number: usize = number.into();
 
@@ -254,6 +261,10 @@ impl Ports {
         }
     }
 
+    pub fn is_last_port(&self, port: &Port) -> bool {
+        self.last_port().filter(|p| p == port).is_some()
+    }
+
     /// If the current node is a fork in the network, compute the propagation delay of all the
     /// children.
     ///
@@ -309,6 +320,12 @@ pub struct Slave {
     ///
     /// For the first slave in the network, this will always be `None`.
     pub(crate) parent_index: Option<usize>,
+
+    /// Propagation delay in nanoseconds.
+    ///
+    /// `u32::MAX` gives a maximum propagation delay of ~4.2 seconds for the last slave in the
+    /// network.
+    pub(crate) propagation_delay: u32,
 }
 
 impl Slave {
@@ -392,6 +409,7 @@ impl Slave {
             index,
             parent_index: None,
             ports,
+            propagation_delay: 0,
         })
     }
 
