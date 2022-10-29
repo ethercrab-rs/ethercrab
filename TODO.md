@@ -55,3 +55,9 @@
       hardware to get working properly.
 - [x] Make inputs and outputs contiguous in PDI so we can just update inputs from response and not
       clobber the outputs as currently occurs.
+- [ ] Individual timeouts for ECSM transitions
+  - TwinCAT shows it like this:
+    - I -> P: 3000,
+    - P -> S, S -> O: 10000
+    - Back to P, I: 5000,
+    - O -> S: 200

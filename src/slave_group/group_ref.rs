@@ -39,9 +39,11 @@ where
         for slave in self.slaves.iter_mut() {
             let mut slave_config = SlaveConfigurator::new(client, slave);
 
+            // TODO: Split `configure_from_eeprom` so we can put all slaves into SAFE-OP without
+            // waiting, then wait globally for all slaves to reach that state. Currently startup
+            // time is extremely slow.
+            // NOTE: This method requests and waits for the slave to enter PRE-OP
             slave_config.configure_mailboxes().await?;
-
-            log::debug!("Slave group configured SAFE-OP");
 
             if let Some(hook) = self.preop_safeop_hook {
                 let conf = slave_config.as_ref();
@@ -51,6 +53,7 @@ where
                 fut.await?;
             }
 
+            // We're in PRE-OP at this point
             offset = slave_config
                 .configure_fmmus(offset, PdoDirection::MasterRead)
                 .await?;
@@ -60,7 +63,7 @@ where
 
         *self.read_pdi_len = (offset.start_address - *self.start_address) as usize;
 
-        log::debug!("Slave mailboxes configured and init hooks called, moving to PRE-OP");
+        log::debug!("Slave mailboxes configured and init hooks called");
 
         // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
@@ -68,13 +71,16 @@ where
         for slave in self.slaves.iter_mut() {
             let mut slave_config = SlaveConfigurator::new(client, slave);
 
+            // Still in PRE-OP
             offset = slave_config
                 .configure_fmmus(offset, PdoDirection::MasterWrite)
                 .await?;
 
             // We're done configuring FMMUs, etc, now we can request this slave go into SAFE-OP
-            slave_config.request_safe_op().await?;
+            slave_config.request_safe_op_nowait().await?;
         }
+
+        log::debug!("Slave FMMUs configured for group. Able to move to SAFE-OP");
 
         let pdi_len = (offset.start_address - *self.start_address) as usize;
 

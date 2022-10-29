@@ -33,7 +33,10 @@ pub struct Timeouts {
     pub wait_loop_delay: Duration,
 
     /// How long to wait for a slave mailbox to become ready.
-    pub mailbox: Duration,
+    pub mailbox_echo: Duration,
+
+    /// How long to wait for a response to be read from the slave's response mailbox.
+    pub mailbox_response: Duration,
 }
 
 impl Timeouts {
@@ -52,7 +55,8 @@ impl Default for Timeouts {
             pdu: Duration::from_micros(30_000),
             eeprom: Duration::from_millis(10),
             wait_loop_delay: Duration::from_millis(0),
-            mailbox: Duration::from_millis(10),
+            mailbox_echo: Duration::from_millis(100),
+            mailbox_response: Duration::from_millis(1000),
         }
     }
 }
