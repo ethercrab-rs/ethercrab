@@ -5,7 +5,7 @@ use crate::{
     eeprom::{types::SiiOwner, Eeprom},
     error::Error,
     pdu_data::{PduData, PduRead},
-    pdu_loop::CheckWorkingCounter,
+    pdu_loop::{CheckWorkingCounter, PduResponse},
     register::RegisterAddress,
     slave_state::SlaveState,
     timer_factory::{Timeouts, TimerFactory},
@@ -47,6 +47,32 @@ where
         &self.client.timeouts
     }
 
+    pub(crate) async fn read_ignore_wkc<T>(
+        &self,
+        register: RegisterAddress,
+    ) -> Result<PduResponse<T>, Error>
+    where
+        T: PduRead,
+        <T as PduRead>::Error: Debug,
+    {
+        self.client.fprd(self.configured_address, register).await
+    }
+
+    /// A wrapper around an FPWR service to this slave's configured address.
+    pub(crate) async fn write_ignore_wkc<T>(
+        &self,
+        register: impl Into<u16>,
+        value: T,
+    ) -> Result<PduResponse<T>, Error>
+    where
+        T: PduData,
+        <T as PduRead>::Error: Debug,
+    {
+        self.client
+            .fpwr(self.configured_address, register, value)
+            .await
+    }
+
     pub(crate) async fn read<T>(
         &self,
         register: RegisterAddress,
@@ -56,10 +82,7 @@ where
         T: PduRead,
         <T as PduRead>::Error: Debug,
     {
-        self.client
-            .fprd(self.configured_address, register)
-            .await?
-            .wkc(1, context)
+        self.read_ignore_wkc(register).await?.wkc(1, context)
     }
 
     /// A wrapper around an FPWR service to this slave's configured address.
@@ -73,8 +96,7 @@ where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
-        self.client
-            .fpwr(self.configured_address, register, value)
+        self.write_ignore_wkc(register, value)
             .await?
             .wkc(1, context)
     }

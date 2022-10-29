@@ -7,7 +7,7 @@ use crate::{
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::{PortDescriptors, RegisterAddress, SupportFlags},
-    slave::{slave_client::SlaveClient, Slave, Topology},
+    slave::{ports::Topology, slave_client::SlaveClient, Slave},
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
     timer_factory::{Timeouts, TimerFactory},
@@ -118,6 +118,16 @@ where
             core::mem::size_of::<u64>() as u16,
         )
         .await?;
+        self.blank_memory(
+            RegisterAddress::DcSystemTimeOffset,
+            core::mem::size_of::<u64>() as u16,
+        )
+        .await?;
+        self.blank_memory(
+            RegisterAddress::DcSystemTimeTransmissionDelay,
+            core::mem::size_of::<u32>() as u16,
+        )
+        .await?;
 
         Ok(())
     }
@@ -200,11 +210,9 @@ where
         Ok(groups)
     }
 
+    /// Configure distributed clocks.
     async fn configure_dc(&self, slaves: &mut [Slave]) -> Result<(), Error> {
         let num_slaves = slaves.len();
-
-        // TODO: Read from slave list flags.dc_supported
-        let first_dc_supported_slave = 0x1000;
 
         // Latch receive times into all ports of all slaves.
         self.bwr(RegisterAddress::DcTimePort0, 0u32)
@@ -215,9 +223,9 @@ where
 
         // let ethercat_offset = Utc.ymd(2000, 01, 01).and_hms(0, 0, 0);
 
+        // TODO: Allow passing in of an initial value
         // let now_nanos =
         //     chrono::Utc::now().timestamp_nanos() - dbg!(ethercat_offset.timestamp_nanos());
-        // TODO: Allow passing in of an initial value
         let now_nanos = 0;
 
         let mut delay_accum = 0;
@@ -256,9 +264,23 @@ where
                 }
             }
 
-            log::info!("Slave {:#06x} {}", slave.configured_address, slave.name);
+            log::info!(
+                "Slave {:#06x} {} {}",
+                slave.configured_address,
+                slave.name,
+                if slave.flags.dc_supported {
+                    "has DC"
+                } else {
+                    "no DC"
+                }
+            );
 
             let sl = SlaveClient::new(self, slave.configured_address);
+
+            // NOTE: Defined as a u64 in the spec
+            let (dc_receive_time, _wkc) = sl
+                .read_ignore_wkc::<i64>(RegisterAddress::DcReceiveTime)
+                .await?;
 
             let [time_p0, time_p1, time_p2, time_p3] = sl
                 .read::<[u32; 4]>(RegisterAddress::DcTimePort0, "Port receive times")
@@ -332,6 +354,21 @@ where
                 // TODO?
                 log::warn!("--> Slave uses seconds instead of ns?");
             }
+
+            // Write system clock offset
+            // NOTE: Spec says this register is a u64
+            sl.write_ignore_wkc::<i64>(
+                RegisterAddress::DcSystemTimeOffset,
+                -dc_receive_time + now_nanos,
+            )
+            .await?;
+
+            // Write propagation delay
+            sl.write_ignore_wkc::<u32>(
+                RegisterAddress::DcSystemTimeTransmissionDelay,
+                slave.propagation_delay,
+            )
+            .await?;
         }
 
         Ok(())
