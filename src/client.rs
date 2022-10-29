@@ -326,13 +326,20 @@ where
                     .expect("No free ports. Logic error.");
 
                 let parent_port = parent.ports.0[assigned_port_idx];
-
                 let prev_parent_port = parent.ports.prev_open_port(&parent_port).unwrap();
+                let parent_time = parent_port.dc_receive_time - prev_parent_port.dc_receive_time;
+
+                let entry_port = slave.ports.entry_port().unwrap();
+                let prev_port = slave.ports.prev_open_port(&entry_port).unwrap();
+                let my_time = prev_port.dc_receive_time - entry_port.dc_receive_time;
+
+                let delay = (parent_time - my_time) / 2;
 
                 log::info!(
-                    "--> Parent port number {} (prev parent port {})",
-                    parent_port.number,
-                    prev_parent_port.number
+                    "--> Parent time {} ns, my time {} ns, delay {} ns",
+                    parent_time,
+                    my_time,
+                    delay
                 );
 
                 // let prent_port = parent.downstream_port()?;
