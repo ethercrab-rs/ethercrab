@@ -415,22 +415,25 @@ where
             .wkc(1, "SDO upload request")?;
 
         // Wait for slave send mailbox to be ready
-        crate::timer_factory::timeout::<TIMEOUT, _, _>(self.client.timeouts().mailbox, async {
-            let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
+        crate::timer_factory::timeout::<TIMEOUT, _, _>(
+            self.client.timeouts().mailbox_echo,
+            async {
+                let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
 
-            loop {
-                let sm = self
-                    .client
-                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
-                    .await?;
+                loop {
+                    let sm = self
+                        .client
+                        .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                        .await?;
 
-                if sm.status.mailbox_full {
-                    break Result::<(), _>::Ok(());
+                    if sm.status.mailbox_full {
+                        break Result::<(), _>::Ok(());
+                    }
+
+                    self.client.timeouts().loop_tick::<TIMEOUT>().await;
                 }
-
-                self.client.timeouts().loop_tick::<TIMEOUT>().await;
-            }
-        })
+            },
+        )
         .await
         .map_err(|e| {
             log::error!("Mailbox read ready timeout");

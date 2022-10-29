@@ -79,6 +79,8 @@ where
         let fmmu_usage = self.client.eeprom().fmmus().await?;
         let fmmu_sm_mappings = self.client.eeprom().fmmu_mappings().await?;
 
+        // TODO: Add an assertion that slave is in PRE-OP
+
         let has_coe = self
             .slave
             .config
@@ -92,6 +94,8 @@ where
                 .read
                 .map(|mbox| mbox.len > 0)
                 .unwrap_or(false);
+
+        log::debug!("Slave {:#06x} has CoE", self.slave.configured_address);
 
         match direction {
             PdoDirection::MasterRead => {
@@ -153,11 +157,13 @@ where
         Ok(offset)
     }
 
-    pub async fn request_safe_op(&self) -> Result<(), Error> {
+    pub async fn request_safe_op_nowait(&self) -> Result<(), Error> {
         // Restore EEPROM mode
         self.client.set_eeprom_mode(SiiOwner::Pdi).await?;
 
-        self.client.request_slave_state(SlaveState::SafeOp).await?;
+        self.client
+            .request_slave_state_nowait(SlaveState::SafeOp)
+            .await?;
 
         Ok(())
     }
