@@ -206,6 +206,7 @@ where
         // TODO: Read from slave list flags.dc_supported
         let first_dc_supported_slave = 0x1000;
 
+        // Latch receive times into all ports of all slaves.
         self.bwr(RegisterAddress::DcTimePort0, 0u32)
             .await
             .expect("Broadcast time")
@@ -216,8 +217,10 @@ where
 
         // let now_nanos =
         //     chrono::Utc::now().timestamp_nanos() - dbg!(ethercat_offset.timestamp_nanos());
-
+        // TODO: Allow passing in of an initial value
         let now_nanos = 0;
+
+        let mut delay_accum = 0;
 
         for i in 0..slaves.len() {
             let (parents, rest) = slaves.split_at_mut(i);
@@ -255,43 +258,7 @@ where
 
             log::info!("Slave {:#06x} {}", slave.configured_address, slave.name);
 
-            // log::info!(
-            //     "--> Parent {:?} -> self {} ({:?})",
-            //     slave.parent_index,
-            //     slave.index,
-            //     slave.ports.topology()
-            // );
-
-            log::info!(
-                "--> Open ports (0: {}, 1: {}, 2: {}, 3: {})",
-                slave.ports.0[0].active,
-                slave.ports.0[1].active,
-                slave.ports.0[2].active,
-                slave.ports.0[3].active,
-            );
-
             let sl = SlaveClient::new(self, slave.configured_address);
-
-            let flags = sl
-                .read::<SupportFlags>(RegisterAddress::SupportFlags, "Supported flags")
-                .await?;
-
-            // let receive_time_p0_nanos = sl
-            //     .read::<i64>(RegisterAddress::DcReceiveTime, "Receive time P0")
-            //     .await?;
-            // // .wkc(1, "Receive time P0")
-            // // .unwrap();
-
-            // let offset = u64::try_from(now_nanos).expect("Why negative???") - receive_time_p0;
-            // let offset = -receive_time_p0_nanos + now_nanos;
-
-            // dbg!(receive_time_p0_nanos, offset);
-
-            // sl.write(RegisterAddress::DcSystemTimeOffset, offset)
-            //     .await?;
-            // Why does this sometimes fail with wkc = 0? Looks like it's when it doesn't have an output port?
-            // .wkc(1, "Write offset")
-            // .expect("Write offset");
 
             let [time_p0, time_p1, time_p2, time_p3] = sl
                 .read::<[u32; 4]>(RegisterAddress::DcTimePort0, "Port receive times")
@@ -333,70 +300,36 @@ where
                 let prev_port = slave.ports.prev_open_port(&entry_port).unwrap();
                 let my_time = prev_port.dc_receive_time - entry_port.dc_receive_time;
 
+                // The delay between the previous slave and this one
                 let delay = (parent_time - my_time) / 2;
 
+                delay_accum += delay;
+
+                // If parent has children but we're not one of them, add the children's delay to
+                // this slave's offset.
+                if let Some(child_delay) = parent
+                    .ports
+                    .child_delay()
+                    .filter(|_| parent.ports.is_last_port(&parent_port))
+                {
+                    log::info!("--> Child delay of parent {}", child_delay);
+
+                    delay_accum += child_delay / 2;
+                }
+
+                slave.propagation_delay = delay_accum;
+
                 log::info!(
-                    "--> Parent time {} ns, my time {} ns, delay {} ns",
+                    "--> Parent time {} ns, my time {} ns, delay {} ns (Δ {} ns)",
                     parent_time,
                     my_time,
+                    delay_accum,
                     delay
                 );
-
-                // let prent_port = parent.downstream_port()?;
-
-                // log::info!("--> Parent time {parent_propagation_time}");
             }
 
-            // // Don't look for parent port for first slave; it doesn't have one (well, it's the
-            // // master)
-            // let propagation_delay = if i > 0 {
-            //     /// Find the port on the parent slave this slave is connected to.
-            //     ///
-            //     /// Parent port order goes:
-            //     ///
-            //     /// 3 -> 1 -> 2 -> 0
-            //     fn parent_port<'port>(ports: &'port [PortStuff; 4]) -> &'port PortStuff {
-            //         let reordered = [&ports[3], &ports[1], &ports[2], &ports[0]];
-
-            //         // SAFETY: If we're talking to this slave, the data MUST have come through a parent,
-            //         // so there has to be at least one active port.
-            //         reordered.iter().find(|port| port.active).unwrap()
-            //     }
-
-            //     // Entry port into the slave is port with lowest latched DC time
-            //     let entry_port = ports
-            //         .into_iter()
-            //         .filter(|port| port.active)
-            //         .min_by_key(|port| port.dc_time)
-            //         .unwrap();
-
-            //     // The port on the upstream slave this slave is connected to
-            //     let upstream_port = parent_port(&prev_slave_ports);
-
-            //     // dbg!(entry_port, upstream_port);
-
-            //     log::info!(
-            //         "--> Parent port {} -> this slave port {}",
-            //         upstream_port.number,
-            //         entry_port.number
-            //     );
-
-            //     // This is correct to SOEM. 720 or 720ns using two LAN9252
-            //     (time_p1 - time_p0) / 2
-            // } else {
-            //     0
-            // };
-
-            // prev_slave_ports = ports;
-
-            // log::info!(
-            //     "Slave {:#06x} receive time: {} ns, propagation delay {propagation_delay} ns",
-            //     slave_addr,
-            //     receive_time_p0_nanos
-            // );
-
-            if !flags.has_64bit_dc {
-                // TODO
+            if !slave.flags.has_64bit_dc {
+                // TODO?
                 log::warn!("--> Slave uses seconds instead of ns?");
             }
         }
