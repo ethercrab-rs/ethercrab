@@ -99,6 +99,8 @@ where
         Ok(())
     }
 
+    // FIXME: When adding a powered on slave to the network, something breaks. Maybe need to reset
+    // the configured address? But this broke other stuff so idk...
     async fn reset_slaves(&self) -> Result<(), Error> {
         // Reset slaves to init
         self.bwr(
@@ -205,6 +207,7 @@ where
             log::debug!("After group #{i} offset: {:?}", offset);
         }
 
+        // Wait for all slaves to reach SAFE-OP
         self.wait_for_state(SlaveState::SafeOp).await?;
 
         Ok(groups)
@@ -264,7 +267,7 @@ where
                 }
             }
 
-            log::info!(
+            log::debug!(
                 "Slave {:#06x} {} {}",
                 slave.configured_address,
                 slave.name,
@@ -298,8 +301,10 @@ where
             let loop_propagation_time = slave.ports.propagation_time();
             let child_delay = slave.ports.child_delay().unwrap_or(0);
 
-            log::info!("--> Times {time_p0} ({d01}) {time_p1} ({d12}) {time_p2} ({d32}) {time_p3}");
-            log::info!(
+            log::debug!(
+                "--> Times {time_p0} ({d01}) {time_p1} ({d12}) {time_p2} ({d32}) {time_p3}"
+            );
+            log::debug!(
                 "--> Propagation time {loop_propagation_time:?} ns, child delay {child_delay} ns"
             );
 
@@ -334,14 +339,14 @@ where
                     .child_delay()
                     .filter(|_| parent.ports.is_last_port(&parent_port))
                 {
-                    log::info!("--> Child delay of parent {}", child_delay);
+                    log::debug!("--> Child delay of parent {}", child_delay);
 
                     delay_accum += child_delay / 2;
                 }
 
                 slave.propagation_delay = delay_accum;
 
-                log::info!(
+                log::debug!(
                     "--> Parent time {} ns, my time {} ns, delay {} ns (Δ {} ns)",
                     parent_time,
                     my_time,
