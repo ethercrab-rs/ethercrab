@@ -38,8 +38,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let client = Arc::new(Client::<MAX_FRAMES, MAX_PDU_DATA, smol::Timer>::new(
         &PDU_LOOP,
         Timeouts {
-            wait_loop_delay: Duration::from_millis(5),
-            mailbox: Duration::from_millis(50),
+            wait_loop_delay: Duration::from_millis(0),
             ..Default::default()
         },
     ));
@@ -57,36 +56,56 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Group has {} slaves", group.slaves().len());
 
-    for slave in 0..group.slaves().len() {
+    for (slave, slave_stuff) in group.slaves().iter().enumerate() {
         let (_i, o) = group.io(slave).unwrap();
 
-        log::info!("-> Slave {slave} has outputs: {}", o.is_some());
+        log::info!(
+            "-> Slave {slave} {} has outputs: {}",
+            slave_stuff.name,
+            o.is_some()
+        );
     }
 
-    let mut tick_interval = Timer::interval(Duration::from_millis(250));
+    let mut tick_interval = Timer::interval(Duration::from_millis(2));
 
     let group = Arc::new(group);
     let group2 = group.clone();
 
-    smol::spawn(async move {
-        let mut cyclic_interval = Timer::interval(Duration::from_millis(2));
+    // smol::spawn(async move {
+    //     let mut cyclic_interval = Timer::interval(Duration::from_millis(2));
 
-        while let Some(_) = cyclic_interval.next().await {
-            group.tx_rx(&client).await.expect("TX/RX");
-        }
-    })
-    .detach();
+    //     while let Some(_) = cyclic_interval.next().await {
+    //         group.tx_rx(&client).await.expect("TX/RX");
+    //     }
+    // })
+    // .detach();
 
     while let Some(_) = tick_interval.next().await {
-        for slave in 0..group2.slaves().len() {
-            let (_i, o) = group2.io(slave).unwrap();
+        group.tx_rx(&client).await.expect("TX/RX");
 
-            o.map(|o| {
-                for byte in o.iter_mut() {
-                    *byte = !*byte;
-                }
-            });
-        }
+        log::info!(
+            "I {:?} O {:?}",
+            group2.DELETEME_pdi_i(),
+            group2.DELETEME_pdi_o()
+        );
+
+        let (_i, o) = group2.io(4).unwrap();
+
+        o.map(|o| {
+            for byte in o.iter_mut() {
+                *byte += 1;
+            }
+        });
+
+        // for slave in 0..group2.slaves().len() {
+        //     let (_i, o) = group2.io(slave).unwrap();
+
+        //     o.map(|o| {
+        //         for byte in o.iter_mut() {
+        //             *byte = !*byte;
+        //         }
+        //     });
+        // }
     }
 
     Ok(())

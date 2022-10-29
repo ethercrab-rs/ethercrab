@@ -121,7 +121,7 @@ where
         .await
     }
 
-    pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
+    pub async fn request_slave_state_nowait(&self, desired_state: SlaveState) -> Result<(), Error> {
         debug!(
             "Set state {} for slave address {:#04x}",
             desired_state, self.configured_address
@@ -134,6 +134,12 @@ where
             "AL control",
         )
         .await?;
+
+        self.wait_for_state(desired_state).await
+    }
+
+    pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
+        self.request_slave_state_nowait(desired_state).await?;
 
         self.wait_for_state(desired_state).await
     }

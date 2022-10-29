@@ -125,11 +125,22 @@ impl<
     }
 
     fn pdi_mut(&self) -> &mut [u8] {
-        unsafe { &mut *self.pdi.get() }
+        let all_buf = unsafe { &mut *self.pdi.get() };
+
+        &mut all_buf[0..self.pdi_len]
     }
 
     fn pdi(&self) -> &[u8] {
-        unsafe { &*self.pdi.get() }
+        let all_buf = unsafe { &*self.pdi.get() };
+
+        &all_buf[0..self.pdi_len]
+    }
+
+    pub fn DELETEME_pdi_i(&self) -> &[u8] {
+        &self.pdi()[0..self.read_pdi_len]
+    }
+    pub fn DELETEME_pdi_o(&self) -> &[u8] {
+        &self.pdi()[self.read_pdi_len..]
     }
 
     /// Get the input and output segments of the PDI for a given slave.
