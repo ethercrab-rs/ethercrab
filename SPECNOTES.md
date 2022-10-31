@@ -263,6 +263,8 @@ Webinar notes
 - We need to know the entire tree structure to compute propagation delays correctly
   - `SlaveGroupContainer` needs a way to get/establish/whatever slave relationships.
 
+ETG1000.4 Table 61 mentions DC user P1 to DC user P12 - these are defined in ETG1000.6 Table 27
+
 ## Topology
 
 Helpful webinar:

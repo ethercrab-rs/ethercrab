@@ -207,6 +207,8 @@ where
             log::debug!("After group #{i} offset: {:?}", offset);
         }
 
+        log::debug!("Total PDI {} bytes", offset.start_address);
+
         // Wait for all slaves to reach SAFE-OP
         self.wait_for_state(SlaveState::SafeOp).await?;
 
@@ -375,6 +377,11 @@ where
             )
             .await?;
         }
+
+        // TODO: Set a flag so we can periodically send a FRMW to keep clocks in sync. Maybe add a
+        // config item to set minimum tick rate?
+
+        // TODO: See if it's possible to programmatically read the maximum cycle time from slave info
 
         Ok(())
     }
@@ -591,6 +598,7 @@ where
     /// e.g. `IIIIOOOO` and a length of `4` is given, only the `I` parts will have data written into
     /// them.
     // TODO: Chunked sends if buffer is too long for MAX_PDU_DATA
+    // TODO: DC sync FRMW
     pub async fn lrw_buf<'buf>(
         &self,
         address: u32,

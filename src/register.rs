@@ -66,6 +66,21 @@ pub enum RegisterAddress {
     DcSystemTime = 0x0910,
     DcSystemTimeOffset = 0x0920,
     DcSystemTimeTransmissionDelay = 0x0928,
+
+    /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u8`.
+    ///
+    /// AKA ETG1000.4 Table 61 DC user P1.
+    DcSyncActive = 0x0981,
+
+    /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u32`.
+    ///
+    /// AKA ETG1000.4 Table 61 DC user P4.
+    DcSyncStartTime = 0x0990,
+
+    /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u32`.
+    ///
+    /// AKA ETG1000.4 Table 61 DC user P5.
+    DcSync0CycleTime = 0x09A0,
 }
 
 impl From<RegisterAddress> for u16 {
