@@ -66,6 +66,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         );
     }
 
+    // NOTE: This is currently hardcoded as 2ms inside the DC sync config, so keep them the same.
     let mut tick_interval = Timer::interval(Duration::from_millis(2));
 
     let group = Arc::new(group);
@@ -83,29 +84,29 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     while let Some(_) = tick_interval.next().await {
         group.tx_rx(&client).await.expect("TX/RX");
 
-        log::info!(
-            "I {:?} O {:?}",
-            group2.DELETEME_pdi_i(),
-            group2.DELETEME_pdi_o()
-        );
+        // log::info!(
+        //     "I {:?} O {:?}",
+        //     group2.DELETEME_pdi_i(),
+        //     group2.DELETEME_pdi_o()
+        // );
 
-        let (_i, o) = group2.io(4).unwrap();
+        // let (_i, o) = group2.io(4).unwrap();
 
-        o.map(|o| {
-            for byte in o.iter_mut() {
-                *byte += 1;
-            }
-        });
+        // o.map(|o| {
+        //     for byte in o.iter_mut() {
+        //         *byte += 1;
+        //     }
+        // });
 
-        // for slave in 0..group2.slaves().len() {
-        //     let (_i, o) = group2.io(slave).unwrap();
+        for slave in 0..group2.slaves().len() {
+            let (_i, o) = group2.io(slave).unwrap();
 
-        //     o.map(|o| {
-        //         for byte in o.iter_mut() {
-        //             *byte = !*byte;
-        //         }
-        //     });
-        // }
+            o.map(|o| {
+                for byte in o.iter_mut() {
+                    *byte = !*byte;
+                }
+            });
+        }
     }
 
     Ok(())

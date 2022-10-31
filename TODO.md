@@ -61,3 +61,8 @@
     - P -> S, S -> O: 10000
     - Back to P, I: 5000,
     - O -> S: 200
+- [ ] EL3004 fails to initialise with
+      `thread 'main' panicked at 'Init: NotFound { item: Fmmu, index: None }', examples\dc.rs:55:10`.
+      Same with EL3204 and presumably EL3202. Works fine with EL2828 and EL1018
+- [ ] Figure out why LAN9252 doesn't like showing any output. Inputs work fine so maybe a DC sync
+      issue? Idk.
