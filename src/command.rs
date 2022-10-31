@@ -53,6 +53,13 @@ pub enum Command {
         /// Memory location to read from.
         register: u16,
     },
+    Frmw {
+        /// Configured station address.
+        address: u16,
+
+        /// Memory location to read from.
+        register: u16,
+    },
     Lwr {
         /// Logical address.
         address: u32,
@@ -80,6 +87,7 @@ impl Command {
             Self::Apwr { .. } => CommandCode::Apwr,
             Self::Fpwr { .. } => CommandCode::Fpwr,
             Self::Lwr { .. } => CommandCode::Lwr,
+            Self::Frmw { .. } => CommandCode::Frmw,
 
             // Read/writes
             Self::Lrw { .. } => CommandCode::Lrw,
@@ -98,6 +106,7 @@ impl Command {
             | Command::Apwr { address, register }
             | Command::Fprd { address, register }
             | Command::Fpwr { address, register }
+            | Command::Frmw { address, register }
             | Command::Brd { address, register }
             | Command::Bwr { address, register } => {
                 let buf = gen_simple(cookie_factory::bytes::le_u16(address), buf)?;
@@ -129,6 +138,7 @@ pub enum CommandCode {
     Bwr = 0x08,
     Apwr = 0x02,
     Fpwr = 0x05,
+    Frmw = 0x0E,
     Lwr = 0x0B,
 
     // Read/writes
@@ -169,6 +179,10 @@ impl CommandCode {
                 register,
             })(i),
             Self::Fpwr => map(pair(le_u16, le_u16), |(address, register)| Command::Fpwr {
+                address,
+                register,
+            })(i),
+            Self::Frmw => map(pair(le_u16, le_u16), |(address, register)| Command::Frmw {
                 address,
                 register,
             })(i),
