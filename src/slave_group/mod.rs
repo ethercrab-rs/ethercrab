@@ -177,10 +177,8 @@ impl<
             .lrw_buf(self.start_address, self.pdi_mut(), self.read_pdi_len)
             .await?;
 
-        // FIXME: AKD returns 2 when it should be 3. Why? I think it might be a read/write thing,
-        // like if the data hasn't changed or something.
-        // if wkc != self.group_working_counter {
-        if usize::from(wkc) < self.slaves.len() {
+        // TODO: AKD fails this check for some reason - check computation of `group_working_couneter`.
+        if wkc != self.group_working_counter {
             Err(Error::WorkingCounter {
                 expected: self.slaves.len() as u16,
                 received: wkc,
