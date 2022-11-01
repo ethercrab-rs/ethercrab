@@ -60,6 +60,8 @@ where
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
         self.client.set_eeprom_mode(SiiOwner::Pdi).await?;
 
+        log::debug!("Mailboxes configured. Waiting for PRE-OP");
+
         self.client.request_slave_state(SlaveState::PreOp).await?;
 
         self.client.set_eeprom_mode(SiiOwner::Master).await?;
@@ -358,6 +360,10 @@ where
                 (sm_bit_len + 7) / 8
             );
 
+            let sm_config = self
+                .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
+                .await?;
+
             if sm_bit_len > 0 {
                 let fmmu_index = fmmu_usage
                     .iter()
@@ -368,13 +374,12 @@ where
                     })?;
 
                 self.write_fmmu_config(
-                    sync_manager_index,
-                    sync_manager,
                     sm_bit_len,
                     fmmu_index,
                     offset,
                     total_bit_len,
                     desired_sm_type,
+                    &sm_config,
                 )
                 .await?;
             }
@@ -390,18 +395,13 @@ where
 
     async fn write_fmmu_config(
         &self,
-        sync_manager_index: u8,
-        sync_manager: &SyncManager,
         sm_bit_len: u16,
         fmmu_index: usize,
         offset: &mut PdiOffset,
         total_bit_len: u16,
         desired_sm_type: SyncManagerType,
+        sm_config: &SyncManagerChannel,
     ) -> Result<(), Error> {
-        let sm_config = self
-            .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
-            .await?;
-
         let fmmu_config = Fmmu {
             logical_start_address: offset.start_address,
             length_bytes: sm_config.length_bytes,
@@ -486,14 +486,17 @@ where
                     index: None,
                 })?;
 
+            let sm_config = self
+                .write_sm_config(sync_manager_index, sync_manager, (total_bit_len + 7) / 8)
+                .await?;
+
             self.write_fmmu_config(
-                sync_manager_index,
-                sync_manager,
                 bit_len,
                 usize::from(fmmu_index),
                 offset,
                 total_bit_len,
                 sm_type,
+                &sm_config,
             )
             .await?;
         }

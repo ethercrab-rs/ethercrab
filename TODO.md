@@ -67,6 +67,6 @@
 - [ ] Figure out why LAN9252 doesn't like showing any output. Inputs work fine so maybe a DC sync
       issue? Idk.
 - [ ] Fix timeouts going into SAFE-OP
-  - [ ] EL3004
+  - [x] EL3004
   - [ ] EL3204
   - [ ] EL4102
