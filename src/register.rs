@@ -49,14 +49,14 @@ pub enum RegisterAddress {
     SiiData = 0x0508,
 
     Fmmu0 = 0x0600,
-    Fmmu1 = RegisterAddress::Fmmu0 as u16 + 0x10,
-    Fmmu2 = RegisterAddress::Fmmu1 as u16 + 0x10,
-    Fmmu3 = RegisterAddress::Fmmu2 as u16 + 0x10,
+    Fmmu1 = 0x0610,
+    Fmmu2 = 0x0620,
+    Fmmu3 = 0x0630,
 
     Sm0 = 0x0800,
-    Sm1 = RegisterAddress::Sm0 as u16 + 0x8,
-    Sm2 = RegisterAddress::Sm1 as u16 + 0x8,
-    Sm3 = RegisterAddress::Sm2 as u16 + 0x8,
+    Sm1 = 0x0808,
+    Sm2 = 0x0810,
+    Sm3 = 0x0818,
 
     DcTimePort0 = 0x0900,
     DcTimePort1 = 0x0904,
