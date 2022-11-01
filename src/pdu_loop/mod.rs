@@ -147,6 +147,11 @@ where
 
         let (frame, frame_data) = self.frame(idx)?;
 
+        // Remove any previous frame's data or other garbage that might be lying around. For
+        // performance reasons (maybe - need to bench) this only blanks the portion of the buffer
+        // that will be used.
+        frame_data[0..usize::from(data_length)].fill(0);
+
         frame.replace(command, data_length, idx)?;
 
         // Tell the packet sender there is data ready to send
