@@ -2,7 +2,7 @@
 
 use async_ctrlc::CtrlC;
 use async_io::Timer;
-use ethercrab::{error::Error, std::tx_rx_task, Client, PduLoop, SlaveGroup, Timeouts};
+use ethercrab::{error::Error, std::tx_rx_task, Client, PduLoop, SlaveGroup, SubIndex, Timeouts};
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
 use std::{
@@ -45,8 +45,32 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
 
-    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(|_slave| {
-        Box::pin(async { Ok(()) })
+    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(|slave| {
+        Box::pin(async {
+            if slave.name() == "EL3004" {
+                log::info!("Found EL3004. Configuring...");
+
+                // Taken from TwinCAT
+                slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
+                slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
+
+                slave
+                    .write_sdo(0x1c13, SubIndex::Index(1), 0x1a00u16)
+                    .await?;
+                slave
+                    .write_sdo(0x1c13, SubIndex::Index(2), 0x1a02u16)
+                    .await?;
+                slave
+                    .write_sdo(0x1c13, SubIndex::Index(3), 0x1a04u16)
+                    .await?;
+                slave
+                    .write_sdo(0x1c13, SubIndex::Index(4), 0x1a06u16)
+                    .await?;
+                slave.write_sdo(0x1c13, SubIndex::Index(0), 4u8).await?;
+            }
+
+            Ok(())
+        })
     });
 
     let group = client
