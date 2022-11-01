@@ -1,5 +1,6 @@
 use crate::{
     al_control::AlControl,
+    al_status_code::AlStatusCode,
     command::Command,
     dl_status::DlStatus,
     error::{Error, Item, PduError},
@@ -413,6 +414,27 @@ where
                     .brd::<AlControl>(RegisterAddress::AlStatus)
                     .await?
                     .wkc(num_slaves as u16, "read all slaves state")?;
+
+                log::trace!("Global AL status {status:?}");
+
+                if status.error {
+                    log::error!(
+                        "Error occurred transitioning all slaves to {:?}",
+                        desired_state,
+                    );
+
+                    for slave_addr in BASE_SLAVE_ADDR..(BASE_SLAVE_ADDR + self.num_slaves() as u16)
+                    {
+                        let (slave_status, _wkc) = self
+                            .fprd::<AlStatusCode>(slave_addr, RegisterAddress::AlStatusCode)
+                            .await?;
+
+                        log::error!("--> Slave {:#06x} status code {}", slave_addr, slave_status);
+                    }
+
+                    return Err(Error::StateTransition);
+                }
+
                 if status.state == desired_state {
                     break Result::<(), Error>::Ok(());
                 }
