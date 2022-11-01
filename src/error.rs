@@ -40,6 +40,8 @@ pub enum Error {
     /// An internal error occurred. This indicates something that shouldn't happen within EtherCrab.
     Internal,
     Topology,
+    /// An error was read back from one or more slaves when attempting to transition to a new state.
+    StateTransition,
 }
 
 impl From<BorrowError> for Error {

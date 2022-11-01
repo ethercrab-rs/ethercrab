@@ -1,22 +1,46 @@
 use crate::{pdu_data::PduRead, slave_state::SlaveState};
 use packed_struct::prelude::*;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PackedStruct)]
-#[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct AlControl {
-    #[packed_field(bits = "8..=11", ty = "enum")]
     pub state: SlaveState,
-    #[packed_field(bits = "12")]
-    pub acknowledge: bool,
-    #[packed_field(bits = "13")]
+    pub error: bool,
     pub id_request: bool,
+}
+
+impl PackedStruct for AlControl {
+    type ByteArray = [u8; 2];
+
+    fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
+        let byte = (u8::from(self.state) & 0x0f)
+            | ((self.error as u8) << 4)
+            | ((self.id_request as u8) << 5);
+
+        Ok([byte, 0])
+    }
+
+    fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
+        let byte = src[0];
+
+        log::trace!("AL raw byte {byte:#010b} (slice {:?})", src);
+
+        let state = SlaveState::try_from(byte & 0x0f).unwrap_or(SlaveState::Unknown);
+        let error = (byte & (1 << 4)) > 0;
+        let id_request = (byte & (1 << 5)) > 0;
+
+        Ok(Self {
+            state,
+            error,
+            id_request,
+        })
+    }
 }
 
 impl AlControl {
     pub fn new(state: SlaveState) -> Self {
         Self {
             state,
-            acknowledge: true,
+            error: false,
             id_request: false,
         }
     }
@@ -24,7 +48,8 @@ impl AlControl {
     pub fn reset() -> Self {
         Self {
             state: SlaveState::Init,
-            acknowledge: true,
+            // Acknowledge error
+            error: true,
             ..Default::default()
         }
     }
@@ -55,7 +80,7 @@ mod tests {
     fn al_control() {
         let value = AlControl {
             state: SlaveState::SafeOp,
-            acknowledge: true,
+            error: true,
             id_request: false,
         };
 
@@ -68,7 +93,7 @@ mod tests {
     fn unpack() {
         let value = AlControl {
             state: SlaveState::SafeOp,
-            acknowledge: true,
+            error: true,
             id_request: false,
         };
 

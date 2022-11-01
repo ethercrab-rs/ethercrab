@@ -128,14 +128,29 @@ where
         );
 
         // Send state request
-        self.write(
-            RegisterAddress::AlControl,
-            AlControl::new(desired_state).pack().unwrap(),
-            "AL control",
-        )
-        .await?;
+        let response = self
+            .write(
+                RegisterAddress::AlControl,
+                AlControl::new(desired_state).pack().unwrap(),
+                "AL control",
+            )
+            .await
+            .and_then(|raw: [u8; 2]| AlControl::unpack(&raw).map_err(|_| Error::StateTransition))?;
 
-        self.wait_for_state(desired_state).await
+        if response.error {
+            let error: AlStatusCode = self.read(RegisterAddress::AlStatus, "AL status").await?;
+
+            log::error!(
+                "Error occurred transitioning slave {:#06x} to {:?}: {}",
+                self.configured_address,
+                desired_state,
+                error,
+            );
+
+            return Err(Error::StateTransition);
+        }
+
+        Ok(())
     }
 
     pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
