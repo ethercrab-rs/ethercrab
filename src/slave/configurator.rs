@@ -101,7 +101,7 @@ where
             PdoDirection::MasterRead => {
                 let pdos = self.client.eeprom().master_read_pdos().await?;
 
-                log::trace!("Slave TX PDOs {:#?}", pdos);
+                log::trace!("Slave inputs PDOs {:#?}", pdos);
 
                 let input_range = if has_coe {
                     self.configure_pdos_coe(
@@ -128,7 +128,7 @@ where
             PdoDirection::MasterWrite => {
                 let pdos = self.client.eeprom().master_write_pdos().await?;
 
-                log::trace!("Slave RX PDOs {:#?}", pdos);
+                log::trace!("Slave outputs PDOs {:#?}", pdos);
 
                 let output_range = if has_coe {
                     self.configure_pdos_coe(
@@ -358,24 +358,26 @@ where
                 (sm_bit_len + 7) / 8
             );
 
-            let fmmu_index = fmmu_usage
-                .iter()
-                .position(|usage| *usage == desired_fmmu_type)
-                .ok_or(Error::NotFound {
-                    item: Item::Fmmu,
-                    index: None,
-                })?;
+            if sm_bit_len > 0 {
+                let fmmu_index = fmmu_usage
+                    .iter()
+                    .position(|usage| *usage == desired_fmmu_type)
+                    .ok_or(Error::NotFound {
+                        item: Item::Fmmu,
+                        index: None,
+                    })?;
 
-            self.write_fmmu_config(
-                sync_manager_index,
-                sync_manager,
-                sm_bit_len,
-                fmmu_index,
-                offset,
-                total_bit_len,
-                desired_sm_type,
-            )
-            .await?;
+                self.write_fmmu_config(
+                    sync_manager_index,
+                    sync_manager,
+                    sm_bit_len,
+                    fmmu_index,
+                    offset,
+                    total_bit_len,
+                    desired_sm_type,
+                )
+                .await?;
+            }
 
             total_bit_len += sm_bit_len;
         }
