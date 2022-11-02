@@ -60,8 +60,6 @@ where
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
         self.client.set_eeprom_mode(SiiOwner::Pdi).await?;
 
-        log::debug!("Mailboxes configured. Waiting for PRE-OP");
-
         self.client.request_slave_state(SlaveState::PreOp).await?;
 
         self.client.set_eeprom_mode(SiiOwner::Master).await?;
@@ -97,7 +95,10 @@ where
                 .map(|mbox| mbox.len > 0)
                 .unwrap_or(false);
 
-        log::debug!("Slave {:#06x} has CoE", self.slave.configured_address);
+        log::debug!(
+            "Slave {:#06x} has CoE: {has_coe:?}",
+            self.slave.configured_address
+        );
 
         match direction {
             PdoDirection::MasterRead => {
