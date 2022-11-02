@@ -60,8 +60,6 @@ where
             offset = slave_config
                 .configure_fmmus(offset, PdoDirection::MasterRead)
                 .await?;
-
-            *self.group_working_counter += slave.config.io.working_counter_sum();
         }
 
         *self.read_pdi_len = (offset.start_address - *self.start_address) as usize;
@@ -127,6 +125,10 @@ where
 
             // We're done configuring FMMUs, etc, now we can request this slave go into SAFE-OP
             slave_config.request_safe_op_nowait().await?;
+
+            // We have both inputs and outputs at this stage, so can correctly calculate the group
+            // WKC.
+            *self.group_working_counter += slave.config.io.working_counter_sum();
         }
 
         log::debug!("Slave FMMUs configured for group. Able to move to SAFE-OP");

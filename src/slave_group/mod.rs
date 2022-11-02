@@ -136,13 +136,6 @@ impl<
         &all_buf[0..self.pdi_len]
     }
 
-    pub fn DELETEME_pdi_i(&self) -> &[u8] {
-        &self.pdi()[0..self.read_pdi_len]
-    }
-    pub fn DELETEME_pdi_o(&self) -> &[u8] {
-        &self.pdi()[self.read_pdi_len..]
-    }
-
     /// Get the input and output segments of the PDI for a given slave.
     ///
     /// If the slave index does not resolve to a discovered slave, this method will return `None`.
@@ -177,10 +170,9 @@ impl<
             .lrw_buf(self.start_address, self.pdi_mut(), self.read_pdi_len)
             .await?;
 
-        // TODO: AKD fails this check for some reason - check computation of `group_working_couneter`.
         if wkc != self.group_working_counter {
             Err(Error::WorkingCounter {
-                expected: self.slaves.len() as u16,
+                expected: self.group_working_counter,
                 received: wkc,
                 context: Some("group working counter"),
             })
