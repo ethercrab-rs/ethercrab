@@ -374,15 +374,8 @@ where
                         index: None,
                     })?;
 
-                self.write_fmmu_config(
-                    sm_bit_len,
-                    fmmu_index,
-                    offset,
-                    total_bit_len,
-                    desired_sm_type,
-                    &sm_config,
-                )
-                .await?;
+                self.write_fmmu_config(sm_bit_len, fmmu_index, offset, desired_sm_type, &sm_config)
+                    .await?;
             }
 
             total_bit_len += sm_bit_len;
@@ -399,7 +392,6 @@ where
         sm_bit_len: u16,
         fmmu_index: usize,
         offset: &mut PdiOffset,
-        total_bit_len: u16,
         desired_sm_type: SyncManagerType,
         sm_config: &SyncManagerChannel,
     ) -> Result<(), Error> {
@@ -408,8 +400,8 @@ where
             length_bytes: sm_config.length_bytes,
             // Mapping into PDI is byte-aligned until/if we support bit-oriented slaves
             logical_start_bit: 0,
-            // logical_start_bit: offset.start_bit,
-            logical_end_bit: offset.end_bit(total_bit_len),
+            // Always byte-aligned
+            logical_end_bit: 7,
             physical_start_address: sm_config.physical_start_address,
             physical_start_bit: 0x0,
             read_enable: desired_sm_type == SyncManagerType::ProcessDataRead,
@@ -495,7 +487,6 @@ where
                 bit_len,
                 usize::from(fmmu_index),
                 offset,
-                total_bit_len,
                 sm_type,
                 &sm_config,
             )
