@@ -47,12 +47,17 @@ impl fmt::Debug for SyncManagerChannel {
 impl fmt::Display for SyncManagerChannel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            "start {:#06x}, size {:#06x} ({}), direction {:?}, mode {:?}",
+            "start {:#06x}, size {:#06x} ({}), direction {:?}, mode {:?}, {}",
             self.physical_start_address,
             self.length_bytes,
             self.length_bytes,
             self.control.direction,
-            self.control.operation_mode
+            self.control.operation_mode,
+            if self.enable.enable {
+                "enabled"
+            } else {
+                "disabled"
+            },
         ))
     }
 }
