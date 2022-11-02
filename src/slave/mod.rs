@@ -4,6 +4,7 @@ pub mod slave_client;
 
 use self::slave_client::SlaveClient;
 use crate::{
+    al_status_code::AlStatusCode,
     all_consumed,
     client::Client,
     coe::{self, abort_code::AbortCode, services::CoeServiceTrait, SubIndex},
@@ -244,6 +245,12 @@ where
         self.slave.name.as_str()
     }
 
+    pub async fn state(&self) -> Result<SlaveState, Error> {
+        let (state, _code) = self.client.status().await?;
+
+        Ok(state)
+    }
+
     pub async fn write_sdo<T>(&self, index: u16, sub_index: SubIndex, value: T) -> Result<(), Error>
     where
         T: PduData,
@@ -436,7 +443,7 @@ where
         )
         .await
         .map_err(|e| {
-            log::error!("Mailbox read ready timeout");
+            log::error!("Mailbox read ready error: {e:?}");
 
             e
         })?;
