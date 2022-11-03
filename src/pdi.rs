@@ -37,6 +37,8 @@ impl PdiOffset {
     }
 
     /// Compute end bit 0-7 in the final byte of the mapped PDI section.
+    // Kept around in case we support bit-packed PDIs.
+    #[allow(unused)]
     pub fn end_bit(self, bits: u16) -> u8 {
         // SAFETY: The modulos here and in `increment` mean that all value can comfortably fit in a
         // u8, so all the `as` and non-checked `+` here are fine.
