@@ -64,7 +64,9 @@ pub enum RegisterAddress {
     DcTimePort3 = 0x090c,
     DcReceiveTime = 0x0918,
     DcSystemTime = 0x0910,
+    // u64
     DcSystemTimeOffset = 0x0920,
+    // u32
     DcSystemTimeTransmissionDelay = 0x0928,
 
     // u16
@@ -73,6 +75,9 @@ pub enum RegisterAddress {
     DcControlLoopParam2 = 0x0932,
     // u16
     DcControlLoopParam3 = 0x0934,
+
+    // u32
+    DcSystemTimeDifference = 0x092C,
 
     /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u8`.
     ///

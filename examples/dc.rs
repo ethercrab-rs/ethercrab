@@ -2,7 +2,9 @@
 
 use async_ctrlc::CtrlC;
 use async_io::Timer;
-use ethercrab::{error::Error, std::tx_rx_task, Client, PduLoop, SlaveGroup, SubIndex, Timeouts};
+use ethercrab::{
+    error::Error, std::tx_rx_task, Client, PduLoop, RegisterAddress, SlaveGroup, SubIndex, Timeouts,
+};
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
 use std::{
@@ -10,7 +12,7 @@ use std::{
         atomic::{AtomicU8, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 #[cfg(target_os = "windows")]
@@ -38,7 +40,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let client = Arc::new(Client::<MAX_FRAMES, MAX_PDU_DATA, smol::Timer>::new(
         &PDU_LOOP,
         Timeouts {
-            wait_loop_delay: Duration::from_millis(0),
+            wait_loop_delay: Duration::from_millis(2),
+            mailbox_response: Duration::from_millis(1000),
             ..Default::default()
         },
     ));
@@ -67,6 +70,28 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                     .write_sdo(0x1c13, SubIndex::Index(4), 0x1a06u16)
                     .await?;
                 slave.write_sdo(0x1c13, SubIndex::Index(0), 4u8).await?;
+            } else if slave.name() == "LAN9252-EVB-HBI" {
+                log::info!("Found LAN9252 in {:?} state", slave.state().await.ok());
+
+                let sync_type = slave.read_sdo::<u16>(0x1c32, SubIndex::Index(1)).await?;
+                let cycle_time = slave.read_sdo::<u32>(0x1c32, SubIndex::Index(2)).await?;
+                let shift_time = slave
+                    .read_sdo::<u32>(0x1c32, SubIndex::Index(3))
+                    .await
+                    .unwrap_or(0);
+                log::info!("Outputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
+
+                let sync_type = slave.read_sdo::<u16>(0x1c33, SubIndex::Index(1)).await?;
+                let cycle_time = slave.read_sdo::<u32>(0x1c33, SubIndex::Index(2)).await?;
+                let shift_time = slave
+                    .read_sdo::<u32>(0x1c33, SubIndex::Index(3))
+                    .await
+                    .unwrap_or(0);
+                log::info!("Inputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
+
+                // Force IO into free run mode
+                // slave.write_sdo(0x1c32, SubIndex::Index(1), 0u16).await?;
+                // slave.write_sdo(0x1c33, SubIndex::Index(1), 0u16).await?;
             }
 
             Ok(())
@@ -81,17 +106,18 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Group has {} slaves", group.slaves().len());
 
     for (slave, slave_stuff) in group.slaves().iter().enumerate() {
-        let (_i, o) = group.io(slave).unwrap();
+        let (i, o) = group.io(slave).unwrap();
 
         log::info!(
-            "-> Slave {slave} {} has outputs: {}",
+            "-> Slave {slave} {} has inputs: {}, outputs: {}",
             slave_stuff.name,
+            i.is_some(),
             o.is_some()
         );
     }
 
     // NOTE: This is currently hardcoded as 2ms inside the DC sync config, so keep them the same.
-    let mut tick_interval = Timer::interval(Duration::from_millis(2));
+    let mut tick_interval = Timer::interval(Duration::from_millis(5));
 
     let group = Arc::new(group);
     let group2 = group.clone();
@@ -122,15 +148,44 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         //     }
         // });
 
+        // Dynamic drift compensation
+        let (reference_time, _wkc) = client
+            .frmw::<u64>(0x1000, RegisterAddress::DcSystemTime)
+            .await?;
+
         for slave in 0..group2.slaves().len() {
             let (_i, o) = group2.io(slave).unwrap();
 
+            let diff = group2
+                .slave(slave, &client)
+                .unwrap()
+                .raw_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+                .await
+                .map(|n| {
+                    let smaller = n & (1 << 31) > 0;
+
+                    // Chop off smaller/larger bit
+                    let number = (n & (u32::MAX >> 1)) as i32;
+
+                    if smaller {
+                        -number
+                    } else {
+                        number
+                    }
+                })
+                .unwrap_or(0);
+
+            print!("{diff:+#05} ");
+
             o.map(|o| {
                 for byte in o.iter_mut() {
-                    *byte = !*byte;
+                    // *byte = !*byte;
+                    *byte = byte.wrapping_add(1);
                 }
             });
         }
+
+        println!("");
     }
 
     Ok(())

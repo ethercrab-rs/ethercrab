@@ -82,7 +82,8 @@ where
 
             // FIXME: Just first slave or all slaves?
             // if name == "EL2004" {
-            if i == 0 {
+            // if i == 0 {
+            if false {
                 log::info!("Slave {:#06x} {} DC", addr, name);
                 let sl = SlaveClient::new(client, addr);
 
@@ -101,8 +102,6 @@ where
 
                 // TODO: Pass in as config
                 let start_time = local_time + cycle_time + startup_delay;
-
-                dbg!(local_time, start_time);
 
                 sl.write(
                     RegisterAddress::DcSyncStartTime,
