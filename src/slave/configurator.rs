@@ -404,7 +404,7 @@ where
 
         // We can use the enable flag as a sentinel for existing config because EtherCrab inits
         // FMMUs to all zeroes on startup.
-        let fmmu_config = if fmmu_config.enable == true {
+        let fmmu_config = if fmmu_config.enable {
             fmmu_config.length_bytes += sm_config.length_bytes;
 
             fmmu_config

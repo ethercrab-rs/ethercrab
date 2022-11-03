@@ -4,7 +4,6 @@ pub mod slave_client;
 
 use self::slave_client::SlaveClient;
 use crate::{
-    al_status_code::AlStatusCode,
     all_consumed,
     client::Client,
     coe::{self, abort_code::AbortCode, services::CoeServiceTrait, SubIndex},

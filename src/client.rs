@@ -187,7 +187,7 @@ where
                 .map_err(|_| Error::Capacity(Item::Slave))?;
         }
 
-        dc::configure_dc(&self, &mut slaves.as_mut_slices().0).await?;
+        dc::configure_dc(self, slaves.as_mut_slices().0).await?;
 
         while let Some(slave) = slaves.pop_front() {
             let configured_address = slave.configured_address;
@@ -241,7 +241,7 @@ where
             AlControl::new(desired_state).pack().unwrap(),
         )
         .await?
-        .wkc(num_slaves as u16, "set all slaves state")?;
+        .wkc(num_slaves, "set all slaves state")?;
 
         self.wait_for_state(desired_state).await
     }
@@ -254,7 +254,7 @@ where
                 let status = self
                     .brd::<AlControl>(RegisterAddress::AlStatus)
                     .await?
-                    .wkc(num_slaves as u16, "read all slaves state")?;
+                    .wkc(num_slaves, "read all slaves state")?;
 
                 log::trace!("Global AL status {status:?}");
 
