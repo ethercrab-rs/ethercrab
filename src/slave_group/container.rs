@@ -1,10 +1,10 @@
-use super::SlaveGroupRef;
+use super::Configurator;
 use crate::SlaveGroup;
 
 pub trait SlaveGroupContainer<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     fn num_groups(&self) -> usize;
 
-    fn group(&mut self, index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>;
+    fn group(&mut self, index: usize) -> Option<Configurator<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>;
 
     fn total_slaves(&mut self) -> usize {
         let mut accum = 0;
@@ -31,7 +31,7 @@ impl<
         N
     }
 
-    fn group(&mut self, index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
+    fn group(&mut self, index: usize) -> Option<Configurator<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
         self.get_mut(index).map(|group| group.as_mut_ref())
     }
 }
@@ -49,7 +49,7 @@ impl<
         1
     }
 
-    fn group(&mut self, _index: usize) -> Option<SlaveGroupRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
+    fn group(&mut self, _index: usize) -> Option<Configurator<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
         Some(self.as_mut_ref())
     }
 }

@@ -13,8 +13,7 @@ use crate::{
 };
 use core::time::Duration;
 
-/// A reference to a [`SlaveGroup`] with erased `MAX_SLAVES` constant.
-pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+pub struct Configurator<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     pub pdi_len: &'a mut usize,
     pub read_pdi_len: &'a mut usize,
     pub max_pdi_len: usize,
@@ -25,7 +24,7 @@ pub struct SlaveGroupRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize,
 }
 
 impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    SlaveGroupRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+    Configurator<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
