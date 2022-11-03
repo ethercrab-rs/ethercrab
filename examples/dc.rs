@@ -17,7 +17,7 @@ use std::{
 
 #[cfg(target_os = "windows")]
 // ASRock NIC
-// const INTERFACE: &str = "TODO";
+// const INTERFACE: &str = "\\Device\\NPF_{BEE3ADE3-E30E-4A64-BC67-C31320804CA9}";
 // // USB NIC
 // const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
 // Lenovo USB-C NIC
