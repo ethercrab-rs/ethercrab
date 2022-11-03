@@ -302,6 +302,30 @@ where
             })
     }
 
+    /// Read a register.
+    ///
+    /// Note that while this method is marked safe, alterations to slave config or behaviour can
+    /// break interactions with EtherCrab.
+    pub async fn raw_read<T>(&self, register: RegisterAddress) -> Result<T, Error>
+    where
+        T: PduRead,
+        <T as PduRead>::Error: Debug,
+    {
+        self.client.read(register, "raw read").await
+    }
+
+    /// Write a register.
+    ///
+    /// Note that while this method is marked safe, alterations to slave config or behaviour can
+    /// break interactions with EtherCrab.
+    pub async fn raw_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
+    where
+        T: PduData,
+        <T as PduRead>::Error: Debug,
+    {
+        self.client.write(register, value, "raw write").await
+    }
+
     async fn read_sdo_buf<'buf>(
         &self,
         index: u16,

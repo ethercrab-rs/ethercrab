@@ -283,6 +283,15 @@ A tree topology can be formed if a node has more than one port.
 
 If a port is in loopback, it simply means data is passed straight through it.
 
+## Sync modes - free run
+
+ETG1020 Table 69: 0x1C32 Free Run shows values to read from SDOs to verify/monitor/set run mode.
+
+The types for these values (or some of them anyway) are defined in ETG1000.6 Table 78 – Sync Manager
+Synchronization
+
+We also have 0x1C33 which is for inputs.
+
 # Reading config from EEPROM
 
 ## Sync managers
