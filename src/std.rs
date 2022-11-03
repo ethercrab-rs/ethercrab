@@ -48,13 +48,13 @@ where
 
     let (mut tx, mut rx) = get_tx_rx(device)?;
 
+    let mut packet_buf = [0u8; 1536];
+
     // TODO: Unwraps
     let tx_task = core::future::poll_fn::<(), _>(move |ctx| {
         client_tx
             .pdu_loop
             .send_frames_blocking(ctx.waker(), |frame, data| {
-                let mut packet_buf = [0u8; 1536];
-
                 let packet = frame
                     .write_ethernet_packet(&mut packet_buf, data)
                     .expect("Write Ethernet frame");
