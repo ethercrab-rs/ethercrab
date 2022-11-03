@@ -177,6 +177,26 @@ where
         .await?;
     }
 
+    let first_dc_slave = slaves
+        .iter()
+        .find(|slave| slave.flags.dc_supported)
+        .unwrap();
+
+    log::debug!("Performing static drift compensation...");
+
+    // Static drift compensation - distribute reference clock through network until slave clocks
+    // settle
+    for _ in 0..10_000 {
+        let (_reference_time, _wkc) = client
+            .frmw::<u64>(
+                first_dc_slave.configured_address,
+                RegisterAddress::DcSystemTime,
+            )
+            .await?;
+    }
+
+    log::debug!("DC config complete");
+
     // TODO: Set a flag so we can periodically send a FRMW to keep clocks in sync. Maybe add a
     // config item to set minimum tick rate?
 

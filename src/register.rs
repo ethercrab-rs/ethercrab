@@ -67,6 +67,13 @@ pub enum RegisterAddress {
     DcSystemTimeOffset = 0x0920,
     DcSystemTimeTransmissionDelay = 0x0928,
 
+    // u16
+    DcControlLoopParam1 = 0x0930,
+    // u16
+    DcControlLoopParam2 = 0x0932,
+    // u16
+    DcControlLoopParam3 = 0x0934,
+
     /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u8`.
     ///
     /// AKA ETG1000.4 Table 61 DC user P1.
