@@ -133,6 +133,18 @@ where
         )
         .await?;
 
+        // ETG1020 Section 22.2.4 defines these initial parameters. The data types are defined in
+        // ETG1000.4 Table 60 – Distributed clock local time parameter, helpfully named "Control
+        // Loop Parameter 1" to 3.
+        //
+        // According to ETG1020, we'll use the mode where the DC reference clock is adjusted to the
+        // master clock.
+        self.bwr(RegisterAddress::DcControlLoopParam3, 0x0c00u16)
+            .await?;
+        // Must be after param 3 so DC control unit is reset
+        self.bwr(RegisterAddress::DcControlLoopParam1, 0x1000u16)
+            .await?;
+
         Ok(())
     }
 
