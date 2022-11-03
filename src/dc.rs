@@ -184,8 +184,6 @@ where
 
     log::debug!("Performing static drift compensation...");
 
-    let now = std::time::Instant::now();
-
     // Static drift compensation - distribute reference clock through network until slave clocks
     // settle
     for _ in 0..10_000 {
@@ -197,10 +195,7 @@ where
             .await?;
     }
 
-    log::debug!(
-        "DC config complete, drift comp took {} ms",
-        now.elapsed().as_millis()
-    );
+    log::debug!("DC config and static drift compensation complete");
 
     // TODO: Set a flag so we can periodically send a FRMW to keep clocks in sync. Maybe add a
     // config item to set minimum tick rate?

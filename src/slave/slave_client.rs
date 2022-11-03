@@ -40,7 +40,7 @@ where
 
     // DELETEME: Leaky abstraction
     pub fn pdu_loop(&self) -> &PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
-        &self.client.pdu_loop
+        self.client.pdu_loop
     }
 
     pub fn timeouts(&self) -> &Timeouts {
@@ -173,7 +173,7 @@ where
     }
 
     pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
-        Eeprom::new(&self)
+        Eeprom::new(self)
     }
 
     pub async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
