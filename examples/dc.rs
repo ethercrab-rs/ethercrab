@@ -149,7 +149,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         // });
 
         // Dynamic drift compensation
-        let (reference_time, _wkc) = client
+        let (_reference_time, _wkc) = client
             .frmw::<u64>(0x1000, RegisterAddress::DcSystemTime)
             .await?;
 
