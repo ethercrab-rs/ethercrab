@@ -1,5 +1,5 @@
+mod configurator;
 mod container;
-mod group_ref;
 
 use crate::{
     error::{Error, Item},
@@ -9,8 +9,8 @@ use crate::{
 };
 use core::{cell::UnsafeCell, future::Future, pin::Pin};
 
+pub use configurator::Configurator;
 pub use container::SlaveGroupContainer;
-pub use group_ref::SlaveGroupRef;
 
 // TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
 // `Box`ing here, and make this work without an allocator. See also
@@ -181,8 +181,8 @@ impl<
         }
     }
 
-    pub(crate) fn as_mut_ref(&mut self) -> SlaveGroupRef<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
-        SlaveGroupRef {
+    pub(crate) fn as_mut_ref(&mut self) -> Configurator<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
+        Configurator {
             slaves: self.slaves.as_mut(),
             max_pdi_len: MAX_PDI,
             preop_safeop_hook: self.preop_safeop_hook.as_ref(),
