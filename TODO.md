@@ -70,3 +70,5 @@
   - [x] EL3004
   - [ ] EL3204
   - [ ] EL4102
+  - [x] EL2889 - it was clobbering FMMU config. Solved by reading FMMU from slave before each
+        update.
