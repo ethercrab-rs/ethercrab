@@ -480,7 +480,7 @@ where
                 })?;
 
             let sm_config = self
-                .write_sm_config(sync_manager_index, sync_manager, (total_bit_len + 7) / 8)
+                .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
                 .await?;
 
             self.write_fmmu_config(
