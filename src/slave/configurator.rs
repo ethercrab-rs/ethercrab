@@ -11,8 +11,8 @@ use crate::{
     fmmu::Fmmu,
     pdi::{PdiOffset, PdiSegment},
     pdu_data::{PduData, PduRead},
-    register::{RegisterAddress, SupportFlags},
-    slave::{IoRanges, Mailbox, MailboxConfig},
+    register::RegisterAddress,
+    slave::{Mailbox, MailboxConfig},
     slave_state::SlaveState,
     sync_manager_channel::{self, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
     timer_factory::TimerFactory,
@@ -395,19 +395,35 @@ where
         desired_sm_type: SyncManagerType,
         sm_config: &SyncManagerChannel,
     ) -> Result<(), Error> {
-        let fmmu_config = Fmmu {
-            logical_start_address: offset.start_address,
-            length_bytes: sm_config.length_bytes,
-            // Mapping into PDI is byte-aligned until/if we support bit-oriented slaves
-            logical_start_bit: 0,
-            // Always byte-aligned
-            logical_end_bit: 7,
-            physical_start_address: sm_config.physical_start_address,
-            physical_start_bit: 0x0,
-            read_enable: desired_sm_type == SyncManagerType::ProcessDataRead,
-            write_enable: desired_sm_type == SyncManagerType::ProcessDataWrite,
-            enable: true,
+        // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
+        let mut fmmu_config = self
+            .client
+            .read::<[u8; 16]>(RegisterAddress::fmmu(fmmu_index as u8), "read FMMU config")
+            .await
+            .and_then(|raw| Fmmu::unpack(&raw).map_err(|_| Error::Internal))?;
+
+        // We can use the enable flag as a sentinel for existing config because EtherCrab inits
+        // FMMUs to all zeroes on startup.
+        let fmmu_config = if fmmu_config.enable == true {
+            fmmu_config.length_bytes += sm_config.length_bytes;
+
+            fmmu_config
+        } else {
+            Fmmu {
+                logical_start_address: offset.start_address,
+                length_bytes: sm_config.length_bytes,
+                // Mapping into PDI is byte-aligned until/if we support bit-oriented slaves
+                logical_start_bit: 0,
+                // Always byte-aligned
+                logical_end_bit: 7,
+                physical_start_address: sm_config.physical_start_address,
+                physical_start_bit: 0x0,
+                read_enable: desired_sm_type == SyncManagerType::ProcessDataRead,
+                write_enable: desired_sm_type == SyncManagerType::ProcessDataWrite,
+                enable: true,
+            }
         };
+
         self.client
             .write(
                 RegisterAddress::fmmu(fmmu_index as u8),
