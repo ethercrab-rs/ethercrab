@@ -425,6 +425,21 @@ where
         .await
     }
 
+    pub async fn frmw<T>(
+        &self,
+        address: u16,
+        register: RegisterAddress,
+    ) -> Result<PduResponse<T>, Error>
+    where
+        T: PduRead,
+    {
+        self.read_service(Command::Frmw {
+            address,
+            register: register.into(),
+        })
+        .await
+    }
+
     /// Logical write.
     pub async fn lwr<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
     where
