@@ -203,6 +203,8 @@ where
             }
         }
 
+        log::debug!("Discovered sync managers:\n{:#?}", sync_managers);
+
         Ok(sync_managers)
     }
 
@@ -220,6 +222,8 @@ where
                 fmmus.push(fmmu).map_err(|_| Error::Capacity(Item::Fmmu))?;
             }
         }
+
+        log::debug!("Discovered FMMUs:\n{:#?}", fmmus);
 
         Ok(fmmus)
     }
@@ -281,6 +285,8 @@ where
                 pdos.push(pdo).map_err(|_| Error::Capacity(Item::Pdo))?;
             }
         }
+
+        log::debug!("Discovered PDOs:\n{:#?}", pdos);
 
         Ok(pdos)
     }
