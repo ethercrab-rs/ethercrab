@@ -103,7 +103,7 @@ impl Frame {
             PduError::InvalidFrameState
         })?;
 
-        self.pdu.set_response(flags, irq, working_counter)?;
+        self.pdu.set_response(flags, irq, working_counter);
 
         self.state = FrameState::Done;
 
