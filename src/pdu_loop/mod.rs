@@ -310,15 +310,15 @@ pub struct PduLoopRef<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::{task::Poll, time::Duration};
-    use smol::Executor;
+    use core::task::Poll;
     use smoltcp::wire::EthernetAddress;
-    use std::sync::Arc;
+    use std::{sync::Arc, thread};
 
     // Test the whole TX/RX loop with multiple threads
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn parallel() {
-        env_logger::try_init().ok();
+    #[test]
+    fn parallel() {
+        // Comment out to make this test work with miri
+        // env_logger::try_init().ok();
 
         let pdu_loop = Arc::new(PduLoop::<16, 128, smol::Timer>::new());
         let pdu_loop_rx = pdu_loop.clone();
@@ -327,75 +327,79 @@ mod tests {
 
         let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
-        smol::spawn(async move {
-            let mut packet_buf = [0u8; 1536];
+        thread::spawn(move || {
+            smol::block_on(async move {
+                let mut packet_buf = [0u8; 1536];
 
-            log::info!("Spawn TX task");
+                log::info!("Spawn TX task");
 
-            core::future::poll_fn::<(), _>(move |ctx| {
-                log::info!("Poll fn");
+                core::future::poll_fn::<(), _>(move |ctx| {
+                    log::info!("Poll fn");
 
-                pdu_loop_tx
-                    .send_frames_blocking(ctx.waker(), |frame, data| {
-                        let packet = frame
-                            .write_ethernet_packet(&mut packet_buf, data)
-                            .expect("Write Ethernet frame");
+                    pdu_loop_tx
+                        .send_frames_blocking(ctx.waker(), |frame, data| {
+                            let packet = frame
+                                .write_ethernet_packet(&mut packet_buf, data)
+                                .expect("Write Ethernet frame");
 
-                        s.send(packet.to_vec()).unwrap();
+                            s.send(packet.to_vec()).unwrap();
 
-                        log::info!("Sent packet");
+                            log::info!("Sent packet");
 
-                        Ok(())
-                    })
-                    .unwrap();
+                            Ok(())
+                        })
+                        .unwrap();
 
-                Poll::Pending
+                    Poll::Pending
+                })
+                .await
             })
-            .await
-        })
-        .detach();
-
-        smol::spawn(async move {
-            log::info!("Spawn RX task");
-
-            while let Some(ethernet_frame) = r.recv().await {
-                // Munge fake sent frame into a fake received frame
-                let ethernet_frame = {
-                    let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
-                    frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
-                    frame.into_inner()
-                };
-
-                log::info!("Received packet");
-
-                pdu_loop_rx.pdu_rx(&ethernet_frame).expect("RX");
-            }
-        })
-        .detach();
-
-        let task_1 = smol::spawn(async move {
-            for i in 0..64 {
-                let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
-
-                log::info!("Send PDU {i}");
-
-                let (result, _wkc) = pdu_loop_1
-                    .pdu_tx_readwrite(
-                        Command::Fpwr {
-                            address: 0x1000,
-                            register: 0x0980,
-                        },
-                        &data,
-                        &Timeouts::default(),
-                    )
-                    .await
-                    .unwrap();
-
-                assert_eq!(result, &data);
-            }
         });
 
-        let task_2 = smol::spawn(async move {
+        thread::spawn(move || {
+            smol::block_on(async move {
+                log::info!("Spawn RX task");
+
+                while let Some(ethernet_frame) = r.recv().await {
+                    // Munge fake sent frame into a fake received frame
+                    let ethernet_frame = {
+                        let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
+                        frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+                        frame.into_inner()
+                    };
+
+                    log::info!("Received packet");
+
+                    pdu_loop_rx.pdu_rx(&ethernet_frame).expect("RX");
+                }
+            })
+        });
+
+        let task_1 = thread::spawn(move || {
+            smol::block_on(async move {
+                for i in 0..64 {
+                    let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
+
+                    log::info!("Send PDU {i}");
+
+                    let (result, _wkc) = pdu_loop_1
+                        .pdu_tx_readwrite(
+                            Command::Fpwr {
+                                address: 0x1000,
+                                register: 0x0980,
+                            },
+                            &data,
+                            &Timeouts::default(),
+                        )
+                        .await
+                        .unwrap();
+
+                    assert_eq!(result, &data);
+                }
+            });
+        });
+
+        smol::block_on(async move {
             for i in 0..64 {
                 let data = [0x11, 0x22, 0x33, 0x44, 0x55, i];
 
@@ -417,6 +421,6 @@ mod tests {
             }
         });
 
-        tokio::join!(task_1, task_2);
+        task_1.join().unwrap();
     }
 }

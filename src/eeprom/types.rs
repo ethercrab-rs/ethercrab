@@ -334,6 +334,7 @@ pub struct SiiGeneral {
 }
 
 impl SiiGeneral {
+    #[allow(unused)]
     pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, group_string_idx) = le_u8(i)?;
         let (i, image_string_idx) = le_u8(i)?;
