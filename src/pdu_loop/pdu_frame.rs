@@ -97,7 +97,7 @@ impl Frame {
         let waker = self.waker.take().ok_or_else(|| {
             error!(
                 "Attempted to wake frame #{} with no waker, possibly caused by timeout",
-                self.pdu.index()
+                self.pdu.index
             );
 
             PduError::InvalidFrameState
