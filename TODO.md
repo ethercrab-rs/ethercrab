@@ -34,7 +34,7 @@
 - [ ] Revisit packed structs with confusing backwards bit orders. If `MailboxHeader` encodes on the
       wire correctly, I can use it's attributes elsewhere.
 - [ ] Refactor code so we can drive various parts of EtherCrab with MIRI
-  - [ ] PDU loop
+  - [x] PDU loop
   - [ ] Slave group
   - [ ] Check for other `unsafe` and test that too
 - [x] Group support

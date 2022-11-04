@@ -163,6 +163,7 @@ where
         Ok(config)
     }
 
+    #[allow(unused)]
     pub(crate) async fn general(&self) -> Result<SiiGeneral, Error> {
         let mut reader = self
             .find_category(CategoryType::General)
