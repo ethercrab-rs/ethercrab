@@ -1,12 +1,16 @@
 use super::pdu::PduFlags;
-use crate::command::Command;
-use crate::error::{Error, PduError};
-use crate::pdu_loop::pdu::Pdu;
-use crate::{pdu_loop::frame_header::FrameHeader, ETHERCAT_ETHERTYPE, MASTER_ADDR};
-use core::future::Future;
-use core::mem;
-use core::pin::Pin;
-use core::task::{Context, Poll, Waker};
+use crate::{
+    command::Command,
+    error::{Error, PduError},
+    pdu_loop::{frame_header::FrameHeader, pdu::Pdu},
+    ETHERCAT_ETHERTYPE, MASTER_ADDR,
+};
+use core::{
+    future::Future,
+    mem,
+    pin::Pin,
+    task::{Context, Poll, Waker},
+};
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 #[derive(Debug, PartialEq, Default)]
