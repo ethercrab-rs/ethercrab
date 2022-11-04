@@ -85,10 +85,6 @@ impl Pdu {
         }
     }
 
-    pub fn index(&self) -> u8 {
-        self.index
-    }
-
     pub fn command(&self) -> Command {
         self.command
     }
