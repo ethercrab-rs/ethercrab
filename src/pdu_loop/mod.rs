@@ -24,6 +24,7 @@ use nom::{
 };
 use packed_struct::PackedStructSlice;
 use smoltcp::wire::EthernetFrame;
+use spin::RwLock;
 
 pub type PduResponse<T> = (T, u16);
 
@@ -49,7 +50,7 @@ pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> 
     frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
     frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
-    tx_waker: RefCell<Option<Waker>>,
+    tx_waker: spin::RwLock<Option<Waker>>,
     /// EtherCAT frame index.
     idx: AtomicU8,
     _timeout: PhantomData<TIMEOUT>,
@@ -75,29 +76,29 @@ where
         Self {
             frames,
             frame_data,
-            tx_waker: RefCell::new(None),
+            tx_waker: RwLock::new(None),
             idx: AtomicU8::new(0),
             _timeout: PhantomData,
         }
     }
 
-    pub fn as_ref(&self) -> PduLoopRef<'_> {
-        let frame_data = unsafe {
-            core::slice::from_raw_parts(
-                self.frame_data.as_ptr() as *const _,
-                MAX_PDU_DATA * MAX_FRAMES,
-            )
-        };
+    // pub fn as_ref(&self) -> PduLoopRef<'_> {
+    //     let frame_data = unsafe {
+    //         core::slice::from_raw_parts(
+    //             self.frame_data.as_ptr() as *const _,
+    //             MAX_PDU_DATA * MAX_FRAMES,
+    //         )
+    //     };
 
-        PduLoopRef {
-            frame_data,
-            frames: &self.frames,
-            tx_waker: &self.tx_waker,
-            idx: &self.idx,
-            max_pdu_data: MAX_PDU_DATA,
-            max_frames: MAX_FRAMES,
-        }
-    }
+    //     PduLoopRef {
+    //         frame_data,
+    //         frames: &self.frames,
+    //         tx_waker: &self.tx_waker,
+    //         idx: &self.idx,
+    //         max_pdu_data: MAX_PDU_DATA,
+    //         max_frames: MAX_FRAMES,
+    //     }
+    // }
 
     // TX
     pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), Error>
@@ -114,8 +115,8 @@ where
             }
         }
 
-        if self.tx_waker.borrow().is_none() {
-            self.tx_waker.borrow_mut().replace(waker.clone());
+        if self.tx_waker.read().is_none() {
+            self.tx_waker.write().replace(waker.clone());
         }
 
         Ok(())
@@ -154,15 +155,7 @@ where
 
         frame.replace(command, data_length, idx)?;
 
-        // Tell the packet sender there is data ready to send
-        match self.tx_waker.try_borrow() {
-            Ok(waker) => {
-                if let Some(waker) = &*waker {
-                    waker.wake_by_ref()
-                }
-            }
-            Err(_) => warn!("Send waker is already borrowed"),
-        }
+        self.wake_sender();
 
         let res = timeout::<TIMEOUT, _, _>(timeouts.pdu, frame).await?;
 
@@ -170,6 +163,14 @@ where
             &frame_data[0..usize::from(data_length)],
             res.working_counter(),
         ))
+    }
+
+    /// Tell the packet sender there is data ready to send.
+    fn wake_sender(&self) {
+        self.tx_waker
+            .read()
+            .as_ref()
+            .map(|waker| waker.wake_by_ref());
     }
 
     // TX
@@ -208,15 +209,7 @@ where
         // previous request.
         rest.fill(0);
 
-        // Tell the packet sender there is data ready to send
-        match self.tx_waker.try_borrow() {
-            Ok(waker) => {
-                if let Some(waker) = &*waker {
-                    waker.wake_by_ref()
-                }
-            }
-            Err(_) => warn!("Send waker is already borrowed"),
-        }
+        self.wake_sender();
 
         let res = timeout::<TIMEOUT, _, _>(timeouts.pdu, frame).await?;
 
