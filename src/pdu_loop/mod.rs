@@ -303,7 +303,7 @@ pub struct PduLoopRef<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::task::Poll;
+    use core::{task::Poll, time::Duration};
     use smoltcp::wire::EthernetAddress;
     use std::{sync::Arc, thread};
 
@@ -320,85 +320,75 @@ mod tests {
 
         let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
-        thread::spawn(move || {
-            smol::block_on(async move {
-                let mut packet_buf = [0u8; 1536];
+        thread::Builder::new()
+            .name("TX task".to_string())
+            .spawn(move || {
+                smol::block_on(async move {
+                    let mut packet_buf = [0u8; 1536];
 
-                log::info!("Spawn TX task");
+                    log::info!("Spawn TX task");
 
-                core::future::poll_fn::<(), _>(move |ctx| {
-                    log::info!("Poll fn");
+                    core::future::poll_fn::<(), _>(move |ctx| {
+                        log::info!("Poll fn");
 
-                    pdu_loop_tx
-                        .send_frames_blocking(ctx.waker(), |frame, data| {
-                            let packet = frame
-                                .write_ethernet_packet(&mut packet_buf, data)
-                                .expect("Write Ethernet frame");
+                        pdu_loop_tx
+                            .send_frames_blocking(ctx.waker(), |frame, data| {
+                                let packet = frame
+                                    .write_ethernet_packet(&mut packet_buf, data)
+                                    .expect("Write Ethernet frame");
 
-                            s.send(packet.to_vec()).unwrap();
+                                s.send(packet.to_vec()).unwrap();
 
-                            log::info!("Sent packet");
+                                // Simulate packet send delay
+                                smol::Timer::after(Duration::from_millis(1));
 
-                            Ok(())
-                        })
-                        .unwrap();
+                                log::info!("Sent packet");
 
-                    Poll::Pending
+                                Ok(())
+                            })
+                            .unwrap();
+
+                        Poll::Pending
+                    })
+                    .await
                 })
-                .await
             })
-        });
+            .unwrap();
 
-        thread::spawn(move || {
-            smol::block_on(async move {
-                log::info!("Spawn RX task");
+        thread::Builder::new()
+            .name("RX task".to_string())
+            .spawn(move || {
+                smol::block_on(async move {
+                    log::info!("Spawn RX task");
 
-                while let Some(ethernet_frame) = r.recv().await {
-                    // Munge fake sent frame into a fake received frame
-                    let ethernet_frame = {
-                        let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
-                        frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
-                        frame.into_inner()
-                    };
+                    while let Some(ethernet_frame) = r.recv().await {
+                        // Munge fake sent frame into a fake received frame
+                        let ethernet_frame = {
+                            let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
+                            frame.set_src_addr(EthernetAddress([
+                                0x12, 0x10, 0x10, 0x10, 0x10, 0x10,
+                            ]));
+                            frame.into_inner()
+                        };
 
-                    log::info!("Received packet");
+                        log::info!("Received packet");
 
-                    pdu_loop_rx.pdu_rx(&ethernet_frame).expect("RX");
-                }
+                        pdu_loop_rx.pdu_rx(&ethernet_frame).expect("RX");
+                    }
+                })
             })
-        });
+            .unwrap();
 
-        let task_1 = thread::spawn(move || {
-            smol::block_on(async move {
-                for i in 0..64 {
-                    let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
-
-                    log::info!("Send PDU {i}");
-
-                    let (result, _wkc) = pdu_loop_1
-                        .pdu_tx_readwrite(
-                            Command::Fpwr {
-                                address: 0x1000,
-                                register: 0x0980,
-                            },
-                            &data,
-                            &Timeouts::default(),
-                        )
-                        .await
-                        .unwrap();
-
-                    assert_eq!(result, &data);
-                }
-            });
-        });
-
+        // let task_1 = thread::Builder::new()
+        //     .name("Task 1".to_string())
+        //     .spawn(move || {
         smol::block_on(async move {
             for i in 0..64 {
-                let data = [0x11, 0x22, 0x33, 0x44, 0x55, i];
+                let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
 
                 log::info!("Send PDU {i}");
 
-                let (result, _wkc) = pdu_loop
+                let (result, _wkc) = pdu_loop_1
                     .pdu_tx_readwrite(
                         Command::Fpwr {
                             address: 0x1000,
@@ -413,7 +403,31 @@ mod tests {
                 assert_eq!(result, &data);
             }
         });
+        // })
+        // .unwrap();
 
-        task_1.join().unwrap();
+        // smol::block_on(async move {
+        //     for i in 0..64 {
+        //         let data = [0x11, 0x22, 0x33, 0x44, 0x55, i];
+
+        //         log::info!("Send PDU {i}");
+
+        //         let (result, _wkc) = pdu_loop
+        //             .pdu_tx_readwrite(
+        //                 Command::Fpwr {
+        //                     address: 0x1000,
+        //                     register: 0x0980,
+        //                 },
+        //                 &data,
+        //                 &Timeouts::default(),
+        //             )
+        //             .await
+        //             .unwrap();
+
+        //         assert_eq!(result, &data);
+        //     }
+        // });
+
+        // task_1.join().unwrap();
     }
 }
