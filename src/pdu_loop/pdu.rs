@@ -31,17 +31,10 @@ impl Pdu {
         Ok(())
     }
 
-    pub fn set_response(
-        &mut self,
-        flags: PduFlags,
-        irq: u16,
-        working_counter: u16,
-    ) -> Result<(), PduError> {
+    pub fn set_response(&mut self, flags: PduFlags, irq: u16, working_counter: u16) {
         self.flags = flags;
         self.irq = irq;
         self.working_counter = working_counter;
-
-        Ok(())
     }
 
     /// The size of the total payload to be insterted into an EtherCAT frame.
