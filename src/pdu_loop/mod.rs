@@ -256,6 +256,15 @@ where
 
         let (frame, frame_data) = self.frame(index)?;
 
+        if frame.pdu.index != index {
+            return Err(Error::Pdu(PduError::Validation(
+                PduValidationError::IndexMismatch {
+                    sent: frame.pdu.index,
+                    received: index,
+                },
+            )));
+        }
+
         let (i, command) = command_code.parse_address(i)?;
 
         // Check for weird bugs where a slave might return a different command than the one sent for

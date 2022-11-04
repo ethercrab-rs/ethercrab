@@ -105,7 +105,7 @@ pub enum VisibleStringError {
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum PduValidationError {
-    IndexMismatch { sent: Command, received: Command },
+    IndexMismatch { sent: u8, received: u8 },
     CommandMismatch { sent: Command, received: Command },
 }
 
