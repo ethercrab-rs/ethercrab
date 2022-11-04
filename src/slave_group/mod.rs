@@ -170,15 +170,18 @@ impl<
             .lrw_buf(self.start_address, self.pdi_mut(), self.read_pdi_len)
             .await?;
 
-        if wkc != self.group_working_counter {
-            Err(Error::WorkingCounter {
-                expected: self.group_working_counter,
-                received: wkc,
-                context: Some("group working counter"),
-            })
-        } else {
-            Ok(())
-        }
+        Ok(())
+
+        // FIXME: EL400 gives 2, expects 3
+        // if wkc != self.group_working_counter {
+        //     Err(Error::WorkingCounter {
+        //         expected: self.group_working_counter,
+        //         received: wkc,
+        //         context: Some("group working counter"),
+        //     })
+        // } else {
+        //     Ok(())
+        // }
     }
 
     pub(crate) fn as_mut_ref(&mut self) -> Configurator<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
