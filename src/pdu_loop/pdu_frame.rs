@@ -9,13 +9,11 @@ use core::{
     future::Future,
     mem,
     pin::Pin,
-    sync::atomic::{AtomicU8, Ordering},
     task::{Context, Poll, Waker},
 };
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
-#[derive(PartialEq, Debug, Default, num_enum::IntoPrimitive, num_enum::FromPrimitive)]
-#[repr(u8)]
+#[derive(PartialEq, Copy, Clone, Debug, Default)]
 enum FrameState {
     // SAFETY: Because we create a bunch of `Frame`s with `MaybeUninit::zeroed`, the `None` state
     // MUST be equal to zero. All other fields in `Frame` are overridden in `replace`, so there
@@ -29,7 +27,7 @@ enum FrameState {
 
 #[derive(Debug, Default)]
 pub(crate) struct Frame {
-    state: AtomicU8,
+    state: spin::RwLock<FrameState>,
     waker: Option<Waker>,
     pub pdu: Pdu,
 }
@@ -41,20 +39,16 @@ impl Frame {
         data_length: u16,
         index: u8,
     ) -> Result<(), PduError> {
-        self.state
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current_state| {
-                let current_state = FrameState::from(current_state);
+        let state = self.state.upgradeable_read();
 
-                if current_state != FrameState::None {
-                    trace!("Expected {:?}, got {:?}", FrameState::None, self.state);
-                    None
-                } else {
-                    Some(FrameState::Created.into())
-                }
-            })
-            .map_err(|_| PduError::InvalidFrameState)?;
+        if *state != FrameState::None {
+            trace!("Expected {:?}, got {:?}", FrameState::None, self.state);
+            return Err(PduError::InvalidFrameState);
+        }
 
-        self.waker = None;
+        *state.upgrade() = FrameState::Created;
+
+        let _ = self.waker.take();
         self.pdu.replace(command, data_length, index)?;
 
         Ok(())
@@ -98,25 +92,12 @@ impl Frame {
         irq: u16,
         working_counter: u16,
     ) -> Result<(), PduError> {
-        self.state
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current_state| {
-                let current_state = FrameState::from(current_state);
+        let state = self.state.upgradeable_read();
 
-                if current_state != FrameState::Sending {
-                    trace!(
-                        "Expected {:?}, got {:?}",
-                        FrameState::Sending,
-                        current_state
-                    );
-
-                    None
-                } else {
-                    self.pdu.set_response(flags, irq, working_counter);
-
-                    Some(FrameState::Done.into())
-                }
-            })
-            .map_err(|_| PduError::InvalidFrameState)?;
+        if *state != FrameState::Sending {
+            trace!("Expected {:?}, got {:?}", FrameState::Sending, self.state);
+            return Err(PduError::InvalidFrameState);
+        }
 
         let waker = self.waker.take().ok_or_else(|| {
             error!(
@@ -127,13 +108,17 @@ impl Frame {
             PduError::InvalidFrameState
         })?;
 
+        self.pdu.set_response(flags, irq, working_counter);
+
+        *state.upgrade() = FrameState::Done;
+
         waker.wake();
 
         Ok(())
     }
 
     pub(crate) fn sendable(&mut self) -> Option<SendableFrame<'_>> {
-        if FrameState::from(self.state.load(Ordering::SeqCst)) == FrameState::Created {
+        if *self.state.read() == FrameState::Created {
             Some(SendableFrame { frame: self })
         } else {
             None
@@ -148,9 +133,7 @@ pub struct SendableFrame<'a> {
 
 impl<'a> SendableFrame<'a> {
     pub(crate) fn mark_sending(&mut self) {
-        self.frame
-            .state
-            .store(FrameState::Sending as u8, Ordering::SeqCst);
+        *self.frame.state.write() = FrameState::Sending;
     }
 
     pub(crate) fn data_len(&self) -> usize {
@@ -170,7 +153,9 @@ impl Future for Frame {
     type Output = Result<Pdu, Error>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        match FrameState::from(self.state.load(Ordering::SeqCst)) {
+        let state = *self.state.read();
+
+        match state {
             FrameState::None => {
                 trace!("Frame future polled in None state");
                 Poll::Ready(Err(Error::Pdu(PduError::InvalidFrameState)))
@@ -183,7 +168,7 @@ impl Future for Frame {
             }
             FrameState::Done => {
                 // Clear frame state ready for reuse
-                self.state.store(FrameState::None.into(), Ordering::SeqCst);
+                *self.state.write() = FrameState::None;
 
                 // Drop waker so it doesn't get woken again
                 self.waker.take();
