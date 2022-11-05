@@ -6,6 +6,10 @@ EtherCrab is looking for sponsors! I (@jamwaffles) am developing EtherCrab in my
 currently no fulltime income, so if you want a safe, performant Rust EtherCat master please consider
 becoming a sponsor!
 
+## Community
+
+[We're on Matrix!](https://matrix.to/#/#ethercrab:matrix.org)
+
 ## MSRV
 
 Unfortunately, nightly Rust is currently required.
@@ -20,26 +24,26 @@ The MSRV for EtherCrab can be found in `rust-toolchain.toml`.
 - [x] Explore basic master architecture to support current design goals
 - [x] Autoconfigure slaves from their EEPROM data
   - [x] Also support configuration using CoE data
-- [ ] `async` API usable in no_std environments with either [RTIC](https://rtic.rs) (once async
-      support is released) or [Embassy](https://embassy.dev/)
-- [ ] Usable in multi-threaded Linux systems with optional realtime support via the PREEMPT-RT
-      patches
-- [ ] Configuration and cyclic communication with multiple EtherCAT slaves.
+- [x] A first pass at a safe `async` API
+  - [ ] Tested in no_std environments with either [RTIC](https://rtic.rs) (once async support is
+        released) or [Embassy](https://embassy.dev/)
+- [x] Usable in multi-threaded Linux systems with e.g. `tokio` or `std::thread` and `block_on`.
+- [x] Configuration and cyclic communication with multiple EtherCAT slaves.
+- [ ] Basic support for [CiA402](https://www.can-cia.org/can-knowledge/canopen/cia402/) torque,
+      position and velocity control of common servo drives in a high-level way.
 
-  Current test hardware is an EK1100 + modules and two LAN9252 dev boards.
+Current test hardware is an EK1100 + modules and two LAN9252 dev boards.
 
 ## Future goals
 
 These may change at any time.
 
-- [ ] A blocking API which spins on internal futures for best compatibility, possibly using
-      [casette](https://lib.rs/crates/cassette) or [nb-executor](https://lib.rs/crates/nb-executor).
+- [-] ~~A blocking API which spins on internal futures for best compatibility, possibly using
+  [casette](https://lib.rs/crates/cassette) or [nb-executor](https://lib.rs/crates/nb-executor).~~
 - [ ] Integration with LinuxCNC as a HAL component using
       [the Rust `linuxcnc-hal`](https://github.com/jamwaffles/linuxcnc-hal-rs).
 - [ ] A multiplatform configuration/debugging/management GUI
 - [ ] Loading slave configurations from ESI XML files
-- [ ] Support for [CiA402](https://www.can-cia.org/can-knowledge/canopen/cia402/) torque, position
-      and velocity control of common servo drives in a high-level way.
 
   Current test hardware consists of a Kollmorgen AKD servo drive and three Leadshine EL7 servo
   drives
