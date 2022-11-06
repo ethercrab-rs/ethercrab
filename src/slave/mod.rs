@@ -355,7 +355,10 @@ where
 
             // The provided buffer isn't long enough to contain all mailbox data.
             if complete_size > buf.len() as u32 {
-                return Err(Error::Mailbox(MailboxError::TooLong));
+                return Err(Error::Mailbox(MailboxError::TooLong {
+                    address: request.address(),
+                    sub_index: request.sub_index(),
+                }));
             }
 
             // If it's a normal upload, the response payload is returned in the initial mailbox read
@@ -508,7 +511,11 @@ where
                 })
                 .unwrap_or(AbortCode::General);
 
-            Err(Error::Mailbox(MailboxError::Aborted(code)))
+            Err(Error::Mailbox(MailboxError::Aborted {
+                code,
+                address: request.address(),
+                sub_index: request.sub_index(),
+            }))
         }
         // Validate that the mailbox response is to the request we just sent
         // TODO: Determine if we need to check the counter. I don't think SOEM does, it might just
@@ -524,7 +531,10 @@ where
                 counter
             );
 
-            Err(Error::Mailbox(MailboxError::SdoResponseInvalid))
+            Err(Error::Mailbox(MailboxError::SdoResponseInvalid {
+                address: request.address(),
+                sub_index: request.sub_index(),
+            }))
         } else {
             Ok((headers, data))
         }

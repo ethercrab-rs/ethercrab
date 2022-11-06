@@ -81,12 +81,22 @@ pub enum PduError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MailboxError {
-    Aborted(AbortCode),
+    Aborted {
+        code: AbortCode,
+        address: u16,
+        sub_index: u8,
+    },
     /// Mailbox data is too long to fit in the given type.
-    TooLong,
+    TooLong {
+        address: u16,
+        sub_index: u8,
+    },
     /// A slave has no mailbox but requires one for a given action.
     NoMailbox,
-    SdoResponseInvalid,
+    SdoResponseInvalid {
+        address: u16,
+        sub_index: u8,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
