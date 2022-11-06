@@ -72,3 +72,5 @@
   - [ ] EL4102
   - [x] EL2889 - it was clobbering FMMU config. Solved by reading FMMU from slave before each
         update.
+- [ ] Make sync0 pulses work, with master synced to them. CSP/CSV requires sync0 according to
+      <https://github.com/OpenEtherCATsociety/SOEM/issues/657#issuecomment-1304635205>
