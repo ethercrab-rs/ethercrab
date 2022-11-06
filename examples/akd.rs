@@ -3,7 +3,9 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduLoop, SlaveGroup, SlaveState, SubIndex, Timeouts,
+    error::{Error, MailboxError},
+    std::tx_rx_task,
+    Client, PduLoop, SlaveGroup, SlaveState, SubIndex, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
@@ -60,6 +62,17 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
             log::info!("Found {}", slave.name());
 
+            let profile = match slave.read_sdo::<u32>(0x1000, SubIndex::Index(0)).await {
+                Err(Error::Mailbox(MailboxError::NoMailbox)) => Ok(None),
+                Ok(device_type) => Ok(Some(device_type & 0xffff)),
+                Err(e) => Err(e),
+            }?;
+
+            // CiA 402/DS402 device
+            if profile == Some(402) {
+                log::info!("CiA402 drive found");
+            }
+
             // AKD config
             if slave.name() == "AKD" {
                 slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
@@ -77,23 +90,38 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                 slave.write_sdo(0x1c13, SubIndex::Index(0), 0x01u8).await?;
 
                 // Opmode - Cyclic Synchronous Position
-                //  slave.write_sdo(0x6060, SdoAccess::Index(0),0x08).await?;
+                // slave.write_sdo(0x6060, SubIndex::Index(0), 0x08).await?;
                 // Opmode - Cyclic Synchronous Velocity
                 slave.write_sdo(0x6060, SubIndex::Index(0), 0x09u8).await?;
-            }
 
-            if slave.name() == "ELP-EC400S" {
-                slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
-                slave
-                    .write_sdo(0x1c12, SubIndex::Index(1), 0x1601u16)
-                    .await?;
-                slave.write_sdo(0x1c12, SubIndex::Index(0), 0x01u8).await?;
+                {
+                    // Shows up as default value of 2^20, but I'm using a 2^32 counts/rev encoder.
+                    let encoder_increments =
+                        slave.read_sdo::<u32>(0x608f, SubIndex::Index(1)).await?;
+                    let num_revs = slave.read_sdo::<u32>(0x608f, SubIndex::Index(2)).await?;
 
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
-                slave
-                    .write_sdo(0x1c13, SubIndex::Index(1), 0x1A00u16)
-                    .await?;
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 0x01u8).await?;
+                    let gear_ratio_motor =
+                        slave.read_sdo::<u32>(0x6091, SubIndex::Index(1)).await?;
+                    let gear_ratio_final =
+                        slave.read_sdo::<u32>(0x6091, SubIndex::Index(2)).await?;
+
+                    let feed = slave.read_sdo::<u32>(0x6092, SubIndex::Index(1)).await?;
+                    let shaft_revolutions =
+                        slave.read_sdo::<u32>(0x6092, SubIndex::Index(2)).await?;
+
+                    dbg!(
+                        encoder_increments,
+                        num_revs,
+                        gear_ratio_motor,
+                        gear_ratio_final,
+                        feed,
+                        shaft_revolutions,
+                    );
+
+                    let counts_per_rev = encoder_increments / num_revs;
+
+                    log::info!("Counts per rev {}", counts_per_rev);
+                }
             }
 
             Ok(())
@@ -268,6 +296,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     smol::spawn(async move {
         let mut velocity: i32 = 0;
+
+        return;
 
         while let Some(_) = cyclic_interval.next().await {
             group.tx_rx(&client).await.expect("TX/RX");

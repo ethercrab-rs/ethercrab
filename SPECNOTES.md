@@ -450,3 +450,59 @@ SOEM calls `ecx_readPDOmapCA` or `ecx_readPDOmap` during initialisation. This th
   it, e.g. EK1100 followed by LAN9252 should remove the delay of the EL2004, etc.
 - TODO: Instead of just the previous slave, walk back up the slave list and find the first
   DC-supporting slave.
+
+# DS402/CiA402/MDP
+
+ETG5000.1 specifies MDP
+
+We also have a mention to it in `/EtherCATInfo/Descriptions/Devices/Device/Profile/AddInfo` of
+ETG2000 (and previous)
+
+SDO 0x1000 should equal `5001` for MDP, `402` for CiA402.
+
+ETG1000.6 section 5.6.7.4.1 Device Type specifies type for 0x1000 - it's a `u32`. Note however that
+this is split into two `u16`. As per ETG2000 page 60:
+
+- `/EtherCATInfo/Descriptions/Devices/Device/Profile/ProfileNo`
+
+  > Number of the used device profile of this device (e.g., “5001” for MDP or “402” for CiA402 servo
+  > drives). The device profile is also specified in CoE object “Device Type” (0x1000 Bit 0-15)
+
+- `/EtherCATInfo/Descriptions/Devices/Device/Profile/AddInfo`
+
+  > Additional information (depending on device profile) number of the device, e.g., according to
+  > ETG.5001 MDP sub-profile types. The additional information number is also specified in CoE
+  > object “Device Type” (0x1000 Bit 16-32). In case of the ChannelCount element is used to specify
+  > channels of the device (value != 0) the additional information is considered as “0”. Instead,
+  > the value of the element is used as channel profile value for all n channels (n = value of the
+  > value of the element is used as channel profile value for all n channels (n = value ofh
+  > ChannelCount). The profile channel numbers are also specified in CoE object entries (0xF01m:nn
+  > Bit 0-15). One entry for each channel. If ProfileNo = 402, Default Value = 2 (Servo drives).
+
+MDP (Modular Device Profile) information is read from SDO 0xf000 onwards - defined in ETG5001
+section 4.2.3.2. A slave can have multiple profiles.
+
+ETG5001.1 Figure 5 shows a good overview of address mappings
+
+ETG6010 Table 85: Object dictionary has a list of all addresses to their purposes, e.g.
+
+- 0x1001 error register
+- 0x6040 control word
+- 0x6041 status word
+
+I _think_ TwinCAT reads profiles from ESI or does some such other magic - I can't find anything in
+either WireShark or the specs that allows reading of drive parameters to put it in CSP or CSV or
+whatever.
+
+The LinuxCNC comp uses an XML file to configure mappings, e.g.
+<https://github.com/dbraun1981/hal-cia402/blob/main/example/ethercat-conf.xml> which is definitely
+not magic. We can do this in our PO2SO hook then.
+
+## Resolution calculation
+
+ETG6010 section 13.2 describes resolution calculation for stepper motors. `608fh` holds encoder
+resolution. AKD prints `1048576` for this register.
+
+AKD manual section 5.3.74 Object 608Fh: Position encoder resolution (DS402) has a bit more info
+
+60E6h and 60EBh have similar structures to 608Fh, but counts/revs are split apart.

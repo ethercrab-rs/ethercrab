@@ -111,8 +111,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         log::info!(
             "-> Slave {slave} {} has inputs: {}, outputs: {}",
             slave_stuff.name,
-            i.is_some(),
-            o.is_some()
+            i.map(|stuff| stuff.len()).unwrap_or(0),
+            o.map(|stuff| stuff.len()).unwrap_or(0)
         );
     }
 
@@ -134,12 +134,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     while let Some(_) = tick_interval.next().await {
         group.tx_rx(&client).await.expect("TX/RX");
 
-        // log::info!(
-        //     "I {:?} O {:?}",
-        //     group2.DELETEME_pdi_i(),
-        //     group2.DELETEME_pdi_o()
-        // );
-
         // let (_i, o) = group2.io(4).unwrap();
 
         // o.map(|o| {
@@ -156,26 +150,26 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         for slave in 0..group2.slaves().len() {
             let (_i, o) = group2.io(slave).unwrap();
 
-            let diff = group2
-                .slave(slave, &client)
-                .unwrap()
-                .raw_read::<u32>(RegisterAddress::DcSystemTimeDifference)
-                .await
-                .map(|n| {
-                    let smaller = n & (1 << 31) > 0;
+            // let diff = group2
+            //     .slave(slave, &client)
+            //     .unwrap()
+            //     .raw_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+            //     .await
+            //     .map(|n| {
+            //         let smaller = n & (1 << 31) > 0;
 
-                    // Chop off smaller/larger bit
-                    let number = (n & (u32::MAX >> 1)) as i32;
+            //         // Chop off smaller/larger bit
+            //         let number = (n & (u32::MAX >> 1)) as i32;
 
-                    if smaller {
-                        -number
-                    } else {
-                        number
-                    }
-                })
-                .unwrap_or(0);
+            //         if smaller {
+            //             -number
+            //         } else {
+            //             number
+            //         }
+            //     })
+            //     .unwrap_or(0);
 
-            print!("{diff:+#05} ");
+            // print!("{diff:+#05} ");
 
             o.map(|o| {
                 for byte in o.iter_mut() {
@@ -185,7 +179,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             });
         }
 
-        println!("");
+        // println!("");
     }
 
     Ok(())
