@@ -37,6 +37,8 @@ pub trait CoeServiceTrait: packed_struct::PackedStruct {
     fn counter(&self) -> u8;
     fn is_aborted(&self) -> bool;
     fn mailbox_type(&self) -> MailboxType;
+    fn address(&self) -> u16;
+    fn sub_index(&self) -> u8;
 }
 
 impl CoeServiceTrait for UploadRequest {
@@ -49,6 +51,12 @@ impl CoeServiceTrait for UploadRequest {
     fn mailbox_type(&self) -> MailboxType {
         self.header.mailbox_type
     }
+    fn address(&self) -> u16 {
+        self.sdo_header.index
+    }
+    fn sub_index(&self) -> u8 {
+        self.sdo_header.sub_index
+    }
 }
 impl CoeServiceTrait for DownloadExpeditedRequest {
     fn counter(&self) -> u8 {
@@ -60,6 +68,12 @@ impl CoeServiceTrait for DownloadExpeditedRequest {
     fn mailbox_type(&self) -> MailboxType {
         self.header.mailbox_type
     }
+    fn address(&self) -> u16 {
+        self.sdo_header.index
+    }
+    fn sub_index(&self) -> u8 {
+        self.sdo_header.sub_index
+    }
 }
 impl CoeServiceTrait for SegmentedUploadRequest {
     fn counter(&self) -> u8 {
@@ -70,6 +84,12 @@ impl CoeServiceTrait for SegmentedUploadRequest {
     }
     fn mailbox_type(&self) -> MailboxType {
         self.header.mailbox_type
+    }
+    fn address(&self) -> u16 {
+        0
+    }
+    fn sub_index(&self) -> u8 {
+        0
     }
 }
 
