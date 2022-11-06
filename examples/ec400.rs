@@ -61,17 +61,46 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             log::info!("Found {}", slave.name());
 
             if slave.name() == "ELP-EC400S" {
-                slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
+                // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
+                slave.write_sdo(0x1600, SubIndex::Index(0), 0u8).await?;
+                // Control word, u16
+                // NOTE: The lower word specifies the field length
                 slave
-                    .write_sdo(0x1c12, SubIndex::Index(1), 0x1601u16)
+                    .write_sdo(0x1600, SubIndex::Index(1), 0x6040_0010u32)
                     .await?;
-                slave.write_sdo(0x1c12, SubIndex::Index(0), 0x01u8).await?;
+                // Target velocity, i32
+                slave
+                    .write_sdo(0x1600, SubIndex::Index(2), 0x60ff_0020u32)
+                    .await?;
+                slave.write_sdo(0x1600, SubIndex::Index(0), 2u8).await?;
+
+                slave.write_sdo(0x1a00, SubIndex::Index(0), 0u8).await?;
+                // Status word, u16
+                slave
+                    .write_sdo(0x1a00, SubIndex::Index(1), 0x6041_0010u32)
+                    .await?;
+                // Actual position, i32
+                slave
+                    .write_sdo(0x1a00, SubIndex::Index(2), 0x6064_0020u32)
+                    .await?;
+                // Actual velocity, i32
+                slave
+                    .write_sdo(0x1a00, SubIndex::Index(3), 0x606c_0020u32)
+                    .await?;
+                slave.write_sdo(0x1a00, SubIndex::Index(0), 0x03u8).await?;
+
+                slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
+                slave.write_sdo(0x1c12, SubIndex::Index(1), 0x1600).await?;
+                slave.write_sdo(0x1c12, SubIndex::Index(0), 1u8).await?;
 
                 slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
-                slave
-                    .write_sdo(0x1c13, SubIndex::Index(1), 0x1A00u16)
-                    .await?;
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 0x01u8).await?;
+                slave.write_sdo(0x1c13, SubIndex::Index(1), 0x1a00).await?;
+                slave.write_sdo(0x1c13, SubIndex::Index(0), 1u8).await?;
+
+                // Opmode - Cyclic Synchronous Position
+                // slave.write_sdo(0x6060, SubIndex::Index(0), 0x08).await?;
+                // Opmode - Cyclic Synchronous Velocity
+                slave.write_sdo(0x6060, SubIndex::Index(0), 0x09u8).await?;
             }
 
             Ok(())
@@ -135,7 +164,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
         let status = i
             .map(|i| {
-                let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+                let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
 
                 unsafe { StatusWord::from_bits_unchecked(status) }
             })
@@ -145,7 +174,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             log::warn!("Fault! Clearing...");
 
             o.map(|o| {
-                let (_pos_cmd, control) = o.split_at_mut(4);
+                let (control, _cmd) = o.split_at_mut(2);
                 let reset = ControlWord::RESET_FAULT;
                 let reset = reset.bits().to_le_bytes();
                 control.copy_from_slice(&reset);
@@ -158,11 +187,13 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
                 let status = i
                     .map(|i| {
-                        let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+                        let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
 
                         unsafe { StatusWord::from_bits_unchecked(status) }
                     })
                     .unwrap();
+
+                dbg!(status);
 
                 if !status.contains(StatusWord::FAULT) {
                     log::info!("Fault cleared, status is now {status:?}");
@@ -180,7 +211,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         let (_i, o) = group.io(0).unwrap();
 
         o.map(|o| {
-            let (_pos_cmd, control) = o.split_at_mut(4);
+            let (control, _cmd) = o.split_at_mut(2);
             let value = ControlWord::SHUTDOWN;
             let value = value.bits().to_le_bytes();
             control.copy_from_slice(&value);
@@ -193,7 +224,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
             let status = i
                 .map(|i| {
-                    let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+                    let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
 
                     unsafe { StatusWord::from_bits_unchecked(status) }
                 })
@@ -214,7 +245,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         let (_i, o) = group.io(0).unwrap();
 
         o.map(|o| {
-            let (_pos_cmd, control) = o.split_at_mut(4);
+            let (control, _cmd) = o.split_at_mut(2);
             let reset =
                 ControlWord::SWITCH_ON | ControlWord::DISABLE_VOLTAGE | ControlWord::QUICK_STOP;
             let reset = reset.bits().to_le_bytes();
@@ -228,7 +259,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
             let status = i
                 .map(|i| {
-                    let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+                    let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
 
                     unsafe { StatusWord::from_bits_unchecked(status) }
                 })
@@ -238,7 +269,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                 log::info!("Drive switched on, begin cyclic operation");
 
                 o.map(|o| {
-                    let (_pos_cmd, control) = o.split_at_mut(4);
+                    let (control, _cmd) = o.split_at_mut(2);
 
                     // Enable operation so we can send cyclic data
                     let state = ControlWord::SWITCH_ON
@@ -262,29 +293,30 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
             let (i, o) = group.io(0).unwrap();
 
-            let (pos, status) = i
+            let (pos, vel, status) = i
                 .map(|i| {
-                    let pos = u32::from_le_bytes(i[0..=3].try_into().unwrap());
-                    let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+                    let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
+                    let pos = u32::from_le_bytes(i[2..=5].try_into().unwrap());
+                    let vel = u32::from_le_bytes(i[6..=9].try_into().unwrap());
 
                     let status = unsafe { StatusWord::from_bits_unchecked(status) };
 
-                    (pos, status)
+                    (pos, vel, status)
                 })
                 .unwrap();
 
             println!(
-                "Position: {pos}, Status: {status:?} | {:?}",
+                "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
                 o.as_ref().unwrap()
             );
 
             o.map(|o| {
-                let (pos_cmd, _control) = o.split_at_mut(4);
+                let pos_cmd = &mut o[2..=5];
 
                 pos_cmd.copy_from_slice(&velocity.to_le_bytes());
             });
 
-            if velocity < 100_000_0 {
+            if velocity < 200_000 {
                 velocity += 200;
             }
         }
@@ -358,23 +390,23 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, packed_struct::PackedStruct)]
-struct Inputs {
-    last_error: u16,
-    status: u16,
-    op_mode_display: u8,
-    actual_position: u32,
-    probe: u16,
-    probe_2: u32,
-    digital_inputs: u32,
-}
+// #[derive(Debug, packed_struct::PackedStruct)]
+// struct Inputs {
+//     last_error: u16,
+//     status: u16,
+//     op_mode_display: u8,
+//     actual_position: u32,
+//     probe: u16,
+//     probe_2: u32,
+//     digital_inputs: u32,
+// }
 
-#[derive(Debug, packed_struct::PackedStruct)]
-struct Outputs {
-    control_word: u16,
-    target_position: u32,
-    probe: u16,
-}
+// #[derive(Debug, packed_struct::PackedStruct)]
+// struct Outputs {
+//     control_word: u16,
+//     target_position: u32,
+//     probe: u16,
+// }
 
 fn main() -> Result<(), Error> {
     env_logger::init();
