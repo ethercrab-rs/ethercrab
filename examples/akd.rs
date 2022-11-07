@@ -297,8 +297,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     smol::spawn(async move {
         let mut velocity: i32 = 0;
 
-        return;
-
         while let Some(_) = cyclic_interval.next().await {
             group.tx_rx(&client).await.expect("TX/RX");
 
