@@ -122,10 +122,11 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Group has {} slaves", group.slaves().len());
 
     for (slave, slave_stuff) in group.slaves().iter().enumerate() {
-        let (i, o) = group.io(slave).unwrap();
+        let sl = group.slave(slave, &client).unwrap();
+        let (i, o) = (sl.inputs, sl.outputs);
 
         log::info!(
-            "-> Slave {slave} {} has inputs: {}, outputs: {}",
+            "-> Slave {slave} {} inputs: {} bytes, outputs: {} bytes",
             slave_stuff.name,
             i.map(|stuff| stuff.len()).unwrap_or(0),
             o.map(|stuff| stuff.len()).unwrap_or(0)
@@ -149,7 +150,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         Duration::from_millis(unsafe { cycle_time_ms.round().to_int_unchecked() })
     };
 
-    log::debug!("Cycle time: {} ms", cycle_time.as_millis());
+    log::info!("Cycle time: {} ms", cycle_time.as_millis());
 
     // AKD will error with F706 if cycle time is not 2ms or less
     let mut cyclic_interval = Timer::interval(cycle_time);
@@ -160,7 +161,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
         group.tx_rx(&client).await.expect("TX/RX");
 
-        let (i, o) = group.io(0).unwrap();
+        let slave = group.slave(0, &client).unwrap();
+        let (i, o) = (slave.inputs, slave.outputs);
 
         let status = i
             .map(|i| {
@@ -183,8 +185,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             while let Some(_) = cyclic_interval.next().await {
                 group.tx_rx(&client).await.expect("TX/RX");
 
-                let (i, _o) = group.io(0).unwrap();
-
                 let status = i
                     .map(|i| {
                         let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
@@ -192,8 +192,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                         unsafe { StatusWord::from_bits_unchecked(status) }
                     })
                     .unwrap();
-
-                dbg!(status);
 
                 if !status.contains(StatusWord::FAULT) {
                     log::info!("Fault cleared, status is now {status:?}");
@@ -208,7 +206,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     {
         log::info!("Putting drive in shutdown state");
 
-        let (_i, o) = group.io(0).unwrap();
+        let slave = group.slave(0, &client).unwrap();
+        let (i, o) = (slave.inputs, slave.outputs);
 
         o.map(|o| {
             let (control, _cmd) = o.split_at_mut(2);
@@ -219,8 +218,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
         while let Some(_) = cyclic_interval.next().await {
             group.tx_rx(&client).await.expect("TX/RX");
-
-            let (i, _o) = group.io(0).unwrap();
 
             let status = i
                 .map(|i| {
@@ -242,9 +239,10 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     {
         log::info!("Switching drive on");
 
-        let (_i, o) = group.io(0).unwrap();
+        let slave = group.slave(0, &client).unwrap();
+        let (i, mut o) = (slave.inputs, slave.outputs);
 
-        o.map(|o| {
+        o.as_mut().map(|o| {
             let (control, _cmd) = o.split_at_mut(2);
             let reset =
                 ControlWord::SWITCH_ON | ControlWord::DISABLE_VOLTAGE | ControlWord::QUICK_STOP;
@@ -254,8 +252,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
         while let Some(_) = cyclic_interval.next().await {
             group.tx_rx(&client).await.expect("TX/RX");
-
-            let (i, o) = group.io(0).unwrap();
 
             let status = i
                 .map(|i| {
@@ -288,10 +284,12 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     smol::spawn(async move {
         let mut velocity: i32 = 0;
 
+        let mut slave = group.slave(0, &client).unwrap();
+
         while let Some(_) = cyclic_interval.next().await {
             group.tx_rx(&client).await.expect("TX/RX");
 
-            let (i, o) = group.io(0).unwrap();
+            let (i, o) = (slave.inputs, slave.outputs.as_mut());
 
             let (pos, vel, status) = i
                 .map(|i| {
@@ -390,23 +388,15 @@ bitflags::bitflags! {
     }
 }
 
-// #[derive(Debug, packed_struct::PackedStruct)]
-// struct Inputs {
-//     last_error: u16,
-//     status: u16,
-//     op_mode_display: u8,
-//     actual_position: u32,
-//     probe: u16,
-//     probe_2: u32,
-//     digital_inputs: u32,
-// }
-
-// #[derive(Debug, packed_struct::PackedStruct)]
-// struct Outputs {
-//     control_word: u16,
-//     target_position: u32,
-//     probe: u16,
-// }
+impl StatusWord {
+    fn fault(&self) -> Result<(), Error> {
+        if self.contains(Self::FAULT) {
+            Err(Error::Internal)
+        } else {
+            Ok(())
+        }
+    }
+}
 
 fn main() -> Result<(), Error> {
     env_logger::init();

@@ -1,5 +1,6 @@
 mod configurator;
 mod container;
+mod group_slave;
 
 use crate::{
     error::{Error, Item},
@@ -8,6 +9,7 @@ use crate::{
     Client,
 };
 use core::{cell::UnsafeCell, future::Future, pin::Pin};
+pub use group_slave::GroupSlave;
 
 pub use configurator::Configurator;
 pub use container::SlaveGroupContainer;
@@ -112,16 +114,33 @@ impl<
         &'a self,
         index: usize,
         client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-    ) -> Option<SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>
+    ) -> Option<GroupSlave<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>
     where
         TIMEOUT: TimerFactory,
     {
-        let slave = self.slaves.get(index)?;
+        self.slaves.get(index).map(|slave| {
+            let IoRanges {
+                input: input_range,
+                output: output_range,
+            } = slave.io_segments();
 
-        Some(SlaveRef::new(
-            SlaveClient::new(client, slave.configured_address),
-            slave,
-        ))
+            // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
+            let i_data = self.pdi();
+            let o_data = self.pdi_mut();
+
+            let inputs = input_range
+                .as_ref()
+                .and_then(|range| i_data.get(range.bytes.clone()));
+            let outputs = output_range
+                .as_ref()
+                .and_then(|range| o_data.get_mut(range.bytes.clone()));
+
+            GroupSlave {
+                slave: SlaveRef::new(SlaveClient::new(client, slave.configured_address), slave),
+                inputs,
+                outputs,
+            }
+        })
     }
 
     fn pdi_mut(&self) -> &mut [u8] {
@@ -136,28 +155,28 @@ impl<
         &all_buf[0..self.pdi_len]
     }
 
-    /// Get the input and output segments of the PDI for a given slave.
-    ///
-    /// If the slave index does not resolve to a discovered slave, this method will return `None`.
-    pub fn io(&self, idx: usize) -> Option<(Option<&[u8]>, Option<&mut [u8]>)> {
-        let IoRanges {
-            input: input_range,
-            output: output_range,
-        } = self.slaves.get(idx)?.io_segments();
+    // /// Get the input and output segments of the PDI for a given slave.
+    // ///
+    // /// If the slave index does not resolve to a discovered slave, this method will return `None`.
+    // pub fn io(&self, idx: usize) -> Option<(Option<&[u8]>, Option<&mut [u8]>)> {
+    //     let IoRanges {
+    //         input: input_range,
+    //         output: output_range,
+    //     } = self.slaves.get(idx)?.io_segments();
 
-        // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
-        let i_data = self.pdi();
-        let o_data = self.pdi_mut();
+    //     // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
+    //     let i_data = self.pdi();
+    //     let o_data = self.pdi_mut();
 
-        let i = input_range
-            .as_ref()
-            .and_then(|range| i_data.get(range.bytes.clone()));
-        let o = output_range
-            .as_ref()
-            .and_then(|range| o_data.get_mut(range.bytes.clone()));
+    //     let i = input_range
+    //         .as_ref()
+    //         .and_then(|range| i_data.get(range.bytes.clone()));
+    //     let o = output_range
+    //         .as_ref()
+    //         .and_then(|range| o_data.get_mut(range.bytes.clone()));
 
-        Some((i, o))
-    }
+    //     Some((i, o))
+    // }
 
     pub async fn tx_rx<'client>(
         &self,

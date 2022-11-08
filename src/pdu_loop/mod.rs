@@ -232,7 +232,11 @@ where
     pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
-        // Look for EtherCAT packets whilst ignoring broadcast packets sent from self
+        // Look for EtherCAT packets whilst ignoring broadcast packets sent from self.
+        // As per <https://github.com/OpenEtherCATsociety/SOEM/issues/585#issuecomment-1013688786>,
+        // the first slave will set the second bit of the MSB of the MAC address. This means if we
+        // send e.g. 10:10:10:10:10:10, we receive 12:10:10:10:10:10 which is useful for this
+        // filtering.
         if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == MASTER_ADDR {
             return Ok(());
         }
