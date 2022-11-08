@@ -265,6 +265,16 @@ Webinar notes
 
 ETG1000.4 Table 61 mentions DC user P1 to DC user P12 - these are defined in ETG1000.6 Table 27
 
+## `sync0`
+
+- [This comment](https://github.com/OpenEtherCATsociety/SOEM/issues/142#issuecomment-356661080)
+  heavily implies each slave that wants to work with sync0 should set it up, not just the first one.
+  - [This issue](https://github.com/OpenEtherCATsociety/SOEM/issues/618) corroborates that.
+  - As does the code in `main.zip` [here](https://github.com/OpenEtherCATsociety/SOEM/issues/585)
+- [This](https://infosys.beckhoff.com/english.php?content=../content/1033/ethercatsystem/2469122443.html&id=)
+  is a good page on synchronisation modes.
+- A decent rule of thumb for Sync0 offset is half the cycle time - if the cycle time is long enough.
+
 ## Topology
 
 Helpful webinar:
