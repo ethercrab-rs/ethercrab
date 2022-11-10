@@ -3,7 +3,8 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduLoop, SlaveGroup, SlaveState, SubIndex, Timeouts,
+    error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, SlaveGroup, SlaveState, SubIndex,
+    Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
@@ -26,7 +27,8 @@ const MAX_PDU_DATA: usize = 1100;
 const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 64;
 
-static PDU_LOOP: PduLoop<MAX_FRAMES, MAX_PDU_DATA> = PduLoop::new();
+static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+static PDU_LOOP: PduLoop<MAX_FRAMES, MAX_PDU_DATA> = PduLoop::new(PDU_STORAGE.as_ref());
 
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Starting SDO demo...");

@@ -46,8 +46,11 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 }
 
 pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
-    frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
-    frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
+    // frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
+    // frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
+    frame_data: &'static [UnsafeCell<&'static [u8]>],
+    frames: &'static [UnsafeCell<pdu_frame::Frame>],
+
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: spin::RwLock<Option<Waker>>,
     /// EtherCAT frame index.
@@ -59,17 +62,50 @@ unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
 {
 }
 
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX_PDU_DATA> {
+pub struct PduStorage<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
+    frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
+    frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
+}
+
+unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
+    for PduStorage<MAX_FRAMES, MAX_PDU_DATA>
+{
+}
+
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, MAX_PDU_DATA> {
     pub const fn new() -> Self {
         // MSRV: Nightly
         let frames = unsafe { MaybeUninit::zeroed().assume_init() };
         let frame_data = unsafe { MaybeUninit::zeroed().assume_init() };
 
-        assert!(MAX_FRAMES <= u8::MAX as usize);
+        Self { frame_data, frames }
+    }
+
+    pub const fn as_ref(&self) -> PduStorageRef {
+        PduStorageRef {
+            frames: &self.frames,
+            frame_data: unsafe {
+                core::slice::from_raw_parts(
+                    self.frame_data.as_ptr() as *const _ as *const UnsafeCell<&[u8]>,
+                    self.frame_data.len(),
+                )
+            },
+        }
+    }
+}
+
+pub struct PduStorageRef<'a> {
+    frame_data: &'a [UnsafeCell<&'a [u8]>],
+    frames: &'a [UnsafeCell<pdu_frame::Frame>],
+}
+
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX_PDU_DATA> {
+    pub const fn new(storage: PduStorageRef<'static>) -> Self {
+        assert!(storage.frames.len() <= u8::MAX as usize);
 
         Self {
-            frames,
-            frame_data,
+            frames: storage.frames,
+            frame_data: storage.frame_data,
             tx_waker: RwLock::new(None),
             idx: AtomicU8::new(0),
         }
@@ -98,7 +134,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX
     where
         F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
     {
-        for idx in 0..(MAX_FRAMES as u8) {
+        for idx in 0..(self.frames.len() as u8) {
             let (frame, data) = self.frame(idx)?;
 
             if let Some(ref mut frame) = frame.sendable() {
@@ -124,7 +160,14 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX
         }
 
         let frame = unsafe { &mut *self.frames[idx].get() };
-        let data = unsafe { &mut *self.frame_data[idx].get() };
+        let data = unsafe {
+            core::slice::from_raw_parts_mut(
+                self.frame_data[idx].get() as *mut _ as *mut u8,
+                MAX_PDU_DATA,
+            )
+        };
+
+        // let data = todo!();
 
         Ok((frame, data))
     }
@@ -136,7 +179,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX
         command: Command,
         data_length: u16,
     ) -> Result<PduResponse<&'_ [u8]>, Error> {
-        let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
+        let idx = self.next_index();
 
         let (frame, frame_data) = self.frame(idx)?;
 
@@ -155,6 +198,10 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX
             &frame_data[0..usize::from(data_length)],
             res.working_counter(),
         ))
+    }
+
+    fn next_index(&self) -> u8 {
+        self.idx.fetch_add(1, Ordering::AcqRel) % self.frames.len() as u8
     }
 
     /// Tell the packet sender there is data ready to send.
@@ -179,7 +226,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX
         send_data: &[u8],
         data_length: u16,
     ) -> Result<PduResponse<&'a [u8]>, Error> {
-        let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
+        let idx = self.next_index();
 
         let send_data_len = send_data.len();
         let payload_length = u16::try_from(send_data.len())?.max(data_length);
