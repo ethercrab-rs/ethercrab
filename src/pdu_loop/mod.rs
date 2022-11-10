@@ -10,7 +10,6 @@ use crate::{
 };
 use core::{
     cell::{RefCell, UnsafeCell},
-    marker::PhantomData,
     mem::MaybeUninit,
     sync::atomic::{AtomicU8, Ordering},
     task::Waker,
@@ -45,22 +44,7 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
     }
 }
 
-pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
-    // frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
-    // frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
-    frame_data: &'static [UnsafeCell<&'static [u8]>],
-    frames: &'static [UnsafeCell<pdu_frame::Frame>],
-
-    /// A waker used to wake up the TX task when a new frame is ready to be sent.
-    tx_waker: spin::RwLock<Option<Waker>>,
-    /// EtherCAT frame index.
-    idx: AtomicU8,
-}
-
-unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
-    for PduLoop<MAX_FRAMES, MAX_PDU_DATA>
-{
-}
+unsafe impl Sync for PduLoop {}
 
 pub struct PduStorage<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
     frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
@@ -78,6 +62,12 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, 
         let frames = unsafe { MaybeUninit::zeroed().assume_init() };
         let frame_data = unsafe { MaybeUninit::zeroed().assume_init() };
 
+        // MSRV: Make `MAX_FRAMES` a `u8` when `generic_const_exprs` is stablised
+        assert!(
+            MAX_FRAMES <= u8::MAX as usize,
+            "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
+        );
+
         Self { frame_data, frames }
     }
 
@@ -90,6 +80,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, 
                     self.frame_data.len(),
                 )
             },
+            max_pdu_data: MAX_PDU_DATA,
         }
     }
 }
@@ -97,15 +88,28 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, 
 pub struct PduStorageRef<'a> {
     frame_data: &'a [UnsafeCell<&'a [u8]>],
     frames: &'a [UnsafeCell<pdu_frame::Frame>],
+    max_pdu_data: usize,
 }
 
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX_PDU_DATA> {
+pub struct PduLoop {
+    frame_data: &'static [UnsafeCell<&'static [u8]>],
+    frames: &'static [UnsafeCell<pdu_frame::Frame>],
+    pub(crate) max_pdu_data: usize,
+
+    /// A waker used to wake up the TX task when a new frame is ready to be sent.
+    tx_waker: spin::RwLock<Option<Waker>>,
+    /// EtherCAT frame index.
+    idx: AtomicU8,
+}
+
+impl PduLoop {
     pub const fn new(storage: PduStorageRef<'static>) -> Self {
         assert!(storage.frames.len() <= u8::MAX as usize);
 
         Self {
             frames: storage.frames,
             frame_data: storage.frame_data,
+            max_pdu_data: storage.max_pdu_data,
             tx_waker: RwLock::new(None),
             idx: AtomicU8::new(0),
         }
@@ -155,7 +159,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX
     fn frame(&self, idx: u8) -> Result<(&mut pdu_frame::Frame, &mut [u8]), Error> {
         let idx = usize::from(idx);
 
-        if idx > MAX_FRAMES {
+        if idx > self.frames.len() {
             return Err(Error::Pdu(PduError::InvalidIndex(idx)));
         }
 
@@ -163,7 +167,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX
         let data = unsafe {
             core::slice::from_raw_parts_mut(
                 self.frame_data[idx].get() as *mut _ as *mut u8,
-                MAX_PDU_DATA,
+                self.max_pdu_data,
             )
         };
 
@@ -210,6 +214,41 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX
             .read()
             .as_ref()
             .map(|waker| waker.wake_by_ref());
+    }
+
+    // TX
+    /// Broadcast (BWR) a packet full of zeroes, up to `max_data_length`.
+    pub async fn pdu_broadcast_zeros<'a>(
+        &'a self,
+        register: u16,
+        payload_length: u16,
+    ) -> Result<PduResponse<()>, Error> {
+        let idx = self.next_index();
+
+        let (frame, frame_data) = self.frame(idx)?;
+
+        frame.replace(
+            Command::Bwr {
+                address: 0,
+                register,
+            },
+            payload_length,
+            idx,
+        )?;
+
+        let payload_length = usize::from(payload_length);
+
+        let payload = frame_data
+            .get_mut(0..payload_length)
+            .ok_or(Error::Pdu(PduError::TooLong))?;
+
+        payload.fill(0);
+
+        self.wake_sender();
+
+        let res = frame.await?;
+
+        Ok(((), res.working_counter()))
     }
 
     // TX

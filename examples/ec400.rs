@@ -28,21 +28,18 @@ const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
-static PDU_LOOP: PduLoop<MAX_FRAMES, MAX_PDU_DATA> = PduLoop::new(PDU_STORAGE.as_ref());
+static PDU_LOOP: PduLoop = PduLoop::new(PDU_STORAGE.as_ref());
 
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Starting SDO demo...");
 
-    let client = Arc::new(Client::<MAX_FRAMES, MAX_PDU_DATA, smol::Timer>::new(
-        &PDU_LOOP,
-        Timeouts::default(),
-    ));
+    let client = Arc::new(Client::<smol::Timer>::new(&PDU_LOOP, Timeouts::default()));
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
 
     // let num_slaves = client.num_slaves();
 
-    let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(|slave| {
+    let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN, _>::new(|slave| {
         Box::pin(async {
             // --- Reads ---
 

@@ -22,10 +22,9 @@ use core::{
 };
 use packed_struct::PackedStruct;
 
-pub struct Client<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+pub struct Client<'client, TIMEOUT> {
     // TODO: un-pub
-    // TODO: Experiment with taking a dyn trait reference
-    pub(crate) pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA>,
+    pub(crate) pdu_loop: &'client PduLoop,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
     pub(crate) timeouts: Timeouts,
@@ -33,23 +32,13 @@ pub struct Client<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, T
     mailbox_counter: AtomicU8,
 }
 
-unsafe impl<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
-    for Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
-{
-}
+unsafe impl<'client, TIMEOUT> Sync for Client<'client, TIMEOUT> {}
 
-impl<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<'client, TIMEOUT> Client<'client, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub fn new(pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA>, timeouts: Timeouts) -> Self {
-        // MSRV: Make `MAX_FRAMES` a `u8` when `generic_const_exprs` is stablised
-        assert!(
-            MAX_FRAMES <= u8::MAX.into(),
-            "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
-        );
-
+    pub const fn new(pdu_loop: &'client PduLoop, timeouts: Timeouts) -> Self {
         Self {
             pdu_loop,
             // slaves: UnsafeCell::new(heapless::Vec::new()),
@@ -77,19 +66,17 @@ where
             .unwrap()
     }
 
-    /// Write zeroes to every slave's memory in chunks of [`MAX_PDU_DATA`].
+    /// Write zeroes to every slave's memory in chunks.
     async fn blank_memory(&self, start: impl Into<u16>, len: u16) -> Result<(), Error> {
         let start: u16 = start.into();
-        let step = MAX_PDU_DATA;
+        let step = self.pdu_loop.max_pdu_data;
         let range = start..(start + len);
 
+        // TODO: This will miss the last step if step is not a multiple of range. Use a loop instead.
         for chunk_start in range.step_by(step) {
-            self.write_service(
-                Command::Bwr {
-                    address: 0,
-                    register: chunk_start,
-                },
-                [0u8; MAX_PDU_DATA],
+            timeout::<TIMEOUT, _, _>(
+                self.timeouts.pdu,
+                self.pdu_loop.pdu_broadcast_zeros(chunk_start, step as u16),
             )
             .await?;
         }
@@ -154,7 +141,7 @@ where
         mut group_filter: impl FnMut(&mut G, Slave) -> Result<(), Error>,
     ) -> Result<G, Error>
     where
-        G: SlaveGroupContainer<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        G: SlaveGroupContainer<TIMEOUT>,
     {
         self.reset_slaves().await?;
 
@@ -482,7 +469,7 @@ where
         value: &'buf mut [u8],
         read_back_len: usize,
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
-        assert!(value.len() <= MAX_PDU_DATA, "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame",value.len(), MAX_PDU_DATA);
+        assert!(value.len() <= self.pdu_loop.max_pdu_data, "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), self.pdu_loop.max_pdu_data);
 
         let (data, working_counter) = timeout::<TIMEOUT, _, _>(
             self.timeouts.pdu,

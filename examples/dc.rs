@@ -32,12 +32,13 @@ const MAX_PDU_DATA: usize = 1100;
 const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 64;
 
-static PDU_LOOP: PduLoop<MAX_FRAMES, MAX_PDU_DATA> = PduLoop::new();
+static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+static PDU_LOOP: PduLoop = PduLoop::new(PDU_STORAGE.as_ref());
 
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Starting DC demo...");
 
-    let client = Arc::new(Client::<MAX_FRAMES, MAX_PDU_DATA, smol::Timer>::new(
+    let client = Arc::new(Client::<smol::Timer>::new(
         &PDU_LOOP,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
@@ -48,7 +49,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
 
-    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN, MAX_FRAMES, MAX_PDU_DATA, _>::new(|slave| {
+    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN, _>::new(|slave| {
         Box::pin(async {
             if slave.name() == "EL3004" {
                 log::info!("Found EL3004. Configuring...");
