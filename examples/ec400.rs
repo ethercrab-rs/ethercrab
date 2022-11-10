@@ -157,110 +157,41 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let mut slave = group.slave(0, &client).expect("No servo!");
     let mut servo = Ds402::new(&mut slave).expect("Failed to gather DS402");
 
-    // Check for and clear faults
-    {
-        log::info!("Checking faults");
+    let mut velocity: i32 = 0;
 
+    // let mut slave = group.slave(0, &client).unwrap();
+
+    while let Some(_) = cyclic_interval.next().await {
         group.tx_rx(&client).await.expect("TX/RX");
 
-        let status = servo.status();
+        servo.tick();
 
-        if status.contains(StatusWord::FAULT) {
-            log::warn!("Fault! Clearing...");
+        match servo.state {
+            State::Op => {
+                let (pos, vel) = {
+                    let pos = u32::from_le_bytes(servo.inputs[2..=5].try_into().unwrap());
+                    let vel = u32::from_le_bytes(servo.inputs[6..=9].try_into().unwrap());
 
-            servo.set_control_word(ControlWord::RESET_FAULT);
-
-            while let Some(_) = cyclic_interval.next().await {
-                group.tx_rx(&client).await.expect("TX/RX");
+                    (pos, vel)
+                };
 
                 let status = servo.status();
 
-                if !status.contains(StatusWord::FAULT) {
-                    log::info!("Fault cleared, status is now {status:?}");
+                println!(
+                    "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
+                    servo.outputs
+                );
 
-                    break;
+                let pos_cmd = &mut servo.outputs[2..=5];
+
+                pos_cmd.copy_from_slice(&velocity.to_le_bytes());
+
+                if velocity < 200_000 {
+                    velocity += 200;
                 }
             }
-        }
-    }
-
-    // Shutdown state
-    {
-        log::info!("Putting drive in shutdown state");
-
-        servo.set_control_word(ControlWord::SHUTDOWN);
-
-        while let Some(_) = cyclic_interval.next().await {
-            group.tx_rx(&client).await.expect("TX/RX");
-
-            let status = servo.status();
-
-            if status.contains(StatusWord::READY_TO_SWITCH_ON) {
-                log::info!("Drive is shut down");
-
-                break;
-            }
-        }
-    }
-
-    // Switch drive on
-    {
-        log::info!("Switching drive on");
-
-        servo.set_control_word(
-            ControlWord::SWITCH_ON | ControlWord::DISABLE_VOLTAGE | ControlWord::QUICK_STOP,
-        );
-
-        while let Some(_) = cyclic_interval.next().await {
-            group.tx_rx(&client).await.expect("TX/RX");
-
-            let status = servo.status();
-
-            if status.contains(StatusWord::SWITCHED_ON) {
-                log::info!("Drive switched on, begin cyclic operation");
-
-                // Enable operation so we can send cyclic data
-                let state = ControlWord::SWITCH_ON
-                    | ControlWord::DISABLE_VOLTAGE
-                    | ControlWord::QUICK_STOP
-                    | ControlWord::ENABLE_OP;
-
-                servo.set_control_word(state);
-
-                break;
-            }
-        }
-    }
-
-    {
-        let mut velocity: i32 = 0;
-
-        // let mut slave = group.slave(0, &client).unwrap();
-
-        while let Some(_) = cyclic_interval.next().await {
-            group.tx_rx(&client).await.expect("TX/RX");
-
-            let (pos, vel) = {
-                let pos = u32::from_le_bytes(servo.inputs[2..=5].try_into().unwrap());
-                let vel = u32::from_le_bytes(servo.inputs[6..=9].try_into().unwrap());
-
-                (pos, vel)
-            };
-
-            let status = servo.status();
-
-            println!(
-                "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
-                servo.outputs
-            );
-
-            let pos_cmd = &mut servo.outputs[2..=5];
-
-            pos_cmd.copy_from_slice(&velocity.to_le_bytes());
-
-            if velocity < 200_000 {
-                velocity += 200;
-            }
+            State::Error => break,
+            _ => (),
         }
     }
 
@@ -354,7 +285,19 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum State {
+    Idle,
+    ClearingFault,
+    Shutdown,
+    SwitchedOn,
+    EnablingOp,
+    Op,
+    Error,
+}
+
 struct Ds402<'a> {
+    state: State,
     inputs: &'a [u8],
     outputs: &'a mut [u8],
 }
@@ -364,7 +307,11 @@ impl<'a> Ds402<'a> {
         let inputs = slave.inputs.as_ref().ok_or(Error::Internal)?;
         let outputs = slave.outputs.as_mut().ok_or(Error::Internal)?;
 
-        Ok(Self { inputs, outputs })
+        Ok(Self {
+            inputs,
+            outputs,
+            state: State::Idle,
+        })
     }
 
     fn status(&self) -> StatusWord {
@@ -379,5 +326,78 @@ impl<'a> Ds402<'a> {
         let state = state.bits().to_le_bytes();
 
         control.copy_from_slice(&state);
+    }
+
+    fn tick(&mut self) {
+        let status = self.status();
+
+        match self.state {
+            State::Idle => {
+                log::info!("Checking faults");
+
+                if status.contains(StatusWord::FAULT) {
+                    log::warn!("Fault! Clearing...");
+
+                    self.set_control_word(ControlWord::RESET_FAULT);
+                }
+
+                self.state = State::ClearingFault
+            }
+            State::ClearingFault => {
+                if !status.contains(StatusWord::FAULT) {
+                    log::info!("Fault cleared, status is now {status:?}");
+
+                    self.set_control_word(ControlWord::SHUTDOWN);
+
+                    self.state = State::Shutdown;
+                }
+            }
+            State::Shutdown => {
+                if status.contains(StatusWord::READY_TO_SWITCH_ON) {
+                    log::info!("Drive is ready to switch on");
+
+                    self.set_control_word(
+                        ControlWord::SWITCH_ON
+                            | ControlWord::DISABLE_VOLTAGE
+                            | ControlWord::QUICK_STOP,
+                    );
+
+                    self.state = State::SwitchedOn;
+                }
+            }
+            State::SwitchedOn => {
+                if status.contains(StatusWord::SWITCHED_ON) {
+                    log::info!("Drive switched on, begin cyclic operation");
+
+                    self.set_control_word(
+                        ControlWord::SWITCH_ON
+                            | ControlWord::DISABLE_VOLTAGE
+                            | ControlWord::QUICK_STOP
+                            | ControlWord::ENABLE_OP,
+                    );
+
+                    self.state = State::EnablingOp;
+                }
+            }
+            State::EnablingOp => {
+                if status.contains(StatusWord::OP_ENABLED) {
+                    log::info!("Drive enabled");
+
+                    self.state = State::Op;
+                }
+            }
+            State::Op => {
+                if !status.contains(StatusWord::OP_ENABLED) {
+                    log::error!("Drive came out of OP {:?}", status);
+
+                    self.state = State::Error;
+                }
+            }
+            State::Error => (),
+        }
+    }
+
+    fn is_op(&self) -> bool {
+        self.state == State::Op
     }
 }
