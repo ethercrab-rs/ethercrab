@@ -3,8 +3,8 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, SlaveGroup, SlaveState, SubIndex,
-    Timeouts,
+    error::Error, std::tx_rx_task, Client, GroupSlave, PduLoop, PduStorage, SlaveGroup, SlaveState,
+    SubIndex, Timeouts, TimerFactory,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
@@ -154,43 +154,26 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     // AKD will error with F706 if cycle time is not 2ms or less
     let mut cyclic_interval = Timer::interval(cycle_time);
 
+    let mut slave = group.slave(0, &client).expect("No servo!");
+    let mut servo = Ds402::new(&mut slave).expect("Failed to gather DS402");
+
     // Check for and clear faults
     {
         log::info!("Checking faults");
 
         group.tx_rx(&client).await.expect("TX/RX");
 
-        let slave = group.slave(0, &client).unwrap();
-        let (i, o) = (slave.inputs, slave.outputs);
-
-        let status = i
-            .map(|i| {
-                let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
-
-                unsafe { StatusWord::from_bits_unchecked(status) }
-            })
-            .unwrap();
+        let status = servo.status();
 
         if status.contains(StatusWord::FAULT) {
             log::warn!("Fault! Clearing...");
 
-            o.map(|o| {
-                let (control, _cmd) = o.split_at_mut(2);
-                let reset = ControlWord::RESET_FAULT;
-                let reset = reset.bits().to_le_bytes();
-                control.copy_from_slice(&reset);
-            });
+            servo.set_control_word(ControlWord::RESET_FAULT);
 
             while let Some(_) = cyclic_interval.next().await {
                 group.tx_rx(&client).await.expect("TX/RX");
 
-                let status = i
-                    .map(|i| {
-                        let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
-
-                        unsafe { StatusWord::from_bits_unchecked(status) }
-                    })
-                    .unwrap();
+                let status = servo.status();
 
                 if !status.contains(StatusWord::FAULT) {
                     log::info!("Fault cleared, status is now {status:?}");
@@ -205,26 +188,12 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     {
         log::info!("Putting drive in shutdown state");
 
-        let slave = group.slave(0, &client).unwrap();
-        let (i, o) = (slave.inputs, slave.outputs);
-
-        o.map(|o| {
-            let (control, _cmd) = o.split_at_mut(2);
-            let value = ControlWord::SHUTDOWN;
-            let value = value.bits().to_le_bytes();
-            control.copy_from_slice(&value);
-        });
+        servo.set_control_word(ControlWord::SHUTDOWN);
 
         while let Some(_) = cyclic_interval.next().await {
             group.tx_rx(&client).await.expect("TX/RX");
 
-            let status = i
-                .map(|i| {
-                    let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
-
-                    unsafe { StatusWord::from_bits_unchecked(status) }
-                })
-                .unwrap();
+            let status = servo.status();
 
             if status.contains(StatusWord::READY_TO_SWITCH_ON) {
                 log::info!("Drive is shut down");
@@ -238,87 +207,62 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     {
         log::info!("Switching drive on");
 
-        let slave = group.slave(0, &client).unwrap();
-        let (i, mut o) = (slave.inputs, slave.outputs);
-
-        o.as_mut().map(|o| {
-            let (control, _cmd) = o.split_at_mut(2);
-            let reset =
-                ControlWord::SWITCH_ON | ControlWord::DISABLE_VOLTAGE | ControlWord::QUICK_STOP;
-            let reset = reset.bits().to_le_bytes();
-            control.copy_from_slice(&reset);
-        });
+        servo.set_control_word(
+            ControlWord::SWITCH_ON | ControlWord::DISABLE_VOLTAGE | ControlWord::QUICK_STOP,
+        );
 
         while let Some(_) = cyclic_interval.next().await {
             group.tx_rx(&client).await.expect("TX/RX");
 
-            let status = i
-                .map(|i| {
-                    let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
-
-                    unsafe { StatusWord::from_bits_unchecked(status) }
-                })
-                .unwrap();
+            let status = servo.status();
 
             if status.contains(StatusWord::SWITCHED_ON) {
                 log::info!("Drive switched on, begin cyclic operation");
 
-                o.map(|o| {
-                    let (control, _cmd) = o.split_at_mut(2);
+                // Enable operation so we can send cyclic data
+                let state = ControlWord::SWITCH_ON
+                    | ControlWord::DISABLE_VOLTAGE
+                    | ControlWord::QUICK_STOP
+                    | ControlWord::ENABLE_OP;
 
-                    // Enable operation so we can send cyclic data
-                    let state = ControlWord::SWITCH_ON
-                        | ControlWord::DISABLE_VOLTAGE
-                        | ControlWord::QUICK_STOP
-                        | ControlWord::ENABLE_OP;
-                    let state = state.bits().to_le_bytes();
-                    control.copy_from_slice(&state);
-                });
+                servo.set_control_word(state);
 
                 break;
             }
         }
     }
 
-    smol::spawn(async move {
+    {
         let mut velocity: i32 = 0;
 
-        let mut slave = group.slave(0, &client).unwrap();
+        // let mut slave = group.slave(0, &client).unwrap();
 
         while let Some(_) = cyclic_interval.next().await {
             group.tx_rx(&client).await.expect("TX/RX");
 
-            let (i, o) = (slave.inputs, slave.outputs.as_mut());
+            let (pos, vel) = {
+                let pos = u32::from_le_bytes(servo.inputs[2..=5].try_into().unwrap());
+                let vel = u32::from_le_bytes(servo.inputs[6..=9].try_into().unwrap());
 
-            let (pos, vel, status) = i
-                .map(|i| {
-                    let status = u16::from_le_bytes(i[0..=1].try_into().unwrap());
-                    let pos = u32::from_le_bytes(i[2..=5].try_into().unwrap());
-                    let vel = u32::from_le_bytes(i[6..=9].try_into().unwrap());
+                (pos, vel)
+            };
 
-                    let status = unsafe { StatusWord::from_bits_unchecked(status) };
-
-                    (pos, vel, status)
-                })
-                .unwrap();
+            let status = servo.status();
 
             println!(
                 "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
-                o.as_ref().unwrap()
+                servo.outputs
             );
 
-            o.map(|o| {
-                let pos_cmd = &mut o[2..=5];
+            let pos_cmd = &mut servo.outputs[2..=5];
 
-                pos_cmd.copy_from_slice(&velocity.to_le_bytes());
-            });
+            pos_cmd.copy_from_slice(&velocity.to_le_bytes());
 
             if velocity < 200_000 {
                 velocity += 200;
             }
         }
-    })
-    .await;
+    }
 
     Ok(())
 }
@@ -408,4 +352,32 @@ fn main() -> Result<(), Error> {
     );
 
     Ok(())
+}
+
+struct Ds402<'a> {
+    inputs: &'a [u8],
+    outputs: &'a mut [u8],
+}
+
+impl<'a> Ds402<'a> {
+    fn new<TIMEOUT>(slave: &'a mut GroupSlave<'a, TIMEOUT>) -> Result<Self, Error> {
+        let inputs = slave.inputs.as_ref().ok_or(Error::Internal)?;
+        let outputs = slave.outputs.as_mut().ok_or(Error::Internal)?;
+
+        Ok(Self { inputs, outputs })
+    }
+
+    fn status(&self) -> StatusWord {
+        let status = u16::from_le_bytes(self.inputs[0..=1].try_into().unwrap());
+
+        unsafe { StatusWord::from_bits_unchecked(status) }
+    }
+
+    fn set_control_word(&mut self, state: ControlWord) {
+        let (control, rest) = self.outputs.split_at_mut(2);
+
+        let state = state.bits().to_le_bytes();
+
+        control.copy_from_slice(&state);
+    }
 }
