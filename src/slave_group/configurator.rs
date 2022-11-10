@@ -13,25 +13,24 @@ use crate::{
 };
 use core::time::Duration;
 
-pub struct Configurator<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+pub struct Configurator<'a, TIMEOUT> {
     pub pdi_len: &'a mut usize,
     pub read_pdi_len: &'a mut usize,
     pub max_pdi_len: usize,
     pub start_address: &'a mut u32,
     pub group_working_counter: &'a mut u16,
     pub slaves: &'a mut [Slave],
-    pub preop_safeop_hook: Option<&'a HookFn<TIMEOUT, MAX_FRAMES, MAX_PDU_DATA>>,
+    pub preop_safeop_hook: Option<&'a HookFn<TIMEOUT>>,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    Configurator<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<'a, TIMEOUT> Configurator<'a, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
     pub(crate) async fn configure_from_eeprom<'client>(
         &mut self,
         mut offset: PdiOffset,
-        client: &'client Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        client: &'client Client<'client, TIMEOUT>,
     ) -> Result<PdiOffset, Error>
     where
         TIMEOUT: TimerFactory,

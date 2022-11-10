@@ -1,10 +1,10 @@
 use super::Configurator;
 use crate::SlaveGroup;
 
-pub trait SlaveGroupContainer<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+pub trait SlaveGroupContainer<TIMEOUT> {
     fn num_groups(&self) -> usize;
 
-    fn group(&mut self, index: usize) -> Option<Configurator<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>;
+    fn group(&mut self, index: usize) -> Option<Configurator<TIMEOUT>>;
 
     fn total_slaves(&mut self) -> usize {
         let mut accum = 0;
@@ -17,39 +17,26 @@ pub trait SlaveGroupContainer<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize
     }
 }
 
-impl<
-        const N: usize,
-        const MAX_SLAVES: usize,
-        const MAX_PDI: usize,
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-    > SlaveGroupContainer<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
-    for [SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>; N]
+impl<const N: usize, const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
+    SlaveGroupContainer<TIMEOUT> for [SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>; N]
 {
     fn num_groups(&self) -> usize {
         N
     }
 
-    fn group(&mut self, index: usize) -> Option<Configurator<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
+    fn group(&mut self, index: usize) -> Option<Configurator<TIMEOUT>> {
         self.get_mut(index).map(|group| group.as_mut_ref())
     }
 }
 
-impl<
-        const MAX_SLAVES: usize,
-        const MAX_PDI: usize,
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-    > SlaveGroupContainer<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> SlaveGroupContainer<TIMEOUT>
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
 {
     fn num_groups(&self) -> usize {
         1
     }
 
-    fn group(&mut self, _index: usize) -> Option<Configurator<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>> {
+    fn group(&mut self, _index: usize) -> Option<Configurator<TIMEOUT>> {
         Some(self.as_mut_ref())
     }
 }

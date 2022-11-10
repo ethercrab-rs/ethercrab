@@ -36,9 +36,9 @@ pub fn get_tx_rx(
 
 // TODO: Proper error - there are a couple of unwraps in here
 // TODO: Make some sort of split() method to ensure we can only ever have one tx/rx future running
-pub fn tx_rx_task<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
+pub fn tx_rx_task<TIMEOUT>(
     device: &str,
-    client: &Arc<Client<'static, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>,
+    client: &Arc<Client<'static, TIMEOUT>>,
 ) -> Result<impl Future<Output = embassy_futures::select::Either<(), ()>>, std::io::Error>
 where
     TIMEOUT: TimerFactory + Send + 'static,

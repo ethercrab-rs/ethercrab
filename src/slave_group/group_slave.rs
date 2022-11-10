@@ -7,14 +7,13 @@ use crate::{
 };
 use core::fmt::Debug;
 
-pub struct GroupSlave<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    pub(crate) slave: SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+pub struct GroupSlave<'a, TIMEOUT> {
+    pub(crate) slave: SlaveRef<'a, TIMEOUT>,
     pub inputs: Option<&'a [u8]>,
     pub outputs: Option<&'a mut [u8]>,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    GroupSlave<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<'a, TIMEOUT> GroupSlave<'a, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
