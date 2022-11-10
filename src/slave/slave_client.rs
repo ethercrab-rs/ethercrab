@@ -9,7 +9,6 @@ use crate::{
     register::RegisterAddress,
     slave_state::SlaveState,
     timer_factory::{Timeouts, TimerFactory},
-    PduLoop,
 };
 use core::fmt::Debug;
 use packed_struct::PackedStruct;
@@ -36,11 +35,6 @@ where
 
     pub fn mailbox_counter(&self) -> u8 {
         self.client.mailbox_counter()
-    }
-
-    // DELETEME: Leaky abstraction
-    pub fn pdu_loop(&self) -> &PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
-        self.client.pdu_loop
     }
 
     pub fn timeouts(&self) -> &Timeouts {
