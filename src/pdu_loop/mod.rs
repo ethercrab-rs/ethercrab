@@ -6,7 +6,6 @@ use crate::{
     command::{Command, CommandCode},
     error::{Error, PduError, PduValidationError},
     pdu_loop::{frame_header::FrameHeader, pdu::PduFlags, pdu_frame::SendableFrame},
-    timer_factory::{timeout, Timeouts, TimerFactory},
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
@@ -46,26 +45,21 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
     }
 }
 
-pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
+pub struct PduLoop<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
     frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
     frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: spin::RwLock<Option<Waker>>,
     /// EtherCAT frame index.
     idx: AtomicU8,
-    _timeout: PhantomData<TIMEOUT>,
 }
 
-unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> Sync
-    for PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
+    for PduLoop<MAX_FRAMES, MAX_PDU_DATA>
 {
 }
 
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
-{
+impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduLoop<MAX_FRAMES, MAX_PDU_DATA> {
     pub const fn new() -> Self {
         // MSRV: Nightly
         let frames = unsafe { MaybeUninit::zeroed().assume_init() };
@@ -78,7 +72,6 @@ where
             frame_data,
             tx_waker: RwLock::new(None),
             idx: AtomicU8::new(0),
-            _timeout: PhantomData,
         }
     }
 
@@ -142,7 +135,6 @@ where
         &self,
         command: Command,
         data_length: u16,
-        timeouts: &Timeouts,
     ) -> Result<PduResponse<&'_ [u8]>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
@@ -157,7 +149,7 @@ where
 
         self.wake_sender();
 
-        let res = timeout::<TIMEOUT, _, _>(timeouts.pdu, frame).await?;
+        let res = frame.await?;
 
         Ok((
             &frame_data[0..usize::from(data_length)],
@@ -186,7 +178,6 @@ where
         command: Command,
         send_data: &[u8],
         data_length: u16,
-        timeouts: &Timeouts,
     ) -> Result<PduResponse<&'a [u8]>, Error> {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel) % MAX_FRAMES as u8;
 
@@ -211,7 +202,7 @@ where
 
         self.wake_sender();
 
-        let res = timeout::<TIMEOUT, _, _>(timeouts.pdu, frame).await?;
+        let res = frame.await?;
 
         Ok((&payload[0..send_data_len], res.working_counter()))
     }
@@ -222,9 +213,8 @@ where
         &'a self,
         command: Command,
         send_data: &[u8],
-        timeouts: &Timeouts,
     ) -> Result<PduResponse<&'a [u8]>, Error> {
-        self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?, timeouts)
+        self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?)
             .await
     }
 
@@ -399,7 +389,6 @@ mod tests {
                             register: 0x0980,
                         },
                         &data,
-                        &Timeouts::default(),
                     )
                     .await
                     .unwrap();

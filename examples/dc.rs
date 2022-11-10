@@ -32,7 +32,7 @@ const MAX_PDU_DATA: usize = 1100;
 const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 64;
 
-static PDU_LOOP: PduLoop<MAX_FRAMES, MAX_PDU_DATA, smol::Timer> = PduLoop::new();
+static PDU_LOOP: PduLoop<MAX_FRAMES, MAX_PDU_DATA> = PduLoop::new();
 
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Starting DC demo...");
