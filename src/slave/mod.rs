@@ -432,9 +432,9 @@ where
         let counter = request.counter();
 
         // TODO: Abstract this into a method that returns a slice
-
         self.client
-            .pdu_loop()
+            .client
+            .pdu_loop
             .pdu_tx_readwrite_len(
                 Command::Fpwr {
                     address: self.slave.configured_address,
@@ -442,7 +442,6 @@ where
                 },
                 request.pack().unwrap().as_ref(),
                 write_mailbox.len,
-                self.client.timeouts(),
             )
             .await?
             .wkc(1, "SDO upload request")?;
@@ -478,14 +477,14 @@ where
         // TODO: Abstract this into a method that returns a slice
         let response = self
             .client
-            .pdu_loop()
+            .client
+            .pdu_loop
             .pdu_tx_readonly(
                 Command::Fprd {
                     address: self.slave.configured_address,
                     register: read_mailbox.address,
                 },
                 read_mailbox.len,
-                self.client.timeouts(),
             )
             .await?
             .wkc(1, "SDO read mailbox")?;

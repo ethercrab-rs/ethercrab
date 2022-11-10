@@ -11,7 +11,7 @@ use crate::{
     slave::Slave,
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
-    timer_factory::{Timeouts, TimerFactory},
+    timer_factory::{timeout, Timeouts, TimerFactory},
     BASE_SLAVE_ADDR,
 };
 use core::{
@@ -25,7 +25,7 @@ use packed_struct::PackedStruct;
 pub struct Client<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
     // TODO: un-pub
     // TODO: Experiment with taking a dyn trait reference
-    pub pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    pub(crate) pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA>,
     num_slaves: RefCell<u16>,
     _timeout: PhantomData<TIMEOUT>,
     pub(crate) timeouts: Timeouts,
@@ -43,10 +43,7 @@ impl<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub fn new(
-        pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        timeouts: Timeouts,
-    ) -> Self {
+    pub fn new(pdu_loop: &'client PduLoop<MAX_FRAMES, MAX_PDU_DATA>, timeouts: Timeouts) -> Self {
         // MSRV: Make `MAX_FRAMES` a `u8` when `generic_const_exprs` is stablised
         assert!(
             MAX_FRAMES <= u8::MAX.into(),
@@ -290,10 +287,11 @@ where
     where
         T: PduRead,
     {
-        let (data, working_counter) = self
-            .pdu_loop
-            .pdu_tx_readonly(command, T::len(), &self.timeouts)
-            .await?;
+        let (data, working_counter) = timeout::<TIMEOUT, _, _>(
+            self.timeouts.pdu,
+            self.pdu_loop.pdu_tx_readonly(command, T::len()),
+        )
+        .await?;
 
         let res = T::try_from_slice(data).map_err(|e| {
             log::error!(
@@ -313,10 +311,11 @@ where
     where
         T: PduData,
     {
-        let (data, working_counter) = self
-            .pdu_loop
-            .pdu_tx_readwrite(command, value.as_slice(), &self.timeouts)
-            .await?;
+        let (data, working_counter) = timeout::<TIMEOUT, _, _>(
+            self.timeouts.pdu,
+            self.pdu_loop.pdu_tx_readwrite(command, value.as_slice()),
+        )
+        .await?;
 
         let res = T::try_from_slice(data).map_err(|e| {
             log::error!(
@@ -485,10 +484,12 @@ where
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
         assert!(value.len() <= MAX_PDU_DATA, "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame",value.len(), MAX_PDU_DATA);
 
-        let (data, working_counter) = self
-            .pdu_loop
-            .pdu_tx_readwrite(Command::Lrw { address }, value, &self.timeouts)
-            .await?;
+        let (data, working_counter) = timeout::<TIMEOUT, _, _>(
+            self.timeouts.pdu,
+            self.pdu_loop
+                .pdu_tx_readwrite(Command::Lrw { address }, value),
+        )
+        .await?;
 
         if data.len() != value.len() {
             log::error!(
