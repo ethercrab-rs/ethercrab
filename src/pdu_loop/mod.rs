@@ -387,16 +387,14 @@ mod tests {
     use smoltcp::wire::EthernetAddress;
     use std::{sync::Arc, thread};
 
+    static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
+    static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());
+
     // Test the whole TX/RX loop with multiple threads
     #[test]
     fn parallel() {
         // Comment out to make this test work with miri
         // env_logger::try_init().ok();
-
-        let pdu_loop = Arc::new(PduLoop::<16, 128, smol::Timer>::new());
-        let pdu_loop_rx = pdu_loop.clone();
-        let pdu_loop_tx = pdu_loop.clone();
-        let pdu_loop_1 = pdu_loop.clone();
 
         let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
@@ -411,7 +409,7 @@ mod tests {
                     core::future::poll_fn::<(), _>(move |ctx| {
                         log::info!("Poll fn");
 
-                        pdu_loop_tx
+                        PDU_LOOP
                             .send_frames_blocking(ctx.waker(), |frame, data| {
                                 let packet = frame
                                     .write_ethernet_packet(&mut packet_buf, data)
@@ -453,7 +451,7 @@ mod tests {
 
                         log::info!("Received packet");
 
-                        pdu_loop_rx.pdu_rx(&ethernet_frame).expect("RX");
+                        PDU_LOOP.pdu_rx(&ethernet_frame).expect("RX");
                     }
                 })
             })
@@ -468,7 +466,7 @@ mod tests {
 
                 log::info!("Send PDU {i}");
 
-                let (result, _wkc) = pdu_loop_1
+                let (result, _wkc) = PDU_LOOP
                     .pdu_tx_readwrite(
                         Command::Fpwr {
                             address: 0x1000,
