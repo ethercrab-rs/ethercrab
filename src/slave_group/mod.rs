@@ -19,18 +19,11 @@ pub use container::SlaveGroupContainer;
 // <https://users.rust-lang.org/t/store-async-closure-on-struct-in-no-std/82929>
 type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'any>>;
 
-type HookFn<TIMEOUT, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> =
-    for<'any> fn(&'any SlaveRef<MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> HookFuture<'any>;
+type HookFn<TIMEOUT> = for<'any> fn(&'any SlaveRef<TIMEOUT>) -> HookFuture<'any>;
 
-pub struct SlaveGroup<
-    const MAX_SLAVES: usize,
-    const MAX_PDI: usize,
-    const MAX_FRAMES: usize,
-    const MAX_PDU_DATA: usize,
-    TIMEOUT,
-> {
+pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> {
     slaves: heapless::Vec<Slave, MAX_SLAVES>,
-    preop_safeop_hook: Option<HookFn<TIMEOUT, MAX_FRAMES, MAX_PDU_DATA>>,
+    preop_safeop_hook: Option<HookFn<TIMEOUT>>,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.
     read_pdi_len: usize,
@@ -45,32 +38,17 @@ pub struct SlaveGroup<
 
 // FIXME: Remove these unsafe impls if possible. There's some weird quirkiness when moving a group
 // into an async block going on...
-unsafe impl<
-        const MAX_SLAVES: usize,
-        const MAX_PDI: usize,
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-    > Sync for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Sync
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
 {
 }
-unsafe impl<
-        const MAX_SLAVES: usize,
-        const MAX_PDI: usize,
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-    > Send for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Send
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
 {
 }
 
-impl<
-        const MAX_SLAVES: usize,
-        const MAX_PDI: usize,
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-    > Default for SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Default
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
 {
     fn default() -> Self {
         Self {
@@ -85,15 +63,10 @@ impl<
     }
 }
 
-impl<
-        const MAX_SLAVES: usize,
-        const MAX_PDI: usize,
-        const MAX_FRAMES: usize,
-        const MAX_PDU_DATA: usize,
-        TIMEOUT,
-    > SlaveGroup<MAX_SLAVES, MAX_PDI, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
+    SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
 {
-    pub fn new(preop_safeop_hook: HookFn<TIMEOUT, MAX_FRAMES, MAX_PDU_DATA>) -> Self {
+    pub fn new(preop_safeop_hook: HookFn<TIMEOUT>) -> Self {
         Self {
             preop_safeop_hook: Some(preop_safeop_hook),
             ..Default::default()
@@ -113,8 +86,8 @@ impl<
     pub fn slave<'a>(
         &'a self,
         index: usize,
-        client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-    ) -> Option<GroupSlave<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>
+        client: &'a Client<'a, TIMEOUT>,
+    ) -> Option<GroupSlave<'a, TIMEOUT>>
     where
         TIMEOUT: TimerFactory,
     {
@@ -180,7 +153,7 @@ impl<
 
     pub async fn tx_rx<'client>(
         &self,
-        client: &'client Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+        client: &'client Client<'client, TIMEOUT>,
     ) -> Result<(), Error>
     where
         TIMEOUT: TimerFactory,
@@ -203,7 +176,7 @@ impl<
         // }
     }
 
-    pub(crate) fn as_mut_ref(&mut self) -> Configurator<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
+    pub(crate) fn as_mut_ref(&mut self) -> Configurator<'_, TIMEOUT> {
         Configurator {
             slaves: self.slaves.as_mut(),
             max_pdi_len: MAX_PDI,

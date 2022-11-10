@@ -10,13 +10,10 @@ use crate::{
 };
 
 /// Configure distributed clocks.
-pub async fn configure_dc<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
-    client: &Client<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+pub async fn configure_dc(
+    client: &Client<'_, impl TimerFactory>,
     slaves: &mut [Slave],
-) -> Result<(), Error>
-where
-    TIMEOUT: TimerFactory,
-{
+) -> Result<(), Error> {
     let num_slaves = slaves.len();
 
     // Latch receive times into all ports of all slaves.

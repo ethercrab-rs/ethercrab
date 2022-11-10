@@ -22,16 +22,15 @@ use num_enum::TryFromPrimitive;
 /// Table 2.
 const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 
-pub struct Eeprom<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    client: &'a SlaveClient<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+pub struct Eeprom<'a, TIMEOUT> {
+    client: &'a SlaveClient<'a, TIMEOUT>,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<'a, TIMEOUT> Eeprom<'a, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub(crate) fn new(client: &'a SlaveClient<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>) -> Self {
+    pub(crate) fn new(client: &'a SlaveClient<'a, TIMEOUT>) -> Self {
         Self { client }
     }
 
@@ -351,7 +350,7 @@ where
     async fn find_category(
         &self,
         category: CategoryType,
-    ) -> Result<Option<EepromSectionReader<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>>, Error> {
+    ) -> Result<Option<EepromSectionReader<'_, TIMEOUT>>, Error> {
         let mut start = SII_FIRST_CATEGORY_START;
 
         loop {

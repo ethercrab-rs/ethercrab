@@ -13,20 +13,16 @@ use crate::{
 use core::fmt::Debug;
 use packed_struct::PackedStruct;
 
-pub struct SlaveClient<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    pub(in crate::slave) client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+pub struct SlaveClient<'a, TIMEOUT> {
+    pub(in crate::slave) client: &'a Client<'a, TIMEOUT>,
     configured_address: u16,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    SlaveClient<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<'a, TIMEOUT> SlaveClient<'a, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub fn new(
-        client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        configured_address: u16,
-    ) -> Self {
+    pub fn new(client: &'a Client<'a, TIMEOUT>, configured_address: u16) -> Self {
         Self {
             client,
             configured_address,
@@ -166,7 +162,7 @@ where
         Ok((status, code))
     }
 
-    pub fn eeprom(&'a self) -> Eeprom<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
+    pub fn eeprom(&'a self) -> Eeprom<'a, TIMEOUT> {
         Eeprom::new(self)
     }
 

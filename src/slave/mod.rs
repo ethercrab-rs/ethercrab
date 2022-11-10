@@ -138,8 +138,8 @@ impl Slave {
     ///
     /// This method reads the slave's name and other identifying information, but does not configure
     /// the slave.
-    pub(crate) async fn new<'client, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>(
-        client: &'client Client<'client, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+    pub(crate) async fn new<'client, TIMEOUT>(
+        client: &'client Client<'client, TIMEOUT>,
         index: usize,
         configured_address: u16,
     ) -> Result<Self, Error>
@@ -223,20 +223,16 @@ impl Slave {
     }
 }
 
-pub struct SlaveRef<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    client: SlaveClient<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+pub struct SlaveRef<'a, TIMEOUT> {
+    client: SlaveClient<'a, TIMEOUT>,
     slave: &'a Slave,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    SlaveRef<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<'a, TIMEOUT> SlaveRef<'a, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub fn new(
-        client: SlaveClient<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        slave: &'a Slave,
-    ) -> Self {
+    pub fn new(client: SlaveClient<'a, TIMEOUT>, slave: &'a Slave) -> Self {
         Self { client, slave }
     }
 
@@ -282,7 +278,8 @@ where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
-        let mut buf = [0u8; MAX_PDU_DATA];
+        // FIXME: Make this dynamic somehow
+        let mut buf = [0u8; 32];
 
         self.read_sdo_buf(index, sub_index, &mut buf)
             .await

@@ -22,20 +22,16 @@ use core::fmt::Debug;
 use num_enum::FromPrimitive;
 use packed_struct::PackedStruct;
 
-pub struct SlaveConfigurator<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT> {
-    client: SlaveClient<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
+pub struct SlaveConfigurator<'a, TIMEOUT> {
+    client: SlaveClient<'a, TIMEOUT>,
     slave: &'a mut Slave,
 }
 
-impl<'a, const MAX_FRAMES: usize, const MAX_PDU_DATA: usize, TIMEOUT>
-    SlaveConfigurator<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>
+impl<'a, TIMEOUT> SlaveConfigurator<'a, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
-    pub fn new(
-        client: &'a Client<'a, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT>,
-        slave: &'a mut Slave,
-    ) -> Self {
+    pub fn new(client: &'a Client<'a, TIMEOUT>, slave: &'a mut Slave) -> Self {
         Self {
             client: SlaveClient::new(client, slave.configured_address),
             slave,
@@ -515,7 +511,7 @@ where
         }))
     }
 
-    pub(crate) fn as_ref(&self) -> SlaveRef<'_, MAX_FRAMES, MAX_PDU_DATA, TIMEOUT> {
+    pub(crate) fn as_ref(&self) -> SlaveRef<'_, TIMEOUT> {
         SlaveRef::new(
             SlaveClient::new(self.client.client, self.slave.configured_address),
             self.slave,
