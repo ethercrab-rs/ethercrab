@@ -5,118 +5,106 @@ use std::thread::current;
 
 use crate::{error::Error as EthercrabError, GroupSlave};
 
-// smlang::statemachine! {
-//     transitions: {
-//         *Start + Tick [ switch_on_is_disabled ] = NotReadyToSwitchOn,
-//         NotReadyToSwitchOn + Tick  = SwitchOnDisabled,
-//         SwitchOnDisabled + Tick  = ReadyToSwitchOn,
-//         ReadyToSwitchOn + Tick = SwitchedOn,
-//         SwitchedOn + Tick = OpEnable,
-//         OpEnable + Tick = QuickStopActive,
-//         QuickStopActive + Tick = OpEnable,
-//         FaultReactionActive + Tick = Fault,
-//         Fault + Tick = ResettingFault,
-//         _ + FaultDetected = Fault,
-//     }
-// }
-
-// impl<'a> StateMachineContext for Ds402<'a> {
-//     // fn reset_fault(&mut self) {
-//     //     self.set_control_word(ControlWord::RESET_FAULT);
-//     // }
-
-//     // fn disable_switch_on(&mut self) {
-//     //     self.set_control_word(ControlWord::SWITCH_ON_DISABLED);
-//     // }
-
-//     // // ---
-
-//     // fn faults_cleared(&mut self) -> Result<(), ()> {
-//     //     (!self.status().contains(StatusWord::FAULT))
-//     //         .then_some(())
-//     //         .ok_or(())
-//     // }
-
-//     // fn is_not_ready_to_switch_on(&mut self) -> Result<(), ()> {
-//     //     self.status().is_empty().then_some(()).ok_or(())
-//     // }
-
-//     fn has_fault(&mut self) -> Result<(), ()> {
-//         self.status()
-//             .contains(&StatusWord::FAULT)
-//             .then_some(())
-//             .ok_or(())
-//     }
-
-//     fn is_switch_on_disabled(&mut self) -> Result<(), ()> {
-//         self.status()
-//             .without_quickstop()
-//             .eq(&StatusWord::SWITCH_ON_DISABLED)
-//             .then_some(())
-//             .ok_or(())
-//     }
-
-//        fn is_ready_to_switch_on(&mut self) -> Result<(), ()> {
-//         self.status()
-
-//             .eq(&StatusWord::QUICK_STOP | StatusWord::)
-//             .then_some(())
-//             .ok_or(())
-//     }
-// }
-
-// impl fmt::Debug for States {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         match self {
-//             Self::Fault => write!(f, "Fault"),
-//             Self::FaultReactionActive => write!(f, "FaultReactionActive"),
-//             Self::NotReadyToSwitchOn => write!(f, "NotReadyToSwitchOn"),
-//             Self::OpEnable => write!(f, "OpEnable"),
-//             Self::QuickStopActive => write!(f, "QuickStopActive"),
-//             Self::ReadyToSwitchOn => write!(f, "ReadyToSwitchOn"),
-//             Self::ResettingFault => write!(f, "ResettingFault"),
-//             Self::Start => write!(f, "Start"),
-//             Self::SwitchOnDisabled => write!(f, "SwitchOnDisabled"),
-//             Self::SwitchedOn => write!(f, "SwitchedOn"),
-//         }
-//     }
-// }
-
-// impl Clone for States {
-//     fn clone(&self) -> Self {
-//         match self {
-//             Self::Fault => Self::Fault,
-//             Self::FaultReactionActive => Self::FaultReactionActive,
-//             Self::NotReadyToSwitchOn => Self::NotReadyToSwitchOn,
-//             Self::OpEnable => Self::OpEnable,
-//             Self::QuickStopActive => Self::QuickStopActive,
-//             Self::ReadyToSwitchOn => Self::ReadyToSwitchOn,
-//             Self::ResettingFault => Self::ResettingFault,
-//             Self::Start => Self::Start,
-//             Self::SwitchOnDisabled => Self::SwitchOnDisabled,
-//             Self::SwitchedOn => Self::SwitchedOn,
-//         }
-//     }
-// }
+smlang::statemachine! {
+    transitions: {
+        *NotReadyToSwitchOn + EnableOp [ clear_faults ] = SwitchOnDisabled,
+        SwitchOnDisabled + EnableOp [ shutdown ] = ReadyToSwitchOn,
+        ReadyToSwitchOn + EnableOp [ switch_on ] = SwitchedOn,
+        SwitchedOn + EnableOp [ enable_op ] = OpEnable,
+        // TODO: Cleanly disable drive
+        // OpEnable + Tick = QuickStopActive,
+        // QuickStopActive + Tick = OpEnable,
+        // FaultReactionActive + Tick = Fault,
+        // Fault + ResetFault = ResettingFault,
+        // ResettingFault + Tick [ clear_faults ] = SwitchOnDisabled,
+        // _ + FaultDetected = Fault,
+    }
+}
 
 pub struct Ds402<'a> {
     // TODO: Un-pub
     pub inputs: &'a [u8],
     pub outputs: &'a mut [u8],
-    pub state: State,
+}
+
+impl<'a> StateMachineContext for Ds402<'a> {
+    fn shutdown(&mut self) -> Result<(), ()> {
+        self.set_control_word(ControlWord::STATE_SHUTDOWN);
+
+        self.status_word()
+            .mandatory()
+            .eq(&StatusWord::STATE_READY_TO_SWITCH_ON)
+            .then_some(())
+            .ok_or(())
+    }
+
+    fn switch_on(&mut self) -> Result<(), ()> {
+        self.set_control_word(ControlWord::STATE_SWITCH_ON);
+
+        self.status_word()
+            .mandatory()
+            .eq(&StatusWord::STATE_SWITCHED_ON)
+            .then_some(())
+            .ok_or(())
+    }
+
+    fn enable_op(&mut self) -> Result<(), ()> {
+        self.set_control_word(ControlWord::STATE_ENABLE_OP);
+
+        self.status_word()
+            .mandatory()
+            .eq(&StatusWord::STATE_OP_ENABLE)
+            .then_some(())
+            .ok_or(())
+    }
+
+    fn clear_faults(&mut self) -> Result<(), ()> {
+        self.set_control_word(ControlWord::STATE_FAULT_RESET);
+
+        (!self.status_word().mandatory().contains(StatusWord::FAULT))
+            .then_some(())
+            .ok_or(())
+    }
+}
+
+impl fmt::Debug for States {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Fault => write!(f, "Fault"),
+            Self::FaultReactionActive => write!(f, "FaultReactionActive"),
+            Self::NotReadyToSwitchOn => write!(f, "NotReadyToSwitchOn"),
+            Self::OpEnable => write!(f, "OpEnable"),
+            Self::QuickStopActive => write!(f, "QuickStopActive"),
+            Self::ReadyToSwitchOn => write!(f, "ReadyToSwitchOn"),
+            Self::ResettingFault => write!(f, "ResettingFault"),
+            Self::SwitchOnDisabled => write!(f, "SwitchOnDisabled"),
+            Self::SwitchedOn => write!(f, "SwitchedOn"),
+        }
+    }
+}
+
+impl Clone for States {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Fault => Self::Fault,
+            Self::FaultReactionActive => Self::FaultReactionActive,
+            Self::NotReadyToSwitchOn => Self::NotReadyToSwitchOn,
+            Self::OpEnable => Self::OpEnable,
+            Self::QuickStopActive => Self::QuickStopActive,
+            Self::ReadyToSwitchOn => Self::ReadyToSwitchOn,
+            Self::ResettingFault => Self::ResettingFault,
+            Self::SwitchOnDisabled => Self::SwitchOnDisabled,
+            Self::SwitchedOn => Self::SwitchedOn,
+        }
+    }
 }
 
 impl<'a> Ds402<'a> {
-    // TODO: Make this unit testable by decoupling GroupSlave
     pub fn new<TIMEOUT>(slave: &'a mut GroupSlave<'a, TIMEOUT>) -> Result<Self, EthercrabError> {
         let inputs = slave.inputs.as_ref().ok_or(EthercrabError::Internal)?;
         let outputs = slave.outputs.as_mut().ok_or(EthercrabError::Internal)?;
 
-        Ok(Self {
-            inputs,
-            outputs,
-            state: State::NotReadyToSwitchOn,
-        })
+        Ok(Self { inputs, outputs })
     }
 
     pub fn status_word(&self) -> StatusWord {
@@ -132,95 +120,45 @@ impl<'a> Ds402<'a> {
 
         control.copy_from_slice(&state);
     }
-
-    pub fn tick(&mut self) -> Option<State> {
-        let next_state = self.status_word().as_state();
-        log::debug!(
-            "Tick {:?} {:?} {:?}",
-            self.state,
-            next_state,
-            self.status_word()
-        );
-
-        let should_transition = match (self.state, next_state) {
-            (_, State::FaultReactionActive) => true,
-            (_, State::Fault) => true,
-            // Fault has been reset
-            (State::Fault, State::SwitchOnDisabled) => true,
-            (State::NotReadyToSwitchOn, State::SwitchOnDisabled) => true,
-            (State::SwitchOnDisabled, State::ReadyToSwitchOn) => true,
-            (State::ReadyToSwitchOn, State::SwitchedOn) => true,
-            (State::SwitchedOn, State::OpEnable) => true,
-            (State::OpEnable, State::QuickStopActive) => true,
-            (State::QuickStopActive, State::SwitchOnDisabled) => true,
-            // No state change, noop
-            (prev, curr) if prev == curr => false,
-            (prev, curr) => unreachable!("Invalid transition: {prev:?} -> {curr:?}"),
-        };
-
-        // State transition edge trigger
-        if should_transition {
-            log::debug!("DS402 transition {:?} -> {:?}", self.state, next_state);
-
-            self.state = next_state;
-
-            self.tick_enable_op();
-
-            Some(next_state)
-        } else {
-            None
-        }
-    }
-
-    /// Drive state machine towards OP state
-    fn tick_enable_op(&mut self) {
-        match self.state {
-            State::NotReadyToSwitchOn => self.set_control_word(ControlWord::STATE_SHUTDOWN),
-            State::SwitchOnDisabled => self.set_control_word(ControlWord::STATE_SHUTDOWN),
-            State::ReadyToSwitchOn => self.set_control_word(ControlWord::STATE_SWITCH_ON),
-            State::SwitchedOn => self.set_control_word(ControlWord::STATE_ENABLE_OP),
-            State::OpEnable => todo!("In op"),
-            State::QuickStopActive => todo!(),
-            State::FaultReactionActive => todo!(),
-            State::Fault => self.set_control_word(ControlWord::STATE_FAULT_RESET),
-        }
-    }
 }
 
-// pub struct Ds402Sm<'a> {
-//     sm: StateMachine<Ds402<'a>>,
-// }
+pub struct Ds402Sm<'a> {
+    // TODO: Un-pub
+    pub sm: StateMachine<Ds402<'a>>,
+    prev_status: StatusWord,
+}
 
-// impl<'a> Ds402Sm<'a> {
-//     pub fn is_op(&self) -> bool {
-//         self.sm.state == States::OpEnable
-//     }
-// }
+impl<'a> Ds402Sm<'a> {
+    pub fn is_op(&self) -> bool {
+        self.sm.state == States::OpEnable
+    }
 
-// impl<'a> Ds402Sm<'a> {
-//     pub fn new(context: Ds402<'a>) -> Self {
-//         Self {
-//             sm: StateMachine::new(context),
-//         }
-//     }
+    pub fn new(context: Ds402<'a>) -> Self {
+        Self {
+            sm: StateMachine::new(context),
+            prev_status: StatusWord::empty(),
+        }
+    }
 
-//     pub fn tick(&mut self) {
-//         let current_state = self.sm.state.clone();
+    pub fn io(&mut self) -> (&[u8], &mut [u8]) {
+        (self.sm.context.inputs, self.sm.context.outputs)
+    }
 
-//         self.sm
-//             .process_event(Events::Tick)
-//             .map(|new_state| {
-//                 if *new_state != current_state {
-//                     log::debug!(
-//                         "DS402 state transition {:?} -> {:?}",
-//                         current_state,
-//                         new_state
-//                     );
-//                 }
-//             })
-//             .ok();
-//     }
-// }
+    pub fn status_word(&self) -> StatusWord {
+        self.sm.context.status_word()
+    }
+
+    /// Returns a "ready for cyclic IO" flag.
+    pub fn tick(&mut self) -> bool {
+        let status = self.sm.context().status_word();
+
+        if let Ok(_) = self.sm.process_event(Events::EnableOp) {
+            log::debug!("Edge {:?} -> {:?}", self.prev_status, status);
+        }
+
+        self.sm.state == States::OpEnable
+    }
+}
 
 bitflags::bitflags! {
     /// AKD EtherCAT Communications Manual section 5.3.55
@@ -289,10 +227,6 @@ bitflags::bitflags! {
         const MAN_SPECIFIC_1 = 1 << 14;
         /// Manufacturer-specific (reserved)
         const MAN_SPECIFIC_2 = 1 << 15;
-
-
-
-
     }
 }
 
@@ -316,65 +250,29 @@ impl StatusWord {
     );
     const STATE_FAULT_REACTION_ACTIVE: Self =
         Self::from_bits_truncate(Self::STATE_OP_ENABLE.bits | Self::FAULT.bits);
-    const STATE_FAULT: Self = Self::from_bits_truncate(Self::FAULT.bits);
 
     fn mandatory(self) -> Self {
         self.intersection(Self::MANDATORY)
     }
-
-    fn with_quickstop(self) -> Self {
-        self.intersection(Self::MANDATORY | Self::QUICK_STOP)
-    }
-
-    fn as_state(&self) -> State {
-        // Quick stop must equal 0 to be active
-        if self.with_quickstop() == Self::STATE_OP_ENABLE {
-            return State::QuickStopActive;
-        }
-
-        // Order is important here
-        match self.mandatory() {
-            Self::STATE_FAULT_REACTION_ACTIVE => State::FaultReactionActive,
-            Self::STATE_FAULT => State::Fault,
-            Self::STATE_OP_ENABLE => State::OpEnable,
-            Self::STATE_READY_TO_SWITCH_ON => State::ReadyToSwitchOn,
-            Self::STATE_SWITCHED_ON => State::SwitchedOn,
-            Self::STATE_SWITCH_ON_DISABLED => State::SwitchOnDisabled,
-            Self::STATE_NOT_READY_TO_SWITCH_ON => State::NotReadyToSwitchOn,
-            s => unreachable!("Unrecognised state {:?}", s),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub enum State {
-    NotReadyToSwitchOn,
-    SwitchOnDisabled,
-    ReadyToSwitchOn,
-    SwitchedOn,
-    OpEnable,
-    QuickStopActive,
-    FaultReactionActive,
-    Fault,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn check() {
-    //     env_logger::try_init().ok();
+    #[test]
+    fn check() {
+        env_logger::try_init().ok();
 
-    //     let inputs = [0x00, 0x00];
-    //     let mut outputs = [0x00, 0x00];
+        let inputs = [0x00, 0x00];
+        let mut outputs = [0x00, 0x00];
 
-    //     let mut sm = Ds402::new(&inputs, &mut outputs);
+        // let mut sm = Ds402::new(&inputs, &mut outputs);
 
-    //     // while !sm.is_op() {
-    //     //     sm.tick();
-    //     // }
-    // }
+        // while !sm.is_op() {
+        //     sm.tick();
+        // }
+    }
 
     #[test]
     fn ignored_quick_stop() {
