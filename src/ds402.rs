@@ -1,9 +1,7 @@
 //! DS402 state machine.
 
-use core::{cell::UnsafeCell, fmt};
-use std::thread::current;
-
 use crate::{error::Error as EthercrabError, GroupSlave};
+use core::fmt;
 
 smlang::statemachine! {
     transitions: {
@@ -110,7 +108,7 @@ impl<'a> Ds402<'a> {
     }
 
     fn set_control_word(&mut self, state: ControlWord) {
-        let (control, rest) = self.slave.outputs().split_at_mut(2);
+        let (control, _rest) = self.slave.outputs().split_at_mut(2);
 
         let state = state.bits.to_le_bytes();
 
@@ -148,7 +146,7 @@ impl<'a> Ds402Sm<'a> {
     pub fn tick(&mut self) -> bool {
         let status = self.sm.context().status_word();
 
-        if let Ok(_) = self.sm.process_event(Events::EnableOp) {
+        if self.sm.process_event(Events::EnableOp).is_ok() {
             log::debug!("Edge {:?} -> {:?}", self.prev_status, status);
         }
 

@@ -302,7 +302,7 @@ where
             let sm_type = self
                 .read_sdo::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(sm_mapping_sub_index))
                 .await
-                .map(|raw| SyncManagerType::from_primitive(raw))?;
+                .map(SyncManagerType::from_primitive)?;
 
             let sync_manager_index = sm_mapping_sub_index - 1;
 

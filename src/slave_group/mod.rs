@@ -4,7 +4,7 @@ mod group_slave;
 
 use crate::{
     error::{Error, Item},
-    slave::{slave_client::SlaveClient, IoRanges, Slave, SlaveRef},
+    slave::{IoRanges, Slave, SlaveRef},
     timer_factory::TimerFactory,
     Client,
 };
@@ -83,7 +83,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         &self.slaves
     }
 
-    pub fn slave<'a>(&'a self, index: usize) -> Result<GroupSlave<'a>, Error>
+    pub fn slave(&self, index: usize) -> Result<GroupSlave, Error>
     where
         TIMEOUT: TimerFactory,
     {
@@ -155,7 +155,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     where
         TIMEOUT: TimerFactory,
     {
-        let (_res, wkc) = client
+        let (_res, _wkc) = client
             .lrw_buf(self.start_address, self.pdi_mut(), self.read_pdi_len)
             .await?;
 

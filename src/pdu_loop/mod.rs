@@ -218,8 +218,8 @@ impl PduLoop {
 
     // TX
     /// Broadcast (BWR) a packet full of zeroes, up to `max_data_length`.
-    pub async fn pdu_broadcast_zeros<'a>(
-        &'a self,
+    pub async fn pdu_broadcast_zeros(
+        &self,
         register: u16,
         payload_length: u16,
     ) -> Result<PduResponse<()>, Error> {
