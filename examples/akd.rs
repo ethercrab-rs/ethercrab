@@ -5,7 +5,7 @@ use async_io::Timer;
 use ethercrab::{
     error::{Error, MailboxError},
     std::tx_rx_task,
-    Client, PduLoop, SlaveGroup, SlaveState, SubIndex, Timeouts,
+    Client, PduLoop, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
@@ -140,14 +140,18 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Group has {} slaves", group.slaves().len());
 
+    let slave = group.slave(0).unwrap();
+
     // Run twice to prime PDI
     group.tx_rx(&client).await.expect("TX/RX");
 
     let cycle_time = {
-        let slave = group.slave(0, &client).unwrap();
-
-        let base = slave.read_sdo::<u8>(0x60c2, SubIndex::Index(1)).await?;
-        let x10 = slave.read_sdo::<i8>(0x60c2, SubIndex::Index(2)).await?;
+        let base = slave
+            .read_sdo::<u8>(&client, 0x60c2, SubIndex::Index(1))
+            .await?;
+        let x10 = slave
+            .read_sdo::<i8>(&client, 0x60c2, SubIndex::Index(2))
+            .await?;
 
         let base = f32::from(base);
         let x10 = 10.0f32.powi(i32::from(x10));
@@ -168,38 +172,32 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
         group.tx_rx(&client).await.expect("TX/RX");
 
-        let (i, o) = group.io(0).unwrap();
+        let (i, o) = slave.io();
 
-        let status = i
-            .map(|i| {
-                let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+        let status = {
+            let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-                unsafe { AkdStatusWord::from_bits_unchecked(status) }
-            })
-            .unwrap();
+            unsafe { AkdStatusWord::from_bits_unchecked(status) }
+        };
 
         if status.contains(AkdStatusWord::FAULT) {
             log::warn!("Fault! Clearing...");
 
-            o.map(|o| {
-                let (_pos_cmd, control) = o.split_at_mut(4);
-                let reset = AkdControlWord::RESET_FAULT;
-                let reset = reset.bits().to_le_bytes();
-                control.copy_from_slice(&reset);
-            });
+            let (_pos_cmd, control) = o.split_at_mut(4);
+            let reset = AkdControlWord::RESET_FAULT;
+            let reset = reset.bits().to_le_bytes();
+            control.copy_from_slice(&reset);
 
             while let Some(_) = cyclic_interval.next().await {
                 group.tx_rx(&client).await.expect("TX/RX");
 
-                let (i, _o) = group.io(0).unwrap();
+                let (i, _o) = slave.io();
 
-                let status = i
-                    .map(|i| {
-                        let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+                let status = {
+                    let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-                        unsafe { AkdStatusWord::from_bits_unchecked(status) }
-                    })
-                    .unwrap();
+                    unsafe { AkdStatusWord::from_bits_unchecked(status) }
+                };
 
                 if !status.contains(AkdStatusWord::FAULT) {
                     log::info!("Fault cleared, status is now {status:?}");
@@ -214,27 +212,23 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     {
         log::info!("Putting drive in shutdown state");
 
-        let (_i, o) = group.io(0).unwrap();
+        let (_i, o) = slave.io();
 
-        o.map(|o| {
-            let (_pos_cmd, control) = o.split_at_mut(4);
-            let value = AkdControlWord::SHUTDOWN;
-            let value = value.bits().to_le_bytes();
-            control.copy_from_slice(&value);
-        });
+        let (_pos_cmd, control) = o.split_at_mut(4);
+        let value = AkdControlWord::SHUTDOWN;
+        let value = value.bits().to_le_bytes();
+        control.copy_from_slice(&value);
 
         while let Some(_) = cyclic_interval.next().await {
             group.tx_rx(&client).await.expect("TX/RX");
 
-            let (i, _o) = group.io(0).unwrap();
+            let (i, _o) = slave.io();
 
-            let status = i
-                .map(|i| {
-                    let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+            let status = {
+                let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-                    unsafe { AkdStatusWord::from_bits_unchecked(status) }
-                })
-                .unwrap();
+                unsafe { AkdStatusWord::from_bits_unchecked(status) }
+            };
 
             if status.contains(AkdStatusWord::READY_TO_SWITCH_ON) {
                 log::info!("Drive is shut down");
@@ -248,86 +242,70 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     {
         log::info!("Switching drive on");
 
-        let (_i, o) = group.io(0).unwrap();
+        let (_i, o) = slave.io();
 
-        o.map(|o| {
-            let (_pos_cmd, control) = o.split_at_mut(4);
-            let reset = AkdControlWord::SWITCH_ON
-                | AkdControlWord::DISABLE_VOLTAGE
-                | AkdControlWord::QUICK_STOP;
-            let reset = reset.bits().to_le_bytes();
-            control.copy_from_slice(&reset);
-        });
+        let (_pos_cmd, control) = o.split_at_mut(4);
+        let reset = AkdControlWord::SWITCH_ON
+            | AkdControlWord::DISABLE_VOLTAGE
+            | AkdControlWord::QUICK_STOP;
+        let reset = reset.bits().to_le_bytes();
+        control.copy_from_slice(&reset);
 
         while let Some(_) = cyclic_interval.next().await {
             group.tx_rx(&client).await.expect("TX/RX");
 
-            let (i, o) = group.io(0).unwrap();
+            let (i, o) = slave.io();
 
-            let status = i
-                .map(|i| {
-                    let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+            let status = {
+                let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-                    unsafe { AkdStatusWord::from_bits_unchecked(status) }
-                })
-                .unwrap();
+                unsafe { AkdStatusWord::from_bits_unchecked(status) }
+            };
 
             if status.contains(AkdStatusWord::SWITCHED_ON) {
                 log::info!("Drive switched on, begin cyclic operation");
 
-                o.map(|o| {
-                    let (_pos_cmd, control) = o.split_at_mut(4);
+                let (_pos_cmd, control) = o.split_at_mut(4);
 
-                    // Enable operation so we can send cyclic data
-                    let state = AkdControlWord::SWITCH_ON
-                        | AkdControlWord::DISABLE_VOLTAGE
-                        | AkdControlWord::QUICK_STOP
-                        | AkdControlWord::ENABLE_OP;
-                    let state = state.bits().to_le_bytes();
-                    control.copy_from_slice(&state);
-                });
+                // Enable operation so we can send cyclic data
+                let state = AkdControlWord::SWITCH_ON
+                    | AkdControlWord::DISABLE_VOLTAGE
+                    | AkdControlWord::QUICK_STOP
+                    | AkdControlWord::ENABLE_OP;
+                let state = state.bits().to_le_bytes();
+                control.copy_from_slice(&state);
 
                 break;
             }
         }
     }
 
-    smol::spawn(async move {
-        let mut velocity: i32 = 0;
+    let mut velocity: i32 = 0;
 
-        while let Some(_) = cyclic_interval.next().await {
-            group.tx_rx(&client).await.expect("TX/RX");
+    while let Some(_) = cyclic_interval.next().await {
+        group.tx_rx(&client).await.expect("TX/RX");
 
-            let (i, o) = group.io(0).unwrap();
+        let (i, o) = slave.io();
 
-            let (pos, status) = i
-                .map(|i| {
-                    let pos = u32::from_le_bytes(i[0..=3].try_into().unwrap());
-                    let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
+        let (pos, status) = {
+            let pos = u32::from_le_bytes(i[0..=3].try_into().unwrap());
+            let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-                    let status = unsafe { AkdStatusWord::from_bits_unchecked(status) };
+            let status = unsafe { AkdStatusWord::from_bits_unchecked(status) };
 
-                    (pos, status)
-                })
-                .unwrap();
+            (pos, status)
+        };
 
-            println!(
-                "Position: {pos}, Status: {status:?} | {:?}",
-                o.as_ref().unwrap()
-            );
+        println!("Position: {pos}, Status: {status:?} | {:?}", o);
 
-            o.map(|o| {
-                let (pos_cmd, _control) = o.split_at_mut(4);
+        let (pos_cmd, _control) = o.split_at_mut(4);
 
-                pos_cmd.copy_from_slice(&velocity.to_le_bytes());
-            });
+        pos_cmd.copy_from_slice(&velocity.to_le_bytes());
 
-            if velocity < 100_000_0 {
-                velocity += 200;
-            }
+        if velocity < 100_000_0 {
+            velocity += 200;
         }
-    })
-    .await;
+    }
 
     Ok(())
 }

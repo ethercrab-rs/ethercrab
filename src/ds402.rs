@@ -22,7 +22,7 @@ smlang::statemachine! {
     }
 }
 
-impl<'a, TIMEOUT> StateMachineContext for Ds402<'a, TIMEOUT> {
+impl<'a> StateMachineContext for Ds402<'a> {
     fn shutdown(&mut self) -> Result<(), ()> {
         self.set_control_word(ControlWord::STATE_SHUTDOWN);
 
@@ -94,12 +94,12 @@ impl Clone for States {
     }
 }
 
-pub struct Ds402<'a, TIMEOUT> {
-    pub slave: GroupSlave<'a, TIMEOUT>,
+pub struct Ds402<'a> {
+    pub slave: GroupSlave<'a>,
 }
 
-impl<'a, TIMEOUT> Ds402<'a, TIMEOUT> {
-    pub fn new(slave: GroupSlave<'a, TIMEOUT>) -> Result<Self, EthercrabError> {
+impl<'a> Ds402<'a> {
+    pub fn new(slave: GroupSlave<'a>) -> Result<Self, EthercrabError> {
         Ok(Self { slave })
     }
 
@@ -118,18 +118,18 @@ impl<'a, TIMEOUT> Ds402<'a, TIMEOUT> {
     }
 }
 
-pub struct Ds402Sm<'a, TIMEOUT> {
+pub struct Ds402Sm<'a> {
     // TODO: Un-pub
-    pub sm: StateMachine<Ds402<'a, TIMEOUT>>,
+    pub sm: StateMachine<Ds402<'a>>,
     prev_status: StatusWord,
 }
 
-impl<'a, TIMEOUT> Ds402Sm<'a, TIMEOUT> {
+impl<'a> Ds402Sm<'a> {
     pub fn is_op(&self) -> bool {
         self.sm.state == States::OpEnable
     }
 
-    pub fn new(context: Ds402<'a, TIMEOUT>) -> Self {
+    pub fn new(context: Ds402<'a>) -> Self {
         Self {
             sm: StateMachine::new(context),
             prev_status: StatusWord::empty(),
