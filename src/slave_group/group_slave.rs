@@ -5,7 +5,7 @@ use crate::{
     timer_factory::TimerFactory,
     Client, SubIndex,
 };
-use core::{cell::UnsafeCell, fmt::Debug};
+use core::fmt::Debug;
 
 pub struct GroupSlave<'a> {
     slave: &'a Slave,

@@ -67,7 +67,7 @@ where
         // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
-        for (i, slave) in self.slaves.iter_mut().enumerate() {
+        for (_i, slave) in self.slaves.iter_mut().enumerate() {
             let addr = slave.configured_address;
             let name = slave.name.clone();
 
