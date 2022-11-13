@@ -70,6 +70,12 @@ pub struct PdiSegment {
     pub bit_len: usize,
 }
 
+impl PdiSegment {
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+}
+
 impl fmt::Display for PdiSegment {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.bit_len > 0 {
