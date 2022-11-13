@@ -1,6 +1,6 @@
 //! DS402 state machine.
 
-use core::fmt;
+use core::{cell::UnsafeCell, fmt};
 use std::thread::current;
 
 use crate::{error::Error as EthercrabError, GroupSlave};
@@ -11,23 +11,18 @@ smlang::statemachine! {
         SwitchOnDisabled + EnableOp [ shutdown ] = ReadyToSwitchOn,
         ReadyToSwitchOn + EnableOp [ switch_on ] = SwitchedOn,
         SwitchedOn + EnableOp [ enable_op ] = OpEnable,
-        // TODO: Cleanly disable drive
-        // OpEnable + Tick = QuickStopActive,
-        // QuickStopActive + Tick = OpEnable,
-        // FaultReactionActive + Tick = Fault,
-        // Fault + ResetFault = ResettingFault,
-        // ResettingFault + Tick [ clear_faults ] = SwitchOnDisabled,
-        // _ + FaultDetected = Fault,
+
+        // TODO: Graceful shutdown
+        OpEnable + Tick = QuickStopActive,
+        QuickStopActive + Tick = OpEnable,
+        FaultReactionActive + Tick = Fault,
+        Fault + ResetFault = ResettingFault,
+        ResettingFault + Tick [ clear_faults ] = SwitchOnDisabled,
+        _ + FaultDetected = Fault,
     }
 }
 
-pub struct Ds402<'a> {
-    // TODO: Un-pub
-    pub inputs: &'a [u8],
-    pub outputs: &'a mut [u8],
-}
-
-impl<'a> StateMachineContext for Ds402<'a> {
+impl<'a, TIMEOUT> StateMachineContext for Ds402<'a, TIMEOUT> {
     fn shutdown(&mut self) -> Result<(), ()> {
         self.set_control_word(ControlWord::STATE_SHUTDOWN);
 
@@ -99,22 +94,23 @@ impl Clone for States {
     }
 }
 
-impl<'a> Ds402<'a> {
-    pub fn new<TIMEOUT>(slave: &'a mut GroupSlave<'a, TIMEOUT>) -> Result<Self, EthercrabError> {
-        let inputs = slave.inputs.as_ref().ok_or(EthercrabError::Internal)?;
-        let outputs = slave.outputs.as_mut().ok_or(EthercrabError::Internal)?;
+pub struct Ds402<'a, TIMEOUT> {
+    pub slave: GroupSlave<'a, TIMEOUT>,
+}
 
-        Ok(Self { inputs, outputs })
+impl<'a, TIMEOUT> Ds402<'a, TIMEOUT> {
+    pub fn new(slave: GroupSlave<'a, TIMEOUT>) -> Result<Self, EthercrabError> {
+        Ok(Self { slave })
     }
 
     pub fn status_word(&self) -> StatusWord {
-        let status = u16::from_le_bytes(self.inputs[0..=1].try_into().unwrap());
+        let status = u16::from_le_bytes(self.slave.inputs()[0..=1].try_into().unwrap());
 
         unsafe { StatusWord::from_bits_unchecked(status) }
     }
 
     fn set_control_word(&mut self, state: ControlWord) {
-        let (control, rest) = self.outputs.split_at_mut(2);
+        let (control, rest) = self.slave.outputs().split_at_mut(2);
 
         let state = state.bits.to_le_bytes();
 
@@ -122,26 +118,30 @@ impl<'a> Ds402<'a> {
     }
 }
 
-pub struct Ds402Sm<'a> {
+pub struct Ds402Sm<'a, TIMEOUT> {
     // TODO: Un-pub
-    pub sm: StateMachine<Ds402<'a>>,
+    pub sm: StateMachine<Ds402<'a, TIMEOUT>>,
     prev_status: StatusWord,
 }
 
-impl<'a> Ds402Sm<'a> {
+impl<'a, TIMEOUT> Ds402Sm<'a, TIMEOUT> {
     pub fn is_op(&self) -> bool {
         self.sm.state == States::OpEnable
     }
 
-    pub fn new(context: Ds402<'a>) -> Self {
+    pub fn new(context: Ds402<'a, TIMEOUT>) -> Self {
         Self {
             sm: StateMachine::new(context),
             prev_status: StatusWord::empty(),
         }
     }
 
-    pub fn io(&mut self) -> (&[u8], &mut [u8]) {
-        (self.sm.context.inputs, self.sm.context.outputs)
+    // DELETEME
+    pub fn io(&self) -> (&[u8], &mut [u8]) {
+        (
+            self.sm.context.slave.inputs(),
+            self.sm.context.slave.outputs(),
+        )
     }
 
     pub fn status_word(&self) -> StatusWord {

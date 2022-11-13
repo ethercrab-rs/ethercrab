@@ -87,33 +87,38 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         &'a self,
         index: usize,
         client: &'a Client<'a, TIMEOUT>,
-    ) -> Option<GroupSlave<'a, TIMEOUT>>
+    ) -> Result<GroupSlave<'a, TIMEOUT>, Error>
     where
         TIMEOUT: TimerFactory,
     {
-        self.slaves.get(index).map(|slave| {
-            let IoRanges {
-                input: input_range,
-                output: output_range,
-            } = slave.io_segments();
+        let slave = self.slaves.get(index).ok_or(Error::NotFound {
+            item: Item::Slave,
+            index: Some(index),
+        })?;
 
-            // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
-            let i_data = self.pdi();
-            let o_data = self.pdi_mut();
+        let IoRanges {
+            input: input_range,
+            output: output_range,
+        } = slave.io_segments();
 
-            let inputs = input_range
-                .as_ref()
-                .and_then(|range| i_data.get(range.bytes.clone()));
-            let outputs = output_range
-                .as_ref()
-                .and_then(|range| o_data.get_mut(range.bytes.clone()));
+        // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
+        let i_data = self.pdi();
+        let o_data = self.pdi_mut();
 
-            GroupSlave {
-                slave: SlaveRef::new(SlaveClient::new(client, slave.configured_address), slave),
-                inputs,
-                outputs,
-            }
-        })
+        let inputs = i_data
+            .get(input_range.bytes.clone())
+            // TODO: Better error type
+            .ok_or(Error::Internal)?;
+        let outputs = o_data
+            .get(output_range.bytes.clone())
+            // TODO: Better error type
+            .ok_or(Error::Internal)?;
+
+        Ok(GroupSlave::new(
+            SlaveRef::new(SlaveClient::new(client, slave.configured_address), slave),
+            inputs,
+            outputs,
+        ))
     }
 
     fn pdi_mut(&self) -> &mut [u8] {

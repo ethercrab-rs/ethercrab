@@ -90,15 +90,17 @@ pub struct Mailbox {
     sync_manager: u8,
 }
 
+// TODO: Add a method to check the two ranges don't overlap
 #[derive(Debug, Default, Clone)]
 pub struct IoRanges {
-    pub input: Option<PdiSegment>,
-    pub output: Option<PdiSegment>,
+    pub input: PdiSegment,
+    pub output: PdiSegment,
 }
 
 impl IoRanges {
     pub fn working_counter_sum(&self) -> u16 {
-        self.input.as_ref().map(|_| 1).unwrap_or(0) + self.output.as_ref().map(|_| 2).unwrap_or(0)
+        (!self.input.is_empty()).then_some(1).unwrap_or(0)
+            + (!self.output.is_empty().then_some(2).unwrap_or(0))
     }
 }
 

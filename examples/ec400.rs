@@ -125,13 +125,13 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     for (slave, slave_stuff) in group.slaves().iter().enumerate() {
         let sl = group.slave(slave, &client).unwrap();
-        let (i, o) = (sl.inputs, sl.outputs);
+        let (i, o) = sl.io();
 
         log::info!(
             "-> Slave {slave} {} inputs: {} bytes, outputs: {} bytes",
             slave_stuff.name,
-            i.map(|stuff| stuff.len()).unwrap_or(0),
-            o.map(|stuff| stuff.len()).unwrap_or(0)
+            i.len(),
+            o.len(),
         );
     }
 
@@ -158,7 +158,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let mut cyclic_interval = Timer::interval(cycle_time);
 
     let mut slave = group.slave(0, &client).expect("No servo!");
-    let mut servo = Ds402Sm::new(Ds402::new(&mut slave).expect("Failed to gather DS402"));
+    let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
 
     let mut velocity: i32 = 0;
 
@@ -168,6 +168,14 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         group.tx_rx(&client).await.expect("TX/RX");
 
         if servo.tick() {
+            // // Opmode - Cyclic Synchronous Position
+            // servo
+            //     .sm
+            //     .context()
+            //     .slave
+            //     .write_sdo(0x6060, SubIndex::Index(0), 0x08u8)
+            //     .await?;
+
             let status = servo.status_word();
             let (i, o) = servo.io();
 
