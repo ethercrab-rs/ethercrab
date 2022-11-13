@@ -136,12 +136,8 @@ impl<'a> Ds402Sm<'a> {
         }
     }
 
-    // DELETEME
-    pub fn io(&self) -> (&[u8], &mut [u8]) {
-        (
-            self.sm.context.slave.inputs(),
-            self.sm.context.slave.outputs(),
-        )
+    pub fn slave(&self) -> &GroupSlave {
+        &self.sm.context().slave
     }
 
     pub fn status_word(&self) -> StatusWord {

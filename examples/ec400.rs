@@ -181,7 +181,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             //     .await?;
 
             let status = servo.status_word();
-            let (i, o) = servo.io();
+            let (i, o) = servo.slave().io();
 
             let (pos, vel) = {
                 let pos = u32::from_le_bytes(i[2..=5].try_into().unwrap());
