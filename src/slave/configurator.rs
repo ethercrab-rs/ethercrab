@@ -279,7 +279,7 @@ where
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         offset: &mut PdiOffset,
-    ) -> Result<Option<PdiSegment>, Error> {
+    ) -> Result<PdiSegment, Error> {
         let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
 
         // ETG1000.6 Table 67 – CoE Communication Area
@@ -377,10 +377,10 @@ where
             total_bit_len += sm_bit_len;
         }
 
-        Ok((total_bit_len > 0).then_some(PdiSegment {
+        Ok(PdiSegment {
             bit_len: total_bit_len.into(),
             bytes: start_offset.up_to(*offset),
-        }))
+        })
     }
 
     async fn write_fmmu_config(
@@ -446,7 +446,7 @@ where
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         offset: &mut PdiOffset,
-    ) -> Result<Option<PdiSegment>, Error> {
+    ) -> Result<PdiSegment, Error> {
         let start_offset = *offset;
         let mut total_bit_len = 0;
 
@@ -505,10 +505,10 @@ where
             .await?;
         }
 
-        Ok((total_bit_len > 0).then_some(PdiSegment {
+        Ok(PdiSegment {
             bit_len: total_bit_len.into(),
             bytes: start_offset.up_to(*offset),
-        }))
+        })
     }
 
     pub(crate) fn as_ref(&self) -> SlaveRef<'_, TIMEOUT> {
