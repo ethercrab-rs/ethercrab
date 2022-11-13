@@ -124,7 +124,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Group has {} slaves", group.slaves().len());
 
     for (slave, slave_stuff) in group.slaves().iter().enumerate() {
-        let sl = group.slave(slave, &client).unwrap();
+        let sl = group.slave(slave).unwrap();
         let (i, o) = sl.io();
 
         log::info!(
@@ -139,10 +139,14 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     group.tx_rx(&client).await.expect("TX/RX");
 
     let cycle_time = {
-        let slave = group.slave(0, &client).unwrap();
+        let slave = group.slave(0).unwrap();
 
-        let base = slave.read_sdo::<u8>(0x60c2, SubIndex::Index(1)).await?;
-        let x10 = slave.read_sdo::<i8>(0x60c2, SubIndex::Index(2)).await?;
+        let base = slave
+            .read_sdo::<u8>(&client, 0x60c2, SubIndex::Index(1))
+            .await?;
+        let x10 = slave
+            .read_sdo::<i8>(&client, 0x60c2, SubIndex::Index(2))
+            .await?;
 
         let base = f32::from(base);
         let x10 = 10.0f32.powi(i32::from(x10));
@@ -157,7 +161,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     // AKD will error with F706 if cycle time is not 2ms or less
     let mut cyclic_interval = Timer::interval(cycle_time);
 
-    let mut slave = group.slave(0, &client).expect("No servo!");
+    let mut slave = group.slave(0).expect("No servo!");
     let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
 
     let mut velocity: i32 = 0;
@@ -173,7 +177,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             //     .sm
             //     .context()
             //     .slave
-            //     .write_sdo(0x6060, SubIndex::Index(0), 0x08u8)
+            //     .write_sdo(&client, 0x6060, SubIndex::Index(0), 0x08u8)
             //     .await?;
 
             let status = servo.status_word();

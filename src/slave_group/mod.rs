@@ -83,11 +83,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         &self.slaves
     }
 
-    pub fn slave<'a>(
-        &'a self,
-        index: usize,
-        client: &'a Client<'a, TIMEOUT>,
-    ) -> Result<GroupSlave<'a, TIMEOUT>, Error>
+    pub fn slave<'a>(&'a self, index: usize) -> Result<GroupSlave<'a>, Error>
     where
         TIMEOUT: TimerFactory,
     {
@@ -114,11 +110,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
             // TODO: Better error type
             .ok_or(Error::Internal)?;
 
-        Ok(GroupSlave::new(
-            SlaveRef::new(SlaveClient::new(client, slave.configured_address), slave),
-            inputs,
-            outputs,
-        ))
+        Ok(GroupSlave::new(slave, inputs, outputs))
     }
 
     fn pdi_mut(&self) -> &mut [u8] {
