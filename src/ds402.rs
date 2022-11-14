@@ -10,6 +10,10 @@ smlang::statemachine! {
         ReadyToSwitchOn + EnableOp [ switch_on ] = SwitchedOn,
         SwitchedOn + EnableOp [ enable_op ] = OpEnable,
 
+        OpEnable + DisableOp [ disable_op ] = SwitchedOn,
+        SwitchedOn + DisableOp [ switch_off ] = ReadyToSwitchOn,
+        ReadyToSwitchOn + DisableOp [ disable_switch_on ] = SwitchOnDisabled,
+
         // TODO: Graceful shutdown
         OpEnable + Tick = QuickStopActive,
         QuickStopActive + Tick = OpEnable,
@@ -22,34 +26,63 @@ smlang::statemachine! {
 
 impl<'a> StateMachineContext for Ds402<'a> {
     fn shutdown(&mut self) -> Result<(), ()> {
-        self.set_control_word(ControlWord::STATE_SHUTDOWN);
+        // self.set_control_word(ControlWord::STATE_SHUTDOWN);
 
-        self.status_word()
-            .mandatory()
-            .eq(&StatusWord::STATE_READY_TO_SWITCH_ON)
-            .then_some(())
-            .ok_or(())
+        // self.status_word()
+        //     .mandatory()
+        //     .eq(&StatusWord::STATE_READY_TO_SWITCH_ON)
+        //     .then_some(())
+        //     .ok_or(())
+
+        self.set_and_read(
+            ControlWord::STATE_SHUTDOWN,
+            StatusWord::STATE_READY_TO_SWITCH_ON,
+        )
     }
 
     fn switch_on(&mut self) -> Result<(), ()> {
-        self.set_control_word(ControlWord::STATE_SWITCH_ON);
+        // self.set_control_word(ControlWord::STATE_SWITCH_ON);
 
-        self.status_word()
-            .mandatory()
-            .eq(&StatusWord::STATE_SWITCHED_ON)
-            .then_some(())
-            .ok_or(())
+        // self.status_word()
+        //     .mandatory()
+        //     .eq(&StatusWord::STATE_SWITCHED_ON)
+        //     .then_some(())
+        //     .ok_or(())
+
+        self.set_and_read(ControlWord::STATE_SWITCH_ON, StatusWord::STATE_SWITCHED_ON)
     }
 
     fn enable_op(&mut self) -> Result<(), ()> {
-        self.set_control_word(ControlWord::STATE_ENABLE_OP);
+        // self.set_control_word(ControlWord::STATE_ENABLE_OP);
 
-        self.status_word()
-            .mandatory()
-            .eq(&StatusWord::STATE_OP_ENABLE)
-            .then_some(())
-            .ok_or(())
+        // self.status_word()
+        //     .mandatory()
+        //     .eq(&StatusWord::STATE_OP_ENABLE)
+        //     .then_some(())
+        //     .ok_or(())
+
+        self.set_and_read(ControlWord::STATE_ENABLE_OP, StatusWord::STATE_OP_ENABLE)
     }
+
+    // ---
+
+    fn disable_op(&mut self) -> Result<(), ()> {
+        self.set_and_read(ControlWord::STATE_SWITCH_ON, StatusWord::STATE_SWITCHED_ON)
+    }
+    fn switch_off(&mut self) -> Result<(), ()> {
+        self.set_and_read(
+            ControlWord::STATE_SHUTDOWN,
+            StatusWord::STATE_READY_TO_SWITCH_ON,
+        )
+    }
+    fn disable_switch_on(&mut self) -> Result<(), ()> {
+        self.set_and_read(
+            ControlWord::STATE_DISABLE_VOLTAGE,
+            StatusWord::STATE_SWITCH_ON_DISABLED,
+        )
+    }
+
+    // ---
 
     fn clear_faults(&mut self) -> Result<(), ()> {
         self.set_control_word(ControlWord::STATE_FAULT_RESET);
@@ -101,6 +134,16 @@ impl<'a> Ds402<'a> {
         Ok(Self { slave })
     }
 
+    fn set_and_read(&mut self, set: ControlWord, read: StatusWord) -> Result<(), ()> {
+        self.set_control_word(set);
+
+        self.status_word()
+            .mandatory()
+            .eq(&read)
+            .then_some(())
+            .ok_or(())
+    }
+
     pub fn status_word(&self) -> StatusWord {
         let status = u16::from_le_bytes(self.slave.inputs()[0..=1].try_into().unwrap());
 
@@ -117,9 +160,7 @@ impl<'a> Ds402<'a> {
 }
 
 pub struct Ds402Sm<'a> {
-    // TODO: Un-pub
-    pub sm: StateMachine<Ds402<'a>>,
-    prev_status: StatusWord,
+    sm: StateMachine<Ds402<'a>>,
 }
 
 impl<'a> Ds402Sm<'a> {
@@ -130,7 +171,6 @@ impl<'a> Ds402Sm<'a> {
     pub fn new(context: Ds402<'a>) -> Self {
         Self {
             sm: StateMachine::new(context),
-            prev_status: StatusWord::empty(),
         }
     }
 
@@ -147,10 +187,21 @@ impl<'a> Ds402Sm<'a> {
         let status = self.sm.context().status_word();
 
         if self.sm.process_event(Events::EnableOp).is_ok() {
-            log::debug!("Edge {:?} -> {:?}", self.prev_status, status);
+            log::debug!("Edge {:?}", status);
         }
 
         self.sm.state == States::OpEnable
+    }
+
+    /// Put the slave into "switch on disabled" state. Returns true when finished.
+    pub fn tick_shutdown(&mut self) -> bool {
+        let status = self.sm.context().status_word();
+
+        if self.sm.process_event(Events::DisableOp).is_ok() {
+            log::debug!("Edge {:?}", status);
+        }
+
+        self.sm.state == States::SwitchOnDisabled
     }
 }
 
