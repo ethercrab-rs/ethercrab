@@ -11,7 +11,13 @@ use ethercrab::{
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 #[cfg(target_os = "windows")]
 // ASRock NIC
@@ -39,6 +45,14 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let client = Arc::new(Client::<smol::Timer>::new(&PDU_LOOP, Timeouts::default()));
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
 
     // let num_slaves = client.num_slaves();
 
@@ -168,6 +182,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     // let mut slave = group.slave(0, &client).unwrap();
 
+    let accel = 300;
+
     while let Some(_) = cyclic_interval.next().await {
         group.tx_rx(&client).await.expect("TX/RX");
 
@@ -184,8 +200,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             let (i, o) = servo.slave().io();
 
             let (pos, vel) = {
-                let pos = u32::from_le_bytes(i[2..=5].try_into().unwrap());
-                let vel = u32::from_le_bytes(i[6..=9].try_into().unwrap());
+                let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
+                let vel = i32::from_le_bytes(i[6..=9].try_into().unwrap());
 
                 (pos, vel)
             };
@@ -199,10 +215,41 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
             pos_cmd.copy_from_slice(&velocity.to_le_bytes());
 
-            if velocity < 200_000 {
-                velocity += 200;
+            if running.load(Ordering::SeqCst) {
+                if vel < 200_000 {
+                    velocity += accel;
+                }
+            } else if vel > 0 {
+                velocity -= accel;
+            } else {
+                break;
             }
         }
+    }
+
+    log::info!("Servo stopped, shutting drive down");
+
+    while let Some(_) = cyclic_interval.next().await {
+        group.tx_rx(&client).await.expect("TX/RX");
+
+        if servo.tick_shutdown() {
+            break;
+        }
+
+        let status = servo.status_word();
+        let (i, o) = servo.slave().io();
+
+        let (pos, vel) = {
+            let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
+            let vel = i32::from_le_bytes(i[6..=9].try_into().unwrap());
+
+            (pos, vel)
+        };
+
+        println!(
+            "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
+            o
+        );
     }
 
     Ok(())
@@ -212,11 +259,7 @@ fn main() -> Result<(), Error> {
     env_logger::init();
     let local_ex = LocalExecutor::new();
 
-    let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
-
-    futures_lite::future::block_on(
-        local_ex.run(ctrlc.race(async { main_inner(&local_ex).await.unwrap() })),
-    );
+    futures_lite::future::block_on(local_ex.run(main_inner(&local_ex))).unwrap();
 
     Ok(())
 }
