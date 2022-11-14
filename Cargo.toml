@@ -27,6 +27,7 @@ spin = { version = "0.9.4", default-features = false, features = ["rwlock"] }
 async-ctrlc = "1.2.0"
 async-io = "1.9.0"
 chrono = "0.4.22"
+ctrlc = "3.2.3"
 env_logger = "0.9.1"
 futures-lite = { version = "1.12.0", default-features = false }
 libc = "0.2.134"
