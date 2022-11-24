@@ -74,3 +74,5 @@
         update.
 - [ ] Make sync0 pulses work, with master synced to them. CSP/CSV requires sync0 according to
       <https://github.com/OpenEtherCATsociety/SOEM/issues/657#issuecomment-1304635205>
+- [ ] Look into <https://github.com/mdeloof/statig> for multilevel state machines for DS402 and/or
+      spindle abstraction.
