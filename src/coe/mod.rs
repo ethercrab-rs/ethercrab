@@ -115,9 +115,12 @@ impl SegmentSdoHeader {
     // const UPLOAD_SEGMENT_RESPONSE: u8 = 0x03;
 }
 
+/// Subindex access.
 #[derive(Copy, Clone, Debug)]
 pub enum SubIndex {
     /// Complete access.
+    ///
+    /// Accesses the entire entry as a single slice of data.
     Complete,
 
     /// Individual sub-index access.

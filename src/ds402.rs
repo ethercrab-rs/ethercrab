@@ -125,12 +125,15 @@ impl Clone for States {
     }
 }
 
+/// DS402/CiA402 wrapper around a single EtherCat slave.
 #[derive(Debug)]
 pub struct Ds402<'a> {
+    /// The EtherCat slave.
     pub slave: GroupSlave<'a>,
 }
 
 impl<'a> Ds402<'a> {
+    /// Create a new DS402 state machine.
     pub fn new(slave: GroupSlave<'a>) -> Result<Self, EthercrabError> {
         Ok(Self { slave })
     }
@@ -145,6 +148,7 @@ impl<'a> Ds402<'a> {
             .ok_or(())
     }
 
+    /// Get the DS402 status word.
     pub fn status_word(&self) -> StatusWord {
         let status = u16::from_le_bytes(self.slave.inputs()[0..=1].try_into().unwrap());
 
@@ -160,25 +164,33 @@ impl<'a> Ds402<'a> {
     }
 }
 
+/// DS402 state machine.
 pub struct Ds402Sm<'a> {
     sm: StateMachine<Ds402<'a>>,
 }
 
 impl<'a> Ds402Sm<'a> {
+    /// Returns true if the slave is in `OP` state.
+    ///
+    /// NOTE: Not to be confused with EtherCAT's `OP` state; that is a precondition for running the
+    /// DS402 SM.
     pub fn is_op(&self) -> bool {
         self.sm.state == States::OpEnable
     }
 
+    /// Create a new DS402 state machine with the given slave.
     pub fn new(context: Ds402<'a>) -> Self {
         Self {
             sm: StateMachine::new(context),
         }
     }
 
+    /// Get a reference to the underlying EtherCAT slave device.
     pub fn slave(&self) -> &GroupSlave {
         &self.sm.context().slave
     }
 
+    /// Get the DS402 status word.
     pub fn status_word(&self) -> StatusWord {
         self.sm.context.status_word()
     }
@@ -228,12 +240,19 @@ bitflags::bitflags! {
         /// Pause/halt
         const PAUSE = 1 << 8;
 
+        /// Shutdown state.
         const STATE_SHUTDOWN = Self::QUICK_STOP.bits | Self::DISABLE_VOLTAGE.bits;
+        /// Switched on state.
         const STATE_SWITCH_ON = Self::QUICK_STOP.bits | Self::DISABLE_VOLTAGE.bits | Self::SWITCH_ON.bits;
+        /// Voltage disabled state.
         const STATE_DISABLE_VOLTAGE = 0;
+        /// Quick stop state.
         const STATE_QUICK_STOP = Self::DISABLE_VOLTAGE.bits;
+        /// Operation disabled state.
         const STATE_DISABLE_OP = Self::QUICK_STOP.bits | Self::DISABLE_VOLTAGE.bits | Self::SWITCH_ON.bits;
+        /// Operation enabled state.
         const STATE_ENABLE_OP = Self::ENABLE_OP.bits | Self::QUICK_STOP.bits | Self::DISABLE_VOLTAGE.bits | Self::SWITCH_ON.bits;
+        /// Fault reset state.
         const STATE_FAULT_RESET = Self::RESET_FAULT.bits;
     }
 }

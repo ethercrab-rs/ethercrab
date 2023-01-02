@@ -1,3 +1,5 @@
+//! Items to use when not in `no_std` environments.
+
 use crate::{client::Client, timer_factory::TimerFactory};
 use core::{future::Future, task::Poll};
 use embassy_futures::select;
@@ -5,6 +7,7 @@ use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
 use std::sync::Arc;
 
+/// Get a TX/RX pair.
 pub fn get_tx_rx(
     device: &str,
 ) -> Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>), std::io::Error> {
@@ -36,6 +39,7 @@ pub fn get_tx_rx(
 
 // TODO: Proper error - there are a couple of unwraps in here
 // TODO: Make some sort of split() method to ensure we can only ever have one tx/rx future running
+/// Create a task that waits for PDUs to send, and receives PDU responses.
 pub fn tx_rx_task<TIMEOUT>(
     device: &str,
     client: &Arc<Client<'static, TIMEOUT>>,

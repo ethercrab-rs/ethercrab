@@ -46,6 +46,8 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 
 unsafe impl Sync for PduLoop {}
 
+/// Stores PDU frames that are currently being prepared to send, in flight, or being received and
+/// processed.
 #[derive(Debug)]
 pub struct PduStorage<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
     frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
@@ -58,6 +60,7 @@ unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
 }
 
 impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, MAX_PDU_DATA> {
+    /// Create a new `PduStorage` instance.
     pub const fn new() -> Self {
         // MSRV: Nightly
         let frames = unsafe { MaybeUninit::zeroed().assume_init() };
@@ -72,6 +75,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, 
         Self { frame_data, frames }
     }
 
+    /// Get a reference to this `PduStorage` with erased lifetimes.
     pub const fn as_ref(&self) -> PduStorageRef {
         PduStorageRef {
             frames: &self.frames,
@@ -93,6 +97,11 @@ pub struct PduStorageRef<'a> {
     max_pdu_data: usize,
 }
 
+/// The core of the PDU send/receive machinery.
+///
+/// This item orchestrates queuing, sending and receiving responses to individual PDUs. It uses a
+/// fixed length list of frame slots which are cycled through sequentially to ensure each PDU packet
+/// has a unique ID (by using the slot index).
 #[derive(Debug)]
 pub struct PduLoop {
     frame_data: &'static [UnsafeCell<&'static [u8]>],
@@ -106,6 +115,7 @@ pub struct PduLoop {
 }
 
 impl PduLoop {
+    /// Create a new PDU loop with the given backing storage.
     pub const fn new(storage: PduStorageRef<'static>) -> Self {
         assert!(storage.frames.len() <= u8::MAX as usize);
 
@@ -137,6 +147,10 @@ impl PduLoop {
     // }
 
     // TX
+    /// Iterate through any PDU TX frames that are ready and send them.
+    ///
+    /// The blocking `send` function is called for each ready frame. It is given a
+    /// [`SendableFrame`].
     pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), Error>
     where
         F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
@@ -307,6 +321,7 @@ impl PduLoop {
     }
 
     // RX
+    /// Parse a PDU from a complete Ethernet II frame.
     pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
@@ -387,7 +402,7 @@ mod tests {
     use super::*;
     use core::{task::Poll, time::Duration};
     use smoltcp::wire::EthernetAddress;
-    use std::{sync::Arc, thread};
+    use std::thread;
 
     static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
     static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());

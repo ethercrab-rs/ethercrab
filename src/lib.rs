@@ -1,3 +1,9 @@
+//! EtherCrab
+//!
+//! An EtherCAT master written in pure Rust.
+//!
+//! More documentation and examples to come in future releases!
+
 #![feature(const_maybe_uninit_zeroed)]
 #![feature(pin_macro)]
 #![cfg_attr(not(feature = "std"), no_std)]
