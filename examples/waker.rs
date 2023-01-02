@@ -1,9 +1,9 @@
-use core::task::Poll;
-use core::task::Waker;
-use core::time::Duration;
+use core::{
+    task::{Poll, Waker},
+    time::Duration,
+};
 use smol::LocalExecutor;
-use std::cell::Cell;
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 fn main() {
     let local_ex = LocalExecutor::new();

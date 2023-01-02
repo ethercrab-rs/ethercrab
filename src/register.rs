@@ -185,7 +185,7 @@ impl PackedStruct for SupportFlags {
     type ByteArray = [u8; 2];
 
     fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
-        let result = (self.fmmu_supports_bit_ops as u16) << 0
+        let result = (self.fmmu_supports_bit_ops as u16)
             & (self.reserved_register_support as u16) << 1
             & (self.dc_supported as u16) << 2
             & (self.has_64bit_dc as u16) << 3
@@ -205,7 +205,7 @@ impl PackedStruct for SupportFlags {
         let raw = u16::from_le_bytes(*src);
 
         Ok(Self {
-            fmmu_supports_bit_ops: (raw >> 0 & 1) == 1,
+            fmmu_supports_bit_ops: (raw & 1) == 1,
             reserved_register_support: (raw >> 1 & 1) == 1,
             dc_supported: (raw >> 2 & 1) == 1,
             has_64bit_dc: (raw >> 3 & 1) == 1,

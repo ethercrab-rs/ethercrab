@@ -38,7 +38,7 @@ impl PackedStruct for DlStatus {
     type ByteArray = [u8; 2];
 
     fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
-        let result = (self.pdi_operational as u16) << 0
+        let result = self.pdi_operational as u16
             & (self.watchdog_ok as u16) << 1
             & (self.extended_link_detection as u16) << 2
             // & (self._reserved as u16) << 3
@@ -62,7 +62,7 @@ impl PackedStruct for DlStatus {
         let raw = u16::from_le_bytes(*src);
 
         Ok(Self {
-            pdi_operational: (raw >> 0 & 1) == 1,
+            pdi_operational: (raw & 1) == 1,
             watchdog_ok: (raw >> 1 & 1) == 1,
             extended_link_detection: (raw >> 2 & 1) == 1,
             // _reserved: (raw >> 3 & 1) == 1,
