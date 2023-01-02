@@ -149,8 +149,7 @@ impl PduLoop {
     // TX
     /// Iterate through any PDU TX frames that are ready and send them.
     ///
-    /// The blocking `send` function is called for each ready frame. It is given a
-    /// [`SendableFrame`].
+    /// The blocking `send` function is called for each ready frame. It is given a `SendableFrame`.
     pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), Error>
     where
         F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
@@ -270,8 +269,8 @@ impl PduLoop {
     // TX
     /// Send data to and read data back from multiple slaves.
     ///
-    /// Unlike [`pdu_tx_readwrite`], this method allows overriding the minimum data length of the
-    /// payload.
+    /// Unlike [`pdu_tx_readwrite`](crate::pdu_loop::PduLoop::pdu_tx_readwrite), this method allows
+    /// overriding the minimum data length of the payload.
     ///
     /// The PDU data length will be the larger of `send_data.len()` and `data_length`. If a larger
     /// response than `send_data` is desired, set the expected response length in `data_length`.
