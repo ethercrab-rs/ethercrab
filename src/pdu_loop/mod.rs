@@ -210,10 +210,9 @@ impl PduLoop {
 
     /// Tell the packet sender there is data ready to send.
     fn wake_sender(&self) {
-        self.tx_waker
-            .read()
-            .as_ref()
-            .map(|waker| waker.wake_by_ref());
+        if let Some(waker) = self.tx_waker.read().as_ref() {
+            waker.wake_by_ref()
+        }
     }
 
     // TX

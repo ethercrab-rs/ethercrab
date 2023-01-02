@@ -71,8 +71,8 @@ pub struct PdiSegment {
 }
 
 impl PdiSegment {
-    pub fn is_empty(&self) -> bool {
-        self.bytes.is_empty()
+    pub fn len(&self) -> usize {
+        self.bytes.len()
     }
 }
 

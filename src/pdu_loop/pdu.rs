@@ -46,7 +46,7 @@ impl Pdu {
     }
 
     /// Write an EtherCAT frame into `buf`.
-    pub fn to_ethernet_payload<'a>(&self, buf: &'a mut [u8], data: &[u8]) -> Result<(), PduError> {
+    pub fn to_ethernet_payload(&self, buf: &mut [u8], data: &[u8]) -> Result<(), PduError> {
         let header = FrameHeader::pdu(self.ethercat_payload_len());
 
         let buf = gen_simple(le_u16(header.0), buf).map_err(PduError::Encode)?;

@@ -98,9 +98,16 @@ pub struct IoRanges {
 }
 
 impl IoRanges {
+    /// Expected working counter value for this slave.
+    ///
+    /// The working counter is calculated as follows:
+    ///
+    /// - If the slave has input data, increment by 1
+    /// - If the slave has output data, increment by 2
     pub fn working_counter_sum(&self) -> u16 {
-        (!self.input.is_empty()).then_some(1).unwrap_or(0)
-            + (!self.output.is_empty().then_some(2).unwrap_or(0))
+        let l = self.input.len().min(1) + (self.output.len().min(1) * 2);
+
+        l as u16
     }
 }
 

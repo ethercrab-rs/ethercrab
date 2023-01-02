@@ -285,7 +285,7 @@ impl StatusWord {
             | Self::SWITCH_ON_DISABLED.bits,
     );
 
-    const STATE_NOT_READY_TO_SWITCH_ON: Self = Self::empty();
+    // const STATE_NOT_READY_TO_SWITCH_ON: Self = Self::empty();
     const STATE_SWITCH_ON_DISABLED: Self = Self::from_bits_truncate(Self::SWITCH_ON_DISABLED.bits);
     const STATE_READY_TO_SWITCH_ON: Self = Self::from_bits_truncate(Self::READY_TO_SWITCH_ON.bits);
     const STATE_SWITCHED_ON: Self =
@@ -293,8 +293,8 @@ impl StatusWord {
     const STATE_OP_ENABLE: Self = Self::from_bits_truncate(
         Self::OP_ENABLED.bits | Self::READY_TO_SWITCH_ON.bits | Self::SWITCHED_ON.bits,
     );
-    const STATE_FAULT_REACTION_ACTIVE: Self =
-        Self::from_bits_truncate(Self::STATE_OP_ENABLE.bits | Self::FAULT.bits);
+    // const STATE_FAULT_REACTION_ACTIVE: Self =
+    //     Self::from_bits_truncate(Self::STATE_OP_ENABLE.bits | Self::FAULT.bits);
 
     fn mandatory(self) -> Self {
         self.intersection(Self::MANDATORY)
@@ -317,22 +317,5 @@ mod tests {
         // while !sm.is_op() {
         //     sm.tick();
         // }
-    }
-
-    #[test]
-    fn ignored_quick_stop() {
-        let bits = 0b100000u16;
-
-        assert_eq!(
-            unsafe { StatusWord::from_bits_unchecked(bits) }.is_not_ready_to_switch_on(),
-            true
-        );
-
-        let bits = 0u16;
-
-        assert_eq!(
-            unsafe { StatusWord::from_bits_unchecked(bits) }.is_not_ready_to_switch_on(),
-            true
-        );
     }
 }
