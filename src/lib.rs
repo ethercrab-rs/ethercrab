@@ -1,8 +1,10 @@
-//! EtherCrab
-//!
 //! An EtherCAT master written in pure Rust.
 //!
-//! More documentation and examples to come in future releases!
+//! This crate is in its very early stages, however it has been used to control Beckhoff EK1100
+//! modules, Kollmorgen and LeadShine EC400 servo drives under Windows and Linux. Examples and
+//! documentation is sparse, but will be improved in future releases.
+//!
+//! Breaking changes may be made at any time.
 
 #![feature(const_maybe_uninit_zeroed)]
 #![feature(pin_macro)]

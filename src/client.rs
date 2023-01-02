@@ -218,8 +218,8 @@ where
 
     /// Get the number of discovered slaves in the EtherCAT network.
     ///
-    /// As [`init`] runs slave autodecetion, it must be called before this method to get an accurate
-    /// count.
+    /// As [`init`](crate::Client::init) runs slave autodetection, it must be called before this
+    /// method to get an accurate count.
     pub fn num_slaves(&self) -> usize {
         usize::from(*self.num_slaves.borrow())
     }
