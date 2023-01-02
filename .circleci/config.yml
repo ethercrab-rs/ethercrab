@@ -14,7 +14,7 @@ target_steps: &target_steps
 
     - run: cargo test --target $TARGET
     - run: cargo build --target $TARGET --examples --release
-    - run: cargo deadlinks --ignore-fragments --dir target/doc/ethercrab
+    - run: cargo deadlinks --ignore-fragments
 
     - save_cache:
         key: v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
