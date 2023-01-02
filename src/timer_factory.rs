@@ -66,7 +66,7 @@ where
     TIMEOUT: TimerFactory,
     F: core::future::Future<Output = Result<O, Error>>,
 {
-    pin!(future);
+    let future = core::pin::pin!(future);
 
     match select(future, TIMEOUT::timer(timeout)).await {
         Either::First(res) => res,
