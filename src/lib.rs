@@ -4,6 +4,8 @@
 //! modules, Kollmorgen and LeadShine EC400 servo drives under Windows and Linux. Examples and
 //! documentation is sparse, but will be improved in future releases.
 //!
+//! Please note that this crate currently requires nightly Rust.
+//!
 //! Breaking changes may be made at any time.
 
 #![feature(const_maybe_uninit_zeroed)]
