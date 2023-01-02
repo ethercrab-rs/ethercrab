@@ -8,6 +8,7 @@ fn main() -> io::Result<()> {
         phy::{Device, RxToken},
         wire::{EthernetFrame, PrettyPrinter},
     };
+    use std::{io::ErrorKind, time::Instant};
 
     smol::block_on(async {
         let medium = smoltcp::phy::Medium::Ethernet;
@@ -28,7 +29,7 @@ fn main() -> io::Result<()> {
 
                         Ok(frame)
                     })
-                    .map_err(smoltcp_to_io)?;
+                    .map_err(|e| io::Error::new(ErrorKind::Other, e))?;
 
                 Ok(frame)
             })
