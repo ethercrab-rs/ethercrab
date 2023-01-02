@@ -1,22 +1,9 @@
 #![feature(const_maybe_uninit_zeroed)]
+#![feature(pin_macro)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 // This mod MUST go first, so that the others see its macros.
 pub(crate) mod log;
-
-// Taken from `futures-lite`
-// TODO: Use core::pin::pin! when stablised
-macro_rules! pin {
-    ($($x:ident),* $(,)?) => {
-        $(
-            let mut $x = $x;
-            #[allow(unused_mut)]
-            let mut $x = unsafe {
-                core::pin::Pin::new_unchecked(&mut $x)
-            };
-        )*
-    }
-}
 
 mod al_control;
 mod al_status_code;
