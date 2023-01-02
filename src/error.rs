@@ -50,7 +50,7 @@ impl From<BorrowError> for Error {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Item {
     /// There is not enough storage to hold the number of detected slaves.
     Slave,
@@ -79,7 +79,7 @@ pub enum PduError {
     InvalidFrameState,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MailboxError {
     Aborted {
         code: AbortCode,
@@ -99,7 +99,7 @@ pub enum MailboxError {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum EepromError {
     Decode,
     SectionOverrun,
@@ -107,7 +107,7 @@ pub enum EepromError {
     SectionUnderrun,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum VisibleStringError {
     Decode(Utf8Error),
     TooLong,

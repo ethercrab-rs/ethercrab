@@ -33,7 +33,7 @@ pub struct SegmentedUploadRequest {
     pub sdo_header: SegmentSdoHeader,
 }
 
-pub trait CoeServiceTrait: packed_struct::PackedStruct {
+pub trait CoeServiceTrait: PackedStruct {
     fn counter(&self) -> u8;
     fn is_aborted(&self) -> bool;
     fn mailbox_type(&self) -> MailboxType;

@@ -23,14 +23,13 @@ use crate::{
 };
 use core::{
     any::type_name,
-    fmt,
-    fmt::{Debug, Write},
+    fmt::{self, Debug, Write},
 };
 use nom::{bytes::complete::take, number::complete::le_u32, IResult};
 use num_enum::TryFromPrimitive;
 use packed_struct::{PackedStruct, PackedStructSlice};
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct SlaveIdentity {
     pub vendor_id: u32,
     pub product_id: u32,
@@ -38,7 +37,7 @@ pub struct SlaveIdentity {
     pub serial: u32,
 }
 
-impl fmt::Debug for SlaveIdentity {
+impl Debug for SlaveIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlaveIdentity")
             .field("vendor_id", &format_args!("{:#010x}", self.vendor_id))
@@ -232,6 +231,7 @@ impl Slave {
     }
 }
 
+#[derive(Debug)]
 pub struct SlaveRef<'a, TIMEOUT> {
     client: SlaveClient<'a, TIMEOUT>,
     slave: &'a Slave,
@@ -465,7 +465,7 @@ where
                         .await?;
 
                     if sm.status.mailbox_full {
-                        break Result::<(), _>::Ok(());
+                        break Ok(());
                     }
 
                     self.client.timeouts().loop_tick::<TIMEOUT>().await;

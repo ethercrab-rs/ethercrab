@@ -13,6 +13,7 @@ use crate::{
 use core::fmt::Debug;
 use packed_struct::PackedStruct;
 
+#[derive(Debug)]
 pub struct SlaveClient<'a, TIMEOUT> {
     pub(in crate::slave) client: &'a Client<'a, TIMEOUT>,
     configured_address: u16,
@@ -101,7 +102,7 @@ where
                         .await?;
 
                     if status.state == desired_state {
-                        break Result::<(), _>::Ok(());
+                        break Ok(());
                     }
 
                     self.client.timeouts.loop_tick::<TIMEOUT>().await;

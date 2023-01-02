@@ -22,6 +22,7 @@ use core::{
 };
 use packed_struct::PackedStruct;
 
+#[derive(Debug)]
 pub struct Client<'client, TIMEOUT> {
     // TODO: un-pub
     pub(crate) pdu_loop: &'client PduLoop,
@@ -233,7 +234,7 @@ where
     pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         let num_slaves = *self.num_slaves.borrow();
 
-        crate::timer_factory::timeout::<TIMEOUT, _, _>(self.timeouts.state_transition, async {
+        timeout::<TIMEOUT, _, _>(self.timeouts.state_transition, async {
             loop {
                 let status = self
                     .brd::<AlControl>(RegisterAddress::AlStatus)
@@ -261,7 +262,7 @@ where
                 }
 
                 if status.state == desired_state {
-                    break Result::<(), Error>::Ok(());
+                    break Ok(());
                 }
 
                 self.timeouts.loop_tick::<TIMEOUT>().await;

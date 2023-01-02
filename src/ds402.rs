@@ -125,6 +125,7 @@ impl Clone for States {
     }
 }
 
+#[derive(Debug)]
 pub struct Ds402<'a> {
     pub slave: GroupSlave<'a>,
 }
@@ -298,24 +299,5 @@ impl StatusWord {
 
     fn mandatory(self) -> Self {
         self.intersection(Self::MANDATORY)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn check() {
-        env_logger::try_init().ok();
-
-        let inputs = [0x00, 0x00];
-        let mut outputs = [0x00, 0x00];
-
-        // let mut sm = Ds402::new(&inputs, &mut outputs);
-
-        // while !sm.is_op() {
-        //     sm.tick();
-        // }
     }
 }
