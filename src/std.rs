@@ -109,7 +109,7 @@ where
                 }
                 Err(e) => {
                     // If an error occurs, we can handle it here
-                    panic!("An error occurred while reading: {}", e);
+                    panic!("An error occurred while reading: {e}");
                 }
             }
         }
