@@ -46,6 +46,7 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 
 unsafe impl Sync for PduLoop {}
 
+#[derive(Debug)]
 pub struct PduStorage<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
     frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
     frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
@@ -76,7 +77,7 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, 
             frames: &self.frames,
             frame_data: unsafe {
                 core::slice::from_raw_parts(
-                    self.frame_data.as_ptr() as *const _ as *const UnsafeCell<&[u8]>,
+                    self.frame_data.as_ptr() as *const UnsafeCell<&[u8]>,
                     self.frame_data.len(),
                 )
             },
@@ -85,19 +86,21 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, 
     }
 }
 
+#[derive(Debug)]
 pub struct PduStorageRef<'a> {
     frame_data: &'a [UnsafeCell<&'a [u8]>],
     frames: &'a [UnsafeCell<pdu_frame::Frame>],
     max_pdu_data: usize,
 }
 
+#[derive(Debug)]
 pub struct PduLoop {
     frame_data: &'static [UnsafeCell<&'static [u8]>],
     frames: &'static [UnsafeCell<pdu_frame::Frame>],
     pub(crate) max_pdu_data: usize,
 
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
-    tx_waker: spin::RwLock<Option<Waker>>,
+    tx_waker: RwLock<Option<Waker>>,
     /// EtherCAT frame index.
     idx: AtomicU8,
 }
@@ -166,7 +169,7 @@ impl PduLoop {
         let frame = unsafe { &mut *self.frames[idx].get() };
         let data = unsafe {
             core::slice::from_raw_parts_mut(
-                self.frame_data[idx].get() as *mut _ as *mut u8,
+                self.frame_data[idx].get() as *mut u8,
                 self.max_pdu_data,
             )
         };

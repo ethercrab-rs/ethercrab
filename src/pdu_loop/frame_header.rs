@@ -37,8 +37,7 @@ impl FrameHeader {
     pub fn pdu(len: u16) -> Self {
         assert!(
             len <= LEN_MASK,
-            "Frame length may not exceed {} bytes",
-            LEN_MASK
+            "Frame length may not exceed {LEN_MASK} bytes"
         );
 
         let len = len & LEN_MASK;

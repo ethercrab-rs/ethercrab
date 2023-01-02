@@ -1,5 +1,5 @@
 use crate::pdu_data::{PduData, PduRead};
-use packed_struct::prelude::*;
+use packed_struct::{prelude::*, PackingError};
 
 #[derive(Copy, Clone, Debug)]
 #[repr(u16)]
@@ -139,7 +139,7 @@ pub struct PortDescriptors {
 impl PduRead for PortDescriptors {
     const LEN: u16 = 1;
 
-    type Error = packed_struct::PackingError;
+    type Error = PackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         let arr = slice[0..1]
