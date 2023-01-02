@@ -31,5 +31,9 @@ jobs:
 
 build_jobs: &build_jobs
   jobs:
-    # Linux
     - target-x86_64-unknown-linux-gnu
+
+workflows:
+  version: 2
+  build_all:
+    <<: *build_jobs
