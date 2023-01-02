@@ -1,7 +1,7 @@
 use core::fmt;
 use packed_struct::prelude::*;
 
-/// AL Status.
+/// AL (application layer) Status.
 ///
 /// Defined in ETG1000.6 6.4.1
 #[derive(
@@ -17,13 +17,20 @@ use packed_struct::prelude::*;
 )]
 #[repr(u8)]
 pub enum SlaveState {
+    /// No state recorded/read/known.
     #[default]
     None = 0x00,
+    /// EtherCAT `INIT` state.
     Init = 0x01,
+    /// EtherCAT `PRE-OP` state.
     PreOp = 0x02,
+    /// EtherCAT `BOOT` state.
     Bootstrap = 0x03,
+    /// EtherCAT `SAFE-OP` state.
     SafeOp = 0x04,
+    /// EtherCAT `OP` state.
     Op = 0x8,
+    /// State is unknown.
     Unknown = 0xff,
 }
 

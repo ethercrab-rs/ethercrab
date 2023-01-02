@@ -7,6 +7,9 @@ use crate::{
 };
 use core::fmt::Debug;
 
+/// A slave belonging to a given group.
+///
+/// Unlike a normal [`Slave`], `GroupSlave` holds the input and output data for the slave.
 #[derive(Debug)]
 pub struct GroupSlave<'a> {
     slave: &'a Slave,
@@ -16,7 +19,7 @@ pub struct GroupSlave<'a> {
 }
 
 impl<'a> GroupSlave<'a> {
-    pub fn new(slave: &'a Slave, inputs: &'a [u8], outputs: &'a [u8]) -> Self {
+    pub(crate) fn new(slave: &'a Slave, inputs: &'a [u8], outputs: &'a [u8]) -> Self {
         Self {
             slave,
             inputs,
@@ -24,20 +27,24 @@ impl<'a> GroupSlave<'a> {
         }
     }
 
+    /// Get a tuple of (I, O) for this slave in the Process Data Image (PDI).
     pub fn io(&self) -> (&[u8], &mut [u8]) {
         (self.inputs(), self.outputs())
     }
 
+    /// Get just the inputs for this slave in the Process Data Image (PDI).
     pub fn inputs(&self) -> &[u8] {
         self.inputs
     }
 
+    /// Get just the outputs for this slave in the Process Data Image (PDI).
     pub fn outputs(&self) -> &mut [u8] {
         unsafe {
             core::slice::from_raw_parts_mut(self.outputs.as_ptr() as *mut u8, self.outputs.len())
         }
     }
 
+    /// Read an SDO from this slave.
     pub async fn read_sdo<T>(
         &self,
         client: &Client<'_, impl TimerFactory>,
@@ -56,6 +63,7 @@ impl<'a> GroupSlave<'a> {
         slave.read_sdo(index, sub_index).await
     }
 
+    /// Write an SDO from this slave.
     pub async fn write_sdo<T>(
         &self,
         client: &Client<'_, impl TimerFactory>,

@@ -22,6 +22,8 @@ use core::{
 };
 use packed_struct::PackedStruct;
 
+/// A medium-level interface over PDUs (e.g. `BRD`, `LRW`, etc) and other EtherCAT master related
+/// infrastructure.
 #[derive(Debug)]
 pub struct Client<'client, TIMEOUT> {
     // TODO: un-pub
@@ -39,6 +41,7 @@ impl<'client, TIMEOUT> Client<'client, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
+    /// Create a new EtherCrab client.
     pub const fn new(pdu_loop: &'client PduLoop, timeouts: Timeouts) -> Self {
         Self {
             pdu_loop,
@@ -213,6 +216,10 @@ where
         Ok(groups)
     }
 
+    /// Get the number of discovered slaves in the EtherCAT network.
+    ///
+    /// As [`init`] runs slave autodecetion, it must be called before this method to get an accurate
+    /// count.
     pub fn num_slaves(&self) -> usize {
         usize::from(*self.num_slaves.borrow())
     }
@@ -231,6 +238,7 @@ where
         self.wait_for_state(desired_state).await
     }
 
+    /// Wait for all slaves on the network to reach a given state.
     pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         let num_slaves = *self.num_slaves.borrow();
 
@@ -319,6 +327,7 @@ where
         Ok((res, working_counter))
     }
 
+    /// Send a `BRD` (Broadcast Read).
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
@@ -423,6 +432,10 @@ where
         .await
     }
 
+    /// Configured address read, multiple write.
+    ///
+    /// This can be used to distributed a value from one slave to all others on the network, e.g.
+    /// with distributed clocks.
     pub async fn frmw<T>(
         &self,
         address: u16,

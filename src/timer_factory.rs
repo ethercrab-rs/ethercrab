@@ -2,7 +2,9 @@ use crate::error::Error;
 use core::time::Duration;
 use embassy_futures::select::{select, Either};
 
+/// A trait implemented for the chosen timer provider.
 pub trait TimerFactory: core::future::Future + Unpin {
+    /// This should return a future which resolves after the given duration.
     fn timer(duration: Duration) -> Self;
 }
 
@@ -12,6 +14,7 @@ impl TimerFactory for smol::Timer {
     }
 }
 
+/// Timeout configuration for the EtherCrab master.
 #[derive(Copy, Clone, Debug)]
 pub struct Timeouts {
     /// How long to wait for a slave state change, e.g. SAFE-OP to OP.
