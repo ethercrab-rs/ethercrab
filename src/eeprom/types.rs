@@ -162,7 +162,7 @@ impl SiiRequest {
 /// SII register address.
 ///
 /// Defined in ETG1000.6 Table 16 or ETG2010 Table 2
-#[derive(Debug, num_enum::IntoPrimitive)]
+#[derive(Debug, Copy, Clone, num_enum::IntoPrimitive)]
 #[repr(u16)]
 pub enum SiiCoding {
     /// PDI Control
@@ -659,7 +659,7 @@ bitflags::bitflags! {
     /// Supported mailbox category.
     ///
     /// Defined in ETG1000.6 Table 18 or ETG2010 Table 4.
-    #[derive(Default)]
+    #[derive( Default)]
     pub struct MailboxProtocols: u16 {
         /// ADS over EtherCAT (routing and parallel services).
         const AOE = 0x0001;
@@ -676,7 +676,7 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Copy, Clone, Default)]
 pub struct DefaultMailbox {
     /// Master to slave receive mailbox address offset.
     pub slave_receive_offset: u16,

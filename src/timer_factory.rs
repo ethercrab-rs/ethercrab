@@ -3,15 +3,16 @@ use core::time::Duration;
 use embassy_futures::select::{select, Either};
 
 pub trait TimerFactory: core::future::Future + Unpin {
-    fn timer(duration: core::time::Duration) -> Self;
+    fn timer(duration: Duration) -> Self;
 }
 
 impl TimerFactory for smol::Timer {
-    fn timer(duration: core::time::Duration) -> Self {
+    fn timer(duration: Duration) -> Self {
         Self::after(duration)
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct Timeouts {
     /// How long to wait for a slave state change, e.g. SAFE-OP to OP.
     ///

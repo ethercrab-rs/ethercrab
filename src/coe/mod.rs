@@ -26,7 +26,7 @@ impl PackedStruct for CoeHeader {
         Ok(raw.to_le_bytes())
     }
 
-    fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
+    fn unpack(src: &Self::ByteArray) -> PackingResult<Self> {
         let raw = u16::from_le_bytes(*src);
 
         let service =
@@ -115,6 +115,7 @@ impl SegmentSdoHeader {
     // const UPLOAD_SEGMENT_RESPONSE: u8 = 0x03;
 }
 
+#[derive(Copy, Clone, Debug)]
 pub enum SubIndex {
     /// Complete access.
     Complete,

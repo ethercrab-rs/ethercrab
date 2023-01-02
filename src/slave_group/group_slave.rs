@@ -7,6 +7,7 @@ use crate::{
 };
 use core::fmt::Debug;
 
+#[derive(Debug)]
 pub struct GroupSlave<'a> {
     slave: &'a Slave,
     inputs: &'a [u8],

@@ -127,6 +127,7 @@ impl Frame {
 }
 
 /// A frame that is in a sendable state.
+#[derive(Debug)]
 pub struct SendableFrame<'a> {
     frame: &'a mut Frame,
 }

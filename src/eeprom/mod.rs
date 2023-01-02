@@ -22,6 +22,7 @@ use num_enum::TryFromPrimitive;
 /// Table 2.
 const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 
+#[derive(Debug)]
 pub struct Eeprom<'a, TIMEOUT> {
     client: &'a SlaveClient<'a, TIMEOUT>,
 }
