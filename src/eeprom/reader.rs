@@ -4,6 +4,9 @@ use crate::{
     timer_factory::TimerFactory,
 };
 
+/// EEPROM section reader.
+///
+/// Controls an internal pointer to sequentially read data from a section in a slave's EEPROM.
 pub struct EepromSectionReader<'a, TIMEOUT> {
     start: u16,
     /// Category length in bytes.
@@ -18,10 +21,18 @@ impl<'a, TIMEOUT> EepromSectionReader<'a, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
+    /// Create a new EEPROM section reader.
+    ///
+    /// This is used to read data from individual sections in a slave's EEPROM. Many methods on
+    /// `EepromSectionReader` will either return [`EepromError::SectionOverrun`] or
+    /// [`EepromError::SectionUnderrun`] errors if the section cannot be completely read as this is
+    /// often an indicator of a bug in either the slave's EEPROM or EtherCrab.
     pub fn new(eeprom: &'a Eeprom<'a, TIMEOUT>, cat: SiiCategory) -> Self {
         Self::start_at(eeprom, cat.start, cat.len_words * 2)
     }
 
+    /// Read an arbitrary chunk of the EEPROM instead of using an EEPROM section configu to define
+    /// start address and length.
     pub fn start_at(eeprom: &'a Eeprom<'a, TIMEOUT>, address: u16, len_bytes: u16) -> Self {
         Self {
             eeprom,
@@ -33,6 +44,9 @@ where
         }
     }
 
+    /// Read the next byte from the EEPROM.
+    ///
+    /// Internally, this method reads the EEPROM in chunks of 4 or 8 bytes (depending on the slave).
     pub async fn next(&mut self) -> Result<Option<u8>, Error> {
         if self.read.is_empty() {
             let read = self.eeprom.read_eeprom_raw(self.start).await?;
@@ -65,6 +79,7 @@ where
         Ok(result)
     }
 
+    /// Skip a given number of addresses (note: not bytes).
     pub async fn skip(&mut self, skip: u16) -> Result<(), Error> {
         // TODO: Optimise by calculating new skip address instead of just iterating through chunks
         for _ in 0..skip {
@@ -74,6 +89,7 @@ where
         Ok(())
     }
 
+    /// Try reading the next chunk in the current section.
     pub async fn try_next(&mut self) -> Result<u8, Error> {
         match self.next().await {
             Ok(Some(value)) => Ok(value),
@@ -82,18 +98,23 @@ where
         }
     }
 
+    /// Read up to `N` bytes from the EEPROM.
     pub async fn take_vec<const N: usize>(
         &mut self,
     ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
         self.take_n_vec(N).await
     }
 
+    /// Attempt to exactly fill a buffer with bytes read from the EEPROM.
+    ///
+    /// If the current section under- or over-fills the buffer, an error is returned.
     pub async fn take_vec_exact<const N: usize>(&mut self) -> Result<heapless::Vec<u8, N>, Error> {
         self.take_n_vec(N)
             .await?
             .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
     }
 
+    /// Attempt to take an exact number of bytes.
     pub async fn take_n_vec_exact<const N: usize>(
         &mut self,
         len: usize,

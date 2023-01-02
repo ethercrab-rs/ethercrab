@@ -21,6 +21,10 @@ type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 
 
 type HookFn<TIMEOUT> = for<'any> fn(&'any SlaveRef<TIMEOUT>) -> HookFuture<'any>;
 
+/// A group of one or more EtherCAT slaves.
+///
+/// Groups are created during EtherCrab initialisation, and are the only way to access individual
+/// slave PDI sections.
 pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> {
     slaves: heapless::Vec<Slave, MAX_SLAVES>,
     preop_safeop_hook: Option<HookFn<TIMEOUT>>,
@@ -66,6 +70,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Default
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
 {
+    /// Create a new slave group with a given PRE OP -> SAFE OP hook.
+    ///
+    /// The hook can be used to configure slaves using SDOs.
     pub fn new(preop_safeop_hook: HookFn<TIMEOUT>) -> Self {
         Self {
             preop_safeop_hook: Some(preop_safeop_hook),
@@ -73,16 +80,19 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         }
     }
 
+    /// Add a slave to the group.
     pub fn push(&mut self, slave: Slave) -> Result<(), Error> {
         self.slaves
             .push(slave)
             .map_err(|_| Error::Capacity(Item::Slave))
     }
 
+    /// Get all slaves in this group.
     pub fn slaves(&self) -> &[Slave] {
         &self.slaves
     }
 
+    /// Retrieve a reference to a slave in this group by index.
     pub fn slave(&self, index: usize) -> Result<GroupSlave, Error>
     where
         TIMEOUT: TimerFactory,
@@ -148,6 +158,10 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     //     Some((i, o))
     // }
 
+    /// Drive the slave group's inputs and outputs.
+    ///
+    /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
+    /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
     pub async fn tx_rx<'client>(
         &self,
         client: &'client Client<'client, TIMEOUT>,
