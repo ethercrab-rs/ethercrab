@@ -9,6 +9,7 @@ repository = "https://github.com/ethercrab-rs/ethercrab"
 documentation = "https://docs.rs/ethercrab"
 description = "An EtherCAT master in pure-Rust that is no_std compatible"
 keywords = ["no-std", "beckhoff", "ethercat", "igh", "soem"]
+exclude = [ "dumps", "NOTES.md", "SPECNOTES.md" ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
