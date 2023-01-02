@@ -1,15 +1,13 @@
 //! Configure a Leadshine EtherCat EL7 series drive and turn the motor.
 
-use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
     ds402::{Ds402, Ds402Sm},
     error::Error,
     std::tx_rx_task,
-    Client, GroupSlave, PduLoop, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
-    TimerFactory,
+    Client, PduLoop, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
 };
-use futures_lite::{FutureExt, StreamExt};
+use futures_lite::StreamExt;
 use smol::LocalExecutor;
 use std::{
     sync::{
@@ -175,7 +173,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     // AKD will error with F706 if cycle time is not 2ms or less
     let mut cyclic_interval = Timer::interval(cycle_time);
 
-    let mut slave = group.slave(0).expect("No servo!");
+    let slave = group.slave(0).expect("No servo!");
     let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
 
     let mut velocity: i32 = 0;

@@ -3,17 +3,12 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduLoop, RegisterAddress, SlaveGroup, SubIndex, Timeouts,
+    error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, RegisterAddress, SlaveGroup,
+    SubIndex, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
-use std::{
-    sync::{
-        atomic::{AtomicU8, Ordering},
-        Arc,
-    },
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 
 #[cfg(target_os = "windows")]
 // ASRock NIC
@@ -107,13 +102,15 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Group has {} slaves", group.slaves().len());
 
     for (slave, slave_stuff) in group.slaves().iter().enumerate() {
-        let (i, o) = group.io(slave).unwrap();
+        let sl = group.slave(slave).unwrap();
+
+        let (i, o) = sl.io();
 
         log::info!(
             "-> Slave {slave} {} has inputs: {}, outputs: {}",
             slave_stuff.name,
-            i.map(|stuff| stuff.len()).unwrap_or(0),
-            o.map(|stuff| stuff.len()).unwrap_or(0)
+            i.len(),
+            o.len(),
         );
     }
 
@@ -149,7 +146,9 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             .await?;
 
         for slave in 0..group2.slaves().len() {
-            let (_i, o) = group2.io(slave).unwrap();
+            let sl = group2.slave(slave).expect("Slave");
+
+            let (_i, o) = sl.io();
 
             // let diff = group2
             //     .slave(slave, &client)
@@ -172,12 +171,10 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
             // print!("{diff:+#05} ");
 
-            o.map(|o| {
-                for byte in o.iter_mut() {
-                    // *byte = !*byte;
-                    *byte = byte.wrapping_add(1);
-                }
-            });
+            for byte in o.iter_mut() {
+                // *byte = !*byte;
+                *byte = byte.wrapping_add(1);
+            }
         }
 
         // println!("");
