@@ -7,9 +7,7 @@ use crate::{
 };
 use core::fmt::Debug;
 
-/// A slave belonging to a given group.
-///
-/// Unlike a normal [`Slave`], `GroupSlave` holds the input and output data for the slave.
+/// A slave belonging to a given group, along with its PDI input and output data.
 #[derive(Debug)]
 pub struct GroupSlave<'a> {
     slave: &'a Slave,
