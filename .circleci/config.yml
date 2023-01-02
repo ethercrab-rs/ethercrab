@@ -1,0 +1,35 @@
+target_steps: &target_steps
+  docker:
+    # NOTE: Exact version is overridden in `rust-toolchain.toml`
+    - image: cimg/rust:1.65.0
+  steps:
+    - checkout
+    - restore_cache:
+        key: v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+
+    # For docs gen
+    - run: rustup target add x86_64-unknown-linux-gnu || true
+    - run: cargo install cargo-deadlinks --target x86_64-unknown-linux-gnu
+
+    - run: cargo test --target $TARGET
+    - run: cargo build --target $TARGET --examples --release
+    - run: cargo deadlinks --ignore-fragments --dir target/doc/ethercrab
+
+    - save_cache:
+        key: v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        paths:
+          - ./target
+          - /home/circleci/.cargo/registry
+
+version: 2
+jobs:
+  target-x86_64-unknown-linux-gnu:
+    resource_class: large
+    environment:
+      - TARGET: "x86_64-unknown-linux-gnu"
+    <<: *target_steps
+
+build_jobs: &build_jobs
+  jobs:
+    # Linux
+    - target-x86_64-unknown-linux-gnu
