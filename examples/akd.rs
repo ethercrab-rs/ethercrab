@@ -138,7 +138,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Slaves moved to OP state");
 
-    log::info!("Group has {} slaves", group.slaves().len());
+    log::info!("Group has {} slaves", group.len());
 
     let slave = group.slave(0).unwrap();
 
