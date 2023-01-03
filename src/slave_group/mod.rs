@@ -80,6 +80,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         }
     }
 
+    // TODO: Move away from this group struct; it should only be possible to use this before init
     /// Add a slave to the group.
     pub fn push(&mut self, slave: Slave) -> Result<(), Error> {
         self.slaves
@@ -87,9 +88,22 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
             .map_err(|_| Error::Capacity(Item::Slave))
     }
 
-    /// Get all slaves in this group.
-    pub fn slaves(&self) -> &[Slave] {
-        &self.slaves
+    /// Get the number of slave devices in this group.
+    pub fn len(&self) -> usize {
+        self.slaves.len()
+    }
+
+    /// Check whether this slave group is empty or not.
+    pub fn is_empty(&self) -> bool {
+        self.slaves.is_empty()
+    }
+
+    /// Get an iterator over all slaves in this group.
+    pub fn slaves(&self) -> GroupSlaveIterator<'_, MAX_SLAVES, MAX_PDI, TIMEOUT> {
+        GroupSlaveIterator {
+            group: self,
+            idx: 0,
+        }
     }
 
     /// Retrieve a reference to a slave in this group by index.
@@ -135,29 +149,6 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         &all_buf[0..self.pdi_len]
     }
 
-    // /// Get the input and output segments of the PDI for a given slave.
-    // ///
-    // /// If the slave index does not resolve to a discovered slave, this method will return `None`.
-    // pub fn io(&self, idx: usize) -> Option<(Option<&[u8]>, Option<&mut [u8]>)> {
-    //     let IoRanges {
-    //         input: input_range,
-    //         output: output_range,
-    //     } = self.slaves.get(idx)?.io_segments();
-
-    //     // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
-    //     let i_data = self.pdi();
-    //     let o_data = self.pdi_mut();
-
-    //     let i = input_range
-    //         .as_ref()
-    //         .and_then(|range| i_data.get(range.bytes.clone()));
-    //     let o = output_range
-    //         .as_ref()
-    //         .and_then(|range| o_data.get_mut(range.bytes.clone()));
-
-    //     Some((i, o))
-    // }
-
     /// Drive the slave group's inputs and outputs.
     ///
     /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
@@ -197,5 +188,36 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
             start_address: &mut self.start_address,
             group_working_counter: &mut self.group_working_counter,
         }
+    }
+}
+
+/// An iterator over all slaves in a group.
+///
+/// Created by calling [`SlaveGroup::slaves`](crate::slave_group::SlaveGroup::slaves).
+pub struct GroupSlaveIterator<'a, const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> {
+    group: &'a SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>,
+    idx: usize,
+}
+
+impl<'a, const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Iterator
+    for GroupSlaveIterator<'a, MAX_SLAVES, MAX_PDI, TIMEOUT>
+where
+    TIMEOUT: TimerFactory,
+{
+    type Item = GroupSlave<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.group.slaves.len() {
+            return None;
+        }
+
+        // Squelch errors. If we're failing at this point, something is _very_ wrong.
+        let slave = self.group.slave(self.idx).map_err(|e| {
+            log::error!("Failed to get slave at index {} from group with {} slaves: {e:?}. This is very wrong. Please open an issue.", self.idx, self.group.len());
+        }).ok()?;
+
+        self.idx += 1;
+
+        Some(slave)
     }
 }

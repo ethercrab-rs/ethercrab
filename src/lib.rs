@@ -57,7 +57,7 @@ pub use client::Client;
 pub use coe::SubIndex;
 pub use pdu_loop::{PduLoop, PduStorage};
 pub use register::RegisterAddress;
-pub use slave_group::SlaveGroup;
+pub use slave_group::{GroupSlaveIterator, SlaveGroup};
 pub use slave_state::SlaveState;
 pub use timer_factory::{Timeouts, TimerFactory};
 
