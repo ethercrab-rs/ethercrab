@@ -11,6 +11,12 @@ use core::fmt::Debug;
 #[derive(Debug)]
 pub struct GroupSlave<'a> {
     slave: &'a Slave,
+
+    /// The slave's configured address.
+    pub configured_address: u16,
+    /// The slave's name
+    pub name: &'a str,
+
     inputs: &'a [u8],
     // We can make these mutable later
     outputs: &'a [u8],
@@ -21,6 +27,8 @@ impl<'a> GroupSlave<'a> {
         Self {
             slave,
             inputs,
+            configured_address: slave.configured_address,
+            name: &slave.name,
             outputs,
         }
     }

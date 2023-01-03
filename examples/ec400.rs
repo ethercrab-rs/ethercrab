@@ -133,15 +133,15 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Slaves moved to OP state");
 
-    log::info!("Group has {} slaves", group.slaves().len());
+    log::info!("Group has {} slaves", group.len());
 
-    for (slave, slave_stuff) in group.slaves().iter().enumerate() {
-        let sl = group.slave(slave).unwrap();
-        let (i, o) = sl.io();
+    for slave in group.slaves() {
+        let (i, o) = slave.io();
 
         log::info!(
-            "-> Slave {slave} {} inputs: {} bytes, outputs: {} bytes",
-            slave_stuff.name,
+            "-> Slave {} {} inputs: {} bytes, outputs: {} bytes",
+            slave.configured_address,
+            slave.name,
             i.len(),
             o.len(),
         );
