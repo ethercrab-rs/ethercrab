@@ -6,6 +6,15 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- **(breaking)** [#1] `SlaveGroup::slaves` now returns an iterator over each slave with IO in the
+  group, instead of a plain slave.
+
+### Added
+
+- [#1] Added `SlaveGroup::len` and `SlaveGroup::is_empty` methods.
+
 ## [0.1.0] - 2023-01-02
 
 ### Added
@@ -13,6 +22,7 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 
+[#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

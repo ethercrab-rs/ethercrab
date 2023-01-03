@@ -15,10 +15,20 @@ pub fn get_tx_rx(
 
     // dbg!(&interfaces);
 
-    let interface = interfaces
-        .into_iter()
-        .find(|interface| interface.name == device)
-        .expect("Could not find interface");
+    let interface = match interfaces.iter().find(|interface| interface.name == device) {
+        Some(interface) => interface,
+        None => {
+            log::error!("Could not find interface {device}");
+
+            log::error!("Available interfaces:");
+
+            for interface in interfaces.iter() {
+                log::error!("-> {} {}", interface.name, interface.description);
+            }
+
+            panic!();
+        }
+    };
 
     // dbg!(interface.mac);
 

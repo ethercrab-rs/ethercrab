@@ -99,16 +99,15 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         .await
         .expect("Init");
 
-    log::info!("Group has {} slaves", group.slaves().len());
+    log::info!("Group has {} slaves", group.len());
 
-    for (slave, slave_stuff) in group.slaves().iter().enumerate() {
-        let sl = group.slave(slave).unwrap();
-
-        let (i, o) = sl.io();
+    for slave in group.slaves() {
+        let (i, o) = slave.io();
 
         log::info!(
-            "-> Slave {slave} {} has inputs: {}, outputs: {}",
-            slave_stuff.name,
+            "-> Slave {} {} has inputs: {}, outputs: {}",
+            slave.configured_address,
+            slave.name,
             i.len(),
             o.len(),
         );
@@ -120,64 +119,21 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let group = Arc::new(group);
     let group2 = group.clone();
 
-    // smol::spawn(async move {
-    //     let mut cyclic_interval = Timer::interval(Duration::from_millis(2));
-
-    //     while let Some(_) = cyclic_interval.next().await {
-    //         group.tx_rx(&client).await.expect("TX/RX");
-    //     }
-    // })
-    // .detach();
-
     while let Some(_) = tick_interval.next().await {
         group.tx_rx(&client).await.expect("TX/RX");
-
-        // let (_i, o) = group2.io(4).unwrap();
-
-        // o.map(|o| {
-        //     for byte in o.iter_mut() {
-        //         *byte += 1;
-        //     }
-        // });
 
         // Dynamic drift compensation
         let (_reference_time, _wkc) = client
             .frmw::<u64>(0x1000, RegisterAddress::DcSystemTime)
             .await?;
 
-        for slave in 0..group2.slaves().len() {
-            let sl = group2.slave(slave).expect("Slave");
-
-            let (_i, o) = sl.io();
-
-            // let diff = group2
-            //     .slave(slave, &client)
-            //     .unwrap()
-            //     .raw_read::<u32>(RegisterAddress::DcSystemTimeDifference)
-            //     .await
-            //     .map(|n| {
-            //         let smaller = n & (1 << 31) > 0;
-
-            //         // Chop off smaller/larger bit
-            //         let number = (n & (u32::MAX >> 1)) as i32;
-
-            //         if smaller {
-            //             -number
-            //         } else {
-            //             number
-            //         }
-            //     })
-            //     .unwrap_or(0);
-
-            // print!("{diff:+#05} ");
+        for slave in group2.slaves() {
+            let (_i, o) = slave.io();
 
             for byte in o.iter_mut() {
-                // *byte = !*byte;
                 *byte = byte.wrapping_add(1);
             }
         }
-
-        // println!("");
     }
 
     Ok(())
