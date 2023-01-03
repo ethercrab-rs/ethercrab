@@ -17,16 +17,19 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, RegisterAddress, SlaveGroup,
-    SubIndex, Timeouts,
+    error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, SlaveGroup, SubIndex, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
 use std::{sync::Arc, time::Duration};
 
+/// Maximum number of slaves that can be stored.
 const MAX_SLAVES: usize = 16;
+/// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = 1100;
+/// Maximum number of EtherCAT frames that can be in flight at any one time.
 const MAX_FRAMES: usize = 16;
+/// Maximum total PDI length.
 const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
@@ -81,7 +84,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     let group = client
         // Initialise up to 16 slave devices
-        .init::<16, _>(group, |groups, slave| groups.push(slave))
+        .init::<MAX_SLAVES, _>(group, |groups, slave| groups.push(slave))
         .await
         .expect("Init");
 
