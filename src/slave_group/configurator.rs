@@ -13,17 +13,18 @@ use crate::{
 };
 use core::time::Duration;
 
-pub struct Configurator<'a, TIMEOUT> {
-    pub pdi_len: &'a mut usize,
-    pub read_pdi_len: &'a mut usize,
-    pub max_pdi_len: usize,
-    pub start_address: &'a mut u32,
-    pub group_working_counter: &'a mut u16,
-    pub slaves: &'a mut [Slave],
-    pub preop_safeop_hook: Option<&'a HookFn<TIMEOUT>>,
+/// TODO: Doc
+pub struct SlaveGroupRef<'a, TIMEOUT> {
+    pub(crate) pdi_len: &'a mut usize,
+    pub(crate) read_pdi_len: &'a mut usize,
+    pub(crate) max_pdi_len: usize,
+    pub(crate) start_address: &'a mut u32,
+    pub(crate) group_working_counter: &'a mut u16,
+    pub(crate) slaves: &'a mut [Slave],
+    pub(crate) preop_safeop_hook: Option<&'a HookFn<TIMEOUT>>,
 }
 
-impl<'a, TIMEOUT> Configurator<'a, TIMEOUT>
+impl<'a, TIMEOUT> SlaveGroupRef<'a, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {

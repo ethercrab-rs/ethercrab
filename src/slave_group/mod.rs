@@ -11,7 +11,7 @@ use crate::{
 use core::{cell::UnsafeCell, future::Future, pin::Pin};
 pub use group_slave::GroupSlave;
 
-pub use configurator::Configurator;
+pub use configurator::SlaveGroupRef;
 pub use container::SlaveGroupContainer;
 
 // TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
@@ -178,8 +178,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         // }
     }
 
-    pub(crate) fn as_mut_ref(&mut self) -> Configurator<'_, TIMEOUT> {
-        Configurator {
+    /// TODO: This should not be pub!
+    pub fn as_mut_ref(&mut self) -> SlaveGroupRef<'_, TIMEOUT> {
+        SlaveGroupRef {
             slaves: self.slaves.as_mut(),
             max_pdi_len: MAX_PDI,
             preop_safeop_hook: self.preop_safeop_hook.as_ref(),
