@@ -9,7 +9,16 @@ use crate::{
     Client,
 };
 
+// TODO: The topology discovery is prime for some unit tests. Should be able to split it out into a
+// pure function.
 /// Configure distributed clocks.
+///
+/// This method walks through the discovered list of devices and sets the system time offset and
+/// transmission delay of each device. It then sends 10,000 `FRMW` packets to perform static clock
+/// drift compensation.
+///
+/// Note that the static drift compensation can take a long time on some systems (e.g. Windows at
+/// time of writing).
 pub async fn configure_dc(
     client: &Client<'_, impl TimerFactory>,
     slaves: &mut [Slave],
@@ -80,7 +89,9 @@ pub async fn configure_dc(
 
         let sl = SlaveClient::new(client, slave.configured_address);
 
-        // NOTE: Defined as a u64 in the spec
+        // NOTE: Defined as a u64, not i64, in the spec
+        // TODO: Remember why this is i64 here. SOEM uses i64 I think, and I seem to remember things
+        // breaking/being weird if it wasn't i64? Was it something to do with wraparound/overflow?
         let (dc_receive_time, _wkc) = sl
             .read_ignore_wkc::<i64>(RegisterAddress::DcReceiveTime)
             .await?;
@@ -183,6 +194,7 @@ pub async fn configure_dc(
 
     // Static drift compensation - distribute reference clock through network until slave clocks
     // settle
+    // TODO: Separate out into a different method so users can choose to enable/disable it.
     for _ in 0..10_000 {
         let (_reference_time, _wkc) = client
             .frmw::<u64>(

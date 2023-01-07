@@ -183,6 +183,8 @@ impl Ports {
         }
     }
 
+    /// The time in nanoseconds for a packet to completely traverse all active ports of a slave
+    /// device.
     pub fn propagation_time(&self) -> Option<u32> {
         let times = self
             .0

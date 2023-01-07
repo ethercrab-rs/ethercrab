@@ -175,6 +175,8 @@ where
                 .map_err(|_| Error::Capacity(Item::Slave))?;
         }
 
+        // Configure distributed clock offsets/propagation delays, perform static drift
+        // compensation. We need the slaves in a list to do this.
         dc::configure_dc(self, slaves.as_mut_slices().0).await?;
 
         while let Some(slave) = slaves.pop_front() {
