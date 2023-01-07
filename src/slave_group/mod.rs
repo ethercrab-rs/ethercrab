@@ -67,6 +67,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Default
     }
 }
 
+/// Returned when a slave device's input or output PDI segment is empty.
+static EMPTY_PDI_SLICE: &[u8] = &[];
+
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
 {
@@ -125,14 +128,43 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         let i_data = self.pdi();
         let o_data = self.pdi_mut();
 
-        let inputs = i_data
-            .get(input_range.bytes.clone())
-            // TODO: Better error type
-            .ok_or(Error::Internal)?;
-        let outputs = o_data
-            .get(output_range.bytes.clone())
-            // TODO: Better error type
-            .ok_or(Error::Internal)?;
+        let inputs = if !input_range.is_empty() {
+            i_data
+                .get(input_range.bytes.clone())
+                // TODO: Better error type
+                .ok_or_else(|| {
+                    log::error!(
+                        "Failed to get slave {:#06x} {} input range {:?} in PDI len {}",
+                        slave.configured_address,
+                        slave.name,
+                        input_range,
+                        i_data.len()
+                    );
+
+                    Error::Internal
+                })?
+        } else {
+            EMPTY_PDI_SLICE
+        };
+
+        let outputs = if !output_range.is_empty() {
+            o_data
+                .get(output_range.bytes.clone())
+                // TODO: Better error type
+                .ok_or_else(|| {
+                    log::error!(
+                        "Failed to get slave {:#06x} {} output range {:?} in PDI len {}",
+                        slave.configured_address,
+                        slave.name,
+                        output_range,
+                        o_data.len()
+                    );
+
+                    Error::Internal
+                })?
+        } else {
+            EMPTY_PDI_SLICE
+        };
 
         Ok(GroupSlave::new(slave, inputs, outputs))
     }
