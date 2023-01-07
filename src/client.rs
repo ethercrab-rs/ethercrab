@@ -16,9 +16,8 @@ use crate::{
 };
 use core::{
     any::type_name,
-    cell::RefCell,
     marker::PhantomData,
-    sync::atomic::{AtomicU8, Ordering},
+    sync::atomic::{AtomicU16, AtomicU8, Ordering},
 };
 use packed_struct::PackedStruct;
 
@@ -28,7 +27,11 @@ use packed_struct::PackedStruct;
 pub struct Client<'client, TIMEOUT> {
     // TODO: un-pub
     pub(crate) pdu_loop: &'client PduLoop,
-    num_slaves: RefCell<u16>,
+    /// The total number of discovered slaves.
+    ///
+    /// Using an `AtomicU16` here only to satisfy `Sync` requirements, but it's only ever written to
+    /// once so its safety is largely unused.
+    num_slaves: AtomicU16,
     _timeout: PhantomData<TIMEOUT>,
     pub(crate) timeouts: Timeouts,
     /// The 1-7 cyclic counter used when working with mailbox requests.
@@ -46,7 +49,7 @@ where
         Self {
             pdu_loop,
             // slaves: UnsafeCell::new(heapless::Vec::new()),
-            num_slaves: RefCell::new(0),
+            num_slaves: AtomicU16::new(0),
             _timeout: PhantomData,
             timeouts,
             // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
@@ -135,10 +138,8 @@ where
         Ok(())
     }
 
-    /// Detect slaves and set their configured station addresses.
-    // TODO: Find a way to retrieve a slave by index from the SlaveGroupContainer instead of
-    // requiring a temporary array of slaves. Currently blocked by weird lifetime rubbish on
-    // `SlaveGroupContainer`.
+    /// Detect slaves, set their configured station addresses, assign to groups, configure slave
+    /// devices from EEPROM.
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
         mut groups: G,
@@ -152,7 +153,9 @@ where
         // Each slave increments working counter, so we can use it as a total count of slaves
         let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
 
-        *self.num_slaves.borrow_mut() = num_slaves;
+        // This is the only place we store the number of slave devices, so the ordering can be
+        // pretty much anything.
+        self.num_slaves.store(num_slaves, Ordering::Relaxed);
 
         let mut slaves = heapless::Deque::<Slave, MAX_SLAVES>::new();
 
@@ -223,12 +226,12 @@ where
     /// As [`init`](crate::Client::init) runs slave autodetection, it must be called before this
     /// method to get an accurate count.
     pub fn num_slaves(&self) -> usize {
-        usize::from(*self.num_slaves.borrow())
+        usize::from(self.num_slaves.load(Ordering::Relaxed))
     }
 
     /// Request the same state for all slaves.
     pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        let num_slaves = *self.num_slaves.borrow();
+        let num_slaves = self.num_slaves.load(Ordering::Relaxed);
 
         self.bwr(
             RegisterAddress::AlControl,
@@ -242,7 +245,7 @@ where
 
     /// Wait for all slaves on the network to reach a given state.
     pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        let num_slaves = *self.num_slaves.borrow();
+        let num_slaves = self.num_slaves.load(Ordering::Relaxed);
 
         timeout::<TIMEOUT, _, _>(self.timeouts.state_transition, async {
             loop {
