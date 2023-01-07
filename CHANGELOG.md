@@ -10,6 +10,7 @@ An EtherCAT master written in Rust.
 
 - **(breaking)** [#1] `SlaveGroup::slaves` now returns an iterator over each slave with IO in the
   group, instead of a plain slave.
+- **(breaking)** [#2] Rename `slave_group::Configurator` to `SlaveGroupRef`.
 
 ### Added
 
