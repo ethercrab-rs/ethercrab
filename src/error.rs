@@ -63,6 +63,8 @@ pub enum Error {
     Topology,
     /// An error was read back from one or more slaves when attempting to transition to a new state.
     StateTransition,
+    /// An unknown slave device was encountered during device discovery/initialisation.
+    UnknownSlave,
 }
 
 impl From<BorrowError> for Error {

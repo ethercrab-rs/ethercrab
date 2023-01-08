@@ -68,7 +68,8 @@ where
     /// PDOs must be configured in the PRE-OP state.
     pub(crate) async fn configure_fmmus(
         &mut self,
-        mut offset: PdiOffset,
+        mut global_offset: PdiOffset,
+        group_start_address: u32,
         direction: PdoDirection,
     ) -> Result<PdiOffset, Error> {
         let sync_managers = self.client.eeprom().sync_managers().await?;
@@ -107,7 +108,7 @@ where
                         &sync_managers,
                         &fmmu_usage,
                         PdoDirection::MasterRead,
-                        &mut offset,
+                        &mut global_offset,
                     )
                     .await?
                 } else {
@@ -117,12 +118,16 @@ where
                         &fmmu_sm_mappings,
                         &fmmu_usage,
                         PdoDirection::MasterRead,
-                        &mut offset,
+                        &mut global_offset,
                     )
                     .await?
                 };
 
-                self.slave.config.io.input = input_range;
+                self.slave.config.io.input = PdiSegment {
+                    bytes: (input_range.bytes.start - group_start_address as usize)
+                        ..(input_range.bytes.end - group_start_address as usize),
+                    ..input_range
+                };
             }
             PdoDirection::MasterWrite => {
                 let pdos = self.client.eeprom().master_write_pdos().await?;
@@ -134,7 +139,7 @@ where
                         &sync_managers,
                         &fmmu_usage,
                         PdoDirection::MasterWrite,
-                        &mut offset,
+                        &mut global_offset,
                     )
                     .await?
                 } else {
@@ -144,16 +149,29 @@ where
                         &fmmu_sm_mappings,
                         &fmmu_usage,
                         PdoDirection::MasterWrite,
-                        &mut offset,
+                        &mut global_offset,
                     )
                     .await?
                 };
 
-                self.slave.config.io.output = output_range;
+                self.slave.config.io.output = PdiSegment {
+                    bytes: (output_range.bytes.start - group_start_address as usize)
+                        ..(output_range.bytes.end - group_start_address as usize),
+                    ..output_range
+                };
             }
         }
 
-        Ok(offset)
+        log::debug!(
+            "Slave {:#06x} PDI inputs: {:?} ({} bytes), outputs: {:?} ({} bytes)",
+            self.slave.configured_address,
+            self.slave.config.io.input,
+            self.slave.config.io.input.len(),
+            self.slave.config.io.output,
+            self.slave.config.io.output.len(),
+        );
+
+        Ok(global_offset)
     }
 
     pub async fn request_safe_op_nowait(&self) -> Result<(), Error> {
@@ -278,7 +296,7 @@ where
         sync_managers: &[SyncManager],
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
-        offset: &mut PdiOffset,
+        gobal_offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
         let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
 
@@ -289,7 +307,7 @@ where
 
         log::trace!("Found {num_sms} SMs from CoE");
 
-        let start_offset = *offset;
+        let start_offset = *gobal_offset;
 
         // We must ignore the first two SM indices (SM0, SM1, sub-index 1 and 2, start at sub-index
         // 3) as these are used for mailbox communication.
@@ -370,8 +388,14 @@ where
                         index: None,
                     })?;
 
-                self.write_fmmu_config(sm_bit_len, fmmu_index, offset, desired_sm_type, &sm_config)
-                    .await?;
+                self.write_fmmu_config(
+                    sm_bit_len,
+                    fmmu_index,
+                    gobal_offset,
+                    desired_sm_type,
+                    &sm_config,
+                )
+                .await?;
             }
 
             total_bit_len += sm_bit_len;
@@ -379,7 +403,7 @@ where
 
         Ok(PdiSegment {
             bit_len: total_bit_len.into(),
-            bytes: start_offset.up_to(*offset),
+            bytes: start_offset.up_to(*gobal_offset),
         })
     }
 
@@ -387,7 +411,7 @@ where
         &self,
         sm_bit_len: u16,
         fmmu_index: usize,
-        offset: &mut PdiOffset,
+        global_offset: &mut PdiOffset,
         desired_sm_type: SyncManagerType,
         sm_config: &SyncManagerChannel,
     ) -> Result<(), Error> {
@@ -406,7 +430,7 @@ where
             fmmu_config
         } else {
             Fmmu {
-                logical_start_address: offset.start_address,
+                logical_start_address: global_offset.start_address,
                 length_bytes: sm_config.length_bytes,
                 // Mapping into PDI is byte-aligned until/if we support bit-oriented slaves
                 logical_start_bit: 0,
@@ -433,7 +457,7 @@ where
             fmmu_config
         );
         log::trace!("{:#?}", fmmu_config);
-        *offset = offset.increment_byte_aligned(sm_bit_len);
+        *global_offset = global_offset.increment_byte_aligned(sm_bit_len);
         Ok(())
     }
 
