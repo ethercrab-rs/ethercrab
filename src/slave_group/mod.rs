@@ -128,40 +128,23 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         let i_data = self.pdi();
         let o_data = self.pdi_mut();
 
-        let inputs = if !input_range.is_empty() {
-            i_data
-                .get(input_range.bytes.clone())
-                // TODO: Better error type
-                .ok_or_else(|| {
-                    log::error!(
-                        "Failed to get slave {:#06x} {} input range {:?} in PDI len {}",
-                        slave.configured_address,
-                        slave.name,
-                        input_range,
-                        i_data.len()
-                    );
+        log::trace!(
+            "Get slave {:#06x} IO ranges I: {}, O: {}",
+            slave.configured_address,
+            input_range,
+            output_range
+        );
 
-                    Error::Internal
-                })?
+        // NOTE: Using panicking `[]` indexing as the indices and arrays should all be correct by
+        // this point. If something isn't right, that's a bug.
+        let inputs = if !input_range.is_empty() {
+            &i_data[input_range.bytes.clone()]
         } else {
             EMPTY_PDI_SLICE
         };
 
         let outputs = if !output_range.is_empty() {
-            o_data
-                .get(output_range.bytes.clone())
-                // TODO: Better error type
-                .ok_or_else(|| {
-                    log::error!(
-                        "Failed to get slave {:#06x} {} output range {:?} in PDI len {}",
-                        slave.configured_address,
-                        slave.name,
-                        output_range,
-                        o_data.len()
-                    );
-
-                    Error::Internal
-                })?
+            &o_data[output_range.bytes.clone()]
         } else {
             EMPTY_PDI_SLICE
         };
