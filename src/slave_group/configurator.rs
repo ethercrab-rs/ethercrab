@@ -13,37 +13,47 @@ use crate::{
 };
 use core::time::Duration;
 
-pub struct Configurator<'a, TIMEOUT> {
-    pub pdi_len: &'a mut usize,
-    pub read_pdi_len: &'a mut usize,
-    pub max_pdi_len: usize,
-    pub start_address: &'a mut u32,
-    pub group_working_counter: &'a mut u16,
-    pub slaves: &'a mut [Slave],
-    pub preop_safeop_hook: Option<&'a HookFn<TIMEOUT>>,
+/// TODO: Doc
+pub struct SlaveGroupRef<'a, TIMEOUT> {
+    pub(crate) pdi_len: &'a mut usize,
+    pub(crate) read_pdi_len: &'a mut usize,
+    pub(crate) max_pdi_len: usize,
+    pub(crate) start_address: &'a mut u32,
+    pub(crate) group_working_counter: &'a mut u16,
+    pub(crate) slaves: &'a mut [Slave],
+    pub(crate) preop_safeop_hook: Option<&'a HookFn<TIMEOUT>>,
 }
 
-impl<'a, TIMEOUT> Configurator<'a, TIMEOUT>
+impl<'a, TIMEOUT> SlaveGroupRef<'a, TIMEOUT>
 where
     TIMEOUT: TimerFactory,
 {
     pub(crate) async fn configure_from_eeprom<'client>(
         &mut self,
-        mut offset: PdiOffset,
+        // We need to start this group's PDI after that of the previous group. That offset is passed
+        // in via `start_offset`.
+        mut global_offset: PdiOffset,
         client: &'client Client<'client, TIMEOUT>,
     ) -> Result<PdiOffset, Error>
     where
         TIMEOUT: TimerFactory,
     {
-        *self.start_address = offset.start_address;
+        log::debug!(
+            "Going to configure group, starting PDI offset {:#08x}",
+            global_offset.start_address
+        );
 
+        // Set the starting position in the PDI for this group's segment
+        *self.start_address = global_offset.start_address;
+
+        // Configure master read PDI mappings in the first section of the PDI
         for slave in self.slaves.iter_mut() {
             let mut slave_config = SlaveConfigurator::new(client, slave);
 
-            // TODO: Split `configure_from_eeprom` so we can put all slaves into SAFE-OP without
-            // waiting, then wait globally for all slaves to reach that state. Currently startup
-            // time is extremely slow.
-            // NOTE: This method requests and waits for the slave to enter PRE-OP
+            // TODO: Split `SlaveGroupRef::configure_from_eeprom` so we can put all slaves into
+            // SAFE-OP without waiting, then wait globally for all slaves to reach that state.
+            // Currently startup time is extremely slow. NOTE: This method requests and waits for
+            // the slave to enter PRE-OP
             slave_config.configure_mailboxes().await?;
 
             if let Some(hook) = self.preop_safeop_hook {
@@ -55,12 +65,12 @@ where
             }
 
             // We're in PRE-OP at this point
-            offset = slave_config
-                .configure_fmmus(offset, PdoDirection::MasterRead)
+            global_offset = slave_config
+                .configure_fmmus(global_offset, *self.start_address, PdoDirection::MasterRead)
                 .await?;
         }
 
-        *self.read_pdi_len = (offset.start_address - *self.start_address) as usize;
+        *self.read_pdi_len = (*self.start_address - global_offset.start_address) as usize;
 
         log::debug!("Slave mailboxes configured and init hooks called");
 
@@ -74,8 +84,12 @@ where
             let mut slave_config = SlaveConfigurator::new(client, slave);
 
             // Still in PRE-OP
-            offset = slave_config
-                .configure_fmmus(offset, PdoDirection::MasterWrite)
+            global_offset = slave_config
+                .configure_fmmus(
+                    global_offset,
+                    *self.start_address,
+                    PdoDirection::MasterWrite,
+                )
                 .await?;
 
             // FIXME: Just first slave or all slaves?
@@ -130,7 +144,14 @@ where
 
         log::debug!("Slave FMMUs configured for group. Able to move to SAFE-OP");
 
-        let pdi_len = (offset.start_address - *self.start_address) as usize;
+        let pdi_len = (global_offset.start_address - *self.start_address) as usize;
+
+        log::debug!(
+            "Group PDI length: start {}, {} total bytes ({} input bytes)",
+            self.start_address,
+            pdi_len,
+            *self.read_pdi_len
+        );
 
         if pdi_len > self.max_pdi_len {
             Err(Error::PdiTooLong {
@@ -140,7 +161,7 @@ where
         } else {
             *self.pdi_len = pdi_len;
 
-            Ok(offset)
+            Ok(global_offset)
         }
     }
 }
