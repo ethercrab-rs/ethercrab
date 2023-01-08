@@ -14,7 +14,10 @@ use ethercrab::{
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 /// Maximum number of slaves that can be stored.
 const MAX_SLAVES: usize = 16;
@@ -88,26 +91,41 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let client_slow = client.clone();
 
     let slow_task = smol::spawn(async move {
-        let mut slow_tick_interval = Timer::interval(Duration::from_millis(250));
+        // EtherCAT slaves have a maximum cycle time. We'll use 5ms here.
+        let mut slow_cycle_time = Timer::interval(Duration::from_millis(3));
 
-        while let Some(_) = slow_tick_interval.next().await {
+        let slow_duration = Duration::from_millis(250);
+
+        // Only update "slow" outputs every 250ms using this instant
+        let mut tick = Instant::now();
+
+        // EK1100 is first slave, EL2889 is second
+        let el2889 = slow_outputs.slave(1).expect("EL2889 not present!");
+
+        // Set initial output state
+        el2889.io().1[0] = 0x01;
+        el2889.io().1[1] = 0x80;
+
+        while let Some(_) = slow_cycle_time.next().await {
             slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
 
             // Increment every output byte for every slave device by one
-            for slave in slow_outputs.slaves() {
-                let (_i, o) = slave.io();
+            if tick.elapsed() > slow_duration {
+                tick = Instant::now();
 
-                for byte in o.iter_mut() {
-                    *byte = byte.wrapping_add(1);
-                }
+                let (_i, o) = el2889.io();
+
+                // Make a nice pattern on EL2889 LEDs
+                o[0] = o[0].rotate_left(1);
+                o[1] = o[1].rotate_right(1);
             }
         }
     });
 
     let fast_task = smol::spawn(async move {
-        let mut fast_tick_interval = Timer::interval(Duration::from_millis(5));
+        let mut fast_cycle_time = Timer::interval(Duration::from_millis(5));
 
-        while let Some(_) = fast_tick_interval.next().await {
+        while let Some(_) = fast_cycle_time.next().await {
             fast_outputs.tx_rx(&client).await.expect("TX/RX");
 
             // Increment every output byte for every slave device by one

@@ -16,6 +16,10 @@ An EtherCAT master written in Rust.
 
 - [#1] Added `SlaveGroup::len` and `SlaveGroup::is_empty` methods.
 
+### Fixed
+
+- [#2] Fixed multiple group PDI mapping calculation during initialisation.
+
 ## [0.1.0] - 2023-01-02
 
 ### Added
@@ -25,5 +29,6 @@ An EtherCAT master written in Rust.
 <!-- next-url -->
 
 [#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
+[#2]: https://github.com/ethercrab-rs/ethercrab/pull/2
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

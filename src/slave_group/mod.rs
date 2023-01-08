@@ -135,6 +135,13 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
             output_range
         );
 
+        log::trace!(
+            "--> Group PDI: {:?} ({} byte subset of {} max)",
+            i_data,
+            self.pdi_len,
+            MAX_PDI
+        );
+
         // NOTE: Using panicking `[]` indexing as the indices and arrays should all be correct by
         // this point. If something isn't right, that's a bug.
         let inputs = if !input_range.is_empty() {
@@ -175,6 +182,13 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     where
         TIMEOUT: TimerFactory,
     {
+        log::trace!(
+            "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
+            self.start_address,
+            self.pdi_mut().len(),
+            self.read_pdi_len
+        );
+
         let (_res, _wkc) = client
             .lrw_buf(self.start_address, self.pdi_mut(), self.read_pdi_len)
             .await?;
