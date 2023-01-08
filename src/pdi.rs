@@ -74,6 +74,10 @@ impl PdiSegment {
     pub fn len(&self) -> usize {
         self.bytes.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl fmt::Display for PdiSegment {

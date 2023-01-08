@@ -200,12 +200,11 @@ pub use client::Client;
 pub use coe::SubIndex;
 pub use pdu_loop::{PduLoop, PduStorage};
 pub use register::RegisterAddress;
-pub use slave_group::{GroupSlaveIterator, SlaveGroup};
+pub use slave_group::{
+    GroupSlave, GroupSlaveIterator, SlaveGroup, SlaveGroupContainer, SlaveGroupRef,
+};
 pub use slave_state::SlaveState;
 pub use timer_factory::{Timeouts, TimerFactory};
-
-// TODO: Deleteme
-pub use slave_group::GroupSlave;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);

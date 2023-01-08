@@ -11,7 +11,7 @@ use crate::{
 use core::{cell::UnsafeCell, future::Future, pin::Pin};
 pub use group_slave::GroupSlave;
 
-pub use configurator::Configurator;
+pub use configurator::SlaveGroupRef;
 pub use container::SlaveGroupContainer;
 
 // TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
@@ -66,6 +66,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Default
         }
     }
 }
+
+/// Returned when a slave device's input or output PDI segment is empty.
+static EMPTY_PDI_SLICE: &[u8] = &[];
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
@@ -125,14 +128,33 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         let i_data = self.pdi();
         let o_data = self.pdi_mut();
 
-        let inputs = i_data
-            .get(input_range.bytes.clone())
-            // TODO: Better error type
-            .ok_or(Error::Internal)?;
-        let outputs = o_data
-            .get(output_range.bytes.clone())
-            // TODO: Better error type
-            .ok_or(Error::Internal)?;
+        log::trace!(
+            "Get slave {:#06x} IO ranges I: {}, O: {}",
+            slave.configured_address,
+            input_range,
+            output_range
+        );
+
+        log::trace!(
+            "--> Group PDI: {:?} ({} byte subset of {} max)",
+            i_data,
+            self.pdi_len,
+            MAX_PDI
+        );
+
+        // NOTE: Using panicking `[]` indexing as the indices and arrays should all be correct by
+        // this point. If something isn't right, that's a bug.
+        let inputs = if !input_range.is_empty() {
+            &i_data[input_range.bytes.clone()]
+        } else {
+            EMPTY_PDI_SLICE
+        };
+
+        let outputs = if !output_range.is_empty() {
+            &o_data[output_range.bytes.clone()]
+        } else {
+            EMPTY_PDI_SLICE
+        };
 
         Ok(GroupSlave::new(slave, inputs, outputs))
     }
@@ -160,6 +182,13 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     where
         TIMEOUT: TimerFactory,
     {
+        log::trace!(
+            "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
+            self.start_address,
+            self.pdi_mut().len(),
+            self.read_pdi_len
+        );
+
         let (_res, _wkc) = client
             .lrw_buf(self.start_address, self.pdi_mut(), self.read_pdi_len)
             .await?;
@@ -178,8 +207,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         // }
     }
 
-    pub(crate) fn as_mut_ref(&mut self) -> Configurator<'_, TIMEOUT> {
-        Configurator {
+    /// TODO: This should not be pub!
+    pub fn as_mut_ref(&mut self) -> SlaveGroupRef<'_, TIMEOUT> {
+        SlaveGroupRef {
             slaves: self.slaves.as_mut(),
             max_pdi_len: MAX_PDI,
             preop_safeop_hook: self.preop_safeop_hook.as_ref(),
