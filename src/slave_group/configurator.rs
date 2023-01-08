@@ -133,6 +133,8 @@ where
 
         let pdi_len = (offset.start_address - *self.start_address) as usize;
 
+        log::debug!("Group PDI length: {pdi_len} bytes");
+
         if pdi_len > self.max_pdi_len {
             Err(Error::PdiTooLong {
                 desired: self.max_pdi_len,

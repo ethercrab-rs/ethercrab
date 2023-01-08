@@ -153,6 +153,15 @@ where
             }
         }
 
+        log::debug!(
+            "Slave {:#06x} PDI inputs: {:?} ({} bytes), outputs: {:?} ({} bytes)",
+            self.slave.configured_address,
+            self.slave.config.io.output,
+            self.slave.config.io.output.len(),
+            self.slave.config.io.input,
+            self.slave.config.io.input.len(),
+        );
+
         Ok(offset)
     }
 
