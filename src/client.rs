@@ -180,7 +180,13 @@ where
 
         // Configure distributed clock offsets/propagation delays, perform static drift
         // compensation. We need the slaves in a list to do this.
-        dc::configure_dc(self, slaves.as_mut_slices().0).await?;
+        let dc_master = dc::configure_dc(self, slaves.as_mut_slices().0).await?;
+
+        // If there are slave devices that support distributed clocks, run static drift compensation
+        if let Some(dc_master) = dc_master {
+            // TODO: Configurable number of iterations. 10k takes forever on Windows.
+            dc::run_dc_static_sync(self, dc_master, 10_000).await?;
+        }
 
         while let Some(slave) = slaves.pop_front() {
             let configured_address = slave.configured_address;
