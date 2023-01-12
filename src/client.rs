@@ -70,7 +70,7 @@ impl<'client> Client<'client> {
     /// Write zeroes to every slave's memory in chunks.
     async fn blank_memory(&self, start: impl Into<u16>, len: u16) -> Result<(), Error> {
         let start: u16 = start.into();
-        let step = self.pdu_loop.max_pdu_data;
+        let step = self.pdu_loop.max_frame_data();
         let range = start..(start + len);
 
         // TODO: This will miss the last step if step is not a multiple of range. Use a loop instead.
@@ -490,7 +490,7 @@ impl<'client> Client<'client> {
         value: &'buf mut [u8],
         read_back_len: usize,
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
-        assert!(value.len() <= self.pdu_loop.max_pdu_data, "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), self.pdu_loop.max_pdu_data);
+        assert!(value.len() <= self.pdu_loop.max_frame_data(), "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), self.pdu_loop.max_frame_data());
 
         let (data, working_counter) = timeout(
             self.timeouts.pdu,

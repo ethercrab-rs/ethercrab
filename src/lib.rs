@@ -153,6 +153,10 @@
 
 #![feature(const_maybe_uninit_zeroed)]
 #![feature(pin_macro)]
+#![feature(slice_ptr_get)]
+#![feature(const_option)]
+#![feature(const_nonnull_new)]
+#![feature(const_mut_refs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
 #![deny(missing_copy_implementations)]

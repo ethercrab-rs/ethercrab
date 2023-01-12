@@ -9,8 +9,10 @@ use crate::{
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
-    cell::{RefCell, UnsafeCell},
+    cell::UnsafeCell,
+    marker::PhantomData,
     mem::MaybeUninit,
+    ptr::NonNull,
     sync::atomic::{AtomicU8, Ordering},
     task::Waker,
 };
@@ -50,8 +52,8 @@ unsafe impl Sync for PduLoop {}
 /// processed.
 #[derive(Debug)]
 pub struct PduStorage<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
-    frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
-    frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
+    frame_data: UnsafeCell<[[u8; MAX_PDU_DATA]; MAX_FRAMES]>,
+    frames: UnsafeCell<[pdu_frame::Frame; MAX_FRAMES]>,
 }
 
 unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
@@ -76,25 +78,51 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, 
     }
 
     /// Get a reference to this `PduStorage` with erased lifetimes.
-    pub const fn as_ref(&self) -> PduStorageRef {
+    pub const fn as_ref<'a>(&'a self) -> PduStorageRef<'a> {
+        let num_frames = unsafe { &*self.frames.get() }.len();
+
         PduStorageRef {
-            frames: &self.frames,
-            frame_data: unsafe {
-                core::slice::from_raw_parts(
-                    self.frame_data.as_ptr() as *const UnsafeCell<&[u8]>,
-                    self.frame_data.len(),
-                )
-            },
-            max_pdu_data: MAX_PDU_DATA,
+            frames: NonNull::new(self.frames.get().cast::<pdu_frame::Frame>()).unwrap(),
+            num_frames,
+            frame_data: NonNull::new(self.frame_data.get().cast::<u8>()).unwrap(),
+            frame_data_len: MAX_PDU_DATA,
+            _lifetime: PhantomData,
         }
     }
 }
 
 #[derive(Debug)]
 pub struct PduStorageRef<'a> {
-    frame_data: &'a [UnsafeCell<&'a [u8]>],
-    frames: &'a [UnsafeCell<pdu_frame::Frame>],
-    max_pdu_data: usize,
+    frames: NonNull<pdu_frame::Frame>,
+    num_frames: usize,
+    frame_data: NonNull<u8>,
+    frame_data_len: usize,
+    _lifetime: PhantomData<&'a ()>,
+}
+
+impl<'a> PduStorageRef<'a> {
+    fn frame(&self, idx: u8) -> Result<(&mut pdu_frame::Frame, &mut [u8]), Error> {
+        let idx = usize::from(idx);
+
+        if idx > self.num_frames {
+            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
+        }
+
+        let frame = unsafe {
+            &mut *self
+                .frames
+                .as_ptr()
+                .add(core::mem::size_of::<pdu_frame::Frame>() * idx)
+        };
+        let data = unsafe {
+            core::slice::from_raw_parts_mut(
+                self.frame_data.as_ptr().add(self.frame_data_len * idx),
+                self.frame_data_len,
+            )
+        };
+
+        Ok((frame, data))
+    }
 }
 
 /// The core of the PDU send/receive machinery.
@@ -104,9 +132,10 @@ pub struct PduStorageRef<'a> {
 /// has a unique ID (by using the slot index).
 #[derive(Debug)]
 pub struct PduLoop {
-    frame_data: &'static [UnsafeCell<&'static [u8]>],
-    frames: &'static [UnsafeCell<pdu_frame::Frame>],
-    pub(crate) max_pdu_data: usize,
+    // frame_data: &'static [UnsafeCell<&'static [u8]>],
+    // frames: &'static [UnsafeCell<pdu_frame::Frame>],
+    // pub(crate) max_pdu_data: usize,
+    storage: PduStorageRef<'static>,
 
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: RwLock<Option<Waker>>,
@@ -117,34 +146,21 @@ pub struct PduLoop {
 impl PduLoop {
     /// Create a new PDU loop with the given backing storage.
     pub const fn new(storage: PduStorageRef<'static>) -> Self {
-        assert!(storage.frames.len() <= u8::MAX as usize);
+        assert!(storage.num_frames <= u8::MAX as usize);
 
         Self {
-            frames: storage.frames,
-            frame_data: storage.frame_data,
-            max_pdu_data: storage.max_pdu_data,
+            // frames: storage.frames,
+            // frame_data: storage.frame_data,
+            // max_pdu_data: storage.max_pdu_data,
+            storage,
             tx_waker: RwLock::new(None),
             idx: AtomicU8::new(0),
         }
     }
 
-    // pub fn as_ref(&self) -> PduLoopRef<'_> {
-    //     let frame_data = unsafe {
-    //         core::slice::from_raw_parts(
-    //             self.frame_data.as_ptr() as *const _,
-    //             MAX_PDU_DATA * MAX_FRAMES,
-    //         )
-    //     };
-
-    //     PduLoopRef {
-    //         frame_data,
-    //         frames: &self.frames,
-    //         tx_waker: &self.tx_waker,
-    //         idx: &self.idx,
-    //         max_pdu_data: MAX_PDU_DATA,
-    //         max_frames: MAX_FRAMES,
-    //     }
-    // }
+    pub(crate) fn max_frame_data(&self) -> usize {
+        self.storage.frame_data_len
+    }
 
     // TX
     /// Iterate through any PDU TX frames that are ready and send them.
@@ -154,8 +170,8 @@ impl PduLoop {
     where
         F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
     {
-        for idx in 0..(self.frames.len() as u8) {
-            let (frame, data) = self.frame(idx)?;
+        for idx in 0..(self.storage.num_frames as u8) {
+            let (frame, data) = self.storage.frame(idx)?;
 
             if let Some(ref mut frame) = frame.sendable() {
                 frame.mark_sending();
@@ -171,27 +187,6 @@ impl PduLoop {
         Ok(())
     }
 
-    // BOTH
-    fn frame(&self, idx: u8) -> Result<(&mut pdu_frame::Frame, &mut [u8]), Error> {
-        let idx = usize::from(idx);
-
-        if idx > self.frames.len() {
-            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
-        }
-
-        let frame = unsafe { &mut *self.frames[idx].get() };
-        let data = unsafe {
-            core::slice::from_raw_parts_mut(
-                self.frame_data[idx].get() as *mut u8,
-                self.max_pdu_data,
-            )
-        };
-
-        // let data = todo!();
-
-        Ok((frame, data))
-    }
-
     // TX
     /// Read data back from one or more slave devices.
     pub async fn pdu_tx_readonly(
@@ -201,7 +196,7 @@ impl PduLoop {
     ) -> Result<PduResponse<&'_ [u8]>, Error> {
         let idx = self.next_index();
 
-        let (frame, frame_data) = self.frame(idx)?;
+        let (frame, frame_data) = self.storage.frame(idx)?;
 
         // Remove any previous frame's data or other garbage that might be lying around. For
         // performance reasons (maybe - need to bench) this only blanks the portion of the buffer
@@ -221,7 +216,7 @@ impl PduLoop {
     }
 
     fn next_index(&self) -> u8 {
-        self.idx.fetch_add(1, Ordering::AcqRel) % self.frames.len() as u8
+        self.idx.fetch_add(1, Ordering::AcqRel) % self.storage.num_frames as u8
     }
 
     /// Tell the packet sender there is data ready to send.
@@ -240,7 +235,7 @@ impl PduLoop {
     ) -> Result<PduResponse<()>, Error> {
         let idx = self.next_index();
 
-        let (frame, frame_data) = self.frame(idx)?;
+        let (frame, frame_data) = self.storage.frame(idx)?;
 
         frame.replace(
             Command::Bwr {
@@ -285,7 +280,7 @@ impl PduLoop {
         let send_data_len = send_data.len();
         let payload_length = u16::try_from(send_data.len())?.max(data_length);
 
-        let (frame, frame_data) = self.frame(idx)?;
+        let (frame, frame_data) = self.storage.frame(idx)?;
 
         frame.replace(command, payload_length, idx)?;
 
@@ -343,7 +338,7 @@ impl PduLoop {
         let (i, command_code) = map_res(u8, CommandCode::try_from)(i)?;
         let (i, index) = u8(i)?;
 
-        let (frame, frame_data) = self.frame(index)?;
+        let (frame, frame_data) = self.storage.frame(index)?;
 
         if frame.pdu.index != index {
             return Err(Error::Pdu(PduError::Validation(
@@ -383,17 +378,6 @@ impl PduLoop {
 
         Ok(())
     }
-}
-
-// TODO: Figure out what to do with this
-#[allow(unused)]
-pub struct PduLoopRef<'a> {
-    frame_data: &'a [UnsafeCell<&'a mut [u8]>],
-    frames: &'a [UnsafeCell<pdu_frame::Frame>],
-    tx_waker: &'a RefCell<Option<Waker>>,
-    idx: &'a AtomicU8,
-    max_pdu_data: usize,
-    max_frames: usize,
 }
 
 #[cfg(test)]
