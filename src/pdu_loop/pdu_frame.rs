@@ -9,11 +9,13 @@ use core::{
     future::Future,
     mem,
     pin::Pin,
+    sync::atomic::Ordering,
     task::{Context, Poll, Waker},
 };
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
-#[derive(PartialEq, Copy, Clone, Debug, Default)]
+#[atomic_enum::atomic_enum]
+#[derive(PartialEq, Default)]
 enum FrameState {
     // SAFETY: Because we create a bunch of `Frame`s with `MaybeUninit::zeroed`, the `None` state
     // MUST be equal to zero. All other fields in `Frame` are overridden in `replace`, so there
@@ -25,9 +27,15 @@ enum FrameState {
     Done,
 }
 
+impl Default for AtomicFrameState {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Frame {
-    state: spin::RwLock<FrameState>,
+    state: AtomicFrameState,
     waker: Option<Waker>,
     pub pdu: Pdu,
 }
@@ -39,14 +47,14 @@ impl Frame {
         data_length: u16,
         index: u8,
     ) -> Result<(), PduError> {
-        let state = self.state.upgradeable_read();
+        let state = self.state.load(Ordering::SeqCst);
 
-        if *state != FrameState::None {
+        if state != FrameState::None {
             trace!("Expected {:?}, got {:?}", FrameState::None, self.state);
             return Err(PduError::InvalidFrameState);
         }
 
-        *state.upgrade() = FrameState::Created;
+        self.state.store(FrameState::Created, Ordering::SeqCst);
 
         let _ = self.waker.take();
         self.pdu.replace(command, data_length, index)?;
@@ -92,9 +100,9 @@ impl Frame {
         irq: u16,
         working_counter: u16,
     ) -> Result<(), PduError> {
-        let state = self.state.upgradeable_read();
+        let state = self.state.load(Ordering::SeqCst);
 
-        if *state != FrameState::Sending {
+        if state != FrameState::Sending {
             trace!("Expected {:?}, got {:?}", FrameState::Sending, self.state);
             return Err(PduError::InvalidFrameState);
         }
@@ -110,7 +118,7 @@ impl Frame {
 
         self.pdu.set_response(flags, irq, working_counter);
 
-        *state.upgrade() = FrameState::Done;
+        self.state.store(FrameState::Done, Ordering::SeqCst);
 
         waker.wake();
 
@@ -118,7 +126,7 @@ impl Frame {
     }
 
     pub(crate) fn sendable(&mut self) -> Option<SendableFrame<'_>> {
-        if *self.state.read() == FrameState::Created {
+        if self.state.load(Ordering::SeqCst) == FrameState::Created {
             Some(SendableFrame { frame: self })
         } else {
             None
@@ -134,7 +142,9 @@ pub struct SendableFrame<'a> {
 
 impl<'a> SendableFrame<'a> {
     pub(crate) fn mark_sending(&mut self) {
-        *self.frame.state.write() = FrameState::Sending;
+        self.frame
+            .state
+            .store(FrameState::Sending, Ordering::SeqCst);
     }
 
     pub(crate) fn data_len(&self) -> usize {
@@ -154,7 +164,7 @@ impl Future for Frame {
     type Output = Result<Pdu, Error>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        let state = *self.state.read();
+        let state = self.state.load(Ordering::SeqCst);
 
         match state {
             FrameState::None => {
@@ -169,7 +179,7 @@ impl Future for Frame {
             }
             FrameState::Done => {
                 // Clear frame state ready for reuse
-                *self.state.write() = FrameState::None;
+                self.state.store(FrameState::None, Ordering::SeqCst);
 
                 // Drop waker so it doesn't get woken again
                 self.waker.take();
