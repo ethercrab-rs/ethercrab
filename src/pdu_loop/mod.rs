@@ -79,11 +79,9 @@ impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, 
 
     /// Get a reference to this `PduStorage` with erased lifetimes.
     pub const fn as_ref<'a>(&'a self) -> PduStorageRef<'a> {
-        let num_frames = unsafe { &*self.frames.get() }.len();
-
         PduStorageRef {
             frames: NonNull::new(self.frames.get().cast::<pdu_frame::Frame>()).unwrap(),
-            num_frames,
+            num_frames: MAX_FRAMES,
             frame_data: NonNull::new(self.frame_data.get().cast::<u8>()).unwrap(),
             frame_data_len: MAX_PDU_DATA,
             _lifetime: PhantomData,
@@ -108,12 +106,7 @@ impl<'a> PduStorageRef<'a> {
             return Err(Error::Pdu(PduError::InvalidIndex(idx)));
         }
 
-        let frame = unsafe {
-            &mut *self
-                .frames
-                .as_ptr()
-                .add(core::mem::size_of::<pdu_frame::Frame>() * idx)
-        };
+        let frame = unsafe { &mut *self.frames.as_ptr().add(idx) };
         let data = unsafe {
             core::slice::from_raw_parts_mut(
                 self.frame_data.as_ptr().add(self.frame_data_len * idx),
