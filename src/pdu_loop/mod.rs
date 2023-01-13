@@ -106,7 +106,7 @@ impl<'a> PduStorageRef<'a> {
             return Err(Error::Pdu(PduError::InvalidIndex(idx)));
         }
 
-        let frame = unsafe { &mut *self.frames.as_ptr().add(idx) };
+        let frame = unsafe { self.frames.as_ptr().add(idx).as_mut().unwrap() };
         let data = unsafe {
             core::slice::from_raw_parts_mut(
                 self.frame_data.as_ptr().add(self.frame_data_len * idx),
