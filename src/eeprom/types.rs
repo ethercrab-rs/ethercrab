@@ -3,6 +3,7 @@
 use crate::{
     all_consumed,
     base_data_types::PrimitiveDataType,
+    error::{EepromError, Error},
     pdu_data::PduRead,
     sync_manager_channel::{self},
 };
@@ -280,6 +281,16 @@ pub enum FmmuUsage {
     SyncManagerStatus = 0x03,
 }
 
+impl FromEeprom for FmmuUsage {
+    const STORAGE_SIZE: usize = 1;
+
+    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
+        let (i, usage) = map_res(le_u8, FmmuUsage::try_from_primitive)(i)?;
+
+        Ok((i, usage))
+    }
+}
+
 /// ETG1020 Table 10 "FMMU_EX"
 ///
 /// NOTE: Most fields defined are discarded from this struct as they are unused in Ethercrab.
@@ -289,8 +300,10 @@ pub struct FmmuEx {
     pub sync_manager: u8,
 }
 
-impl FmmuEx {
-    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+impl FromEeprom for FmmuEx {
+    const STORAGE_SIZE: usize = 3;
+
+    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, _before) = le_u8(i)?;
         let (i, sync_manager) = le_u8(i)?;
         let (i, _after) = le_u8(i)?;
@@ -333,9 +346,11 @@ pub struct SiiGeneral {
     // reserved2: [u8; 12]
 }
 
-impl SiiGeneral {
+impl FromEeprom for SiiGeneral {
+    const STORAGE_SIZE: usize = 16;
+
     #[allow(unused)]
-    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, group_string_idx) = le_u8(i)?;
         let (i, image_string_idx) = le_u8(i)?;
         let (i, order_string_idx) = le_u8(i)?;
@@ -451,8 +466,10 @@ impl fmt::Debug for SyncManager {
     }
 }
 
-impl SyncManager {
-    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+impl FromEeprom for SyncManager {
+    const STORAGE_SIZE: usize = 8;
+
+    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, start_addr) = le_u16(i)?;
         let (i, length) = le_u16(i)?;
         let (i, control) =
@@ -536,7 +553,20 @@ impl fmt::Debug for Pdo {
 }
 
 impl Pdo {
-    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+    /// Compute the total bit length of this PDO by iterating over and summing the bit length of
+    /// each entry contained within.
+    pub fn bit_len(&self) -> u16 {
+        self.entries
+            .iter()
+            .map(|entry| u16::from(entry.data_length_bits))
+            .sum()
+    }
+}
+
+impl FromEeprom for Pdo {
+    const STORAGE_SIZE: usize = 8;
+
+    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, index) = le_u16(i)?;
         let (i, num_entries) = le_u8(i)?;
         let (i, sync_manager) = le_u8(i)?;
@@ -558,15 +588,6 @@ impl Pdo {
                 entries: heapless::Vec::new(),
             },
         ))
-    }
-
-    /// Compute the total bit length of this PDO by iterating over and summing the bit length of
-    /// each entry contained within.
-    pub fn bit_len(&self) -> u16 {
-        self.entries
-            .iter()
-            .map(|entry| u16::from(entry.data_length_bits))
-            .sum()
     }
 }
 
@@ -594,8 +615,10 @@ impl fmt::Debug for PdoEntry {
     }
 }
 
-impl PdoEntry {
-    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+impl FromEeprom for PdoEntry {
+    const STORAGE_SIZE: usize = 8;
+
+    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, index) = le_u16(i)?;
         let (i, sub_index) = le_u8(i)?;
         let (i, name_string_idx) = le_u8(i)?;
@@ -697,6 +720,31 @@ impl DefaultMailbox {
     }
 }
 
+impl FromEeprom for DefaultMailbox {
+    const STORAGE_SIZE: usize = 10;
+
+    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
+        let (i, receive_offset) = le_u16(i)?;
+        let (i, receive_size) = le_u16(i)?;
+        let (i, send_offset) = le_u16(i)?;
+        let (i, send_size) = le_u16(i)?;
+        let (i, supported_protocols) = map_opt(le_u16, MailboxProtocols::from_bits)(i)?;
+
+        all_consumed(i)?;
+
+        Ok((
+            i,
+            Self {
+                slave_receive_offset: receive_offset,
+                slave_receive_size: receive_size,
+                slave_send_offset: send_offset,
+                slave_send_size: send_size,
+                supported_protocols,
+            },
+        ))
+    }
+}
+
 impl fmt::Debug for DefaultMailbox {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("MailboxConfig")
@@ -721,25 +769,14 @@ impl fmt::Debug for DefaultMailbox {
     }
 }
 
-impl DefaultMailbox {
-    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, receive_offset) = le_u16(i)?;
-        let (i, receive_size) = le_u16(i)?;
-        let (i, send_offset) = le_u16(i)?;
-        let (i, send_size) = le_u16(i)?;
-        let (i, supported_protocols) = map_opt(le_u16, MailboxProtocols::from_bits)(i)?;
+pub trait FromEeprom: Sized {
+    const STORAGE_SIZE: usize;
 
-        all_consumed(i)?;
+    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self>;
 
-        Ok((
-            i,
-            Self {
-                slave_receive_offset: receive_offset,
-                slave_receive_size: receive_size,
-                slave_send_offset: send_offset,
-                slave_send_size: send_size,
-                supported_protocols,
-            },
-        ))
+    fn parse(i: &[u8]) -> Result<Self, Error> {
+        Self::parse_fields(i)
+            .map(|(_rest, parsed)| parsed)
+            .map_err(|_| Error::Eeprom(EepromError::Decode))
     }
 }

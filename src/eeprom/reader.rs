@@ -98,34 +98,37 @@ where
         }
     }
 
-    /// Read up to `N` bytes from the EEPROM.
-    pub async fn take_vec<const N: usize>(
-        &mut self,
-    ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
-        self.take_n_vec(N).await
-    }
-
-    /// Attempt to exactly fill a buffer with bytes read from the EEPROM.
-    ///
-    /// If the current section under- or over-fills the buffer, an error is returned.
+    /// Attempt to read exactly `N` bytes. If not enough data could be read, this method returns an
+    /// error.
     pub async fn take_vec_exact<const N: usize>(&mut self) -> Result<heapless::Vec<u8, N>, Error> {
-        self.take_n_vec(N)
+        self.take_vec()
             .await?
             .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
     }
 
-    /// Attempt to take an exact number of bytes.
-    pub async fn take_n_vec_exact<const N: usize>(
+    /// Read up to `N` bytes. If not enough data could be read, this method will return `Ok(None)`.
+    pub async fn take_vec<const N: usize>(
+        &mut self,
+    ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
+        self.take_vec_len(N).await
+    }
+
+    /// Try to take `len` bytes, returning an error if the buffer length `N` is too small.
+    ///
+    /// If not enough data could be read, this method returns an error.
+    pub async fn take_vec_len_exact<const N: usize>(
         &mut self,
         len: usize,
     ) -> Result<heapless::Vec<u8, N>, Error> {
-        self.take_n_vec(len)
+        self.take_vec_len(len)
             .await?
             .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
     }
 
     /// Try to take `len` bytes, returning an error if the buffer length `N` is too small.
-    pub async fn take_n_vec<const N: usize>(
+    ///
+    /// If not enough data can be read to fill the buffer, this method will return `Ok(None)`.
+    pub async fn take_vec_len<const N: usize>(
         &mut self,
         len: usize,
     ) -> Result<Option<heapless::Vec<u8, N>>, Error> {

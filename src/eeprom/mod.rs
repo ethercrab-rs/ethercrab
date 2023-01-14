@@ -1,13 +1,13 @@
 mod reader;
 pub mod types;
 
-use self::types::{DefaultMailbox, FmmuEx};
 use crate::{
     eeprom::{
         reader::EepromSectionReader,
         types::{
-            CategoryType, FmmuUsage, Pdo, PdoEntry, SiiCategory, SiiControl, SiiGeneral,
-            SiiReadSize, SiiRequest, SyncManager, RX_PDO_RANGE, TX_PDO_RANGE,
+            CategoryType, DefaultMailbox, FmmuEx, FmmuUsage, FromEeprom, Pdo, PdoEntry,
+            SiiCategory, SiiControl, SiiGeneral, SiiReadSize, SiiRequest, SyncManager,
+            RX_PDO_RANGE, TX_PDO_RANGE,
         },
     },
     error::{EepromError, Error, Item},
@@ -15,7 +15,7 @@ use crate::{
     slave::{slave_client::SlaveClient, SlaveIdentity},
     timer_factory::TimerFactory,
 };
-use core::{mem, ops::RangeInclusive, str::FromStr};
+use core::{ops::RangeInclusive, str::FromStr};
 use num_enum::TryFromPrimitive;
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
@@ -35,6 +35,7 @@ where
         Self { client }
     }
 
+    // TODO: Move into EepromReader
     async fn read_eeprom_raw(&self, eeprom_address: u16) -> Result<[u8; 8], Error> {
         let status = self
             .client
@@ -143,6 +144,8 @@ where
         // let general = self.general().await?;
         // let name_idx = general.name_string_idx;
 
+        log::trace!("Get device name");
+
         // NOTE: Hard coded to the first string. This mirrors SOEM's behaviour. Reading the
         // string index from EEPROM gives a different value in my testing - still a name, but
         // longer.
@@ -156,11 +159,13 @@ where
         // Mailbox config is 10 bytes long.
         let mut reader = EepromSectionReader::start_at(self, 0x0018, 10);
 
-        let buf = reader.take_vec_exact::<10>().await?;
+        log::trace!("Get mailbox config");
 
-        let (_, config) = DefaultMailbox::parse(&buf).expect("General parse");
+        let buf = reader
+            .take_vec_exact::<{ DefaultMailbox::STORAGE_SIZE }>()
+            .await?;
 
-        Ok(config)
+        DefaultMailbox::parse(&buf)
     }
 
     #[allow(unused)]
@@ -171,32 +176,31 @@ where
             .ok_or(Error::Eeprom(EepromError::NoCategory))?;
 
         let buf = reader
-            .take_vec_exact::<{ mem::size_of::<SiiGeneral>() }>()
+            .take_vec_exact::<{ SiiGeneral::STORAGE_SIZE }>()
             .await?;
 
-        let (_, general) = SiiGeneral::parse(&buf).expect("General parse");
-
-        Ok(general)
+        SiiGeneral::parse(&buf)
     }
 
     pub async fn identity(&self) -> Result<SlaveIdentity, Error> {
         let mut reader = EepromSectionReader::start_at(self, 0x0008, 16);
 
-        let buf = reader
-            .take_vec_exact::<{ mem::size_of::<SlaveIdentity>() }>()
-            .await?;
+        log::trace!("Get identity");
 
-        let (_, general) = SlaveIdentity::parse(&buf).expect("Slave identity parse");
-
-        Ok(general)
+        reader
+            .take_vec_exact::<{ SlaveIdentity::STORAGE_SIZE }>()
+            .await
+            .and_then(|buf| SlaveIdentity::parse(&buf))
     }
 
     pub async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
         let mut sync_managers = heapless::Vec::<_, 8>::new();
 
+        log::trace!("Get sync managers");
+
         if let Some(mut reader) = self.find_category(CategoryType::SyncManager).await? {
-            while let Some(bytes) = reader.take_vec::<8>().await? {
-                let (_, sm) = SyncManager::parse(&bytes).unwrap();
+            while let Some(bytes) = reader.take_vec::<{ SyncManager::STORAGE_SIZE }>().await? {
+                let sm = SyncManager::parse(&bytes)?;
 
                 sync_managers
                     .push(sm)
@@ -211,6 +215,8 @@ where
 
     pub async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
         let category = self.find_category(CategoryType::Fmmu).await?;
+
+        log::trace!("Get FMMUs");
 
         // ETG100.4 6.6.1 states there may be up to 16 FMMUs
         let mut fmmus = heapless::Vec::<_, 16>::new();
@@ -232,9 +238,11 @@ where
     pub async fn fmmu_mappings(&self) -> Result<heapless::Vec<FmmuEx, 16>, Error> {
         let mut mappings = heapless::Vec::<_, 16>::new();
 
+        log::trace!("Get FMMU mappings");
+
         if let Some(mut reader) = self.find_category(CategoryType::FmmuExtended).await? {
-            while let Some(bytes) = reader.take_vec::<3>().await? {
-                let (_, fmmu) = FmmuEx::parse(&bytes).unwrap();
+            while let Some(bytes) = reader.take_vec::<{ FmmuEx::STORAGE_SIZE }>().await? {
+                let fmmu = FmmuEx::parse(&bytes)?;
 
                 mappings
                     .push(fmmu)
@@ -252,11 +260,12 @@ where
     ) -> Result<heapless::Vec<Pdo, 16>, Error> {
         let mut pdos = heapless::Vec::new();
 
+        log::trace!("Get {:?} PDUs", category);
+
         if let Some(mut reader) = self.find_category(category).await? {
-            // TODO: Define a trait that gives the number of bytes to take to parse the type.
-            while let Some(pdo) = reader.take_n_vec::<8>(8).await? {
-                let (_, mut pdo) = Pdo::parse(&pdo).map_err(|e| {
-                    log::error!("PDO: {}", e);
+            while let Some(pdo) = reader.take_vec::<{ Pdo::STORAGE_SIZE }>().await? {
+                let mut pdo = Pdo::parse(&pdo).map_err(|e| {
+                    log::error!("PDO: {:?}", e);
 
                     Error::Eeprom(EepromError::Decode)
                 })?;
@@ -268,15 +277,18 @@ where
                 }
 
                 for _ in 0..pdo.num_entries {
-                    let entry = reader.take_n_vec_exact::<8>(8).await.and_then(|bytes| {
-                        let (_, entry) = PdoEntry::parse(&bytes).map_err(|e| {
-                            log::error!("PDO entry: {}", e);
+                    let entry = reader
+                        .take_vec_exact::<{ PdoEntry::STORAGE_SIZE }>()
+                        .await
+                        .and_then(|bytes| {
+                            let entry = PdoEntry::parse(&bytes).map_err(|e| {
+                                log::error!("PDO entry: {:?}", e);
 
-                            Error::Eeprom(EepromError::Decode)
+                                Error::Eeprom(EepromError::Decode)
+                            })?;
+
+                            Ok(entry)
                         })?;
-
-                        Ok(entry)
-                    })?;
 
                     pdo.entries
                         .push(entry)
@@ -306,6 +318,8 @@ where
         &self,
         search_index: u8,
     ) -> Result<Option<heapless::String<N>>, Error> {
+        log::trace!("Get string, index {}", search_index);
+
         // An index of zero in EtherCAT denotes an empty string.
         if search_index == 0 {
             return Ok(None);
@@ -330,7 +344,7 @@ where
             let string_len = usize::from(reader.try_next().await?);
 
             let bytes = reader
-                .take_n_vec_exact::<N>(string_len)
+                .take_vec_len_exact::<N>(string_len)
                 .await
                 .map_err(|_| Error::StringTooLong {
                     desired: N,

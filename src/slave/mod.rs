@@ -9,7 +9,7 @@ use crate::{
     coe::{self, abort_code::AbortCode, services::CoeServiceTrait, SubIndex},
     command::Command,
     dl_status::DlStatus,
-    eeprom::types::{MailboxProtocols, SiiOwner},
+    eeprom::types::{FromEeprom, MailboxProtocols, SiiOwner},
     error::{Error, MailboxError, PduError},
     mailbox::MailboxType,
     pdi::PdiSegment,
@@ -48,8 +48,10 @@ impl Debug for SlaveIdentity {
     }
 }
 
-impl SlaveIdentity {
-    pub fn parse(i: &[u8]) -> IResult<&[u8], Self> {
+impl FromEeprom for SlaveIdentity {
+    const STORAGE_SIZE: usize = 16;
+
+    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, vendor_id) = le_u32(i)?;
         let (i, product_id) = le_u32(i)?;
         let (i, revision) = le_u32(i)?;
