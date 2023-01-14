@@ -1,26 +1,20 @@
 mod reader;
 pub mod types;
 
-use self::types::{DefaultMailbox, FmmuEx};
 use crate::{
     eeprom::{
         reader::EepromSectionReader,
         types::{
-            CategoryType, FmmuUsage, Pdo, PdoEntry, SiiCategory, SiiControl, SiiGeneral,
-            SiiReadSize, SiiRequest, SyncManager, RX_PDO_RANGE, TX_PDO_RANGE,
+            CategoryType, DefaultMailbox, FmmuEx, FmmuUsage, FromEeprom, Pdo, PdoEntry, SiiGeneral,
+            SyncManager, RX_PDO_RANGE, TX_PDO_RANGE,
         },
     },
     error::{EepromError, Error, Item},
-    register::RegisterAddress,
     slave::{slave_client::SlaveClient, SlaveIdentity},
     timer_factory::TimerFactory,
 };
-use core::{mem, ops::RangeInclusive, str::FromStr};
+use core::{ops::RangeInclusive, str::FromStr};
 use num_enum::TryFromPrimitive;
-
-/// The address of the first proper category, positioned after the fixed fields defined in ETG2010
-/// Table 2.
-const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 
 #[derive(Debug)]
 pub struct Eeprom<'a, TIMEOUT> {
@@ -35,103 +29,11 @@ where
         Self { client }
     }
 
-    async fn read_eeprom_raw(&self, eeprom_address: u16) -> Result<[u8; 8], Error> {
-        let status = self
-            .client
-            .read::<SiiControl>(RegisterAddress::SiiControl, "Read SII control")
-            .await?;
-
-        // Clear errors
-        if status.has_error() {
-            log::trace!("Resetting EEPROM error flags");
-
-            self.client
-                .write(
-                    RegisterAddress::SiiControl,
-                    status.error_reset().as_array(),
-                    "Reset errors",
-                )
-                .await?;
-        }
-
-        // Set up an SII read. This writes the control word and the register word after it
-        // TODO: Consider either removing context strings or using defmt or something to avoid
-        // bloat.
-        self.client
-            .write(
-                RegisterAddress::SiiControl,
-                SiiRequest::read(eeprom_address).as_array(),
-                "SII read setup",
-            )
-            .await?;
-
-        self.wait().await?;
-
-        let data = match status.read_size {
-            // If slave uses 4 octet reads, do two reads so we can always return a chunk of 8 bytes
-            SiiReadSize::Octets4 => {
-                let chunk1 = self
-                    .client
-                    .read::<[u8; 4]>(RegisterAddress::SiiData, "Read SII data")
-                    .await?;
-
-                // Move on to next chunk
-                {
-                    // NOTE: We must compute offset in 16 bit words, not bytes, hence the divide by 2
-                    let setup = SiiRequest::read(eeprom_address + (chunk1.len() / 2) as u16);
-
-                    self.client
-                        .write(
-                            RegisterAddress::SiiControl,
-                            setup.as_array(),
-                            "SII read setup",
-                        )
-                        .await?;
-
-                    self.wait().await?;
-                }
-
-                let chunk2 = self
-                    .client
-                    .read::<[u8; 4]>(RegisterAddress::SiiData, "SII data 2")
-                    .await?;
-
-                let mut data = [0u8; 8];
-
-                data[0..4].copy_from_slice(&chunk1);
-                data[4..8].copy_from_slice(&chunk2);
-
-                data
-            }
-            SiiReadSize::Octets8 => {
-                self.client
-                    .read::<[u8; 8]>(RegisterAddress::SiiData, "SII data")
-                    .await?
-            }
-        };
-
-        log::trace!("Read {:#04x?} {:02x?}", eeprom_address, data);
-
-        Ok(data)
-    }
-
-    /// Wait for EEPROM read or write operation to finish and clear the busy flag.
-    async fn wait(&self) -> Result<(), Error> {
-        crate::timer_factory::timeout::<TIMEOUT, _, _>(self.client.timeouts().eeprom, async {
-            loop {
-                let control = self
-                    .client
-                    .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
-                    .await?;
-
-                if !control.busy {
-                    break Ok(());
-                }
-
-                self.client.timeouts().loop_tick::<TIMEOUT>().await;
-            }
-        })
-        .await
+    async fn reader(
+        &self,
+        category: CategoryType,
+    ) -> Result<Option<EepromSectionReader<'_, TIMEOUT>>, Error> {
+        EepromSectionReader::new(self.client, category).await
     }
 
     /// Get the device name.
@@ -142,6 +44,8 @@ where
         // Uncomment to read longer, but correct, name string from EEPROM
         // let general = self.general().await?;
         // let name_idx = general.name_string_idx;
+
+        log::trace!("Get device name");
 
         // NOTE: Hard coded to the first string. This mirrors SOEM's behaviour. Reading the
         // string index from EEPROM gives a different value in my testing - still a name, but
@@ -154,49 +58,52 @@ where
     pub async fn mailbox_config(&self) -> Result<DefaultMailbox, Error> {
         // Start reading standard mailbox config. Raw start address defined in ETG2010 Table 2.
         // Mailbox config is 10 bytes long.
-        let mut reader = EepromSectionReader::start_at(self, 0x0018, 10);
+        let mut reader =
+            EepromSectionReader::start_at(self.client, 0x0018, DefaultMailbox::STORAGE_SIZE as u16);
 
-        let buf = reader.take_vec_exact::<10>().await?;
+        log::trace!("Get mailbox config");
 
-        let (_, config) = DefaultMailbox::parse(&buf).expect("General parse");
+        let buf = reader
+            .take_vec_exact::<{ DefaultMailbox::STORAGE_SIZE }>()
+            .await?;
 
-        Ok(config)
+        DefaultMailbox::parse(&buf)
     }
 
     #[allow(unused)]
     pub(crate) async fn general(&self) -> Result<SiiGeneral, Error> {
         let mut reader = self
-            .find_category(CategoryType::General)
+            .reader(CategoryType::General)
             .await?
             .ok_or(Error::Eeprom(EepromError::NoCategory))?;
 
         let buf = reader
-            .take_vec_exact::<{ mem::size_of::<SiiGeneral>() }>()
+            .take_vec_exact::<{ SiiGeneral::STORAGE_SIZE }>()
             .await?;
 
-        let (_, general) = SiiGeneral::parse(&buf).expect("General parse");
-
-        Ok(general)
+        SiiGeneral::parse(&buf)
     }
 
     pub async fn identity(&self) -> Result<SlaveIdentity, Error> {
-        let mut reader = EepromSectionReader::start_at(self, 0x0008, 16);
+        let mut reader =
+            EepromSectionReader::start_at(self.client, 0x0008, SlaveIdentity::STORAGE_SIZE as u16);
 
-        let buf = reader
-            .take_vec_exact::<{ mem::size_of::<SlaveIdentity>() }>()
-            .await?;
+        log::trace!("Get identity");
 
-        let (_, general) = SlaveIdentity::parse(&buf).expect("Slave identity parse");
-
-        Ok(general)
+        reader
+            .take_vec_exact::<{ SlaveIdentity::STORAGE_SIZE }>()
+            .await
+            .and_then(|buf| SlaveIdentity::parse(&buf))
     }
 
     pub async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
         let mut sync_managers = heapless::Vec::<_, 8>::new();
 
-        if let Some(mut reader) = self.find_category(CategoryType::SyncManager).await? {
-            while let Some(bytes) = reader.take_vec::<8>().await? {
-                let (_, sm) = SyncManager::parse(&bytes).unwrap();
+        log::trace!("Get sync managers");
+
+        if let Some(mut reader) = self.reader(CategoryType::SyncManager).await? {
+            while let Some(bytes) = reader.take_vec::<{ SyncManager::STORAGE_SIZE }>().await? {
+                let sm = SyncManager::parse(&bytes)?;
 
                 sync_managers
                     .push(sm)
@@ -210,7 +117,9 @@ where
     }
 
     pub async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
-        let category = self.find_category(CategoryType::Fmmu).await?;
+        let category = self.reader(CategoryType::Fmmu).await?;
+
+        log::trace!("Get FMMUs");
 
         // ETG100.4 6.6.1 states there may be up to 16 FMMUs
         let mut fmmus = heapless::Vec::<_, 16>::new();
@@ -232,15 +141,19 @@ where
     pub async fn fmmu_mappings(&self) -> Result<heapless::Vec<FmmuEx, 16>, Error> {
         let mut mappings = heapless::Vec::<_, 16>::new();
 
-        if let Some(mut reader) = self.find_category(CategoryType::FmmuExtended).await? {
-            while let Some(bytes) = reader.take_vec::<3>().await? {
-                let (_, fmmu) = FmmuEx::parse(&bytes).unwrap();
+        log::trace!("Get FMMU mappings");
+
+        if let Some(mut reader) = self.reader(CategoryType::FmmuExtended).await? {
+            while let Some(bytes) = reader.take_vec::<{ FmmuEx::STORAGE_SIZE }>().await? {
+                let fmmu = FmmuEx::parse(&bytes)?;
 
                 mappings
                     .push(fmmu)
                     .map_err(|_| Error::Capacity(Item::FmmuEx))?;
             }
         }
+
+        log::debug!("FMMU mappings: {:#?}", mappings);
 
         Ok(mappings)
     }
@@ -252,11 +165,12 @@ where
     ) -> Result<heapless::Vec<Pdo, 16>, Error> {
         let mut pdos = heapless::Vec::new();
 
-        if let Some(mut reader) = self.find_category(category).await? {
-            // TODO: Define a trait that gives the number of bytes to take to parse the type.
-            while let Some(pdo) = reader.take_n_vec::<8>(8).await? {
-                let (_, mut pdo) = Pdo::parse(&pdo).map_err(|e| {
-                    log::error!("PDO: {}", e);
+        log::trace!("Get {:?} PDUs", category);
+
+        if let Some(mut reader) = self.reader(category).await? {
+            while let Some(pdo) = reader.take_vec::<{ Pdo::STORAGE_SIZE }>().await? {
+                let mut pdo = Pdo::parse(&pdo).map_err(|e| {
+                    log::error!("PDO: {:?}", e);
 
                     Error::Eeprom(EepromError::Decode)
                 })?;
@@ -268,15 +182,18 @@ where
                 }
 
                 for _ in 0..pdo.num_entries {
-                    let entry = reader.take_n_vec_exact::<8>(8).await.and_then(|bytes| {
-                        let (_, entry) = PdoEntry::parse(&bytes).map_err(|e| {
-                            log::error!("PDO entry: {}", e);
+                    let entry = reader
+                        .take_vec_exact::<{ PdoEntry::STORAGE_SIZE }>()
+                        .await
+                        .and_then(|bytes| {
+                            let entry = PdoEntry::parse(&bytes).map_err(|e| {
+                                log::error!("PDO entry: {:?}", e);
 
-                            Error::Eeprom(EepromError::Decode)
+                                Error::Eeprom(EepromError::Decode)
+                            })?;
+
+                            Ok(entry)
                         })?;
-
-                        Ok(entry)
-                    })?;
 
                     pdo.entries
                         .push(entry)
@@ -306,6 +223,8 @@ where
         &self,
         search_index: u8,
     ) -> Result<Option<heapless::String<N>>, Error> {
+        log::trace!("Get string, index {}", search_index);
+
         // An index of zero in EtherCAT denotes an empty string.
         if search_index == 0 {
             return Ok(None);
@@ -314,7 +233,7 @@ where
         // Turn 1-based EtherCAT string indexing into normal 0-based.
         let search_index = search_index - 1;
 
-        if let Some(mut reader) = self.find_category(CategoryType::Strings).await? {
+        if let Some(mut reader) = self.reader(CategoryType::Strings).await? {
             let num_strings = reader.try_next().await?;
 
             if search_index > num_strings {
@@ -330,7 +249,7 @@ where
             let string_len = usize::from(reader.try_next().await?);
 
             let bytes = reader
-                .take_n_vec_exact::<N>(string_len)
+                .take_vec_len_exact::<N>(string_len)
                 .await
                 .map_err(|_| Error::StringTooLong {
                     desired: N,
@@ -345,48 +264,6 @@ where
             Ok(Some(s))
         } else {
             Ok(None)
-        }
-    }
-
-    async fn find_category(
-        &self,
-        category: CategoryType,
-    ) -> Result<Option<EepromSectionReader<'_, TIMEOUT>>, Error> {
-        let mut start = SII_FIRST_CATEGORY_START;
-
-        loop {
-            let chunk = self.read_eeprom_raw(start).await?;
-
-            let category_type =
-                CategoryType::from(u16::from_le_bytes(chunk[0..2].try_into().unwrap()));
-            let data_len = u16::from_le_bytes(chunk[2..4].try_into().unwrap());
-
-            // Position after header
-            start += 2;
-
-            log::trace!(
-                "Found category {category_type:?}, data starts at {start:#06x?}, length {:#04x?} ({}) bytes",
-                data_len,
-                data_len
-            );
-
-            match category_type {
-                cat if cat == category => {
-                    break Ok(Some(EepromSectionReader::new(
-                        self,
-                        SiiCategory {
-                            category: cat,
-                            start,
-                            len_words: data_len,
-                        },
-                    )))
-                }
-                CategoryType::End => break Ok(None),
-                _ => (),
-            }
-
-            // Next category starts after the current category's data
-            start += data_len;
         }
     }
 }
