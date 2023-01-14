@@ -236,17 +236,9 @@ pub enum SiiCoding {
     Version = 0x003F,
 }
 
-/// Defined in ETG1000.6 Table 17
-#[derive(Debug)]
-pub struct SiiCategory {
-    pub category: CategoryType,
-    pub start: u16,
-
-    /// Category length in words (`u16`)
-    pub len_words: u16,
-}
-
-/// Defined in ETG1000.6 Table 19
+/// Defined in ETG1000.6 Table 19.
+///
+/// Additional information also in ETG1000.6 Table 17.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
 #[repr(u16)]
 pub enum CategoryType {
