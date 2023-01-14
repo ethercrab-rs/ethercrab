@@ -155,8 +155,8 @@ where
 
         if pdi_len > self.max_pdi_len {
             Err(Error::PdiTooLong {
-                desired: self.max_pdi_len,
-                required: pdi_len,
+                max_length: self.max_pdi_len,
+                desired_length: pdi_len,
             })
         } else {
             *self.pdi_len = pdi_len;

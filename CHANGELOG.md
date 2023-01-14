@@ -11,6 +11,8 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#1] `SlaveGroup::slaves` now returns an iterator over each slave with IO in the
   group, instead of a plain slave.
 - **(breaking)** [#2] Rename `slave_group::Configurator` to `SlaveGroupRef`.
+- **(breaking)** [#9] Rename the fields of some variants in `ethercrab::error::Error` to make them
+  less confusing.
 
 ### Added
 
@@ -30,5 +32,6 @@ An EtherCAT master written in Rust.
 
 [#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
 [#2]: https://github.com/ethercrab-rs/ethercrab/pull/2
+[#9]: https://github.com/ethercrab-rs/ethercrab/pull/9
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
