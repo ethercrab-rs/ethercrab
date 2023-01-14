@@ -1,6 +1,6 @@
 //! EtherCrab error types.
 
-use crate::{coe::abort_code::AbortCode, command::Command};
+use crate::{coe::abort_code::AbortCode, command::Command, SlaveState};
 use core::{cell::BorrowError, num::TryFromIntError, str::Utf8Error};
 
 /// An EtherCrab error.
@@ -28,9 +28,9 @@ pub enum Error {
     /// A string was too long to fit in a fixed size buffer.
     StringTooLong {
         /// The length of the fixed size buffer.
-        desired: usize,
+        max_length: usize,
         /// The length of the input string.
-        required: usize,
+        string_length: usize,
     },
     /// A mailbox error was encountered.
     Mailbox(MailboxError),
@@ -43,11 +43,11 @@ pub enum Error {
     /// The allotted storage for a group's PDI is too small for the calculated length read from all
     /// slaves in the group.
     PdiTooLong {
-        /// Expected PDI length.
-        desired: usize,
+        /// Maximum PDI length.
+        max_length: usize,
 
         /// Actual PDI length.
-        required: usize,
+        desired_length: usize,
     },
     /// An item in a list could not be found.
     NotFound {
