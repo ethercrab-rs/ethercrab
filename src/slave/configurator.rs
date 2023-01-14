@@ -76,7 +76,22 @@ where
         let fmmu_usage = self.client.eeprom().fmmus().await?;
         let fmmu_sm_mappings = self.client.eeprom().fmmu_mappings().await?;
 
-        // TODO: Add an assertion that slave is in PRE-OP
+        let (state, _status_code) = self.client.status().await?;
+
+        if state != SlaveState::PreOp {
+            log::error!(
+                "Slave {:#06x} is in invalid state {}. Expected {}",
+                self.slave.configured_address,
+                state,
+                SlaveState::PreOp
+            );
+
+            return Err(Error::InvalidState {
+                expected: SlaveState::PreOp,
+                actual: state,
+                configured_address: Some(self.slave.configured_address),
+            });
+        }
 
         let has_coe = self
             .slave

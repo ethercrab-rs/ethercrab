@@ -65,6 +65,18 @@ pub enum Error {
     StateTransition,
     /// An unknown slave device was encountered during device discovery/initialisation.
     UnknownSlave,
+    /// An invalid state was encountered.
+    InvalidState {
+        /// The desired state.
+        expected: SlaveState,
+
+        /// The actual state.
+        actual: SlaveState,
+
+        /// An optional slave address. If this is `None`, the state represents the network as a
+        /// whole.
+        configured_address: Option<u16>,
+    },
 }
 
 impl From<BorrowError> for Error {
