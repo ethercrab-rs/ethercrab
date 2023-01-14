@@ -91,7 +91,6 @@ pub struct Mailbox {
     sync_manager: u8,
 }
 
-// TODO: Add a method to check the two ranges don't overlap
 #[derive(Debug, Default, Clone)]
 pub struct IoRanges {
     pub input: PdiSegment,

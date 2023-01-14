@@ -207,7 +207,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
         // }
     }
 
-    /// TODO: This should not be pub!
+    /// Get a reference to the slave group, with const generic parameters erased.
     pub fn as_mut_ref(&mut self) -> SlaveGroupRef<'_, TIMEOUT> {
         SlaveGroupRef {
             slaves: self.slaves.as_mut(),
