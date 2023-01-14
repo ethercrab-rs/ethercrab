@@ -12,6 +12,7 @@ An EtherCAT master written in Rust.
   group, instead of a plain slave.
 - **(breaking)** [#2] Rename `slave_group::Configurator` to `SlaveGroupRef`.
 - **(breaking)** [#9] Rename the fields of some variants in `ethercrab::error::Error` to make them
+- **(breaking)** [#10] Rename the fields of some variants in `ethercrab::error::Error` to make them
   less confusing.
 
 ### Added
@@ -33,9 +34,10 @@ An EtherCAT master written in Rust.
 
 <!-- next-url -->
 
+[#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
+[#2]: https://github.com/ethercrab-rs/ethercrab/pull/2
 [#6]: https://github.com/ethercrab-rs/ethercrab/pull/6
 [#9]: https://github.com/ethercrab-rs/ethercrab/pull/9
-[#2]: https://github.com/ethercrab-rs/ethercrab/pull/2
-[#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
+[#10]: https://github.com/ethercrab-rs/ethercrab/pull/10
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
