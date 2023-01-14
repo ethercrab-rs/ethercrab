@@ -252,8 +252,8 @@ where
                 .take_vec_len_exact::<N>(string_len)
                 .await
                 .map_err(|_| Error::StringTooLong {
-                    desired: N,
-                    required: string_len,
+                    max_length: N,
+                    string_length: string_len,
                 })?;
 
             let s = core::str::from_utf8(&bytes).map_err(|_| Error::Eeprom(EepromError::Decode))?;
