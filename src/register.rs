@@ -213,7 +213,7 @@ pub enum PortType {
     Mii = 0x03,
 }
 
-#[derive(Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct SupportFlags {
     pub fmmu_supports_bit_ops: bool,
     pub reserved_register_support: bool,
