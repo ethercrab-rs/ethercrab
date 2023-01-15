@@ -111,7 +111,7 @@ impl IoRanges {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Slave {
     /// Configured station address.
     pub(crate) configured_address: u16,

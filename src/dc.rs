@@ -74,10 +74,39 @@ async fn write_dc_parameters(
 }
 
 /// Find the slave parent device in the list of slaves before it in the linear topology.
-fn find_slave_parent(parents: &mut [Slave], slave: &Slave) -> Result<Option<usize>, Error> {
+///
+/// # Implementation detail
+///
+/// ## Special case: parent is a branch
+///
+/// Given the following topology, we want to find the parent device of the LAN9252 (index 5).
+/// According to EtherCAT topology rules, the parent device is the EK1100 (index 1), however the
+/// slave devices are discovered in network order (denoted here by `#N`), meaning there is some
+/// special behaviour to consider when traversing backwards through the previous nodes before the
+/// LAN9252.
+///
+/// ```text
+/// ┌─────────────┐
+/// │   Master    │
+/// │     #0      │
+/// │             │
+/// └─────────────┘
+///        ▲
+///        ║
+///        ╚0▶┌────────────┐      ┌────────────┐      ┌────────────┐──┐
+///           │   EK1100   │      │   EL2004   │      │   EL3004   │  │
+///           │     #1     │◀3══0▶│     #3     │◀3══0▶│     #4     │  │
+///           │            │      │            │      │            │  │
+///        ╔1▶└────────────┘      └────────────┘      └────────────┘◀─┘
+///        ║
+///        ║  ┌────────────┐──┐
+///        ║  │  LAN9252   │  │
+///        ╚0▶│     #5     │  │
+///           │            │  │
+///           └────────────┘◀─┘
+/// ```
+fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, Error> {
     let mut parents_it = parents.iter().rev();
-
-    let mut parent_index = None;
 
     while let Some(parent) = parents_it.next() {
         // If the previous parent in the chain is a leaf node in the tree, we need to
@@ -91,15 +120,13 @@ fn find_slave_parent(parents: &mut [Slave], slave: &Slave) -> Result<Option<usiz
                     Error::Topology
                 })?;
 
-            parent_index = Some(split_point.index);
+            return Ok(Some(split_point.index));
         } else {
-            parent_index = Some(parent.index);
-
-            break;
+            return Ok(Some(parent.index));
         }
     }
 
-    Ok(parent_index)
+    Err(Error::Topology)
 }
 
 /// Calculate and assign a slave device's propagation delay, i.e. the time it takes for a packet to
@@ -200,11 +227,7 @@ fn configure_slave_offsets(
 /// Configure distributed clocks.
 ///
 /// This method walks through the discovered list of devices and sets the system time offset and
-/// transmission delay of each device. It then sends 10,000 `FRMW` packets to perform static clock
-/// drift compensation.
-///
-/// Note that the static drift compensation can take a long time on some systems (e.g. Windows at
-/// time of writing).
+/// transmission delay of each device.
 pub async fn configure_dc<'slaves>(
     client: &Client<'_, impl TimerFactory>,
     slaves: &'slaves mut [Slave],
@@ -237,8 +260,6 @@ pub async fn configure_dc<'slaves>(
     // TODO: Set a flag so we can periodically send a FRMW to keep clocks in sync. Maybe add a
     // config item to set minimum tick rate?
 
-    // TODO: See if it's possible to programmatically read the maximum cycle time from slave info
-
     Ok(first_dc_slave)
 }
 
@@ -267,4 +288,88 @@ pub async fn run_dc_static_sync(
     log::debug!("Static drift compensation complete");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        register::SupportFlags,
+        slave::{
+            ports::{tests::make_ports, Ports},
+            SlaveConfig, SlaveIdentity,
+        },
+    };
+
+    fn ports_passthrough() -> Ports {
+        make_ports(true, true, false, false)
+    }
+
+    fn ports_fork() -> Ports {
+        make_ports(true, true, true, false)
+    }
+
+    fn ports_eol() -> Ports {
+        make_ports(true, false, false, false)
+    }
+
+    // Test for topology including an EK1100 that creates a fork in the tree.
+    #[test]
+    fn parent_is_ek1100() {
+        let slave_defaults = Slave {
+            configured_address: 0x0000,
+            ports: Ports::default(),
+            config: SlaveConfig::default(),
+            identity: SlaveIdentity::default(),
+            name: "Default".into(),
+            flags: SupportFlags::default(),
+            dc_receive_time: 0,
+            index: 0,
+            parent_index: None,
+            propagation_delay: 0,
+        };
+
+        let parents = [
+            Slave {
+                configured_address: 0x1000,
+                ports: ports_passthrough(),
+                name: "LAN9252".into(),
+                index: 0,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x1100,
+                ports: ports_fork(),
+                name: "EK1100".into(),
+                index: 1,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x2004,
+                ports: ports_passthrough(),
+                name: "EL2004".into(),
+                index: 2,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x3004,
+                ports: ports_eol(),
+                name: "EL3004".into(),
+                index: 3,
+                ..slave_defaults.clone()
+            },
+        ];
+
+        let me = Slave {
+            configured_address: 0x9252,
+            ports: ports_eol(),
+            name: "LAN9252".into(),
+            index: 4,
+            ..slave_defaults.clone()
+        };
+
+        let parent_index = find_slave_parent(&parents, &me);
+
+        assert_eq!(parent_index.unwrap(), Some(1));
+    }
 }
