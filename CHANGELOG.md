@@ -20,6 +20,8 @@ An EtherCAT master written in Rust.
 
 ### Fixed
 
+- [#6] Fixed topology detection not stopping at first upstream fork when there is a slave device
+  before the fork.
 - [#2] Fixed multiple group PDI mapping calculation during initialisation.
 
 ## [0.1.0] - 2023-01-02
@@ -30,8 +32,9 @@ An EtherCAT master written in Rust.
 
 <!-- next-url -->
 
-[#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
-[#2]: https://github.com/ethercrab-rs/ethercrab/pull/2
+[#6]: https://github.com/ethercrab-rs/ethercrab/pull/6
 [#9]: https://github.com/ethercrab-rs/ethercrab/pull/9
+[#2]: https://github.com/ethercrab-rs/ethercrab/pull/2
+[#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

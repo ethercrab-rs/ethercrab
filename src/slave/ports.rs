@@ -13,12 +13,16 @@ pub struct Port {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Topology {
+    /// The slave device has two open ports, with only upstream and downstream slaves.
     Passthrough,
+    /// The slave device is the last device in its fork of the topology tree, with only one open
+    /// port.
     LineEnd,
+    /// The slave device forms a fork in the topology, with 3 open ports.
     Fork,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Copy, Clone, Debug)]
 pub struct Ports(pub [Port; 4]);
 
 impl Ports {
@@ -196,5 +200,52 @@ impl Ports {
             .max()
             .and_then(|max| times.min().map(|min| max - min))
             .filter(|t| *t > 0)
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    pub(crate) fn make_ports(active0: bool, active3: bool, active1: bool, active2: bool) -> Ports {
+        Ports([
+            Port {
+                active: active0,
+                number: 0,
+                dc_receive_time: 0,
+                downstream_to: None,
+            },
+            Port {
+                active: active3,
+                number: 3,
+                dc_receive_time: 0,
+                downstream_to: None,
+            },
+            Port {
+                active: active1,
+                number: 1,
+                dc_receive_time: 0,
+                downstream_to: None,
+            },
+            Port {
+                active: active2,
+                number: 2,
+                dc_receive_time: 0,
+                downstream_to: None,
+            },
+        ])
+    }
+
+    #[test]
+    fn topologies() {
+        let passthrough = make_ports(true, true, false, false);
+        let passthrough_skip_port = make_ports(true, false, true, false);
+        let fork = make_ports(true, true, true, false);
+        let line_end = make_ports(true, false, false, false);
+
+        assert_eq!(passthrough.topology(), Topology::Passthrough);
+        assert_eq!(passthrough_skip_port.topology(), Topology::Passthrough);
+        assert_eq!(fork.topology(), Topology::Fork);
+        assert_eq!(line_end.topology(), Topology::LineEnd);
     }
 }
