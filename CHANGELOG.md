@@ -22,6 +22,7 @@ An EtherCAT master written in Rust.
 
 - [#6] Fixed topology detection not stopping at first upstream fork when there is a slave device
   before the fork.
+- [#6] Internal bugfixes to topology discovery code.
 - [#2] Fixed multiple group PDI mapping calculation during initialisation.
 
 ## [0.1.0] - 2023-01-02

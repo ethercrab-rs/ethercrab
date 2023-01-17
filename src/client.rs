@@ -178,6 +178,8 @@ where
                 .map_err(|_| Error::Capacity(Item::Slave))?;
         }
 
+        log::debug!("Configuring topology/distributed clocks");
+
         // Configure distributed clock offsets/propagation delays, perform static drift
         // compensation. We need the slaves in a list to do this.
         let dc_master = dc::configure_dc(self, slaves.as_mut_slices().0).await?;
