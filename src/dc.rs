@@ -21,8 +21,7 @@ async fn latch_dc_times(
         .bwr(RegisterAddress::DcTimePort0, 0u32)
         .await
         .expect("Broadcast time")
-        .wkc(num_slaves as u16, "Broadcast time")
-        .unwrap();
+        .wkc(num_slaves as u16, "Broadcast time")?;
 
     // Read receive times for all slaves and store on slave structs
     for slave in slaves {
@@ -106,16 +105,25 @@ async fn write_dc_parameters(
 ///           └────────────┘◀─┘
 /// ```
 fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, Error> {
+    // No parent if we're first in the network, e.g. the EK1100 in the diagram above
+    if parents.is_empty() {
+        return Ok(None);
+    }
+
     let mut parents_it = parents.iter().rev();
 
     while let Some(parent) = parents_it.next() {
+        dbg!(parent);
         // If the previous parent in the chain is a leaf node in the tree, we need to
         // continue iterating to find the common parent, i.e. the split point
         if parent.ports.topology() == Topology::LineEnd {
             let split_point = parents_it
                 .find(|slave| slave.ports.topology() == Topology::Fork)
                 .ok_or_else(|| {
-                    log::error!("Did not find parent for slave {}", slave.configured_address);
+                    log::error!(
+                        "Did not find fork parent for slave {:#06x}",
+                        slave.configured_address
+                    );
 
                     Error::Topology
                 })?;
@@ -125,6 +133,11 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
             return Ok(Some(parent.index));
         }
     }
+
+    log::error!(
+        "Did not find parent for slave {:#06x}",
+        slave.configured_address
+    );
 
     Err(Error::Topology)
 }
@@ -171,7 +184,7 @@ fn configure_slave_offsets(
         let parent = parents
             .iter_mut()
             .find(|parent| parent.index == parent_idx)
-            .unwrap();
+            .expect("Parent");
 
         let assigned_port_idx = parent
             .ports
@@ -179,11 +192,17 @@ fn configure_slave_offsets(
             .expect("No free ports. Logic error.");
 
         let parent_port = parent.ports.0[assigned_port_idx];
-        let prev_parent_port = parent.ports.prev_open_port(&parent_port).unwrap();
+        let prev_parent_port = parent
+            .ports
+            .prev_open_port(&parent_port)
+            .expect("Parent prev open port");
         let parent_time = parent_port.dc_receive_time - prev_parent_port.dc_receive_time;
 
-        let entry_port = slave.ports.entry_port().unwrap();
-        let prev_port = slave.ports.prev_open_port(&entry_port).unwrap();
+        let entry_port = slave.ports.entry_port().expect("Entry port");
+        let prev_port = slave
+            .ports
+            .prev_open_port(&entry_port)
+            .expect("Prev open port");
         let my_time = prev_port.dc_receive_time - entry_port.dc_receive_time;
 
         // The delay between the previous slave and this one
@@ -222,8 +241,6 @@ fn configure_slave_offsets(
     Ok(dc_receive_time)
 }
 
-// TODO: The topology discovery is prime for some unit tests. Should be able to split it out into a
-// pure function.
 /// Configure distributed clocks.
 ///
 /// This method walks through the discovered list of devices and sets the system time offset and
@@ -371,5 +388,35 @@ mod tests {
         let parent_index = find_slave_parent(&parents, &me);
 
         assert_eq!(parent_index.unwrap(), Some(1));
+    }
+
+    #[test]
+    fn first_in_chain() {
+        let slave_defaults = Slave {
+            configured_address: 0x1000,
+            ports: Ports::default(),
+            config: SlaveConfig::default(),
+            identity: SlaveIdentity::default(),
+            name: "Default".into(),
+            flags: SupportFlags::default(),
+            dc_receive_time: 0,
+            index: 0,
+            parent_index: None,
+            propagation_delay: 0,
+        };
+
+        let parents = [];
+
+        let me = Slave {
+            configured_address: 0x1100,
+            ports: ports_eol(),
+            name: "EK1100".into(),
+            index: 4,
+            ..slave_defaults.clone()
+        };
+
+        let parent_index = find_slave_parent(&parents, &me);
+
+        assert_eq!(parent_index.unwrap(), None);
     }
 }
