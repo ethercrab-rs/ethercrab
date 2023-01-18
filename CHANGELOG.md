@@ -33,9 +33,9 @@ An EtherCAT master written in Rust.
 
 <!-- next-url -->
 
-[#6]: https://github.com/ethercrab-rs/ethercrab/pull/6
-[#9]: https://github.com/ethercrab-rs/ethercrab/pull/9
 [#2]: https://github.com/ethercrab-rs/ethercrab/pull/2
 [#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
+[#6]: https://github.com/ethercrab-rs/ethercrab/pull/6
+[#9]: https://github.com/ethercrab-rs/ethercrab/pull/9
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
