@@ -125,8 +125,12 @@ impl Frame {
         Ok(())
     }
 
+    pub(crate) fn is_sendable(&self) -> bool {
+        self.state.load(Ordering::SeqCst) == FrameState::Created
+    }
+
     pub(crate) fn sendable(&mut self) -> Option<SendableFrame<'_>> {
-        if self.state.load(Ordering::SeqCst) == FrameState::Created {
+        if self.is_sendable() {
             Some(SendableFrame { frame: self })
         } else {
             None

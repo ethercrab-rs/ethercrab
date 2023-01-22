@@ -129,6 +129,18 @@ impl<'a> PduStorageRef<'a> {
         Ok(frame)
     }
 
+    fn frame_is_sendable(&self, idx: u8) -> bool {
+        let idx = usize::from(idx);
+
+        if idx > self.num_frames {
+            return false;
+        }
+
+        let frame = unsafe { self.frames.as_ptr().add(idx).as_ref().unwrap() };
+
+        frame.is_sendable()
+    }
+
     fn frame_mut(&self, idx: u8) -> Result<&mut pdu_frame::Frame, Error> {
         let idx = usize::from(idx);
 
@@ -222,14 +234,16 @@ impl PduLoop {
         F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
     {
         for idx in 0..(self.storage.num_frames as u8) {
-            let frame = self.storage.frame_mut(idx)?;
+            if self.storage.frame_is_sendable(idx) {
+                let frame = self.storage.frame_mut(idx)?;
 
-            if let Some(ref mut frame) = frame.sendable() {
-                frame.mark_sending();
+                if let Some(ref mut frame) = frame.sendable() {
+                    frame.mark_sending();
 
-                let data = self.storage.data_mut(idx)?;
+                    let data = self.storage.data_mut(idx)?;
 
-                send(frame, &data[0..frame.data_len()]).map_err(|_| Error::SendFrame)?;
+                    send(frame, &data[0..frame.data_len()]).map_err(|_| Error::SendFrame)?;
+                }
             }
         }
 
