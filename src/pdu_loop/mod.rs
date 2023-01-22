@@ -99,7 +99,7 @@ pub struct PduStorageRef<'a> {
 }
 
 impl<'a> PduStorageRef<'a> {
-    fn frame(&self, idx: u8) -> Result<(&mut pdu_frame::Frame, &mut [u8]), Error> {
+    fn frame_and_data(&self, idx: u8) -> Result<(&mut pdu_frame::Frame, &mut [u8]), Error> {
         let idx = usize::from(idx);
 
         if idx > self.num_frames {
@@ -115,6 +115,64 @@ impl<'a> PduStorageRef<'a> {
         };
 
         Ok((frame, data))
+    }
+
+    fn frame(&self, idx: u8) -> Result<&pdu_frame::Frame, Error> {
+        let idx = usize::from(idx);
+
+        if idx > self.num_frames {
+            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
+        }
+
+        let frame = unsafe { self.frames.as_ptr().add(idx).as_ref().unwrap() };
+
+        Ok(frame)
+    }
+
+    fn frame_mut(&self, idx: u8) -> Result<&mut pdu_frame::Frame, Error> {
+        let idx = usize::from(idx);
+
+        if idx > self.num_frames {
+            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
+        }
+
+        let frame = unsafe { self.frames.as_ptr().add(idx).as_mut().unwrap() };
+
+        Ok(frame)
+    }
+
+    fn data_mut(&self, idx: u8) -> Result<&mut [u8], Error> {
+        let idx = usize::from(idx);
+
+        if idx > self.num_frames {
+            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
+        }
+
+        let data = unsafe {
+            core::slice::from_raw_parts_mut(
+                self.frame_data.as_ptr().add(self.frame_data_len * idx),
+                self.frame_data_len,
+            )
+        };
+
+        Ok(data)
+    }
+
+    fn data(&self, idx: u8) -> Result<&[u8], Error> {
+        let idx = usize::from(idx);
+
+        if idx > self.num_frames {
+            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
+        }
+
+        let data = unsafe {
+            core::slice::from_raw_parts(
+                self.frame_data.as_ptr().add(self.frame_data_len * idx),
+                self.frame_data_len,
+            )
+        };
+
+        Ok(data)
     }
 }
 
@@ -164,10 +222,12 @@ impl PduLoop {
         F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
     {
         for idx in 0..(self.storage.num_frames as u8) {
-            let (frame, data) = self.storage.frame(idx)?;
+            let frame = self.storage.frame_mut(idx)?;
 
             if let Some(ref mut frame) = frame.sendable() {
                 frame.mark_sending();
+
+                let data = self.storage.data_mut(idx)?;
 
                 send(frame, &data[0..frame.data_len()]).map_err(|_| Error::SendFrame)?;
             }
@@ -189,7 +249,7 @@ impl PduLoop {
     ) -> Result<PduResponse<&'_ [u8]>, Error> {
         let idx = self.next_index();
 
-        let (frame, frame_data) = self.storage.frame(idx)?;
+        let (frame, frame_data) = self.storage.frame_and_data(idx)?;
 
         // Remove any previous frame's data or other garbage that might be lying around. For
         // performance reasons (maybe - need to bench) this only blanks the portion of the buffer
@@ -202,10 +262,9 @@ impl PduLoop {
 
         let res = frame.await?;
 
-        Ok((
-            &frame_data[0..usize::from(data_length)],
-            res.working_counter(),
-        ))
+        let data = self.storage.data(idx)?;
+
+        Ok((&data[0..usize::from(data_length)], res.working_counter()))
     }
 
     fn next_index(&self) -> u8 {
@@ -228,7 +287,7 @@ impl PduLoop {
     ) -> Result<PduResponse<()>, Error> {
         let idx = self.next_index();
 
-        let (frame, frame_data) = self.storage.frame(idx)?;
+        let (frame, frame_data) = self.storage.frame_and_data(idx)?;
 
         frame.replace(
             Command::Bwr {
@@ -273,7 +332,7 @@ impl PduLoop {
         let send_data_len = send_data.len();
         let payload_length = u16::try_from(send_data.len())?.max(data_length);
 
-        let (frame, frame_data) = self.storage.frame(idx)?;
+        let (frame, frame_data) = self.storage.frame_and_data(idx)?;
 
         frame.replace(command, payload_length, idx)?;
 
@@ -331,7 +390,7 @@ impl PduLoop {
         let (i, command_code) = map_res(u8, CommandCode::try_from)(i)?;
         let (i, index) = u8(i)?;
 
-        let (frame, frame_data) = self.storage.frame(index)?;
+        let frame = self.storage.frame(index)?;
 
         if frame.pdu.index != index {
             return Err(Error::Pdu(PduError::Validation(
@@ -364,6 +423,8 @@ impl PduLoop {
 
         // `_i` should be empty as we `take()`d an exact amount above.
         debug_assert_eq!(i.len(), 0);
+
+        let (frame, frame_data) = self.storage.frame_and_data(index)?;
 
         frame_data[0..usize::from(flags.len())].copy_from_slice(data);
 
