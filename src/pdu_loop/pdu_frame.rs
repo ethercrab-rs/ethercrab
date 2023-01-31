@@ -16,7 +16,7 @@ use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 #[atomic_enum::atomic_enum]
 #[derive(PartialEq, Default)]
-enum FrameState {
+pub enum FrameState {
     // SAFETY: Because we create a bunch of `Frame`s with `MaybeUninit::zeroed`, the `None` state
     // MUST be equal to zero. All other fields in `Frame` are overridden in `replace`, so there
     // should be no UB there.
@@ -34,8 +34,10 @@ impl Default for AtomicFrameState {
 }
 
 #[derive(Debug, Default)]
+#[repr(C)]
 pub(crate) struct Frame {
-    state: AtomicFrameState,
+    // TODO: Un-pub?
+    pub state: AtomicFrameState,
     waker: Option<Waker>,
     pub pdu: Pdu,
 }

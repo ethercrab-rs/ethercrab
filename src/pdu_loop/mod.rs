@@ -5,7 +5,11 @@ pub mod pdu_frame;
 use crate::{
     command::{Command, CommandCode},
     error::{Error, PduError, PduValidationError},
-    pdu_loop::{frame_header::FrameHeader, pdu::PduFlags, pdu_frame::SendableFrame},
+    pdu_loop::{
+        frame_header::FrameHeader,
+        pdu::PduFlags,
+        pdu_frame::{FrameState, SendableFrame},
+    },
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
@@ -117,14 +121,56 @@ impl<'a> PduStorageRef<'a> {
         Ok((frame, data))
     }
 
-    fn frame(&self, idx: u8) -> Result<&pdu_frame::Frame, Error> {
+    fn claim_frame(&self, idx: u8) -> Result<(&mut pdu_frame::Frame, &mut [u8]), Error> {
         let idx = usize::from(idx);
 
         if idx > self.num_frames {
             return Err(Error::Pdu(PduError::InvalidIndex(idx)));
         }
 
-        let frame = unsafe { self.frames.as_ptr().add(idx).as_ref().unwrap() };
+        let frame = self.frames.as_ptr();
+
+        let frame = unsafe { frame.add(idx) };
+
+        let state = unsafe { &*core::ptr::addr_of!((*frame).state) };
+
+        if state.load(Ordering::SeqCst) != FrameState::None {
+            return Err(Error::Pdu(PduError::InvalidFrameState));
+        }
+
+        // let frame = unsafe { self.frames.as_ptr().add(idx).as_mut().unwrap() };
+        let data = unsafe {
+            core::slice::from_raw_parts_mut(
+                self.frame_data.as_ptr().add(self.frame_data_len * idx),
+                self.frame_data_len,
+            )
+        };
+
+        let frame = unsafe { &mut *frame };
+
+        Ok((frame, data))
+    }
+
+    fn rx_frame(&self, idx: u8) -> Result<&pdu_frame::Frame, Error> {
+        let idx = usize::from(idx);
+
+        if idx > self.num_frames {
+            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
+        }
+
+        // let frame = unsafe { self.frames.as_ptr().add(idx).as_ref().unwrap() };
+
+        let frame = self.frames.as_ptr();
+
+        let frame = unsafe { frame.add(idx) };
+
+        let state = unsafe { &*core::ptr::addr_of!((*frame).state) };
+
+        if state.load(Ordering::SeqCst) != FrameState::Sending {
+            return Err(Error::Pdu(PduError::InvalidFrameState));
+        }
+
+        let frame = unsafe { &*frame };
 
         Ok(frame)
     }
@@ -136,9 +182,13 @@ impl<'a> PduStorageRef<'a> {
             return false;
         }
 
-        let frame = unsafe { self.frames.as_ptr().add(idx).as_ref().unwrap() };
+        let f = self.frames.as_ptr();
 
-        frame.is_sendable()
+        let f = unsafe { f.add(idx) };
+
+        let state = unsafe { &*core::ptr::addr_of!((*f).state) };
+
+        state.load(Ordering::SeqCst) == FrameState::Created
     }
 
     fn frame_mut(&self, idx: u8) -> Result<&mut pdu_frame::Frame, Error> {
@@ -263,7 +313,7 @@ impl PduLoop {
     ) -> Result<PduResponse<&'_ [u8]>, Error> {
         let idx = self.next_index();
 
-        let (frame, frame_data) = self.storage.frame_and_data(idx)?;
+        let (frame, frame_data) = self.storage.claim_frame(idx)?;
 
         // Remove any previous frame's data or other garbage that might be lying around. For
         // performance reasons (maybe - need to bench) this only blanks the portion of the buffer
@@ -301,7 +351,7 @@ impl PduLoop {
     ) -> Result<PduResponse<()>, Error> {
         let idx = self.next_index();
 
-        let (frame, frame_data) = self.storage.frame_and_data(idx)?;
+        let (frame, frame_data) = self.storage.claim_frame(idx)?;
 
         frame.replace(
             Command::Bwr {
@@ -346,7 +396,7 @@ impl PduLoop {
         let send_data_len = send_data.len();
         let payload_length = u16::try_from(send_data.len())?.max(data_length);
 
-        let (frame, frame_data) = self.storage.frame_and_data(idx)?;
+        let (frame, frame_data) = self.storage.claim_frame(idx)?;
 
         frame.replace(command, payload_length, idx)?;
 
@@ -404,7 +454,7 @@ impl PduLoop {
         let (i, command_code) = map_res(u8, CommandCode::try_from)(i)?;
         let (i, index) = u8(i)?;
 
-        let frame = self.storage.frame(index)?;
+        let frame = self.storage.rx_frame(index)?;
 
         if frame.pdu.index != index {
             return Err(Error::Pdu(PduError::Validation(
