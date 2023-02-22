@@ -14,7 +14,6 @@ use crate::{
     mailbox::MailboxType,
     pdi::PdiSegment,
     pdu_data::{PduData, PduRead},
-    pdu_loop::CheckWorkingCounter,
     register::{RegisterAddress, SupportFlags},
     slave::ports::{Port, Ports},
     slave_state::SlaveState,
@@ -415,7 +414,7 @@ impl<'a> SlaveRef<'a> {
 
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
     /// and return as a slice.
-    async fn send_coe_service<H>(&self, request: H) -> Result<(H, &[u8]), Error>
+    async fn send_coe_service<H>(&self, request: H) -> Result<(H, &'a [u8]), Error>
     where
         H: CoeServiceTrait + packed_struct::PackedStructInfo,
         <H as PackedStruct>::ByteArray: AsRef<[u8]>,
@@ -494,7 +493,7 @@ impl<'a> SlaveRef<'a> {
 
         let headers_len = H::packed_bits() / 8;
 
-        let (headers, data) = response.split_at(headers_len);
+        let (headers, data) = response.data().split_at(headers_len);
 
         let headers = H::unpack_from_slice(headers).map_err(|e| {
             log::error!("Failed to unpack mailbox response headers: {e}");
@@ -536,7 +535,8 @@ impl<'a> SlaveRef<'a> {
                 sub_index: request.sub_index(),
             }))
         } else {
-            Ok((headers, data))
+            // Ok((headers, data))
+            todo!()
         }
     }
 }

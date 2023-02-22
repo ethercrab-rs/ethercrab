@@ -1,21 +1,22 @@
+pub mod frame_element;
 mod frame_header;
 mod pdu;
-pub mod pdu_frame;
+// pub mod pdu_frame;
+mod storage;
 
 use crate::{
     command::{Command, CommandCode},
     error::{Error, PduError, PduValidationError},
     pdu_loop::{
+        frame_element::{FrameBox, ReceivedFrame, SendableFrame},
         frame_header::FrameHeader,
         pdu::PduFlags,
-        pdu_frame::{FrameState, SendableFrame},
+        storage::PduStorageRef,
     },
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{
-    cell::UnsafeCell,
     marker::PhantomData,
-    mem::MaybeUninit,
     ptr::NonNull,
     sync::atomic::{AtomicU8, Ordering},
     task::Waker,
@@ -29,6 +30,8 @@ use nom::{
 use packed_struct::PackedStructSlice;
 use smoltcp::wire::EthernetFrame;
 use spin::RwLock;
+
+pub use crate::pdu_loop::{frame_element::FrameElement, storage::PduStorage};
 
 pub type PduResponse<T> = (T, u16);
 
@@ -50,194 +53,6 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
     }
 }
 
-unsafe impl Sync for PduLoop {}
-
-/// Stores PDU frames that are currently being prepared to send, in flight, or being received and
-/// processed.
-#[derive(Debug)]
-pub struct PduStorage<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
-    frame_data: UnsafeCell<[[u8; MAX_PDU_DATA]; MAX_FRAMES]>,
-    frames: UnsafeCell<[pdu_frame::Frame; MAX_FRAMES]>,
-}
-
-unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
-    for PduStorage<MAX_FRAMES, MAX_PDU_DATA>
-{
-}
-
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, MAX_PDU_DATA> {
-    /// Create a new `PduStorage` instance.
-    pub const fn new() -> Self {
-        // MSRV: Nightly
-        let frames = unsafe { MaybeUninit::zeroed().assume_init() };
-        let frame_data = unsafe { MaybeUninit::zeroed().assume_init() };
-
-        // MSRV: Make `MAX_FRAMES` a `u8` when `generic_const_exprs` is stablised
-        assert!(
-            MAX_FRAMES <= u8::MAX as usize,
-            "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
-        );
-
-        Self { frame_data, frames }
-    }
-
-    /// Get a reference to this `PduStorage` with erased lifetimes.
-    pub const fn as_ref<'a>(&'a self) -> PduStorageRef<'a> {
-        PduStorageRef {
-            frames: NonNull::new(self.frames.get().cast::<pdu_frame::Frame>()).unwrap(),
-            num_frames: MAX_FRAMES,
-            frame_data: NonNull::new(self.frame_data.get().cast::<u8>()).unwrap(),
-            frame_data_len: MAX_PDU_DATA,
-            _lifetime: PhantomData,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct PduStorageRef<'a> {
-    frames: NonNull<pdu_frame::Frame>,
-    num_frames: usize,
-    frame_data: NonNull<u8>,
-    frame_data_len: usize,
-    _lifetime: PhantomData<&'a ()>,
-}
-
-impl<'a> PduStorageRef<'a> {
-    fn frame_and_data(&self, idx: u8) -> Result<(&mut pdu_frame::Frame, &mut [u8]), Error> {
-        let idx = usize::from(idx);
-
-        if idx > self.num_frames {
-            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
-        }
-
-        let frame = unsafe { self.frames.as_ptr().add(idx).as_mut().unwrap() };
-        let data = unsafe {
-            core::slice::from_raw_parts_mut(
-                self.frame_data.as_ptr().add(self.frame_data_len * idx),
-                self.frame_data_len,
-            )
-        };
-
-        Ok((frame, data))
-    }
-
-    fn claim_frame(&self, idx: u8) -> Result<(&mut pdu_frame::Frame, &mut [u8]), Error> {
-        let idx = usize::from(idx);
-
-        if idx > self.num_frames {
-            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
-        }
-
-        let frame = self.frames.as_ptr();
-
-        let frame = unsafe { frame.add(idx) };
-
-        let state = unsafe { &*core::ptr::addr_of!((*frame).state) };
-
-        if state.load(Ordering::SeqCst) != FrameState::None {
-            return Err(Error::Pdu(PduError::InvalidFrameState));
-        }
-
-        // let frame = unsafe { self.frames.as_ptr().add(idx).as_mut().unwrap() };
-        let data = unsafe {
-            core::slice::from_raw_parts_mut(
-                self.frame_data.as_ptr().add(self.frame_data_len * idx),
-                self.frame_data_len,
-            )
-        };
-
-        let frame = unsafe { &mut *frame };
-
-        Ok((frame, data))
-    }
-
-    fn rx_frame(&self, idx: u8) -> Result<&pdu_frame::Frame, Error> {
-        let idx = usize::from(idx);
-
-        if idx > self.num_frames {
-            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
-        }
-
-        // let frame = unsafe { self.frames.as_ptr().add(idx).as_ref().unwrap() };
-
-        let frame = self.frames.as_ptr();
-
-        let frame = unsafe { frame.add(idx) };
-
-        let state = unsafe { &*core::ptr::addr_of!((*frame).state) };
-
-        if state.load(Ordering::SeqCst) != FrameState::Sending {
-            return Err(Error::Pdu(PduError::InvalidFrameState));
-        }
-
-        let frame = unsafe { &*frame };
-
-        Ok(frame)
-    }
-
-    fn frame_is_sendable(&self, idx: u8) -> bool {
-        let idx = usize::from(idx);
-
-        if idx > self.num_frames {
-            return false;
-        }
-
-        let f = self.frames.as_ptr();
-
-        let f = unsafe { f.add(idx) };
-
-        let state = unsafe { &*core::ptr::addr_of!((*f).state) };
-
-        state.load(Ordering::SeqCst) == FrameState::Created
-    }
-
-    fn frame_mut(&self, idx: u8) -> Result<&mut pdu_frame::Frame, Error> {
-        let idx = usize::from(idx);
-
-        if idx > self.num_frames {
-            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
-        }
-
-        let frame = unsafe { self.frames.as_ptr().add(idx).as_mut().unwrap() };
-
-        Ok(frame)
-    }
-
-    fn data_mut(&self, idx: u8) -> Result<&mut [u8], Error> {
-        let idx = usize::from(idx);
-
-        if idx > self.num_frames {
-            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
-        }
-
-        let data = unsafe {
-            core::slice::from_raw_parts_mut(
-                self.frame_data.as_ptr().add(self.frame_data_len * idx),
-                self.frame_data_len,
-            )
-        };
-
-        Ok(data)
-    }
-
-    fn data(&self, idx: u8) -> Result<&[u8], Error> {
-        let idx = usize::from(idx);
-
-        if idx > self.num_frames {
-            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
-        }
-
-        let data = unsafe {
-            core::slice::from_raw_parts(
-                self.frame_data.as_ptr().add(self.frame_data_len * idx),
-                self.frame_data_len,
-            )
-        };
-
-        Ok(data)
-    }
-}
-
 /// The core of the PDU send/receive machinery.
 ///
 /// This item orchestrates queuing, sending and receiving responses to individual PDUs. It uses a
@@ -255,6 +70,8 @@ pub struct PduLoop {
     /// EtherCAT frame index.
     idx: AtomicU8,
 }
+
+unsafe impl Sync for PduLoop {}
 
 impl PduLoop {
     /// Create a new PDU loop with the given backing storage.
@@ -281,18 +98,26 @@ impl PduLoop {
     /// The blocking `send` function is called for each ready frame. It is given a `SendableFrame`.
     pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), Error>
     where
-        F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
+        F: FnMut(&SendableFrame<'_>) -> Result<(), ()>,
     {
-        for idx in 0..(self.storage.num_frames as u8) {
-            if self.storage.frame_is_sendable(idx) {
-                let frame = self.storage.frame_mut(idx)?;
+        for idx in 0..self.storage.num_frames {
+            let frame = unsafe { NonNull::new_unchecked(self.storage.frames.as_ptr().add(idx)) };
 
-                if let Some(ref mut frame) = frame.sendable() {
-                    frame.mark_sending();
+            let sending = if let Some(frame) = unsafe { FrameElement::claim_sending(frame) } {
+                SendableFrame::new(FrameBox {
+                    frame,
+                    _lifetime: PhantomData,
+                })
+            } else {
+                continue;
+            };
 
-                    let data = self.storage.data_mut(idx)?;
-
-                    send(frame, &data[0..frame.data_len()]).map_err(|_| Error::SendFrame)?;
+            match send(&sending) {
+                Ok(_) => {
+                    sending.mark_sent();
+                }
+                Err(_) => {
+                    return Err(Error::SendFrame);
                 }
             }
         }
@@ -310,25 +135,18 @@ impl PduLoop {
         &self,
         command: Command,
         data_length: u16,
-    ) -> Result<PduResponse<&'_ [u8]>, Error> {
+    ) -> Result<ReceivedFrame<'_>, Error> {
         let idx = self.next_index();
 
-        let (frame, frame_data) = self.storage.claim_frame(idx)?;
+        let frame = self.storage.alloc_frame(command, data_length)?;
 
-        // Remove any previous frame's data or other garbage that might be lying around. For
-        // performance reasons (maybe - need to bench) this only blanks the portion of the buffer
-        // that will be used.
-        frame_data[0..usize::from(data_length)].fill(0);
-
-        frame.replace(command, data_length, idx)?;
+        let frame = frame.mark_sendable();
 
         self.wake_sender();
 
         let res = frame.await?;
 
-        let data = self.storage.data(idx)?;
-
-        Ok((&data[0..usize::from(data_length)], res.working_counter()))
+        Ok(res)
     }
 
     fn next_index(&self) -> u8 {
@@ -348,33 +166,24 @@ impl PduLoop {
         &self,
         register: u16,
         payload_length: u16,
-    ) -> Result<PduResponse<()>, Error> {
+    ) -> Result<ReceivedFrame<'_>, Error> {
         let idx = self.next_index();
 
-        let (frame, frame_data) = self.storage.claim_frame(idx)?;
-
-        frame.replace(
+        let frame = self.storage.alloc_frame(
             Command::Bwr {
                 address: 0,
                 register,
             },
             payload_length,
-            idx,
         )?;
 
-        let payload_length = usize::from(payload_length);
-
-        let payload = frame_data
-            .get_mut(0..payload_length)
-            .ok_or(Error::Pdu(PduError::TooLong))?;
-
-        payload.fill(0);
+        let frame = frame.mark_sendable();
 
         self.wake_sender();
 
         let res = frame.await?;
 
-        Ok(((), res.working_counter()))
+        Ok(res)
     }
 
     // TX
@@ -390,17 +199,16 @@ impl PduLoop {
         command: Command,
         send_data: &[u8],
         data_length: u16,
-    ) -> Result<PduResponse<&'a [u8]>, Error> {
+    ) -> Result<ReceivedFrame<'_>, Error> {
         let idx = self.next_index();
 
         let send_data_len = send_data.len();
         let payload_length = u16::try_from(send_data.len())?.max(data_length);
 
-        let (frame, frame_data) = self.storage.claim_frame(idx)?;
+        let mut frame = self.storage.alloc_frame(command, data_length)?;
 
-        frame.replace(command, payload_length, idx)?;
-
-        let payload = frame_data
+        let payload = frame
+            .buf_mut()
             .get_mut(0..usize::from(payload_length))
             .ok_or(Error::Pdu(PduError::TooLong))?;
 
@@ -412,11 +220,13 @@ impl PduLoop {
         // previous request.
         rest.fill(0);
 
+        let frame = frame.mark_sendable();
+
         self.wake_sender();
 
         let res = frame.await?;
 
-        Ok((&payload[0..send_data_len], res.working_counter()))
+        Ok(res)
     }
 
     // TX
@@ -425,7 +235,7 @@ impl PduLoop {
         &'a self,
         command: Command,
         send_data: &[u8],
-    ) -> Result<PduResponse<&'a [u8]>, Error> {
+    ) -> Result<ReceivedFrame<'_>, Error> {
         self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?)
             .await
     }
@@ -454,12 +264,15 @@ impl PduLoop {
         let (i, command_code) = map_res(u8, CommandCode::try_from)(i)?;
         let (i, index) = u8(i)?;
 
-        let frame = self.storage.rx_frame(index)?;
+        let mut frame = self
+            .storage
+            .get_receiving(index)
+            .ok_or_else(|| PduError::InvalidIndex(usize::from(index)))?;
 
-        if frame.pdu.index != index {
+        if frame.index() != index {
             return Err(Error::Pdu(PduError::Validation(
                 PduValidationError::IndexMismatch {
-                    sent: frame.pdu.index,
+                    sent: frame.index(),
                     received: index,
                 },
             )));
@@ -469,11 +282,11 @@ impl PduLoop {
 
         // Check for weird bugs where a slave might return a different command than the one sent for
         // this PDU index.
-        if command.code() != frame.pdu().command().code() {
+        if command.code() != frame.command().code() {
             return Err(Error::Pdu(PduError::Validation(
                 PduValidationError::CommandMismatch {
                     sent: command,
-                    received: frame.pdu().command(),
+                    received: frame.command(),
                 },
             )));
         }
@@ -488,11 +301,11 @@ impl PduLoop {
         // `_i` should be empty as we `take()`d an exact amount above.
         debug_assert_eq!(i.len(), 0);
 
-        let (frame, frame_data) = self.storage.frame_and_data(index)?;
+        let frame_data = frame.buf_mut();
 
         frame_data[0..usize::from(flags.len())].copy_from_slice(data);
 
-        frame.wake_done(flags, irq, working_counter)?;
+        frame.mark_received()?;
 
         Ok(())
     }
@@ -500,7 +313,7 @@ impl PduLoop {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{storage::PduStorage, *};
     use core::{task::Poll, time::Duration};
     use smoltcp::wire::EthernetAddress;
     use std::thread;
@@ -528,9 +341,9 @@ mod tests {
                         log::info!("Poll fn");
 
                         PDU_LOOP
-                            .send_frames_blocking(ctx.waker(), |frame, data| {
+                            .send_frames_blocking(ctx.waker(), |frame| {
                                 let packet = frame
-                                    .write_ethernet_packet(&mut packet_buf, data)
+                                    .write_ethernet_packet(&mut packet_buf)
                                     .expect("Write Ethernet frame");
 
                                 s.send(packet.to_vec()).unwrap();
@@ -584,7 +397,7 @@ mod tests {
 
                 log::info!("Send PDU {i}");
 
-                let (result, _wkc) = PDU_LOOP
+                let result = PDU_LOOP
                     .pdu_tx_readwrite(
                         Command::Fpwr {
                             address: 0x1000,
@@ -595,7 +408,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(result, &data);
+                assert_eq!(result.data(), &data);
             }
         });
         // })

@@ -290,48 +290,48 @@ impl<'client> Client<'client> {
     where
         T: PduRead,
     {
-        let (data, working_counter) = timeout(
+        let response = timeout(
             self.timeouts.pdu,
             self.pdu_loop.pdu_tx_readonly(command, T::len()),
         )
         .await?;
 
-        let res = T::try_from_slice(data).map_err(|e| {
+        let res = T::try_from_slice(response.data()).map_err(|e| {
             log::error!(
                 "PDU data decode: {:?}, T: {} data {:?}",
                 e,
                 type_name::<T>(),
-                data
+                response.data()
             );
 
             PduError::Decode
         })?;
 
-        Ok((res, working_counter))
+        Ok((res, response.working_counter()))
     }
 
     async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
     {
-        let (data, working_counter) = timeout(
+        let response = timeout(
             self.timeouts.pdu,
             self.pdu_loop.pdu_tx_readwrite(command, value.as_slice()),
         )
         .await?;
 
-        let res = T::try_from_slice(data).map_err(|e| {
+        let res = T::try_from_slice(response.data()).map_err(|e| {
             log::error!(
                 "PDU data decode: {:?}, T: {} data {:?}",
                 e,
                 type_name::<T>(),
-                data
+                response.data()
             );
 
             PduError::Decode
         })?;
 
-        Ok((res, working_counter))
+        Ok((res, response.working_counter()))
     }
 
     /// Send a `BRD` (Broadcast Read).
@@ -492,12 +492,15 @@ impl<'client> Client<'client> {
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
         assert!(value.len() <= self.pdu_loop.max_frame_data(), "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), self.pdu_loop.max_frame_data());
 
-        let (data, working_counter) = timeout(
+        let response = timeout(
             self.timeouts.pdu,
             self.pdu_loop
                 .pdu_tx_readwrite(Command::Lrw { address }, value),
         )
         .await?;
+
+        let data = response.data();
+        let working_counter = response.working_counter();
 
         if data.len() != value.len() {
             log::error!(

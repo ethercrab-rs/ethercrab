@@ -126,6 +126,8 @@ pub enum PduError {
     /// This may be caused by a too small [`MAX_FRAMES`](crate::pdu_loop::PduLoop) value, or sending
     /// frames too quickly.
     InvalidFrameState,
+    /// Failed to swap atomic state for a PDU frame.
+    SwapState,
 }
 
 /// CoE mailbox error.
