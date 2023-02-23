@@ -14,7 +14,9 @@ target_steps: &target_steps
 
     - run: rustup target add $TARGET || true
     - run: cargo test --target $TARGET
-    - run: MIRIFLAGS="-Zmiri-symbolic-alignment-check" cargo miri test --target $TARGET
+    - run:
+        MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" cargo miri test
+        --target $TARGET
     - run: cargo build --target $TARGET --examples --release
     - run: cargo deadlinks --ignore-fragments
 
