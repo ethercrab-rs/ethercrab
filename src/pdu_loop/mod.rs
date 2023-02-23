@@ -293,9 +293,7 @@ impl PduLoop {
 
         frame_data[0..usize::from(flags.len())].copy_from_slice(data);
 
-        // TODO: Set flags, IRQ, wkc
-
-        frame.mark_received()?;
+        frame.mark_received(flags, irq, working_counter)?;
 
         Ok(())
     }

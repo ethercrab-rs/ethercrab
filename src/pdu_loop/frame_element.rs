@@ -163,6 +163,16 @@ impl<'a> FrameBox<'a> {
             .take()
     }
 
+    // FIXME: Is interior mutability ok here? MIRI isn't complaining about race conditions so
+    // _maybe_ we're ok? The 3 fields aren't set anywhere else except during frame initialisation.
+    pub unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
+        let frame = NonNull::new_unchecked(addr_of_mut!((*self.frame.as_ptr()).frame));
+
+        *addr_of_mut!((*frame.as_ptr()).flags) = flags;
+        *addr_of_mut!((*frame.as_ptr()).irq) = irq;
+        *addr_of_mut!((*frame.as_ptr()).working_counter) = working_counter;
+    }
+
     pub unsafe fn frame(&self) -> &PduFrame {
         unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
     }
@@ -317,7 +327,14 @@ pub struct ReceivingFrame<'a> {
 }
 
 impl<'a> ReceivingFrame<'a> {
-    pub fn mark_received(self) -> Result<(), Error> {
+    pub fn mark_received(
+        self,
+        flags: PduFlags,
+        irq: u16,
+        working_counter: u16,
+    ) -> Result<(), Error> {
+        unsafe { self.inner.set_metadata(flags, irq, working_counter) };
+
         let frame = unsafe { self.inner.frame() };
 
         log::trace!("Frame and buf mark_received");
@@ -346,10 +363,6 @@ impl<'a> ReceivingFrame<'a> {
         unsafe { self.inner.buf_mut() }
     }
 
-    pub fn reset_readable(self) {
-        unsafe { FrameElement::set_state(self.inner.frame, FrameState::None) }
-    }
-
     pub fn index(&self) -> u8 {
         unsafe { self.inner.frame() }.index
     }
@@ -370,10 +383,6 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> Poll<Self::Output> {
-        // return Poll::Ready(Err(PduError::InvalidFrameState.into()));
-
-        log::trace!("Poll fut");
-
         let rxin = match self.frame.take() {
             Some(r) => r,
             None => return Poll::Ready(Err(PduError::InvalidFrameState.into())),
@@ -383,8 +392,6 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
             FrameElement::swap_state(rxin.frame, FrameState::RxDone, FrameState::RxProcessing)
         };
 
-        log::trace!("Swappy {:?}", swappy);
-
         let was = match swappy {
             Ok(_frame_element) => {
                 log::trace!("Frame future is ready");
@@ -392,8 +399,6 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
             }
             Err(e) => e,
         };
-
-        log::trace!("Was {:?}", was);
 
         match was {
             FrameState::Sendable | FrameState::Sending => {
