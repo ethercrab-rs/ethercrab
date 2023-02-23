@@ -224,6 +224,7 @@ impl<'sto> CreatedFrame<'sto> {
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::Sendable);
         }
+
         ReceiveFrameFut {
             frame: Some(self.inner),
         }

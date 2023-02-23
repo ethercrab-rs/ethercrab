@@ -1,7 +1,5 @@
 pub mod frame_element;
 mod frame_header;
-// mod pdu;
-// pub mod pdu_frame;
 mod pdu_flags;
 mod storage;
 
@@ -298,64 +296,70 @@ mod tests {
     use super::{storage::PduStorage, *};
     use core::task::Poll;
     use smoltcp::wire::EthernetAddress;
-    use std::thread;
 
     static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
     static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());
 
     // Test the whole TX/RX loop with multiple threads
-    #[test]
-    fn parallel() {
-        env_logger::try_init().ok();
+    #[tokio::test]
+    async fn parallel() {
+        // let _ = env_logger::builder().is_test(true).try_init();
+        // env_logger::try_init().ok();
+
+        let num_frames = 64;
 
         let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
-        let _tx_thread = thread::spawn(move || {
-            futures_lite::future::block_on(async move {
-                let mut packet_buf = [0u8; 1536];
+        tokio::spawn(async move {
+            let mut packet_buf = [0u8; 1536];
 
-                log::info!("Spawn TX task");
+            log::info!("Spawn TX task");
 
-                core::future::poll_fn::<(), _>(move |ctx| {
-                    log::info!("Send poll fn");
+            let mut sent = 0;
 
-                    PDU_LOOP
-                        .send_frames_blocking(ctx.waker(), |frame| {
-                            let packet = frame
-                                .write_ethernet_packet(&mut packet_buf)
-                                .expect("Write Ethernet frame");
+            core::future::poll_fn::<(), _>(move |ctx| {
+                log::info!("Send poll fn");
 
-                            s.send(packet.to_vec()).unwrap();
+                PDU_LOOP
+                    .send_frames_blocking(ctx.waker(), |frame| {
+                        let packet = frame
+                            .write_ethernet_packet(&mut packet_buf)
+                            .expect("Write Ethernet frame");
 
-                            log::info!("Sent packet");
+                        s.send(packet.to_vec()).unwrap();
 
-                            Ok(())
-                        })
-                        .unwrap();
+                        log::info!("Sent packet");
 
+                        Ok(())
+                    })
+                    .unwrap();
+
+                sent += 1;
+
+                if sent < num_frames {
                     Poll::Pending
-                })
-                .await
-            })
-        });
-
-        let _rx_thread = thread::spawn(move || {
-            futures_lite::future::block_on(async move {
-                log::info!("Spawn RX task");
-
-                while let Some(ethernet_frame) = r.recv().await {
-                    log::trace!("RX task received packet");
-
-                    // Munge fake sent frame into a fake received frame
-                    let ethernet_frame = {
-                        let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
-                        frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
-                        frame.into_inner()
-                    };
-
-                    PDU_LOOP.pdu_rx(&ethernet_frame).expect("RX");
+                } else {
+                    Poll::Ready(())
                 }
             })
+            .await
+        });
+
+        tokio::spawn(async move {
+            log::info!("Spawn RX task");
+
+            while let Some(ethernet_frame) = r.recv().await {
+                log::trace!("RX task received packet");
+
+                // Munge fake sent frame into a fake received frame
+                let ethernet_frame = {
+                    let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
+                    frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+                    frame.into_inner()
+                };
+
+                PDU_LOOP.pdu_rx(&ethernet_frame).expect("RX");
+            }
         });
 
         for i in 0..64 {
@@ -363,14 +367,16 @@ mod tests {
 
             log::info!("Send PDU {i}");
 
-            let result = futures_lite::future::block_on(PDU_LOOP.pdu_tx_readwrite(
-                Command::Fpwr {
-                    address: 0x1000,
-                    register: 0x0980,
-                },
-                &data,
-            ))
-            .unwrap();
+            let result = PDU_LOOP
+                .pdu_tx_readwrite(
+                    Command::Fpwr {
+                        address: 0x1000,
+                        register: 0x0980,
+                    },
+                    &data,
+                )
+                .await
+                .unwrap();
 
             assert_eq!(result.data(), &data);
         }
