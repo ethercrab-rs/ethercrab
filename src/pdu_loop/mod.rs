@@ -1,7 +1,8 @@
 pub mod frame_element;
 mod frame_header;
-mod pdu;
+// mod pdu;
 // pub mod pdu_frame;
+mod pdu_flags;
 mod storage;
 
 use crate::{
@@ -10,17 +11,12 @@ use crate::{
     pdu_loop::{
         frame_element::{FrameBox, ReceivedFrame, SendableFrame},
         frame_header::FrameHeader,
-        pdu::PduFlags,
+        pdu_flags::PduFlags,
         storage::PduStorageRef,
     },
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
-use core::{
-    marker::PhantomData,
-    ptr::NonNull,
-    sync::atomic::{AtomicU8, Ordering},
-    task::Waker,
-};
+use core::{marker::PhantomData, ptr::NonNull, task::Waker};
 use nom::{
     bytes::complete::take,
     combinator::map_res,
@@ -297,7 +293,9 @@ impl PduLoop {
 
         frame_data[0..usize::from(flags.len())].copy_from_slice(data);
 
-        frame.mark_received(flags, irq, working_counter)?;
+        // TODO: Set flags, IRQ, wkc
+
+        frame.mark_received()?;
 
         Ok(())
     }
@@ -320,7 +318,7 @@ mod tests {
 
         let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
-        let tx_thread = thread::spawn(move || {
+        let _tx_thread = thread::spawn(move || {
             futures_lite::future::block_on(async move {
                 let mut packet_buf = [0u8; 1536];
 
@@ -349,7 +347,7 @@ mod tests {
             })
         });
 
-        let rx_thread = thread::spawn(move || {
+        let _rx_thread = thread::spawn(move || {
             futures_lite::future::block_on(async move {
                 log::info!("Spawn RX task");
 

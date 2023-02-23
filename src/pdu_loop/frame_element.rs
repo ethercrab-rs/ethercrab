@@ -1,3 +1,15 @@
+use crate::{
+    command::Command,
+    error::{Error, PduError},
+    pdu_data::PduRead,
+    pdu_loop::{frame_header::FrameHeader, pdu_flags::PduFlags},
+    ETHERCAT_ETHERTYPE, MASTER_ADDR,
+};
+use cookie_factory::{
+    bytes::{le_u16, le_u8},
+    combinator::{skip, slice},
+    gen_simple, GenError,
+};
 use core::{
     any::type_name,
     future::Future,
@@ -7,24 +19,9 @@ use core::{
     sync::atomic::Ordering,
     task::Poll,
 };
-use std::{ops::Deref, task::Waker};
-
-use cookie_factory::{
-    bytes::{le_u16, le_u8},
-    combinator::{skip, slice},
-    gen_simple, GenError,
-};
 use packed_struct::PackedStruct;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
-
-use crate::{
-    command::Command,
-    error::{Error, PduError},
-    pdu_data::{PduData, PduRead},
-    ETHERCAT_ETHERTYPE, MASTER_ADDR,
-};
-
-use super::{frame_header::FrameHeader, pdu::PduFlags};
+use std::task::Waker;
 
 #[atomic_enum::atomic_enum]
 #[derive(PartialEq, Default)]
@@ -320,19 +317,10 @@ pub struct ReceivingFrame<'a> {
 }
 
 impl<'a> ReceivingFrame<'a> {
-    pub fn mark_received(
-        self,
-        flags: PduFlags,
-        irq: u16,
-        working_counter: u16,
-    ) -> Result<(), Error> {
+    pub fn mark_received(self) -> Result<(), Error> {
         let frame = unsafe { self.inner.frame() };
 
         log::trace!("Frame and buf mark_received");
-
-        // frame.flags = flags;
-        // frame.irq = irq;
-        // frame.working_counter = working_counter;
 
         log::trace!("Mark received, waker is {:?}", frame.waker);
 
@@ -426,12 +414,6 @@ pub struct ReceivedFrame<'sto> {
 }
 
 impl<'sto> ReceivedFrame<'sto> {
-    fn len(&self) -> usize {
-        let len: usize = unsafe { self.inner.frame() }.flags.len().into();
-
-        len
-    }
-
     pub fn working_counter(&self) -> u16 {
         unsafe { self.inner.frame() }.working_counter
     }

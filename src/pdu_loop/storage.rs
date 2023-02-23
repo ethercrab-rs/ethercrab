@@ -1,7 +1,10 @@
 use crate::{
     command::Command,
     error::{Error, PduError},
-    pdu_loop::frame_element::{FrameBox, FrameElement, ReceivingFrame},
+    pdu_loop::{
+        frame_element::{CreatedFrame, FrameBox, FrameElement, PduFrame, ReceivingFrame},
+        pdu_flags::PduFlags,
+    },
 };
 use core::{
     cell::UnsafeCell,
@@ -9,11 +12,6 @@ use core::{
     mem::MaybeUninit,
     ptr::{addr_of_mut, NonNull},
     sync::atomic::{AtomicU8, Ordering},
-};
-
-use super::{
-    frame_element::{CreatedFrame, PduFrame},
-    pdu::PduFlags,
 };
 
 /// TODO: Docs
