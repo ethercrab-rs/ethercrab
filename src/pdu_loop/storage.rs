@@ -37,7 +37,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     }
 
     /// TODO: Docs
-    pub const fn as_ref<'a>(&'a self) -> PduStorageRef<'a> {
+    pub const fn as_ref(&self) -> PduStorageRef<'_> {
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             num_frames: N,

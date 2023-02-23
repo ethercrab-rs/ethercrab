@@ -90,7 +90,7 @@ impl<const N: usize> FrameElement<N> {
     unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
         let fptr = this.as_ptr();
 
-        (&*addr_of_mut!((*fptr).status)).store(state, Ordering::Release);
+        (*addr_of_mut!((*fptr).status)).store(state, Ordering::Release);
     }
 
     unsafe fn swap_state(
@@ -100,7 +100,7 @@ impl<const N: usize> FrameElement<N> {
     ) -> Result<NonNull<FrameElement<N>>, FrameState> {
         let fptr = this.as_ptr();
 
-        (&*addr_of_mut!((*fptr).status)).compare_exchange(
+        (*addr_of_mut!((*fptr).status)).compare_exchange(
             from,
             to,
             Ordering::AcqRel,
@@ -153,14 +153,14 @@ unsafe impl<'sto> Send for FrameBox<'sto> {}
 // TODO: Un-pub all
 impl<'sto> FrameBox<'sto> {
     pub unsafe fn replace_waker(&self, waker: Waker) {
-        (&*addr_of!((*self.frame.as_ptr()).frame.waker))
+        (*addr_of!((*self.frame.as_ptr()).frame.waker))
             .try_write()
             .expect("Contention replace_waker")
             .replace(waker);
     }
 
     pub unsafe fn take_waker(&self) -> Option<Waker> {
-        (&*addr_of!((*self.frame.as_ptr()).frame.waker))
+        (*addr_of!((*self.frame.as_ptr()).frame.waker))
             .try_write()
             .expect("Contention take_waker")
             .take()
