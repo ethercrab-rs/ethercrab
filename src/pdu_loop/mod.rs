@@ -256,8 +256,6 @@ impl PduLoop {
         let (i, command_code) = map_res(u8, CommandCode::try_from)(i)?;
         let (i, index) = u8(i)?;
 
-        dbg!(index, header);
-
         let mut frame = self
             .storage
             .get_receiving(index)
@@ -370,7 +368,7 @@ mod tests {
             })
         });
 
-        for i in 0..17 {
+        for i in 0..64 {
             let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
 
             log::info!("Send PDU {i}");
@@ -387,7 +385,6 @@ mod tests {
             assert_eq!(result.data(), &data);
         }
 
-        rx_thread.join().unwrap();
-        tx_thread.join().unwrap();
+        log::info!("Sent all PDUs");
     }
 }

@@ -1,6 +1,5 @@
 use crate::{
     command::Command,
-    eeprom::types::Flags,
     error::{Error, PduError},
     pdu_loop::frame_element::{FrameBox, FrameElement, ReceivingFrame},
 };
@@ -28,6 +27,12 @@ unsafe impl<const N: usize, const DATA: usize> Sync for PduStorage<N, DATA> {}
 impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     /// TODO: Docs
     pub const fn new() -> Self {
+        // MSRV: Make `N` a `u8` when `generic_const_exprs` is stablised
+        assert!(
+            N <= u8::MAX as usize,
+            "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
+        );
+
         let frames = UnsafeCell::new(unsafe { MaybeUninit::zeroed().assume_init() });
 
         Self { frames }
@@ -66,9 +71,9 @@ impl<'a> PduStorageRef<'a> {
             return Err(PduError::TooLong.into());
         }
 
-        let idx_u8 = self.idx.fetch_add(1, Ordering::AcqRel);
+        let idx_u8 = self.idx.fetch_add(1, Ordering::AcqRel) % self.num_frames as u8;
 
-        let idx = usize::from(idx_u8) % self.num_frames;
+        let idx = usize::from(idx_u8);
 
         log::trace!("Try to allocate frame #{idx}");
 
