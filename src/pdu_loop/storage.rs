@@ -60,9 +60,9 @@ impl<'a> PduStorageRef<'a> {
         command: Command,
         data_length: u16,
     ) -> Result<CreatedFrame<'a>, Error> {
-        let data_length = usize::from(data_length);
+        let data_length_usize = usize::from(data_length);
 
-        if data_length > self.frame_data_len {
+        if data_length_usize > self.frame_data_len {
             return Err(PduError::TooLong.into());
         }
 
@@ -70,23 +70,25 @@ impl<'a> PduStorageRef<'a> {
 
         let idx = usize::from(idx_u8) % self.num_frames;
 
+        log::trace!("Try to allocate frame #{idx}");
+
         let frame = unsafe { NonNull::new_unchecked(self.frames.as_ptr().add(idx)) };
         let frame = unsafe { FrameElement::claim_created(frame) }?;
 
         // Initialise frame
         unsafe {
             addr_of_mut!((*frame.as_ptr()).frame).write(PduFrame {
-                len: data_length,
+                len: data_length_usize,
                 index: idx_u8,
                 waker: spin::RwLock::new(None),
                 command,
-                flags: PduFlags::default(),
+                flags: PduFlags::with_len(data_length),
                 irq: 0,
                 working_counter: 0,
             });
 
             let buf_ptr = addr_of_mut!((*frame.as_ptr()).buffer);
-            buf_ptr.write_bytes(0x00, data_length);
+            buf_ptr.write_bytes(0x00, data_length_usize);
         }
 
         Ok(CreatedFrame {

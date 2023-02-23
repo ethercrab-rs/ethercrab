@@ -2,6 +2,7 @@ use core::{
     any::type_name,
     future::Future,
     marker::PhantomData,
+    mem,
     ptr::{addr_of, addr_of_mut, NonNull},
     sync::atomic::Ordering,
     task::Poll,
@@ -14,11 +15,13 @@ use cookie_factory::{
     gen_simple, GenError,
 };
 use packed_struct::PackedStruct;
+use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 use crate::{
     command::Command,
     error::{Error, PduError},
     pdu_data::{PduData, PduRead},
+    ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 
 use super::{frame_header::FrameHeader, pdu::PduFlags};
@@ -240,15 +243,18 @@ impl<'a> SendableFrame<'a> {
     }
 
     /// The size of the total payload to be insterted into an EtherCAT frame.
-    pub(crate) fn ethercat_payload_len(&self) -> u16 {
+    fn ethercat_payload_len(&self) -> u16 {
         // TODO: Add unit test to stop regressions
         let pdu_overhead = 12;
 
         unsafe { self.inner.frame() }.flags.len() + pdu_overhead
     }
 
-    // TODO: Generate frame with nom, etc
-    pub fn write_ethernet_packet<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
+    fn ethernet_payload_len(&self) -> usize {
+        usize::from(self.ethercat_payload_len()) + mem::size_of::<FrameHeader>()
+    }
+
+    fn write_ethernet_payload<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
         let (frame, data) = unsafe { self.inner.frame_and_buf() };
 
         let header = FrameHeader::pdu(self.ethercat_payload_len());
@@ -288,6 +294,24 @@ impl<'a> SendableFrame<'a> {
             Ok(buf)
         }
     }
+
+    pub fn write_ethernet_packet<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
+        let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len());
+
+        let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
+
+        let mut ethernet_frame = EthernetFrame::new_checked(buf).map_err(PduError::CreateFrame)?;
+
+        ethernet_frame.set_src_addr(MASTER_ADDR);
+        ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
+        ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
+
+        let ethernet_payload = ethernet_frame.payload_mut();
+
+        self.write_ethernet_payload(ethernet_payload)?;
+
+        Ok(ethernet_frame.into_inner())
+    }
 }
 
 #[derive(Debug)]
@@ -296,10 +320,19 @@ pub struct ReceivingFrame<'a> {
 }
 
 impl<'a> ReceivingFrame<'a> {
-    pub fn mark_received(self) -> Result<(), Error> {
+    pub fn mark_received(
+        self,
+        flags: PduFlags,
+        irq: u16,
+        working_counter: u16,
+    ) -> Result<(), Error> {
         let frame = unsafe { self.inner.frame() };
 
         log::trace!("Frame and buf mark_received");
+
+        // frame.flags = flags;
+        // frame.irq = irq;
+        // frame.working_counter = working_counter;
 
         log::trace!("Mark received, waker is {:?}", frame.waker);
 
@@ -349,6 +382,10 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> Poll<Self::Output> {
+        // return Poll::Ready(Err(PduError::InvalidFrameState.into()));
+
+        log::trace!("Poll fut");
+
         let rxin = match self.frame.take() {
             Some(r) => r,
             None => return Poll::Ready(Err(PduError::InvalidFrameState.into())),
@@ -358,6 +395,8 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
             FrameElement::swap_state(rxin.frame, FrameState::RxDone, FrameState::RxProcessing)
         };
 
+        log::trace!("Swappy {:?}", swappy);
+
         let was = match swappy {
             Ok(_frame_element) => {
                 log::trace!("Frame future is ready");
@@ -365,6 +404,8 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
             }
             Err(e) => e,
         };
+
+        log::trace!("Was {:?}", was);
 
         match was {
             FrameState::Sendable | FrameState::Sending => {
@@ -434,6 +475,8 @@ impl<'sto> ReceivedFrame<'sto> {
 
 impl<'sto> Drop for ReceivedFrame<'sto> {
     fn drop(&mut self) {
+        log::trace!("Drop frame element");
+
         unsafe { FrameElement::set_state(self.inner.frame, FrameState::None) }
     }
 }
