@@ -202,13 +202,7 @@ impl PduLoop {
             .get_mut(0..usize::from(payload_length))
             .ok_or(Error::Pdu(PduError::TooLong))?;
 
-        let (data, rest) = payload.split_at_mut(send_data_len);
-
-        data.copy_from_slice(send_data);
-        // If we write fewer bytes than the requested payload length (e.g. write SDO with data
-        // payload section reserved for reply), make sure the remaining data is zeroed out from any
-        // previous request.
-        rest.fill(0);
+        payload[0..send_data_len].copy_from_slice(send_data);
 
         let frame = frame.mark_sendable();
 
