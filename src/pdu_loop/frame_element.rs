@@ -142,13 +142,16 @@ impl<const N: usize> FrameElement<N> {
 
 // Used to store a FrameElement with erased const generics
 #[derive(Debug)]
-pub struct FrameBox<'a> {
+pub struct FrameBox<'sto> {
     pub frame: NonNull<FrameElement<0>>,
-    pub _lifetime: PhantomData<&'a mut FrameElement<0>>,
+    pub _lifetime: PhantomData<&'sto mut FrameElement<0>>,
 }
 
+// FIXME: This seems bad
+unsafe impl<'sto> Send for FrameBox<'sto> {}
+
 // TODO: Un-pub all
-impl<'a> FrameBox<'a> {
+impl<'sto> FrameBox<'sto> {
     pub unsafe fn replace_waker(&self, waker: Waker) {
         (&*addr_of!((*self.frame.as_ptr()).frame.waker))
             .try_write()
@@ -212,12 +215,12 @@ impl<'a> FrameBox<'a> {
 }
 
 #[derive(Debug)]
-pub struct CreatedFrame<'a> {
-    pub inner: FrameBox<'a>,
+pub struct CreatedFrame<'sto> {
+    pub inner: FrameBox<'sto>,
 }
 
-impl<'a> CreatedFrame<'a> {
-    pub fn mark_sendable(self) -> ReceiveFrameFut<'a> {
+impl<'sto> CreatedFrame<'sto> {
+    pub fn mark_sendable(self) -> ReceiveFrameFut<'sto> {
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::Sendable);
         }
@@ -232,8 +235,8 @@ impl<'a> CreatedFrame<'a> {
 }
 
 #[derive(Debug)]
-pub struct SendableFrame<'a> {
-    inner: FrameBox<'a>,
+pub struct SendableFrame<'sto> {
+    inner: FrameBox<'sto>,
 }
 
 impl<'a> SendableFrame<'a> {
@@ -322,11 +325,11 @@ impl<'a> SendableFrame<'a> {
 }
 
 #[derive(Debug)]
-pub struct ReceivingFrame<'a> {
-    pub inner: FrameBox<'a>,
+pub struct ReceivingFrame<'sto> {
+    pub inner: FrameBox<'sto>,
 }
 
-impl<'a> ReceivingFrame<'a> {
+impl<'sto> ReceivingFrame<'sto> {
     pub fn mark_received(
         self,
         flags: PduFlags,

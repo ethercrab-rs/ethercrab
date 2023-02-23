@@ -186,8 +186,8 @@ impl PduLoop {
     ///
     /// The PDU data length will be the larger of `send_data.len()` and `data_length`. If a larger
     /// response than `send_data` is desired, set the expected response length in `data_length`.
-    pub async fn pdu_tx_readwrite_len<'a>(
-        &'a self,
+    pub async fn pdu_tx_readwrite_len(
+        &self,
         command: Command,
         send_data: &[u8],
         data_length: u16,
