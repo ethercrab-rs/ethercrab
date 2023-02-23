@@ -157,6 +157,7 @@
 #![feature(const_option)]
 #![feature(const_nonnull_new)]
 #![feature(const_mut_refs)]
+#![feature(pointer_byte_offsets)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
 #![deny(missing_copy_implementations)]

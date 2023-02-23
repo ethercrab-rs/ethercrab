@@ -94,7 +94,7 @@ impl PduLoop {
         F: FnMut(&SendableFrame<'_>) -> Result<(), ()>,
     {
         for idx in 0..self.storage.num_frames {
-            let frame = unsafe { NonNull::new_unchecked(self.storage.frames.as_ptr().add(idx)) };
+            let frame = unsafe { NonNull::new_unchecked(self.storage.frame_at_index(idx)) };
 
             let sending = if let Some(frame) = unsafe { FrameElement::claim_sending(frame) } {
                 SendableFrame::new(FrameBox {

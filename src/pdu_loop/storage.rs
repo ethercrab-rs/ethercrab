@@ -75,7 +75,7 @@ impl<'a> PduStorageRef<'a> {
 
         log::trace!("Try to allocate frame #{idx}");
 
-        let frame = unsafe { NonNull::new_unchecked(self.frames.as_ptr().add(idx)) };
+        let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(idx)) };
         let frame = unsafe { FrameElement::claim_created(frame) }?;
 
         // Initialise frame
@@ -112,7 +112,7 @@ impl<'a> PduStorageRef<'a> {
 
         log::trace!("Receiving frame {idx}");
 
-        let frame = unsafe { NonNull::new_unchecked(self.frames.as_ptr().add(idx)) };
+        let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(idx)) };
         let frame = unsafe { FrameElement::claim_receiving(frame)? };
 
         Some(ReceivingFrame {
@@ -122,11 +122,38 @@ impl<'a> PduStorageRef<'a> {
             },
         })
     }
+
+    // TODO: Un-pub - this is a horrid API to expose
+    pub unsafe fn frame_at_index(&self, idx: usize) -> *mut FrameElement<0> {
+        let align = core::mem::align_of::<FrameElement<0>>();
+        let size = core::mem::size_of::<FrameElement<0>>() + self.frame_data_len;
+
+        let stride = round_up_align_of(size, align);
+
+        // NIGHTLY: pointer_byte_offsets
+        self.frames.as_ptr().byte_add(idx * stride)
+    }
+}
+
+fn round_up_align_of(size: usize, align: usize) -> usize {
+    ((size + align - 1) / align) * align
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn round_up_align() {
+        let storage: PduStorage<16, 128> = PduStorage::new();
+        let s = storage.as_ref();
+
+        unsafe { s.frame_at_index(0) };
+        unsafe { s.frame_at_index(15) };
+
+        assert_eq!(round_up_align_of(16 + 12, 16), 32);
+        assert_eq!(round_up_align_of(192, 8), 192);
+    }
 
     #[test]
     fn no_spare_frames() {
