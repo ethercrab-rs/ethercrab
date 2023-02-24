@@ -7,10 +7,6 @@
 
 An EtherCAT master written in pure Rust.
 
-EtherCrab is looking for sponsors! I (@jamwaffles) am developing EtherCrab in my spare time with
-currently no fulltime income, so if you want a safe, performant Rust EtherCat master please consider
-becoming a sponsor!
-
 ## Community
 
 [We're on Matrix!](https://matrix.to/#/#ethercrab:matrix.org)
@@ -198,9 +194,11 @@ These may change at any time.
 
 ## Sponsors
 
-Thank you to everyone who has donated test equipment, time or money to the EtherCrab project! To
-help the EtherCrab project progress faster, please consider becoming a sponsor, or donating EtherCAT
-hardware to ensure best compatibility.
+![GitHub Sponsors](https://img.shields.io/github/sponsors/jamwaffles)
+
+Thank you to everyone who has donated test equipment, time or money to the EtherCrab project! Would
+you like to be in this list? Then please consider
+[becoming a Github sponsor](https://github.com/sponsors/jamwaffles)!
 
 - [@nealsjoe](https://twitter.com/nealsjoe) generously donated an EK1100 with several IO modules for
   testing with.
