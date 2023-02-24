@@ -88,7 +88,7 @@ impl<const N: usize> FrameElement<N> {
         NonNull::new_unchecked(buf_ptr)
     }
 
-    unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
+    pub(in crate::pdu_loop) unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
         let fptr = this.as_ptr();
 
         (*addr_of_mut!((*fptr).status)).store(state, Ordering::Release);
@@ -220,7 +220,7 @@ impl<'sto> CreatedFrame<'sto> {
 
 #[derive(Debug)]
 pub struct SendableFrame<'sto> {
-    inner: FrameBox<'sto>,
+    pub(in crate::pdu_loop) inner: FrameBox<'sto>,
 }
 
 impl<'a> SendableFrame<'a> {
@@ -251,6 +251,12 @@ impl<'a> SendableFrame<'a> {
     fn write_ethernet_payload<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
         let (frame, data) = unsafe { self.inner.frame_and_buf() };
 
+        dbg!(
+            unsafe { self.inner.frame() }.flags.len(),
+            data.len(),
+            self.ethercat_payload_len(),
+            frame.len
+        );
         let header = FrameHeader::pdu(self.ethercat_payload_len());
 
         let buf = gen_simple(le_u16(header.0), buf).map_err(PduError::Encode)?;

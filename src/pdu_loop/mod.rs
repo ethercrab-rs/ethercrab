@@ -294,17 +294,145 @@ impl PduLoop {
 #[cfg(test)]
 mod tests {
     use super::{storage::PduStorage, *};
+    use crate::pdu_loop::frame_element::FrameState;
     use core::task::Poll;
     use smoltcp::wire::EthernetAddress;
 
-    static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
-    static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());
+    #[test]
+    fn write_frame() {
+        static STORAGE: PduStorage<1, 128> = PduStorage::<1, 128>::new();
+        static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());
+
+        let data = [0xaau8, 0xbb, 0xcc];
+
+        let mut frame = PDU_LOOP
+            .storage
+            .alloc_frame(
+                Command::Fpwr {
+                    address: 0x5678,
+                    register: 0x1234,
+                },
+                data.len() as u16,
+            )
+            .unwrap();
+
+        frame.buf_mut().copy_from_slice(&data);
+
+        let frame = SendableFrame::new(FrameBox {
+            frame: frame.inner.frame,
+            _lifetime: PhantomData,
+        });
+
+        let mut packet_buf = [0u8; 1536];
+
+        let packet = frame.write_ethernet_packet(&mut packet_buf).unwrap();
+
+        assert_eq!(
+            packet,
+            &[
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
+                0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
+                0x88, 0xa4, // EtherCAT ethertype
+                0x0f, 0x10, // TODO: What's this?
+                0x05, // Command: FPWR
+                0x00, // Frame index 0
+                0x78, 0x56, // Slave address,
+                0x34, 0x12, // Register address
+                0x03, 0x00, // Flags, 3 byte length
+                0x00, 0x00, // IRQ
+                0xaa, 0xbb, 0xcc, // Our payload
+                0x00, 0x00, // Working counter
+            ]
+        );
+    }
+
+    #[test]
+    fn write_multiple_frame() {
+        static STORAGE: PduStorage<1, 128> = PduStorage::<1, 128>::new();
+        static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());
+
+        let mut packet_buf = [0u8; 1536];
+
+        // ---
+
+        let data = [0xaau8, 0xbb, 0xcc];
+
+        let mut frame = PDU_LOOP
+            .storage
+            .alloc_frame(
+                Command::Fpwr {
+                    address: 0x5678,
+                    register: 0x1234,
+                },
+                data.len() as u16,
+            )
+            .unwrap();
+
+        frame.buf_mut().copy_from_slice(&data);
+
+        let frame = SendableFrame::new(FrameBox {
+            frame: frame.inner.frame,
+            _lifetime: PhantomData,
+        });
+
+        let _packet_1 = frame.write_ethernet_packet(&mut packet_buf).unwrap();
+
+        // Manually reset frame state so it can be reused.
+        unsafe { FrameElement::set_state(frame.inner.frame, FrameState::None) };
+
+        // ---
+
+        let data = [0xaau8, 0xbb];
+
+        let mut frame = PDU_LOOP
+            .storage
+            .alloc_frame(
+                Command::Fpwr {
+                    address: 0x6789,
+                    register: 0x1234,
+                },
+                data.len() as u16,
+            )
+            .unwrap();
+
+        frame.buf_mut().copy_from_slice(&data);
+
+        let frame = SendableFrame::new(FrameBox {
+            frame: frame.inner.frame,
+            _lifetime: PhantomData,
+        });
+
+        let packet_2 = frame.write_ethernet_packet(&mut packet_buf).unwrap();
+
+        // ---
+
+        assert_eq!(
+            packet_2,
+            &[
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
+                0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
+                0x88, 0xa4, // EtherCAT ethertype
+                0x0e, 0x10, // EtherCAT frame header: type PDU, length 2 (plus header)
+                0x05, // Command: FPWR
+                0x00, // Frame index 0
+                0x89, 0x67, // Slave address,
+                0x34, 0x12, // Register address
+                0x02, 0x00, // Flags, 2 byte length
+                0x00, 0x00, // IRQ
+                0xaa, 0xbb, // Our payload
+                0x00, 0x00, // Working counter
+            ]
+        );
+    }
 
     // Test the whole TX/RX loop with multiple threads
     #[tokio::test]
     async fn parallel() {
         // let _ = env_logger::builder().is_test(true).try_init();
         // env_logger::try_init().ok();
+
+        static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
+        static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());
 
         let num_frames = 64;
 
