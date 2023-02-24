@@ -113,7 +113,6 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
     let mut parents_it = parents.iter().rev();
 
     while let Some(parent) = parents_it.next() {
-        dbg!(parent);
         // If the previous parent in the chain is a leaf node in the tree, we need to
         // continue iterating to find the common parent, i.e. the split point
         if parent.ports.topology() == Topology::LineEnd {
@@ -206,7 +205,7 @@ fn configure_slave_offsets(
         let my_time = prev_port.dc_receive_time - entry_port.dc_receive_time;
 
         // The delay between the previous slave and this one
-        let delay = (parent_time - my_time) / 2;
+        let delay = (my_time.saturating_sub(parent_time)) / 2;
 
         *delay_accum += delay;
 
