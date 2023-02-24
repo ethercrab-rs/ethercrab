@@ -14,16 +14,16 @@ use core::{
     sync::atomic::{AtomicU8, Ordering},
 };
 
-/// TODO: Docs
+/// Stores PDU frames that are currently being prepared to send, in flight, or being received and
+/// processed.
 pub struct PduStorage<const N: usize, const DATA: usize> {
-    /// TODO: Docs
-    pub frames: UnsafeCell<MaybeUninit<[FrameElement<DATA>; N]>>,
+    frames: UnsafeCell<MaybeUninit<[FrameElement<DATA>; N]>>,
 }
 
 unsafe impl<const N: usize, const DATA: usize> Sync for PduStorage<N, DATA> {}
 
 impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
-    /// TODO: Docs
+    /// Create a new `PduStorage` instance.
     pub const fn new() -> Self {
         // MSRV: Make `N` a `u8` when `generic_const_exprs` is stablised
         assert!(
@@ -36,7 +36,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
         Self { frames }
     }
 
-    /// TODO: Docs
+    /// Get a reference to this `PduStorage` with erased lifetimes.
     pub const fn as_ref(&self) -> PduStorageRef<'_> {
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
@@ -123,8 +123,7 @@ impl<'a> PduStorageRef<'a> {
         })
     }
 
-    // TODO: Un-pub - this is a horrid API to expose
-    pub unsafe fn frame_at_index(&self, idx: usize) -> *mut FrameElement<0> {
+    pub(in crate::pdu_loop) unsafe fn frame_at_index(&self, idx: usize) -> *mut FrameElement<0> {
         let align = core::mem::align_of::<FrameElement<0>>();
         let size = core::mem::size_of::<FrameElement<0>>() + self.frame_data_len;
 
