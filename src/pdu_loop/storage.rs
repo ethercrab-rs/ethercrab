@@ -127,32 +127,16 @@ impl<'a> PduStorageRef<'a> {
         let align = core::mem::align_of::<FrameElement<0>>();
         let size = core::mem::size_of::<FrameElement<0>>() + self.frame_data_len;
 
-        let stride = round_up_align_of(size, align);
+        let stride = core::alloc::Layout::from_size_align_unchecked(size, align).size();
 
         // NIGHTLY: pointer_byte_offsets
         self.frames.as_ptr().byte_add(idx * stride)
     }
 }
 
-fn round_up_align_of(size: usize, align: usize) -> usize {
-    ((size + align - 1) / align) * align
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn round_up_align() {
-        let storage: PduStorage<16, 128> = PduStorage::new();
-        let s = storage.as_ref();
-
-        unsafe { s.frame_at_index(0) };
-        unsafe { s.frame_at_index(15) };
-
-        assert_eq!(round_up_align_of(16 + 12, 16), 32);
-        assert_eq!(round_up_align_of(192, 8), 192);
-    }
 
     #[test]
     fn no_spare_frames() {
