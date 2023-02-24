@@ -20,6 +20,8 @@ An EtherCAT master written in Rust.
 
 ### Fixed
 
+- [#14] Fixed various overflow/arithmetic bugs in distributed clock time calculations and PDI
+  configuration
 - [#6] Fixed topology detection not stopping at first upstream fork when there is a slave device
   before the fork.
 - [#6] Internal bugfixes to topology discovery code.
@@ -37,5 +39,6 @@ An EtherCAT master written in Rust.
 [#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
 [#6]: https://github.com/ethercrab-rs/ethercrab/pull/6
 [#9]: https://github.com/ethercrab-rs/ethercrab/pull/9
+[#14]: https://github.com/ethercrab-rs/ethercrab/pull/14
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
