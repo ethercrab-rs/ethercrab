@@ -15,6 +15,7 @@ use core::{
     future::Future,
     marker::PhantomData,
     mem,
+    ops::Deref,
     ptr::{addr_of, addr_of_mut, NonNull},
     sync::atomic::Ordering,
     task::Poll,
@@ -445,22 +446,67 @@ impl<'sto> ReceivedFrame<'sto> {
         unsafe { self.inner.buf() }
     }
 
-    pub fn to_owned<T>(self) -> Result<PduResponse<T>, PduError>
-    where
-        T: PduRead,
-    {
-        let res = T::try_from_slice(self.data()).map_err(|e| {
-            log::error!(
-                "PDU data decode: {:?}, T: {} data {:?}",
-                e,
-                type_name::<T>(),
-                self.data()
-            );
+    fn frame(&self) -> &PduFrame {
+        unsafe { self.inner.frame() }
+    }
 
-            PduError::Decode
-        })?;
+    fn frame_and_data(&self) -> (&PduFrame, &[u8]) {
+        let (frame, buf) = unsafe { self.inner.frame_and_buf() };
+        let data = &buf[..frame.flags.len().into()];
 
-        Ok((res, self.working_counter()))
+        (frame, data)
+    }
+
+    // pub fn to_owned<T>(self) -> Result<PduResponse<T>, PduError>
+    // where
+    //     T: PduRead,
+    // {
+    //     let res = T::try_from_slice(self.data()).map_err(|e| {
+    //         log::error!(
+    //             "PDU data decode: {:?}, T: {} data {:?}",
+    //             e,
+    //             type_name::<T>(),
+    //             self.data()
+    //         );
+
+    //         PduError::Decode
+    //     })?;
+
+    //     Ok((res, self.working_counter()))
+    // }
+
+    fn into_data_buf(self) -> RxFrameDataBuf<'sto> {
+        let len: usize = self.frame().flags.len().into();
+
+        // debug_assert!(len <= self.frame.buf_len);
+
+        let sptr = unsafe { FrameElement::buf_ptr(self.inner.frame) };
+        let eptr = unsafe { NonNull::new_unchecked(sptr.as_ptr().add(len)) };
+
+        RxFrameDataBuf {
+            rx_fr: self,
+            data_start: sptr,
+            data_end: eptr,
+        }
+    }
+
+    pub fn wkc_new(
+        self,
+        expected: u16,
+        context: &'static str,
+    ) -> Result<RxFrameDataBuf<'sto>, Error> {
+        let (frame, data) = self.frame_and_data();
+        let act_wc = frame.working_counter;
+
+        if act_wc == expected {
+            Ok(self.into_data_buf())
+        } else {
+            Err(Error::WorkingCounter {
+                expected,
+                received: act_wc,
+                context: Some(context),
+            })
+        }
     }
 }
 
@@ -473,3 +519,33 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
 }
 
 pub type PduResponse<T> = (T, u16);
+
+pub struct RxFrameDataBuf<'sto> {
+    rx_fr: ReceivedFrame<'sto>,
+    data_start: NonNull<u8>,
+    data_end: NonNull<u8>,
+}
+
+impl<'sto> Deref for RxFrameDataBuf<'sto> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        let len = self.len();
+        unsafe { core::slice::from_raw_parts(self.data_start.as_ptr(), len) }
+    }
+}
+
+impl<'sto> RxFrameDataBuf<'sto> {
+    pub fn len(&self) -> usize {
+        (self.data_end.as_ptr() as usize) - (self.data_start.as_ptr() as usize)
+    }
+
+    pub fn trim_front(&mut self, ct: usize) {
+        let sz = self.len();
+        if ct > sz {
+            self.data_start = self.data_end;
+        } else {
+            self.data_start = unsafe { NonNull::new_unchecked(self.data_start.as_ptr().add(ct)) };
+        }
+    }
+}
