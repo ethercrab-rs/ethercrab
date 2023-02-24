@@ -113,7 +113,6 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
     let mut parents_it = parents.iter().rev();
 
     while let Some(parent) = parents_it.next() {
-        dbg!(parent);
         // If the previous parent in the chain is a leaf node in the tree, we need to
         // continue iterating to find the common parent, i.e. the split point
         if parent.ports.topology() == Topology::LineEnd {
@@ -170,9 +169,9 @@ fn configure_slave_offsets(
     let time_p3 = slave.ports.0[3].dc_receive_time;
 
     // Time deltas between port receive times
-    let d01 = time_p1 - time_p0;
-    let d12 = time_p2 - time_p1;
-    let d32 = time_p3 - time_p2;
+    let d01 = time_p1.saturating_sub(time_p0);
+    let d12 = time_p2.saturating_sub(time_p1);
+    let d32 = time_p3.saturating_sub(time_p2);
 
     let loop_propagation_time = slave.ports.propagation_time();
     let child_delay = slave.ports.child_delay().unwrap_or(0);
@@ -206,7 +205,7 @@ fn configure_slave_offsets(
         let my_time = prev_port.dc_receive_time - entry_port.dc_receive_time;
 
         // The delay between the previous slave and this one
-        let delay = (parent_time - my_time) / 2;
+        let delay = (my_time.saturating_sub(parent_time)) / 2;
 
         *delay_accum += delay;
 
@@ -313,7 +312,7 @@ mod tests {
     use crate::{
         register::SupportFlags,
         slave::{
-            ports::{tests::make_ports, Ports},
+            ports::{tests::make_ports, Port, Ports},
             SlaveConfig, SlaveIdentity,
         },
     };
@@ -418,5 +417,59 @@ mod tests {
         let parent_index = find_slave_parent(&parents, &me);
 
         assert_eq!(parent_index.unwrap(), None);
+    }
+
+    #[test]
+    fn p0_p1_times_only() {
+        // From EC400 in test rig
+        let ports = Ports([
+            Port {
+                active: true,
+                dc_receive_time: 641524306,
+                number: 0,
+                downstream_to: None,
+            },
+            Port {
+                active: false,
+                dc_receive_time: 1413563250,
+                number: 1,
+                downstream_to: None,
+            },
+            Port {
+                active: false,
+                dc_receive_time: 0,
+                number: 2,
+                downstream_to: None,
+            },
+            Port {
+                active: false,
+                dc_receive_time: 0,
+                number: 3,
+                downstream_to: None,
+            },
+        ]);
+
+        assert_eq!(ports.topology(), Topology::LineEnd);
+
+        let mut slave = Slave {
+            configured_address: 0x1000,
+            ports,
+            config: SlaveConfig::default(),
+            identity: SlaveIdentity::default(),
+            name: "Default".into(),
+            flags: SupportFlags::default(),
+            dc_receive_time: 0,
+            index: 0,
+            parent_index: None,
+            propagation_delay: 0,
+        };
+
+        let mut parents = [];
+
+        let mut delay_accum = 0u32;
+
+        let result = configure_slave_offsets(&mut slave, &mut parents, &mut delay_accum);
+
+        assert_eq!(result.unwrap(), 0i64);
     }
 }
