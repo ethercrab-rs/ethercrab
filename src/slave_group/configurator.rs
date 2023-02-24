@@ -70,7 +70,7 @@ where
                 .await?;
         }
 
-        *self.read_pdi_len = (*self.start_address - global_offset.start_address) as usize;
+        *self.read_pdi_len = (global_offset.start_address - *self.start_address) as usize;
 
         log::debug!("Slave mailboxes configured and init hooks called");
 
