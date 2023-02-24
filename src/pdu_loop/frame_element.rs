@@ -148,7 +148,7 @@ pub struct FrameBox<'sto> {
     pub _lifetime: PhantomData<&'sto mut FrameElement<0>>,
 }
 
-// FIXME: This seems bad
+// FIXME: This seems bad. The examples break without it though
 unsafe impl<'sto> Send for FrameBox<'sto> {}
 
 impl<'sto> FrameBox<'sto> {
@@ -465,6 +465,9 @@ pub struct RxFrameDataBuf<'sto> {
     data_start: NonNull<u8>,
     data_end: NonNull<u8>,
 }
+
+// FIXME: This seems bad. The examples break without it though
+unsafe impl<'sto> Send for RxFrameDataBuf<'sto> {}
 
 impl<'sto> Deref for RxFrameDataBuf<'sto> {
     type Target = [u8];
