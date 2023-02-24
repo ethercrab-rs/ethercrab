@@ -1,4 +1,4 @@
-pub mod frame_element;
+mod frame_element;
 mod frame_header;
 mod pdu_flags;
 mod storage;
@@ -7,7 +7,7 @@ use crate::{
     command::{Command, CommandCode},
     error::{Error, PduError, PduValidationError},
     pdu_loop::{
-        frame_element::{FrameBox, ReceivedFrame, SendableFrame},
+        frame_element::{FrameBox, FrameElement, ReceivedFrame, SendableFrame},
         frame_header::FrameHeader,
         pdu_flags::PduFlags,
         storage::PduStorageRef,
@@ -25,7 +25,7 @@ use packed_struct::PackedStructSlice;
 use smoltcp::wire::EthernetFrame;
 use spin::RwLock;
 
-pub use crate::pdu_loop::{frame_element::FrameElement, storage::PduStorage};
+pub use crate::pdu_loop::{frame_element::RxFrameDataBuf, storage::PduStorage};
 
 pub type PduResponse<T> = (T, u16);
 

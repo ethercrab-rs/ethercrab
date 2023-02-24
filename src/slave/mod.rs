@@ -14,7 +14,7 @@ use crate::{
     mailbox::MailboxType,
     pdi::PdiSegment,
     pdu_data::{PduData, PduRead},
-    pdu_loop::frame_element::RxFrameDataBuf,
+    pdu_loop::RxFrameDataBuf,
     register::{RegisterAddress, SupportFlags},
     slave::ports::{Port, Ports},
     slave_state::SlaveState,
