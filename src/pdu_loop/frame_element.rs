@@ -1,7 +1,6 @@
 use crate::{
     command::Command,
     error::{Error, PduError},
-    pdu_data::PduRead,
     pdu_loop::{frame_header::FrameHeader, pdu_flags::PduFlags},
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
@@ -11,7 +10,6 @@ use cookie_factory::{
     gen_simple, GenError,
 };
 use core::{
-    any::type_name,
     future::Future,
     marker::PhantomData,
     mem,
@@ -153,16 +151,15 @@ pub struct FrameBox<'sto> {
 // FIXME: This seems bad
 unsafe impl<'sto> Send for FrameBox<'sto> {}
 
-// TODO: Un-pub all
 impl<'sto> FrameBox<'sto> {
-    pub unsafe fn replace_waker(&self, waker: Waker) {
+    unsafe fn replace_waker(&self, waker: Waker) {
         (*addr_of!((*self.frame.as_ptr()).frame.waker))
             .try_write()
             .expect("Contention replace_waker")
             .replace(waker);
     }
 
-    pub unsafe fn take_waker(&self) -> Option<Waker> {
+    unsafe fn take_waker(&self) -> Option<Waker> {
         (*addr_of!((*self.frame.as_ptr()).frame.waker))
             .try_write()
             .expect("Contention take_waker")
@@ -171,7 +168,7 @@ impl<'sto> FrameBox<'sto> {
 
     // FIXME: Is interior mutability ok here? MIRI isn't complaining about race conditions so
     // _maybe_ we're ok? The 3 fields aren't set anywhere else except during frame initialisation.
-    pub unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
+    unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
         let frame = NonNull::new_unchecked(addr_of_mut!((*self.frame.as_ptr()).frame));
 
         *addr_of_mut!((*frame.as_ptr()).flags) = flags;
@@ -179,39 +176,22 @@ impl<'sto> FrameBox<'sto> {
         *addr_of_mut!((*frame.as_ptr()).working_counter) = working_counter;
     }
 
-    pub unsafe fn frame(&self) -> &PduFrame {
+    unsafe fn frame(&self) -> &PduFrame {
         unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
-    }
-
-    pub unsafe fn frame_mut(&self) -> &mut PduFrame {
-        unsafe { &mut *addr_of_mut!((*self.frame.as_ptr()).frame) }
     }
 
     unsafe fn buf_len(&self) -> usize {
         self.frame().len
     }
 
-    pub unsafe fn frame_and_buf(&self) -> (&PduFrame, &[u8]) {
+    unsafe fn frame_and_buf(&self) -> (&PduFrame, &[u8]) {
         let buf_ptr = unsafe { addr_of!((*self.frame.as_ptr()).buffer).cast::<u8>() };
         let buf = unsafe { core::slice::from_raw_parts(buf_ptr, self.buf_len()) };
         let frame = unsafe { &*addr_of!((*self.frame.as_ptr()).frame) };
         (frame, buf)
     }
 
-    pub unsafe fn frame_and_buf_mut(&mut self) -> (&mut PduFrame, &mut [u8]) {
-        let buf_ptr = unsafe { addr_of_mut!((*self.frame.as_ptr()).buffer).cast::<u8>() };
-        let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, self.buf_len()) };
-        let frame = unsafe { &mut *addr_of_mut!((*self.frame.as_ptr()).frame) };
-
-        (frame, buf)
-    }
-
-    pub unsafe fn buf(&self) -> &[u8] {
-        let ptr = FrameElement::<0>::buf_ptr(self.frame);
-        core::slice::from_raw_parts(ptr.as_ptr(), self.buf_len())
-    }
-
-    pub unsafe fn buf_mut(&mut self) -> &mut [u8] {
+    unsafe fn buf_mut(&mut self) -> &mut [u8] {
         let ptr = FrameElement::<0>::buf_ptr(self.frame);
         core::slice::from_raw_parts_mut(ptr.as_ptr(), self.buf_len())
     }
