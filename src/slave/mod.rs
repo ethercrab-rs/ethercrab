@@ -489,7 +489,7 @@ impl<'a> SlaveRef<'a> {
                 read_mailbox.len,
             )
             .await?
-            .wkc_new(1, "SDO read mailbox")?;
+            .wkc(1, "SDO read mailbox")?;
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
 

@@ -376,9 +376,11 @@ mod tests {
                     &data,
                 )
                 .await
+                .unwrap()
+                .wkc(0, "testing")
                 .unwrap();
 
-            assert_eq!(result.data(), &data);
+            assert_eq!(&*result, &data);
         }
 
         log::info!("Sent all PDUs");

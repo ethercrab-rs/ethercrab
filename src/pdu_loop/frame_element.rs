@@ -24,6 +24,8 @@ use packed_struct::PackedStruct;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 use std::task::Waker;
 
+use super::PduResponse;
+
 #[atomic_enum::atomic_enum]
 #[derive(PartialEq, Default)]
 pub enum FrameState {
@@ -424,78 +426,12 @@ pub struct ReceivedFrame<'sto> {
 }
 
 impl<'sto> ReceivedFrame<'sto> {
-    pub fn working_counter(&self) -> u16 {
+    fn working_counter(&self) -> u16 {
         unsafe { self.inner.frame() }.working_counter
     }
 
-    pub fn wkc(self, expected: u16, context: &'static str) -> Result<Self, Error> {
-        let wkc = self.working_counter();
-
-        if wkc == expected {
-            Ok(self)
-        } else {
-            Err(Error::WorkingCounter {
-                expected,
-                received: wkc,
-                context: Some(context),
-            })
-        }
-    }
-
-    pub fn data(&'sto self) -> &'sto [u8] {
-        unsafe { self.inner.buf() }
-    }
-
-    fn frame(&self) -> &PduFrame {
-        unsafe { self.inner.frame() }
-    }
-
-    fn frame_and_data(&self) -> (&PduFrame, &[u8]) {
-        let (frame, buf) = unsafe { self.inner.frame_and_buf() };
-        let data = &buf[..frame.flags.len().into()];
-
-        (frame, data)
-    }
-
-    // pub fn to_owned<T>(self) -> Result<PduResponse<T>, PduError>
-    // where
-    //     T: PduRead,
-    // {
-    //     let res = T::try_from_slice(self.data()).map_err(|e| {
-    //         log::error!(
-    //             "PDU data decode: {:?}, T: {} data {:?}",
-    //             e,
-    //             type_name::<T>(),
-    //             self.data()
-    //         );
-
-    //         PduError::Decode
-    //     })?;
-
-    //     Ok((res, self.working_counter()))
-    // }
-
-    fn into_data_buf(self) -> RxFrameDataBuf<'sto> {
-        let len: usize = self.frame().flags.len().into();
-
-        // debug_assert!(len <= self.frame.buf_len);
-
-        let sptr = unsafe { FrameElement::buf_ptr(self.inner.frame) };
-        let eptr = unsafe { NonNull::new_unchecked(sptr.as_ptr().add(len)) };
-
-        RxFrameDataBuf {
-            rx_fr: self,
-            data_start: sptr,
-            data_end: eptr,
-        }
-    }
-
-    pub fn wkc_new(
-        self,
-        expected: u16,
-        context: &'static str,
-    ) -> Result<RxFrameDataBuf<'sto>, Error> {
-        let (frame, data) = self.frame_and_data();
+    pub fn wkc(self, expected: u16, context: &'static str) -> Result<RxFrameDataBuf<'sto>, Error> {
+        let frame = self.frame();
         let act_wc = frame.working_counter;
 
         if act_wc == expected {
@@ -508,6 +444,32 @@ impl<'sto> ReceivedFrame<'sto> {
             })
         }
     }
+
+    /// Retrieve the frame's internal data without checking for working counter.
+    pub fn into_data(self) -> PduResponse<RxFrameDataBuf<'sto>> {
+        let wkc = self.working_counter();
+
+        (self.into_data_buf(), wkc)
+    }
+
+    fn frame(&self) -> &PduFrame {
+        unsafe { self.inner.frame() }
+    }
+
+    fn into_data_buf(self) -> RxFrameDataBuf<'sto> {
+        let len: usize = self.frame().flags.len().into();
+
+        // debug_assert!(len <= self.frame.buf_len);
+
+        let sptr = unsafe { FrameElement::buf_ptr(self.inner.frame) };
+        let eptr = unsafe { NonNull::new_unchecked(sptr.as_ptr().add(len)) };
+
+        RxFrameDataBuf {
+            _frame: self,
+            data_start: sptr,
+            data_end: eptr,
+        }
+    }
 }
 
 impl<'sto> Drop for ReceivedFrame<'sto> {
@@ -518,10 +480,8 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
     }
 }
 
-pub type PduResponse<T> = (T, u16);
-
 pub struct RxFrameDataBuf<'sto> {
-    rx_fr: ReceivedFrame<'sto>,
+    _frame: ReceivedFrame<'sto>,
     data_start: NonNull<u8>,
     data_end: NonNull<u8>,
 }
