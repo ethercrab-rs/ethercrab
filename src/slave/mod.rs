@@ -535,8 +535,7 @@ impl<'a> SlaveRef<'a> {
                 sub_index: request.sub_index(),
             }))
         } else {
-            // Ok((headers, data))
-            todo!()
+            Ok((headers, data))
         }
     }
 }
