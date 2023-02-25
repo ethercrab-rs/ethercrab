@@ -2,15 +2,25 @@ use crate::error::Error;
 use core::time::Duration;
 use embassy_futures::select::{select, Either};
 
-/// A trait implemented for the chosen timer provider.
-pub trait TimerFactory: core::future::Future + Unpin {
-    /// This should return a future which resolves after the given duration.
-    fn timer(duration: Duration) -> Self;
+#[cfg(not(feature = "std"))]
+pub async fn timer(duration: Duration) {
+    embassy_time::Timer::after(duration).await;
 }
 
-impl TimerFactory for smol::Timer {
-    fn timer(duration: Duration) -> Self {
-        Self::after(duration)
+#[cfg(feature = "std")]
+pub async fn timer(duration: Duration) {
+    smol::Timer::after(duration).await;
+}
+
+pub async fn timeout<O, F>(timeout: Duration, future: F) -> Result<O, Error>
+where
+    F: core::future::Future<Output = Result<O, Error>>,
+{
+    let future = core::pin::pin!(future);
+
+    match select(future, timer(timeout)).await {
+        Either::First(res) => res,
+        Either::Second(_timeout) => Err(Error::Timeout),
     }
 }
 
@@ -44,11 +54,8 @@ pub struct Timeouts {
 }
 
 impl Timeouts {
-    pub(crate) async fn loop_tick<TIMEOUT>(&self)
-    where
-        TIMEOUT: TimerFactory,
-    {
-        TIMEOUT::timer(self.wait_loop_delay).await;
+    pub(crate) async fn loop_tick(&self) {
+        timer(self.wait_loop_delay).await;
     }
 }
 
@@ -62,18 +69,5 @@ impl Default for Timeouts {
             mailbox_echo: Duration::from_millis(100),
             mailbox_response: Duration::from_millis(1000),
         }
-    }
-}
-
-pub(crate) async fn timeout<TIMEOUT, O, F>(timeout: Duration, future: F) -> Result<O, Error>
-where
-    TIMEOUT: TimerFactory,
-    F: core::future::Future<Output = Result<O, Error>>,
-{
-    let future = core::pin::pin!(future);
-
-    match select(future, TIMEOUT::timer(timeout)).await {
-        Either::First(res) => res,
-        Either::Second(_timeout) => Err(Error::Timeout),
     }
 }

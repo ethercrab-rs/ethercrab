@@ -12,6 +12,7 @@ target_steps: &target_steps
     - run: rustup target add x86_64-unknown-linux-gnu || true
     - run: cargo install cargo-deadlinks --target x86_64-unknown-linux-gnu
 
+    - run: rustup target add $TARGET || true
     - run: cargo test --target $TARGET
     - run: cargo build --target $TARGET --examples --release
     - run: cargo deadlinks --ignore-fragments
@@ -29,10 +30,17 @@ jobs:
     environment:
       - TARGET: "x86_64-unknown-linux-gnu"
     <<: *target_steps
+  target-thumbv7m-none-eabi:
+    resource_class: large
+    environment:
+      - TARGET: "thumbv7m-none-eabi"
+      - ARGS: "--no-default-features"
+    <<: *target_steps
 
 build_jobs: &build_jobs
   jobs:
     - target-x86_64-unknown-linux-gnu
+    - target-thumbv7m-none-eabi
 
 workflows:
   version: 2

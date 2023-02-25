@@ -3,7 +3,6 @@ use crate::{
     error::{EepromError, Error},
     register::RegisterAddress,
     slave::slave_client::SlaveClient,
-    timer_factory::TimerFactory,
 };
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
@@ -13,21 +12,18 @@ const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 /// EEPROM section reader.
 ///
 /// Controls an internal pointer to sequentially read data from a section in a slave's EEPROM.
-pub struct EepromSectionReader<'a, TIMEOUT> {
+pub struct EepromSectionReader<'a> {
     start: u16,
     /// Category length in bytes.
     len: u16,
     byte_count: u16,
     read: heapless::Deque<u8, 8>,
-    // eeprom: &'a Eeprom<'a, TIMEOUT>,
+    // eeprom: &'a Eeprom<'a>,
     read_length: usize,
-    client: &'a SlaveClient<'a, TIMEOUT>,
+    client: &'a SlaveClient<'a>,
 }
 
-impl<'a, TIMEOUT> EepromSectionReader<'a, TIMEOUT>
-where
-    TIMEOUT: TimerFactory + 'a,
-{
+impl<'a> EepromSectionReader<'a> {
     /// Create a new EEPROM section reader.
     ///
     /// This is used to read data from individual sections in a slave's EEPROM. Many methods on
@@ -35,9 +31,9 @@ where
     /// [`EepromError::SectionUnderrun`] errors if the section cannot be completely read as this is
     /// often an indicator of a bug in either the slave's EEPROM or EtherCrab.
     pub async fn new(
-        client: &'a SlaveClient<'a, TIMEOUT>,
+        client: &'a SlaveClient<'a>,
         category: CategoryType,
-    ) -> Result<Option<EepromSectionReader<'_, TIMEOUT>>, Error> {
+    ) -> Result<Option<EepromSectionReader<'_>>, Error> {
         let mut start_word = SII_FIRST_CATEGORY_START;
 
         loop {
@@ -72,7 +68,7 @@ where
 
     /// Read an arbitrary chunk of the EEPROM instead of using an EEPROM section configu to define
     /// start address and length.
-    pub fn start_at(client: &'a SlaveClient<'a, TIMEOUT>, address: u16, len_bytes: u16) -> Self {
+    pub fn start_at(client: &'a SlaveClient<'a>, address: u16, len_bytes: u16) -> Self {
         Self {
             start: address,
             len: len_bytes,
@@ -84,7 +80,7 @@ where
     }
 
     async fn read_eeprom_raw<'client>(
-        client: &'client SlaveClient<'client, TIMEOUT>,
+        client: &'client SlaveClient<'client>,
         eeprom_address: u16,
     ) -> Result<[u8; 8], Error> {
         let status = client
@@ -164,8 +160,8 @@ where
     }
 
     /// Wait for EEPROM read or write operation to finish and clear the busy flag.
-    async fn wait<'client>(client: &'client SlaveClient<'client, TIMEOUT>) -> Result<(), Error> {
-        crate::timer_factory::timeout::<TIMEOUT, _, _>(client.timeouts().eeprom, async {
+    async fn wait<'client>(client: &'client SlaveClient<'client>) -> Result<(), Error> {
+        crate::timer_factory::timeout(client.timeouts().eeprom, async {
             loop {
                 let control = client
                     .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
@@ -175,7 +171,7 @@ where
                     break Ok(());
                 }
 
-                client.timeouts().loop_tick::<TIMEOUT>().await;
+                client.timeouts().loop_tick().await;
             }
         })
         .await

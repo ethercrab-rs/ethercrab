@@ -1,6 +1,6 @@
 //! Items to use when not in `no_std` environments.
 
-use crate::{client::Client, timer_factory::TimerFactory};
+use crate::client::Client;
 use core::{future::Future, task::Poll};
 use embassy_futures::select;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
@@ -50,13 +50,10 @@ pub fn get_tx_rx(
 // TODO: Proper error - there are a couple of unwraps in here
 // TODO: Make some sort of split() method to ensure we can only ever have one tx/rx future running
 /// Create a task that waits for PDUs to send, and receives PDU responses.
-pub fn tx_rx_task<TIMEOUT>(
+pub fn tx_rx_task(
     device: &str,
-    client: &Arc<Client<'static, TIMEOUT>>,
-) -> Result<impl Future<Output = embassy_futures::select::Either<(), ()>>, std::io::Error>
-where
-    TIMEOUT: TimerFactory + Send + 'static,
-{
+    client: &Arc<Client<'static>>,
+) -> Result<impl Future<Output = embassy_futures::select::Either<(), ()>>, std::io::Error> {
     let client_tx = client.clone();
     let client_rx = client.clone();
 
