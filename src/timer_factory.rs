@@ -4,7 +4,10 @@ use embassy_futures::select::{select, Either};
 
 #[cfg(not(feature = "std"))]
 pub async fn timer(duration: Duration) {
-    embassy_time::Timer::after(duration).await;
+    embassy_time::Timer::after(embassy_time::Duration::from_micros(
+        duration.as_micros() as u64
+    ))
+    .await;
 }
 
 #[cfg(feature = "std")]
