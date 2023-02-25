@@ -90,7 +90,7 @@ impl<'a> PduStorageRef<'a> {
                 working_counter: 0,
             });
 
-            let buf_ptr = addr_of_mut!((*frame.as_ptr()).buffer);
+            let buf_ptr: *mut u8 = addr_of_mut!((*frame.as_ptr()).buffer).cast();
             buf_ptr.write_bytes(0x00, data_length_usize);
         }
 
@@ -137,6 +137,40 @@ impl<'a> PduStorageRef<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pdu_loop::frame_element::FrameState;
+
+    #[test]
+    fn zeroed_data() {
+        let storage: PduStorage<1, 8> = PduStorage::new();
+        let s = storage.as_ref();
+
+        let mut frame = s
+            .alloc_frame(
+                Command::Brd {
+                    address: 0x1234,
+                    register: 0x5678,
+                },
+                4,
+            )
+            .unwrap();
+
+        frame.buf_mut().copy_from_slice(&[0xaa, 0xbb, 0xcc, 0xdd]);
+
+        // Manually reset frame state so it can be reused.
+        unsafe { FrameElement::set_state(frame.inner.frame, FrameState::None) };
+
+        let mut frame = s
+            .alloc_frame(
+                Command::Brd {
+                    address: 0x1234,
+                    register: 0x5678,
+                },
+                8,
+            )
+            .unwrap();
+
+        assert_eq!(frame.buf_mut(), &[0u8; 8]);
+    }
 
     #[test]
     fn no_spare_frames() {
