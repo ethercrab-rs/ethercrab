@@ -50,16 +50,17 @@ jobs:
     environment:
       - TARGET: "x86_64-unknown-linux-gnu"
     <<: *target_steps
-  target-thumbv7m-none-eabi:
-    resource_class: large
-    environment:
-      - TARGET: "thumbv7m-none-eabi"
-    <<: *target_steps_no_test
+  # TODO: Re-enable when we can remove `Box` from the slave group preop hook fn
+  # target-thumbv7m-none-eabi:
+  #   resource_class: large
+  #   environment:
+  #     - TARGET: "thumbv7m-none-eabi"
+  #   <<: *target_steps_no_test
 
 build_jobs: &build_jobs
   jobs:
     - target-x86_64-unknown-linux-gnu
-    - target-thumbv7m-none-eabi
+    # - target-thumbv7m-none-eabi
 
 workflows:
   version: 2
