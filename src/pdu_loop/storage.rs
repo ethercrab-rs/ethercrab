@@ -81,7 +81,6 @@ impl<'a> PduStorageRef<'a> {
         // Initialise frame
         unsafe {
             addr_of_mut!((*frame.as_ptr()).frame).write(PduFrame {
-                len: data_length_usize,
                 index: idx_u8,
                 waker: spin::RwLock::new(None),
                 command,

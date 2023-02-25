@@ -50,9 +50,6 @@ pub enum FrameState {
 
 #[derive(Debug, Default)]
 pub struct PduFrame {
-    /// Data length.
-    pub len: usize,
-
     pub index: u8,
     pub command: Command,
     pub flags: PduFlags,
@@ -181,7 +178,7 @@ impl<'sto> FrameBox<'sto> {
     }
 
     unsafe fn buf_len(&self) -> usize {
-        self.frame().len
+        usize::from(self.frame().flags.len())
     }
 
     unsafe fn frame_and_buf(&self) -> (&PduFrame, &[u8]) {
