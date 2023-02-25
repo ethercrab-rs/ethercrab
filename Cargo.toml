@@ -18,6 +18,7 @@ bitflags = "1.3.2"
 cookie-factory = { version = "0.3.2", default-features = false }
 defmt = "0.3.2"
 embassy-futures = "0.1.0"
+embassy-time = "0.1.0"
 heapless = "0.7.16"
 log = "0.4.17"
 nom = { version = "7.1.1", default-features = false }
@@ -26,8 +27,8 @@ packed_struct = { version = "0.10.0", default-features = false }
 pnet = { version = "0.31.0", features = ["std"], optional = true }
 safe-transmute = { version = "0.11.2", default-features = false }
 smlang = "0.6.0"
-smol = "1.2.5"
-smoltcp = { version = "0.8.1", default-features = false, features = [ "proto-ipv4", "phy-raw_socket", "socket-raw", "medium-ethernet" ] }
+smol = { version = "1.2.5", optional = true }
+smoltcp = { version = "0.8.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet" ] }
 spin = { version = "0.9.4", default-features = false, features = ["rwlock"] }
 
 [dev-dependencies]
@@ -45,4 +46,24 @@ tui-logger = "0.8.0"
 
 [features]
 default = ["std"]
-std = ["pnet"]
+std = ["pnet", "smol"]
+
+[[example]]
+name = "akd"
+required-features = ["std"]
+
+[[example]]
+name = "dc"
+required-features = ["std"]
+
+[[example]]
+name = "ec400"
+required-features = ["std"]
+
+[[example]]
+name = "ek1100"
+required-features = ["std"]
+
+[[example]]
+name = "multiple-groups"
+required-features = ["std"]

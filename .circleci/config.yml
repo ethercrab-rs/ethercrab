@@ -12,12 +12,33 @@ target_steps: &target_steps
     - run: rustup target add x86_64-unknown-linux-gnu || true
     - run: cargo install cargo-deadlinks --target x86_64-unknown-linux-gnu
 
+    - run: rustup target add $TARGET || true
     - run: cargo test --target $TARGET
     - run: cargo build --target $TARGET --examples --release
     - run: cargo deadlinks --ignore-fragments
 
     - save_cache:
         key: v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        paths:
+          - ./target
+          - /home/circleci/.cargo/registry
+
+target_steps_no_test: &target_steps_no_test
+  docker:
+    # NOTE: Exact version is overridden in `rust-toolchain.toml`
+    - image: cimg/rust:1.65.0
+  steps:
+    - checkout
+    - run: sudo apt update && sudo apt install -y libpcap-dev
+    - restore_cache:
+        key: v2-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+
+    - run: rustup target add $TARGET || true
+    # TODO: Add --examples when there are some no_std examples ready
+    - run: cargo build --target $TARGET --no-default-features --release
+
+    - save_cache:
+        key: v2-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
@@ -29,10 +50,17 @@ jobs:
     environment:
       - TARGET: "x86_64-unknown-linux-gnu"
     <<: *target_steps
+  # TODO: Re-enable when we can remove `Box` from the slave group preop hook fn
+  # target-thumbv7m-none-eabi:
+  #   resource_class: large
+  #   environment:
+  #     - TARGET: "thumbv7m-none-eabi"
+  #   <<: *target_steps_no_test
 
 build_jobs: &build_jobs
   jobs:
     - target-x86_64-unknown-linux-gnu
+    # - target-thumbv7m-none-eabi
 
 workflows:
   version: 2

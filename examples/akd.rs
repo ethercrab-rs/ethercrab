@@ -34,13 +34,13 @@ static PDU_LOOP: PduLoop = PduLoop::new(PDU_STORAGE.as_ref());
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Starting SDO demo...");
 
-    let client = Arc::new(Client::<smol::Timer>::new(&PDU_LOOP, Timeouts::default()));
+    let client = Arc::new(Client::new(&PDU_LOOP, Timeouts::default()));
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
 
     // let num_slaves = client.num_slaves();
 
-    let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN, _>::new(|slave| {
+    let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {
             // --- Reads ---
 

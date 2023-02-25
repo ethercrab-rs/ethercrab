@@ -8,36 +8,29 @@ use crate::{
         slave_client::SlaveClient,
         Slave,
     },
-    timer_factory::TimerFactory,
     Client,
 };
 use core::time::Duration;
 
 /// TODO: Doc
-pub struct SlaveGroupRef<'a, TIMEOUT> {
+pub struct SlaveGroupRef<'a> {
     pub(crate) pdi_len: &'a mut usize,
     pub(crate) read_pdi_len: &'a mut usize,
     pub(crate) max_pdi_len: usize,
     pub(crate) start_address: &'a mut u32,
     pub(crate) group_working_counter: &'a mut u16,
     pub(crate) slaves: &'a mut [Slave],
-    pub(crate) preop_safeop_hook: Option<&'a HookFn<TIMEOUT>>,
+    pub(crate) preop_safeop_hook: Option<&'a HookFn>,
 }
 
-impl<'a, TIMEOUT> SlaveGroupRef<'a, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
-{
+impl<'a> SlaveGroupRef<'a> {
     pub(crate) async fn configure_from_eeprom<'client>(
         &mut self,
         // We need to start this group's PDI after that of the previous group. That offset is passed
         // in via `start_offset`.
         mut global_offset: PdiOffset,
-        client: &'client Client<'client, TIMEOUT>,
-    ) -> Result<PdiOffset, Error>
-    where
-        TIMEOUT: TimerFactory,
-    {
+        client: &'client Client<'client>,
+    ) -> Result<PdiOffset, Error> {
         log::debug!(
             "Going to configure group, starting PDI offset {:#08x}",
             global_offset.start_address
