@@ -333,7 +333,7 @@ mod tests {
                 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
                 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
                 0x88, 0xa4, // EtherCAT ethertype
-                0x0f, 0x10, // TODO: What's this?
+                0x0f, 0x10, // EtherCAT frame header: type PDU, length 3 (plus header)
                 0x05, // Command: FPWR
                 0x00, // Frame index 0
                 0x78, 0x56, // Slave address,
