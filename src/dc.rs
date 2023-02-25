@@ -5,15 +5,11 @@ use crate::{
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
     slave::{ports::Topology, slave_client::SlaveClient, Slave},
-    timer_factory::TimerFactory,
     Client,
 };
 
 /// Send a broadcast to all slaves to latch in DC receive time, then store it on the slave structs.
-async fn latch_dc_times(
-    client: &Client<'_, impl TimerFactory>,
-    slaves: &mut [Slave],
-) -> Result<(), Error> {
+async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(), Error> {
     let num_slaves = slaves.len();
 
     // Latch receive times into all ports of all slaves.
@@ -50,7 +46,7 @@ async fn latch_dc_times(
 
 /// Write DC system time offset and propagation delay to the slave memory.
 async fn write_dc_parameters(
-    client: &Client<'_, impl TimerFactory>,
+    client: &Client<'_>,
     slave: &mut Slave,
     dc_receive_time: i64,
     now_nanos: i64,
@@ -245,7 +241,7 @@ fn configure_slave_offsets(
 /// This method walks through the discovered list of devices and sets the system time offset and
 /// transmission delay of each device.
 pub async fn configure_dc<'slaves>(
-    client: &Client<'_, impl TimerFactory>,
+    client: &Client<'_>,
     slaves: &'slaves mut [Slave],
 ) -> Result<Option<&'slaves Slave>, Error> {
     latch_dc_times(client, slaves).await?;
@@ -280,7 +276,7 @@ pub async fn configure_dc<'slaves>(
 }
 
 pub async fn run_dc_static_sync(
-    client: &Client<'_, impl TimerFactory>,
+    client: &Client<'_>,
     dc_reference_slave: &Slave,
     iterations: u32,
 ) -> Result<(), Error> {

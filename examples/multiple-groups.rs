@@ -34,17 +34,17 @@ struct Groups {
     /// EL2889 and EK1100. 2 items, 2 bytes of PDI for 16 output bits.
     ///
     /// We'll keep the EK1100 in here as it has no PDI but still needs to live somewhere.
-    slow_outputs: SlaveGroup<2, 2, smol::Timer>,
+    slow_outputs: SlaveGroup<2, 2>,
     /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-    fast_outputs: SlaveGroup<1, 1, smol::Timer>,
+    fast_outputs: SlaveGroup<1, 1>,
 }
 
-impl SlaveGroupContainer<smol::Timer> for Groups {
+impl SlaveGroupContainer for Groups {
     fn num_groups(&self) -> usize {
         2
     }
 
-    fn group(&mut self, index: usize) -> Option<SlaveGroupRef<smol::Timer>> {
+    fn group(&mut self, index: usize) -> Option<SlaveGroupRef> {
         match index {
             0 => Some(self.slow_outputs.as_mut_ref()),
             1 => Some(self.fast_outputs.as_mut_ref()),
@@ -60,7 +60,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Starting multiple groups demo...");
 
-    let client = Arc::new(Client::<smol::Timer>::new(
+    let client = Arc::new(Client::new(
         &PDU_LOOP,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),

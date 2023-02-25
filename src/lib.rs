@@ -31,7 +31,7 @@
 //! use async_ctrlc::CtrlC;
 //! use async_io::Timer;
 //! use ethercrab::{
-//!     error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, SlaveGroup, SubIndex, Timeouts,
+//!     error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, SlaveGroup, SubIndex, Timeouts
 //! };
 //! use futures_lite::{FutureExt, StreamExt};
 //! use smol::LocalExecutor;
@@ -57,7 +57,7 @@
 //!     log::info!("Starting EK1100 demo...");
 //!     log::info!("Ensure an EK1100 is the first slave, with any number of modules connected after");
 //!
-//!     let client = Arc::new(Client::<smol::Timer>::new(
+//!     let client = Arc::new(Client::new(
 //!         &PDU_LOOP,
 //!         Timeouts {
 //!             wait_loop_delay: Duration::from_millis(2),
@@ -68,7 +68,7 @@
 //!
 //!     ex.spawn(tx_rx_task(&interface, &client).unwrap()).detach();
 //!
-//!     let group = SlaveGroup::<MAX_SLAVES, PDI_LEN, _>::new(|slave| {
+//!     let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
 //!         Box::pin(async {
 //!             // EL3004 needs some specific config during init to function properly
 //!             if slave.name() == "EL3004" {
@@ -204,7 +204,7 @@ pub use slave_group::{
     GroupSlave, GroupSlaveIterator, SlaveGroup, SlaveGroupContainer, SlaveGroupRef,
 };
 pub use slave_state::SlaveState;
-pub use timer_factory::{Timeouts, TimerFactory};
+pub use timer_factory::Timeouts;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);

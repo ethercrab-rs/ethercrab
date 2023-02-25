@@ -11,12 +11,11 @@ use crate::{
     slave::Slave,
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
-    timer_factory::{timeout, Timeouts, TimerFactory},
-    BASE_SLAVE_ADDR,
+    timer_factory::timeout,
+    Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
     any::type_name,
-    marker::PhantomData,
     sync::atomic::{AtomicU16, AtomicU8, Ordering},
 };
 use packed_struct::PackedStruct;
@@ -24,7 +23,7 @@ use packed_struct::PackedStruct;
 /// A medium-level interface over PDUs (e.g. `BRD`, `LRW`, etc) and other EtherCAT master related
 /// infrastructure.
 #[derive(Debug)]
-pub struct Client<'client, TIMEOUT> {
+pub struct Client<'client> {
     // TODO: un-pub
     pub(crate) pdu_loop: &'client PduLoop,
     /// The total number of discovered slaves.
@@ -32,25 +31,20 @@ pub struct Client<'client, TIMEOUT> {
     /// Using an `AtomicU16` here only to satisfy `Sync` requirements, but it's only ever written to
     /// once so its safety is largely unused.
     num_slaves: AtomicU16,
-    _timeout: PhantomData<TIMEOUT>,
     pub(crate) timeouts: Timeouts,
     /// The 1-7 cyclic counter used when working with mailbox requests.
     mailbox_counter: AtomicU8,
 }
 
-unsafe impl<'client, TIMEOUT> Sync for Client<'client, TIMEOUT> {}
+unsafe impl<'client> Sync for Client<'client> {}
 
-impl<'client, TIMEOUT> Client<'client, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
-{
+impl<'client> Client<'client> {
     /// Create a new EtherCrab client.
     pub const fn new(pdu_loop: &'client PduLoop, timeouts: Timeouts) -> Self {
         Self {
             pdu_loop,
             // slaves: UnsafeCell::new(heapless::Vec::new()),
             num_slaves: AtomicU16::new(0),
-            _timeout: PhantomData,
             timeouts,
             // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
             mailbox_counter: AtomicU8::new(1),
@@ -81,7 +75,7 @@ where
 
         // TODO: This will miss the last step if step is not a multiple of range. Use a loop instead.
         for chunk_start in range.step_by(step) {
-            timeout::<TIMEOUT, _, _>(
+            timeout(
                 self.timeouts.pdu,
                 self.pdu_loop.pdu_broadcast_zeros(chunk_start, step as u16),
             )
@@ -146,7 +140,7 @@ where
         mut group_filter: impl FnMut(&mut G, Slave) -> Result<(), Error>,
     ) -> Result<G, Error>
     where
-        G: SlaveGroupContainer<TIMEOUT>,
+        G: SlaveGroupContainer,
     {
         self.reset_slaves().await?;
 
@@ -255,7 +249,7 @@ where
     pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         let num_slaves = self.num_slaves.load(Ordering::Relaxed);
 
-        timeout::<TIMEOUT, _, _>(self.timeouts.state_transition, async {
+        timeout(self.timeouts.state_transition, async {
             loop {
                 let status = self
                     .brd::<AlControl>(RegisterAddress::AlStatus)
@@ -286,7 +280,7 @@ where
                     break Ok(());
                 }
 
-                self.timeouts.loop_tick::<TIMEOUT>().await;
+                self.timeouts.loop_tick().await;
             }
         })
         .await
@@ -296,7 +290,7 @@ where
     where
         T: PduRead,
     {
-        let (data, working_counter) = timeout::<TIMEOUT, _, _>(
+        let (data, working_counter) = timeout(
             self.timeouts.pdu,
             self.pdu_loop.pdu_tx_readonly(command, T::len()),
         )
@@ -320,7 +314,7 @@ where
     where
         T: PduData,
     {
-        let (data, working_counter) = timeout::<TIMEOUT, _, _>(
+        let (data, working_counter) = timeout(
             self.timeouts.pdu,
             self.pdu_loop.pdu_tx_readwrite(command, value.as_slice()),
         )
@@ -498,7 +492,7 @@ where
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
         assert!(value.len() <= self.pdu_loop.max_pdu_data, "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), self.pdu_loop.max_pdu_data);
 
-        let (data, working_counter) = timeout::<TIMEOUT, _, _>(
+        let (data, working_counter) = timeout(
             self.timeouts.pdu,
             self.pdu_loop
                 .pdu_tx_readwrite(Command::Lrw { address }, value),

@@ -43,7 +43,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Starting EK1100 demo...");
     log::info!("Ensure an EK1100 is the first slave, with any number of modules connected after");
 
-    let client = Arc::new(Client::<smol::Timer>::new(
+    let client = Arc::new(Client::new(
         &PDU_LOOP,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
@@ -54,7 +54,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     ex.spawn(tx_rx_task(&interface, &client).unwrap()).detach();
 
-    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN, _>::new(|slave| {
+    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {
             // EL3004 needs some specific config during init to function properly
             if slave.name() == "EL3004" {

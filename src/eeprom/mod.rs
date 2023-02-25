@@ -11,28 +11,24 @@ use crate::{
     },
     error::{EepromError, Error, Item},
     slave::{slave_client::SlaveClient, SlaveIdentity},
-    timer_factory::TimerFactory,
 };
 use core::{ops::RangeInclusive, str::FromStr};
 use num_enum::TryFromPrimitive;
 
 #[derive(Debug)]
-pub struct Eeprom<'a, TIMEOUT> {
-    client: &'a SlaveClient<'a, TIMEOUT>,
+pub struct Eeprom<'a> {
+    client: &'a SlaveClient<'a>,
 }
 
-impl<'a, TIMEOUT> Eeprom<'a, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
-{
-    pub(crate) fn new(client: &'a SlaveClient<'a, TIMEOUT>) -> Self {
+impl<'a> Eeprom<'a> {
+    pub(crate) fn new(client: &'a SlaveClient<'a>) -> Self {
         Self { client }
     }
 
     async fn reader(
         &self,
         category: CategoryType,
-    ) -> Result<Option<EepromSectionReader<'_, TIMEOUT>>, Error> {
+    ) -> Result<Option<EepromSectionReader<'_>>, Error> {
         EepromSectionReader::new(self.client, category).await
     }
 

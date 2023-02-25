@@ -19,7 +19,6 @@ use crate::{
     slave::ports::{Port, Ports},
     slave_state::SlaveState,
     sync_manager_channel::SyncManagerChannel,
-    timer_factory::TimerFactory,
 };
 use core::{
     any::type_name,
@@ -150,14 +149,11 @@ impl Slave {
     ///
     /// This method reads the slave's name and other identifying information, but does not configure
     /// the slave.
-    pub(crate) async fn new<'client, TIMEOUT>(
-        client: &'client Client<'client, TIMEOUT>,
+    pub(crate) async fn new<'client>(
+        client: &'client Client<'client>,
         index: usize,
         configured_address: u16,
-    ) -> Result<Self, Error>
-    where
-        TIMEOUT: TimerFactory,
-    {
+    ) -> Result<Self, Error> {
         let slave_ref = SlaveClient::new(client, configured_address);
 
         slave_ref.wait_for_state(SlaveState::Init).await?;
@@ -237,16 +233,13 @@ impl Slave {
 }
 
 #[derive(Debug)]
-pub struct SlaveRef<'a, TIMEOUT> {
-    client: SlaveClient<'a, TIMEOUT>,
+pub struct SlaveRef<'a> {
+    client: SlaveClient<'a>,
     slave: &'a Slave,
 }
 
-impl<'a, TIMEOUT> SlaveRef<'a, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
-{
-    pub fn new(client: SlaveClient<'a, TIMEOUT>, slave: &'a Slave) -> Self {
+impl<'a> SlaveRef<'a> {
+    pub fn new(client: SlaveClient<'a>, slave: &'a Slave) -> Self {
         Self { client, slave }
     }
 
@@ -458,25 +451,22 @@ where
             .wkc(1, "SDO upload request")?;
 
         // Wait for slave send mailbox to be ready
-        crate::timer_factory::timeout::<TIMEOUT, _, _>(
-            self.client.timeouts().mailbox_echo,
-            async {
-                let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
+        crate::timer_factory::timeout(self.client.timeouts().mailbox_echo, async {
+            let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
 
-                loop {
-                    let sm = self
-                        .client
-                        .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
-                        .await?;
+            loop {
+                let sm = self
+                    .client
+                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                    .await?;
 
-                    if sm.status.mailbox_full {
-                        break Ok(());
-                    }
-
-                    self.client.timeouts().loop_tick::<TIMEOUT>().await;
+                if sm.status.mailbox_full {
+                    break Ok(());
                 }
-            },
-        )
+
+                self.client.timeouts().loop_tick().await;
+            }
+        })
         .await
         .map_err(|e| {
             log::error!("Mailbox read ready error: {e:?}");

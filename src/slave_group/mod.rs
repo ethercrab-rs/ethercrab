@@ -5,7 +5,6 @@ mod group_slave;
 use crate::{
     error::{Error, Item},
     slave::{IoRanges, Slave, SlaveRef},
-    timer_factory::TimerFactory,
     Client,
 };
 use core::{cell::UnsafeCell, future::Future, pin::Pin};
@@ -19,15 +18,15 @@ pub use container::SlaveGroupContainer;
 // <https://users.rust-lang.org/t/store-async-closure-on-struct-in-no-std/82929>
 type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'any>>;
 
-type HookFn<TIMEOUT> = for<'any> fn(&'any SlaveRef<TIMEOUT>) -> HookFuture<'any>;
+type HookFn = for<'any> fn(&'any SlaveRef) -> HookFuture<'any>;
 
 /// A group of one or more EtherCAT slaves.
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
 /// slave PDI sections.
-pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> {
+pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize> {
     slaves: heapless::Vec<Slave, MAX_SLAVES>,
-    preop_safeop_hook: Option<HookFn<TIMEOUT>>,
+    preop_safeop_hook: Option<HookFn>,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.
     read_pdi_len: usize,
@@ -42,18 +41,16 @@ pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> {
 
 // FIXME: Remove these unsafe impls if possible. There's some weird quirkiness when moving a group
 // into an async block going on...
-unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Sync
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
+unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Sync
+    for SlaveGroup<MAX_SLAVES, MAX_PDI>
 {
 }
-unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Send
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
+unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Send
+    for SlaveGroup<MAX_SLAVES, MAX_PDI>
 {
 }
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Default
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
-{
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Default for SlaveGroup<MAX_SLAVES, MAX_PDI> {
     fn default() -> Self {
         Self {
             slaves: Default::default(),
@@ -70,13 +67,11 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Default
 /// Returned when a slave device's input or output PDI segment is empty.
 static EMPTY_PDI_SLICE: &[u8] = &[];
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
-    SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>
-{
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI> {
     /// Create a new slave group with a given PRE OP -> SAFE OP hook.
     ///
     /// The hook can be used to configure slaves using SDOs.
-    pub fn new(preop_safeop_hook: HookFn<TIMEOUT>) -> Self {
+    pub fn new(preop_safeop_hook: HookFn) -> Self {
         Self {
             preop_safeop_hook: Some(preop_safeop_hook),
             ..Default::default()
@@ -102,7 +97,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     }
 
     /// Get an iterator over all slaves in this group.
-    pub fn slaves(&self) -> GroupSlaveIterator<'_, MAX_SLAVES, MAX_PDI, TIMEOUT> {
+    pub fn slaves(&self) -> GroupSlaveIterator<'_, MAX_SLAVES, MAX_PDI> {
         GroupSlaveIterator {
             group: self,
             idx: 0,
@@ -110,10 +105,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     }
 
     /// Retrieve a reference to a slave in this group by index.
-    pub fn slave(&self, index: usize) -> Result<GroupSlave, Error>
-    where
-        TIMEOUT: TimerFactory,
-    {
+    pub fn slave(&self, index: usize) -> Result<GroupSlave, Error> {
         let slave = self.slaves.get(index).ok_or(Error::NotFound {
             item: Item::Slave,
             index: Some(index),
@@ -175,13 +167,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     ///
     /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
-    pub async fn tx_rx<'client>(
-        &self,
-        client: &'client Client<'client, TIMEOUT>,
-    ) -> Result<(), Error>
-    where
-        TIMEOUT: TimerFactory,
-    {
+    pub async fn tx_rx<'client>(&self, client: &'client Client<'client>) -> Result<(), Error> {
         log::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.start_address,
@@ -208,7 +194,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
     }
 
     /// Get a reference to the slave group, with const generic parameters erased.
-    pub fn as_mut_ref(&mut self) -> SlaveGroupRef<'_, TIMEOUT> {
+    pub fn as_mut_ref(&mut self) -> SlaveGroupRef<'_> {
         SlaveGroupRef {
             slaves: self.slaves.as_mut(),
             max_pdi_len: MAX_PDI,
@@ -224,15 +210,13 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT>
 /// An iterator over all slaves in a group.
 ///
 /// Created by calling [`SlaveGroup::slaves`](crate::slave_group::SlaveGroup::slaves).
-pub struct GroupSlaveIterator<'a, const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> {
-    group: &'a SlaveGroup<MAX_SLAVES, MAX_PDI, TIMEOUT>,
+pub struct GroupSlaveIterator<'a, const MAX_SLAVES: usize, const MAX_PDI: usize> {
+    group: &'a SlaveGroup<MAX_SLAVES, MAX_PDI>,
     idx: usize,
 }
 
-impl<'a, const MAX_SLAVES: usize, const MAX_PDI: usize, TIMEOUT> Iterator
-    for GroupSlaveIterator<'a, MAX_SLAVES, MAX_PDI, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
+impl<'a, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
+    for GroupSlaveIterator<'a, MAX_SLAVES, MAX_PDI>
 {
     type Item = GroupSlave<'a>;
 
