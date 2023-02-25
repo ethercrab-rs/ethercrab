@@ -28,7 +28,7 @@ pnet = { version = "0.31.0", features = ["std"], optional = true }
 safe-transmute = { version = "0.11.2", default-features = false }
 smlang = "0.6.0"
 smol = { version = "1.2.5", optional = true }
-smoltcp = { version = "0.8.1", default-features = false, features = [ "proto-ipv4", "phy-raw_socket", "socket-raw", "medium-ethernet" ] }
+smoltcp = { version = "0.8.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet" ] }
 spin = { version = "0.9.4", default-features = false, features = ["rwlock"] }
 
 [dev-dependencies]
