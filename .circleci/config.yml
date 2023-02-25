@@ -23,6 +23,26 @@ target_steps: &target_steps
           - ./target
           - /home/circleci/.cargo/registry
 
+target_steps_no_test: &target_steps_no_test
+  docker:
+    # NOTE: Exact version is overridden in `rust-toolchain.toml`
+    - image: cimg/rust:1.65.0
+  steps:
+    - checkout
+    - run: sudo apt update && sudo apt install -y libpcap-dev
+    - restore_cache:
+        key: v2-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+
+    - run: rustup target add $TARGET || true
+    # TODO: Add --examples when there are some no_std examples ready
+    - run: cargo build --target $TARGET --no-default-features --release
+
+    - save_cache:
+        key: v2-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        paths:
+          - ./target
+          - /home/circleci/.cargo/registry
+
 version: 2
 jobs:
   target-x86_64-unknown-linux-gnu:
@@ -34,8 +54,7 @@ jobs:
     resource_class: large
     environment:
       - TARGET: "thumbv7m-none-eabi"
-      - ARGS: "--no-default-features"
-    <<: *target_steps
+    <<: *target_steps_no_test
 
 build_jobs: &build_jobs
   jobs:
