@@ -8,22 +8,19 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduResponse},
     register::RegisterAddress,
     slave_state::SlaveState,
-    timer_factory::{Timeouts, TimerFactory},
+    timer_factory::Timeouts,
 };
 use core::fmt::Debug;
 use packed_struct::PackedStruct;
 
 #[derive(Debug)]
-pub struct SlaveClient<'a, TIMEOUT> {
-    pub(in crate::slave) client: &'a Client<'a, TIMEOUT>,
+pub struct SlaveClient<'a> {
+    pub(in crate::slave) client: &'a Client<'a>,
     configured_address: u16,
 }
 
-impl<'a, TIMEOUT> SlaveClient<'a, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
-{
-    pub fn new(client: &'a Client<'a, TIMEOUT>, configured_address: u16) -> Self {
+impl<'a> SlaveClient<'a> {
+    pub fn new(client: &'a Client<'a>, configured_address: u16) -> Self {
         Self {
             client,
             configured_address,
@@ -93,22 +90,19 @@ where
     }
 
     pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        crate::timer_factory::timeout::<TIMEOUT, _, _>(
-            self.client.timeouts.state_transition,
-            async {
-                loop {
-                    let status = self
-                        .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
-                        .await?;
+        crate::timer_factory::timeout(self.client.timeouts.state_transition, async {
+            loop {
+                let status = self
+                    .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
+                    .await?;
 
-                    if status.state == desired_state {
-                        break Ok(());
-                    }
-
-                    self.client.timeouts.loop_tick::<TIMEOUT>().await;
+                if status.state == desired_state {
+                    break Ok(());
                 }
-            },
-        )
+
+                self.client.timeouts.loop_tick().await;
+            }
+        })
         .await
     }
 
@@ -163,7 +157,7 @@ where
         Ok((status, code))
     }
 
-    pub fn eeprom(&'a self) -> Eeprom<'a, TIMEOUT> {
+    pub fn eeprom(&'a self) -> Eeprom<'a> {
         Eeprom::new(self)
     }
 

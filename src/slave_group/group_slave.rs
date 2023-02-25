@@ -2,7 +2,6 @@ use crate::{
     error::Error,
     pdu_data::{PduData, PduRead},
     slave::{slave_client::SlaveClient, Slave, SlaveRef},
-    timer_factory::TimerFactory,
     Client, SubIndex,
 };
 use core::fmt::Debug;
@@ -53,7 +52,7 @@ impl<'a> GroupSlave<'a> {
     /// Read an SDO from this slave.
     pub async fn read_sdo<T>(
         &self,
-        client: &Client<'_, impl TimerFactory>,
+        client: &Client<'_>,
         index: u16,
         sub_index: SubIndex,
     ) -> Result<T, Error>
@@ -72,7 +71,7 @@ impl<'a> GroupSlave<'a> {
     /// Write an SDO from this slave.
     pub async fn write_sdo<T>(
         &self,
-        client: &Client<'_, impl TimerFactory>,
+        client: &Client<'_>,
         index: u16,
         sub_index: SubIndex,
         value: T,

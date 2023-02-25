@@ -15,23 +15,19 @@ use crate::{
     slave::{Mailbox, MailboxConfig},
     slave_state::SlaveState,
     sync_manager_channel::{self, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
-    timer_factory::TimerFactory,
     Client,
 };
 use core::fmt::Debug;
 use num_enum::FromPrimitive;
 use packed_struct::PackedStruct;
 
-pub struct SlaveConfigurator<'a, TIMEOUT> {
-    client: SlaveClient<'a, TIMEOUT>,
+pub struct SlaveConfigurator<'a> {
+    client: SlaveClient<'a>,
     slave: &'a mut Slave,
 }
 
-impl<'a, TIMEOUT> SlaveConfigurator<'a, TIMEOUT>
-where
-    TIMEOUT: TimerFactory,
-{
-    pub fn new(client: &'a Client<'a, TIMEOUT>, slave: &'a mut Slave) -> Self {
+impl<'a> SlaveConfigurator<'a> {
+    pub fn new(client: &'a Client<'a>, slave: &'a mut Slave) -> Self {
         Self {
             client: SlaveClient::new(client, slave.configured_address),
             slave,
@@ -550,7 +546,7 @@ where
         })
     }
 
-    pub(crate) fn as_ref(&self) -> SlaveRef<'_, TIMEOUT> {
+    pub(crate) fn as_ref(&self) -> SlaveRef<'_> {
         SlaveRef::new(
             SlaveClient::new(self.client.client, self.slave.configured_address),
             self.slave,

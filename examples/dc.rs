@@ -33,7 +33,7 @@ static PDU_LOOP: PduLoop = PduLoop::new(PDU_STORAGE.as_ref());
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Starting DC demo...");
 
-    let client = Arc::new(Client::<smol::Timer>::new(
+    let client = Arc::new(Client::new(
         &PDU_LOOP,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
@@ -44,7 +44,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
 
-    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN, _>::new(|slave| {
+    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {
             if slave.name() == "EL3004" {
                 log::info!("Found EL3004. Configuring...");
