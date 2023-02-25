@@ -127,7 +127,9 @@ impl<'a> PduStorageRef<'a> {
         let align = core::mem::align_of::<FrameElement<0>>();
         let size = core::mem::size_of::<FrameElement<0>>() + self.frame_data_len;
 
-        let stride = core::alloc::Layout::from_size_align_unchecked(size, align).size();
+        let stride = core::alloc::Layout::from_size_align_unchecked(size, align)
+            .pad_to_align()
+            .size();
 
         // NIGHTLY: pointer_byte_offsets
         self.frames.as_ptr().byte_add(idx * stride)
