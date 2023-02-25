@@ -251,12 +251,6 @@ impl<'a> SendableFrame<'a> {
     fn write_ethernet_payload<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
         let (frame, data) = unsafe { self.inner.frame_and_buf() };
 
-        dbg!(
-            unsafe { self.inner.frame() }.flags.len(),
-            data.len(),
-            self.ethercat_payload_len(),
-            frame.len
-        );
         let header = FrameHeader::pdu(self.ethercat_payload_len());
 
         let buf = gen_simple(le_u16(header.0), buf).map_err(PduError::Encode)?;
