@@ -16,11 +16,10 @@ use core::{
     ops::Deref,
     ptr::{addr_of, addr_of_mut, NonNull},
     sync::atomic::Ordering,
-    task::Poll,
+    task::{Poll, Waker},
 };
 use packed_struct::PackedStruct;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
-use std::task::Waker;
 
 use super::PduResponse;
 
