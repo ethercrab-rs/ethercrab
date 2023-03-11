@@ -144,7 +144,13 @@ pub struct FrameBox<'sto> {
     pub _lifetime: PhantomData<&'sto mut FrameElement<0>>,
 }
 
-// FIXME: This seems bad. The examples break without it though
+// SAFETY: This unsafe impl is required due to `FrameBox` containing a `NonNull`, however this impl
+// is ok because FrameBox also holds the lifetime `'sto` of the backing store, which is where the
+// `NonNull<FrameElement>` comes from.
+//
+// For example, if the backing storage is is `'static`, we can send things between threads. If it's
+// not, the associated lifetime will prevent the framebox from being used in anything that requires
+// a 'static bound.
 unsafe impl<'sto> Send for FrameBox<'sto> {}
 
 impl<'sto> FrameBox<'sto> {
@@ -162,8 +168,6 @@ impl<'sto> FrameBox<'sto> {
             .take()
     }
 
-    // FIXME: Is interior mutability ok here? MIRI isn't complaining about race conditions so
-    // _maybe_ we're ok? The 3 fields aren't set anywhere else except during frame initialisation.
     unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
         let frame = NonNull::new_unchecked(addr_of_mut!((*self.frame.as_ptr()).frame));
 
@@ -462,12 +466,15 @@ pub struct RxFrameDataBuf<'sto> {
     data_end: NonNull<u8>,
 }
 
-// FIXME: This seems bad. The examples break without it though
+// SAFETY: This is ok because we respect the lifetime of the underlying data by carrying the 'sto
+// lifetime.
 unsafe impl<'sto> Send for RxFrameDataBuf<'sto> {}
 
 impl<'sto> Deref for RxFrameDataBuf<'sto> {
     type Target = [u8];
 
+    // Temporally shorter borrow: This ref is the lifetime of RxFrameDataBuf, not 'sto. This is the
+    // magic.
     fn deref(&self) -> &Self::Target {
         let len = self.len();
         unsafe { core::slice::from_raw_parts(self.data_start.as_ptr(), len) }
