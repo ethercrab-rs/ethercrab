@@ -153,6 +153,7 @@
 
 #![feature(const_maybe_uninit_zeroed)]
 #![feature(pin_macro)]
+#![feature(pointer_byte_offsets)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
 #![deny(missing_copy_implementations)]

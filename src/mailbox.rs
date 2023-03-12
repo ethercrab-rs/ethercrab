@@ -51,58 +51,55 @@ pub struct MailboxHeader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-    use pcap::{Capture, Linktype, Packet, PacketHeader};
-    use std::path::PathBuf;
 
     // Keep this around so we can write test data to files for debugging
-    #[allow(unused)]
-    fn write_bytes_to_file(name: &str, data: &[u8]) {
-        let mut frame = crate::pdu_loop::pdu_frame::Frame::default();
+    // #[allow(unused)]
+    // fn write_bytes_to_file(name: &str, data: &[u8]) {
+    //     let mut frame = crate::pdu_loop::FrameElement::default();
 
-        frame
-            .replace(
-                crate::command::Command::Fpwr {
-                    address: 0x1001,
-                    register: 0x1800,
-                },
-                data.len() as u16,
-                0xaa,
-            )
-            .unwrap();
+    //     frame
+    //         .replace(
+    //             crate::command::Command::Fpwr {
+    //                 address: 0x1001,
+    //                 register: 0x1800,
+    //             },
+    //             data.len() as u16,
+    //             0xaa,
+    //         )
+    //         .unwrap();
 
-        let mut buffer = vec![0; 1536];
+    //     let mut buffer = vec![0; 1536];
 
-        frame
-            .to_ethernet_frame(buffer.as_mut_slice(), data)
-            .unwrap();
+    //     frame
+    //         .to_ethernet_frame(buffer.as_mut_slice(), data)
+    //         .unwrap();
 
-        // Epic haxx: force length header param to 1024. This should be the mailbox buffer size
-        buffer.as_mut_slice()[0x16] = 0x00;
-        buffer.as_mut_slice()[0x17] = 0x04;
+    //     // Epic haxx: force length header param to 1024. This should be the mailbox buffer size
+    //     buffer.as_mut_slice()[0x16] = 0x00;
+    //     buffer.as_mut_slice()[0x17] = 0x04;
 
-        let packet = Packet {
-            header: &PacketHeader {
-                ts: libc::timeval {
-                    tv_sec: Utc::now().timestamp().try_into().expect("Time overflow"),
-                    tv_usec: 0,
-                },
-                // 64 bytes minimum frame size, minus 2x MAC address and 1x optional tag
-                caplen: (buffer.len() as u32).max(46),
-                len: buffer.len() as u32,
-            },
-            data: &buffer,
-        };
+    //     let packet = Packet {
+    //         header: &PacketHeader {
+    //             ts: libc::timeval {
+    //                 tv_sec: Utc::now().timestamp().try_into().expect("Time overflow"),
+    //                 tv_usec: 0,
+    //             },
+    //             // 64 bytes minimum frame size, minus 2x MAC address and 1x optional tag
+    //             caplen: (buffer.len() as u32).max(46),
+    //             len: buffer.len() as u32,
+    //         },
+    //         data: &buffer,
+    //     };
 
-        let cap = Capture::dead(Linktype::ETHERNET).expect("Open capture");
+    //     let cap = Capture::dead(Linktype::ETHERNET).expect("Open capture");
 
-        let path = PathBuf::from(&name);
+    //     let path = PathBuf::from(&name);
 
-        let mut save = cap.savefile(&path).expect("Open save file");
+    //     let mut save = cap.savefile(&path).expect("Open save file");
 
-        save.write(&packet);
-        drop(save);
-    }
+    //     save.write(&packet);
+    //     drop(save);
+    // }
 
     #[test]
     fn encode_header() {
