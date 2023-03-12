@@ -1,0 +1,101 @@
+use super::{FrameBox, FrameElement, PduFrame};
+use crate::{
+    error::Error,
+    pdu_loop::{frame_element::FrameState, PduResponse},
+};
+
+use core::{ops::Deref, ptr::NonNull};
+
+#[derive(Debug)]
+pub struct ReceivedFrame<'sto> {
+    pub(in crate::pdu_loop::frame_element) inner: FrameBox<'sto>,
+}
+
+impl<'sto> ReceivedFrame<'sto> {
+    fn working_counter(&self) -> u16 {
+        unsafe { self.inner.frame() }.working_counter
+    }
+
+    pub fn wkc(self, expected: u16, context: &'static str) -> Result<RxFrameDataBuf<'sto>, Error> {
+        let frame = self.frame();
+        let act_wc = frame.working_counter;
+
+        if act_wc == expected {
+            Ok(self.into_data_buf())
+        } else {
+            Err(Error::WorkingCounter {
+                expected,
+                received: act_wc,
+                context: Some(context),
+            })
+        }
+    }
+
+    /// Retrieve the frame's internal data without checking for working counter.
+    pub fn into_data(self) -> PduResponse<RxFrameDataBuf<'sto>> {
+        let wkc = self.working_counter();
+
+        (self.into_data_buf(), wkc)
+    }
+
+    fn frame(&self) -> &PduFrame {
+        unsafe { self.inner.frame() }
+    }
+
+    fn into_data_buf(self) -> RxFrameDataBuf<'sto> {
+        let len: usize = self.frame().flags.len().into();
+
+        let sptr = unsafe { FrameElement::buf_ptr(self.inner.frame) };
+        let eptr = unsafe { NonNull::new_unchecked(sptr.as_ptr().add(len)) };
+
+        RxFrameDataBuf {
+            _frame: self,
+            data_start: sptr,
+            data_end: eptr,
+        }
+    }
+}
+
+impl<'sto> Drop for ReceivedFrame<'sto> {
+    fn drop(&mut self) {
+        log::trace!("Drop frame element");
+
+        unsafe { FrameElement::set_state(self.inner.frame, FrameState::None) }
+    }
+}
+
+pub struct RxFrameDataBuf<'sto> {
+    _frame: ReceivedFrame<'sto>,
+    data_start: NonNull<u8>,
+    data_end: NonNull<u8>,
+}
+
+// SAFETY: This is ok because we respect the lifetime of the underlying data by carrying the 'sto
+// lifetime.
+unsafe impl<'sto> Send for RxFrameDataBuf<'sto> {}
+
+impl<'sto> Deref for RxFrameDataBuf<'sto> {
+    type Target = [u8];
+
+    // Temporally shorter borrow: This ref is the lifetime of RxFrameDataBuf, not 'sto. This is the
+    // magic.
+    fn deref(&self) -> &Self::Target {
+        let len = self.len();
+        unsafe { core::slice::from_raw_parts(self.data_start.as_ptr(), len) }
+    }
+}
+
+impl<'sto> RxFrameDataBuf<'sto> {
+    pub fn len(&self) -> usize {
+        (self.data_end.as_ptr() as usize) - (self.data_start.as_ptr() as usize)
+    }
+
+    pub fn trim_front(&mut self, ct: usize) {
+        let sz = self.len();
+        if ct > sz {
+            self.data_start = self.data_end;
+        } else {
+            self.data_start = unsafe { NonNull::new_unchecked(self.data_start.as_ptr().add(ct)) };
+        }
+    }
+}

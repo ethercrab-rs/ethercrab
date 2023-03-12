@@ -1,0 +1,185 @@
+use crate::{command::Command, error::PduError, pdu_loop::pdu_flags::PduFlags};
+use core::{
+    marker::PhantomData,
+    ptr::{addr_of, addr_of_mut, NonNull},
+    sync::atomic::Ordering,
+    task::Waker,
+};
+pub mod created_frame;
+pub mod received_frame;
+pub mod receiving_frame;
+pub mod sendable_frame;
+
+#[atomic_enum::atomic_enum]
+#[derive(PartialEq, Default)]
+pub enum FrameState {
+    // SAFETY: Because we create a bunch of `Frame`s with `MaybeUninit::zeroed`, the `None` state
+    // MUST be equal to zero. All other fields in `Frame` are overridden in `replace`, so there
+    // should be no UB there.
+    /// The frame is ready to be claimed
+    #[default]
+    None = 0,
+    /// The frame is claimed and can be initialised ready for sending.
+    Created = 1,
+    /// The frame is ready to send when the TX loop next runs.
+    Sendable = 2,
+    /// The frame is being sent over the network interface.
+    Sending = 3,
+    /// A frame response has been received and is now ready for parsing.
+    RxBusy = 5,
+    /// Frame response parsing is complete. The frame and its data is ready to be returned in
+    /// `Poll::Ready`.
+    RxDone = 6,
+    /// The frame TX/RX is complete, but the frame is still in use by calling code.
+    RxProcessing = 7,
+}
+
+#[derive(Debug, Default)]
+pub struct PduFrame {
+    pub index: u8,
+    pub command: Command,
+    pub flags: PduFlags,
+    pub irq: u16,
+    pub working_counter: u16,
+
+    pub waker: spin::RwLock<Option<Waker>>,
+}
+
+/// An individual frame state, PDU header config, and data buffer.
+#[derive(Debug)]
+#[repr(C)]
+pub struct FrameElement<const N: usize> {
+    pub frame: PduFrame,
+    status: AtomicFrameState,
+    pub buffer: [u8; N],
+}
+
+impl<const N: usize> Default for FrameElement<N> {
+    fn default() -> Self {
+        Self {
+            frame: Default::default(),
+            status: AtomicFrameState::new(FrameState::None),
+            buffer: [0; N],
+        }
+    }
+}
+
+impl<const N: usize> FrameElement<N> {
+    unsafe fn buf_ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
+        let buf_ptr: *mut [u8; N] = unsafe { addr_of_mut!((*this.as_ptr()).buffer) };
+        let buf_ptr: *mut u8 = buf_ptr.cast();
+        NonNull::new_unchecked(buf_ptr)
+    }
+
+    pub(in crate::pdu_loop) unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
+        let fptr = this.as_ptr();
+
+        (*addr_of_mut!((*fptr).status)).store(state, Ordering::Release);
+    }
+
+    unsafe fn swap_state(
+        this: NonNull<FrameElement<N>>,
+        from: FrameState,
+        to: FrameState,
+    ) -> Result<NonNull<FrameElement<N>>, FrameState> {
+        let fptr = this.as_ptr();
+
+        (*addr_of_mut!((*fptr).status)).compare_exchange(
+            from,
+            to,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        )?;
+
+        // If we got here, it's ours.
+        Ok(this)
+    }
+
+    /// Attempt to clame a frame element as CREATED. Succeeds if the selected FrameElement is
+    /// currently in the NONE state.
+    pub unsafe fn claim_created(
+        this: NonNull<FrameElement<N>>,
+    ) -> Result<NonNull<FrameElement<N>>, PduError> {
+        Self::swap_state(this, FrameState::None, FrameState::Created).map_err(|e| {
+            log::error!(
+                "Failed to claim frame: status is {:?}, expected {:?}",
+                e,
+                FrameState::None
+            );
+
+            PduError::SwapState
+        })
+    }
+
+    pub unsafe fn claim_sending(
+        this: NonNull<FrameElement<N>>,
+    ) -> Option<NonNull<FrameElement<N>>> {
+        Self::swap_state(this, FrameState::Sendable, FrameState::Sending).ok()
+    }
+
+    pub unsafe fn claim_receiving(
+        this: NonNull<FrameElement<N>>,
+    ) -> Option<NonNull<FrameElement<N>>> {
+        Self::swap_state(this, FrameState::Sending, FrameState::RxBusy).ok()
+    }
+}
+
+// Used to store a FrameElement with erased const generics
+#[derive(Debug)]
+pub struct FrameBox<'sto> {
+    pub frame: NonNull<FrameElement<0>>,
+    pub _lifetime: PhantomData<&'sto mut FrameElement<0>>,
+}
+
+// SAFETY: This unsafe impl is required due to `FrameBox` containing a `NonNull`, however this impl
+// is ok because FrameBox also holds the lifetime `'sto` of the backing store, which is where the
+// `NonNull<FrameElement>` comes from.
+//
+// For example, if the backing storage is is `'static`, we can send things between threads. If it's
+// not, the associated lifetime will prevent the framebox from being used in anything that requires
+// a 'static bound.
+unsafe impl<'sto> Send for FrameBox<'sto> {}
+
+impl<'sto> FrameBox<'sto> {
+    unsafe fn replace_waker(&self, waker: Waker) {
+        (*addr_of!((*self.frame.as_ptr()).frame.waker))
+            .try_write()
+            .expect("Contention replace_waker")
+            .replace(waker);
+    }
+
+    unsafe fn take_waker(&self) -> Option<Waker> {
+        (*addr_of!((*self.frame.as_ptr()).frame.waker))
+            .try_write()
+            .expect("Contention take_waker")
+            .take()
+    }
+
+    unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
+        let frame = NonNull::new_unchecked(addr_of_mut!((*self.frame.as_ptr()).frame));
+
+        *addr_of_mut!((*frame.as_ptr()).flags) = flags;
+        *addr_of_mut!((*frame.as_ptr()).irq) = irq;
+        *addr_of_mut!((*frame.as_ptr()).working_counter) = working_counter;
+    }
+
+    unsafe fn frame(&self) -> &PduFrame {
+        unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
+    }
+
+    unsafe fn buf_len(&self) -> usize {
+        usize::from(self.frame().flags.len())
+    }
+
+    unsafe fn frame_and_buf(&self) -> (&PduFrame, &[u8]) {
+        let buf_ptr = unsafe { addr_of!((*self.frame.as_ptr()).buffer).cast::<u8>() };
+        let buf = unsafe { core::slice::from_raw_parts(buf_ptr, self.buf_len()) };
+        let frame = unsafe { &*addr_of!((*self.frame.as_ptr()).frame) };
+        (frame, buf)
+    }
+
+    unsafe fn buf_mut(&mut self) -> &mut [u8] {
+        let ptr = FrameElement::<0>::buf_ptr(self.frame);
+        core::slice::from_raw_parts_mut(ptr.as_ptr(), self.buf_len())
+    }
+}

@@ -2,7 +2,10 @@ use crate::{
     command::Command,
     error::{Error, PduError},
     pdu_loop::{
-        frame_element::{CreatedFrame, FrameBox, FrameElement, PduFrame, ReceivingFrame},
+        frame_element::{
+            created_frame::CreatedFrame, receiving_frame::ReceivingFrame, FrameBox, FrameElement,
+            PduFrame,
+        },
         pdu_flags::PduFlags,
     },
 };
@@ -36,7 +39,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
         Self { frames }
     }
 
-    /// Get a reference to this `PduStorage` with erased lifetimes.
+    /// Get a reference to this `PduStorage` with erased const generics.
     pub const fn as_ref(&self) -> PduStorageRef<'_> {
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },

@@ -7,7 +7,7 @@ use crate::{
     command::{Command, CommandCode},
     error::{Error, PduError, PduValidationError},
     pdu_loop::{
-        frame_element::{FrameBox, FrameElement, ReceivedFrame, SendableFrame},
+        frame_element::{FrameBox, FrameElement},
         frame_header::FrameHeader,
         pdu_flags::PduFlags,
         storage::PduStorageRef,
@@ -15,6 +15,7 @@ use crate::{
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::{marker::PhantomData, ptr::NonNull, task::Waker};
+pub use frame_element::received_frame::RxFrameDataBuf;
 use nom::{
     bytes::complete::take,
     combinator::map_res,
@@ -24,8 +25,9 @@ use nom::{
 use packed_struct::PackedStructSlice;
 use smoltcp::wire::EthernetFrame;
 use spin::RwLock;
+pub use storage::PduStorage;
 
-pub use crate::pdu_loop::{frame_element::RxFrameDataBuf, storage::PduStorage};
+use self::frame_element::{received_frame::ReceivedFrame, sendable_frame::SendableFrame};
 
 pub type PduResponse<T> = (T, u16);
 
