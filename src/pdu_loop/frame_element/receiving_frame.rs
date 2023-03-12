@@ -8,7 +8,11 @@ use crate::{
     },
 };
 
-use core::{future::Future, task::Poll};
+use core::{
+    future::Future,
+    ptr::{addr_of_mut, NonNull},
+    task::Poll,
+};
 
 /// A frame has been sent and is now waiting for a response from the network.
 ///
@@ -29,7 +33,7 @@ impl<'sto> ReceivingFrame<'sto> {
         irq: u16,
         working_counter: u16,
     ) -> Result<(), Error> {
-        unsafe { self.inner.set_metadata(flags, irq, working_counter) };
+        unsafe { self.set_metadata(flags, irq, working_counter) };
 
         let frame = unsafe { self.inner.frame() };
 
@@ -55,6 +59,14 @@ impl<'sto> ReceivingFrame<'sto> {
         waker.wake();
 
         Ok(())
+    }
+
+    unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
+        let frame = NonNull::new_unchecked(addr_of_mut!((*self.inner.frame.as_ptr()).frame));
+
+        *addr_of_mut!((*frame.as_ptr()).flags) = flags;
+        *addr_of_mut!((*frame.as_ptr()).irq) = irq;
+        *addr_of_mut!((*frame.as_ptr()).working_counter) = working_counter;
     }
 
     pub fn buf_mut(&mut self) -> &mut [u8] {

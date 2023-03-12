@@ -179,14 +179,6 @@ impl<'sto> FrameBox<'sto> {
             .take()
     }
 
-    unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
-        let frame = NonNull::new_unchecked(addr_of_mut!((*self.frame.as_ptr()).frame));
-
-        *addr_of_mut!((*frame.as_ptr()).flags) = flags;
-        *addr_of_mut!((*frame.as_ptr()).irq) = irq;
-        *addr_of_mut!((*frame.as_ptr()).working_counter) = working_counter;
-    }
-
     unsafe fn frame(&self) -> &PduFrame {
         unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
     }
