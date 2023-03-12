@@ -1,19 +1,22 @@
+mod frame_element;
 mod frame_header;
-mod pdu;
-pub mod pdu_frame;
+mod pdu_flags;
+// NOTE: Pub so doc links work
+pub mod storage;
 
 use crate::{
     command::{Command, CommandCode},
     error::{Error, PduError, PduValidationError},
-    pdu_loop::{frame_header::FrameHeader, pdu::PduFlags, pdu_frame::SendableFrame},
+    pdu_loop::{
+        frame_element::{FrameBox, FrameElement},
+        frame_header::FrameHeader,
+        pdu_flags::PduFlags,
+        storage::PduStorageRef,
+    },
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
-use core::{
-    cell::{RefCell, UnsafeCell},
-    mem::MaybeUninit,
-    sync::atomic::{AtomicU8, Ordering},
-    task::Waker,
-};
+use core::{marker::PhantomData, ptr::NonNull, task::Waker};
+pub use frame_element::received_frame::RxFrameDataBuf;
 use nom::{
     bytes::complete::take,
     combinator::map_res,
@@ -23,6 +26,9 @@ use nom::{
 use packed_struct::PackedStructSlice;
 use smoltcp::wire::EthernetFrame;
 use spin::RwLock;
+pub use storage::PduStorage;
+
+use self::frame_element::{received_frame::ReceivedFrame, sendable_frame::SendableFrame};
 
 pub type PduResponse<T> = (T, u16);
 
@@ -44,107 +50,58 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
     }
 }
 
-unsafe impl Sync for PduLoop {}
-
-/// Stores PDU frames that are currently being prepared to send, in flight, or being received and
-/// processed.
-#[derive(Debug)]
-pub struct PduStorage<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> {
-    frame_data: [UnsafeCell<[u8; MAX_PDU_DATA]>; MAX_FRAMES],
-    frames: [UnsafeCell<pdu_frame::Frame>; MAX_FRAMES],
-}
-
-unsafe impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> Sync
-    for PduStorage<MAX_FRAMES, MAX_PDU_DATA>
-{
-}
-
-impl<const MAX_FRAMES: usize, const MAX_PDU_DATA: usize> PduStorage<MAX_FRAMES, MAX_PDU_DATA> {
-    /// Create a new `PduStorage` instance.
-    pub const fn new() -> Self {
-        // MSRV: Nightly
-        let frames = unsafe { MaybeUninit::zeroed().assume_init() };
-        let frame_data = unsafe { MaybeUninit::zeroed().assume_init() };
-
-        // MSRV: Make `MAX_FRAMES` a `u8` when `generic_const_exprs` is stablised
-        assert!(
-            MAX_FRAMES <= u8::MAX as usize,
-            "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
-        );
-
-        Self { frame_data, frames }
-    }
-
-    /// Get a reference to this `PduStorage` with erased lifetimes.
-    pub const fn as_ref(&self) -> PduStorageRef {
-        PduStorageRef {
-            frames: &self.frames,
-            frame_data: unsafe {
-                core::slice::from_raw_parts(
-                    self.frame_data.as_ptr() as *const UnsafeCell<&[u8]>,
-                    self.frame_data.len(),
-                )
-            },
-            max_pdu_data: MAX_PDU_DATA,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct PduStorageRef<'a> {
-    frame_data: &'a [UnsafeCell<&'a [u8]>],
-    frames: &'a [UnsafeCell<pdu_frame::Frame>],
-    max_pdu_data: usize,
-}
-
 /// The core of the PDU send/receive machinery.
 ///
 /// This item orchestrates queuing, sending and receiving responses to individual PDUs. It uses a
 /// fixed length list of frame slots which are cycled through sequentially to ensure each PDU packet
 /// has a unique ID (by using the slot index).
+///
+/// # High level overview
+///
+/// <img alt="High level overview of the PDU loop send/receive process" style="background: white" src="https://mermaid.ink/svg/pako:eNplkcFuwjAMhl8lyrkT9x64jOsmBEzqoRcrcUtEm2SJA0KId5_dFmlbc3GUfP79235oEyzqWmf8LugN7hz0CcbWKz4REjnjInhSBoZBQVbvHJ3vleStqf3uSyAJQwhxDZyaQyPEqdnwhc4Jwa6pT6RbSJf5Y6r8tt2Kaq2O6C0XH0fwdmOBYIakojCizxBBj6rjRrBSN7ggv08xzfTkQvCl0CIbwVyQFAVl8eoM5pleoF_6BzTorrgk_NOcbO4hZVQJcww-v0x0hUrCv4alOxGcQSXzuIuDklFXesQ0grO8oIektZrOOGKra75a4Anp1j-Zg0LhePdG15QKVrpEHs1rmbruYGATGq2jkD7mjU-Lf_4AMq-oMQ" />
+///
+/// Source (MermaidJS)
+///
+/// ```mermaid
+/// sequenceDiagram
+///     participant call as Calling code
+///     participant PDU as PDU loop
+///     participant TXRX as TX/RX thread
+///     participant Network
+///     call ->> PDU: Send command/data
+///     PDU ->> TXRX: Stage frame, wake TX waker
+///     TXRX ->> Network: Send packet to devices
+///     Network ->> TXRX: Receive packet
+///     TXRX ->> PDU: Parse response, wake future
+///     PDU ->> call: Response ready to use
+/// ```
 #[derive(Debug)]
 pub struct PduLoop {
-    frame_data: &'static [UnsafeCell<&'static [u8]>],
-    frames: &'static [UnsafeCell<pdu_frame::Frame>],
-    pub(crate) max_pdu_data: usize,
+    storage: PduStorageRef<'static>,
 
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: RwLock<Option<Waker>>,
-    /// EtherCAT frame index.
-    idx: AtomicU8,
 }
+
+unsafe impl Sync for PduLoop {}
 
 impl PduLoop {
     /// Create a new PDU loop with the given backing storage.
     pub const fn new(storage: PduStorageRef<'static>) -> Self {
-        assert!(storage.frames.len() <= u8::MAX as usize);
+        assert!(storage.num_frames <= u8::MAX as usize);
 
         Self {
-            frames: storage.frames,
-            frame_data: storage.frame_data,
-            max_pdu_data: storage.max_pdu_data,
+            // frames: storage.frames,
+            // frame_data: storage.frame_data,
+            // max_pdu_data: storage.max_pdu_data,
+            storage,
             tx_waker: RwLock::new(None),
-            idx: AtomicU8::new(0),
         }
     }
 
-    // pub fn as_ref(&self) -> PduLoopRef<'_> {
-    //     let frame_data = unsafe {
-    //         core::slice::from_raw_parts(
-    //             self.frame_data.as_ptr() as *const _,
-    //             MAX_PDU_DATA * MAX_FRAMES,
-    //         )
-    //     };
-
-    //     PduLoopRef {
-    //         frame_data,
-    //         frames: &self.frames,
-    //         tx_waker: &self.tx_waker,
-    //         idx: &self.idx,
-    //         max_pdu_data: MAX_PDU_DATA,
-    //         max_frames: MAX_FRAMES,
-    //     }
-    // }
+    pub(crate) fn max_frame_data(&self) -> usize {
+        self.storage.frame_data_len
+    }
 
     // TX
     /// Iterate through any PDU TX frames that are ready and send them.
@@ -152,44 +109,36 @@ impl PduLoop {
     /// The blocking `send` function is called for each ready frame. It is given a `SendableFrame`.
     pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), Error>
     where
-        F: FnMut(&SendableFrame, &[u8]) -> Result<(), ()>,
+        F: FnMut(&SendableFrame<'_>) -> Result<(), ()>,
     {
-        for idx in 0..(self.frames.len() as u8) {
-            let (frame, data) = self.frame(idx)?;
+        for idx in 0..self.storage.num_frames {
+            let frame = unsafe { NonNull::new_unchecked(self.storage.frame_at_index(idx)) };
 
-            if let Some(ref mut frame) = frame.sendable() {
-                frame.mark_sending();
+            let sending = if let Some(frame) = unsafe { FrameElement::claim_sending(frame) } {
+                SendableFrame::new(FrameBox {
+                    frame,
+                    _lifetime: PhantomData,
+                })
+            } else {
+                continue;
+            };
 
-                send(frame, &data[0..frame.data_len()]).map_err(|_| Error::SendFrame)?;
+            match send(&sending) {
+                Ok(_) => {
+                    sending.mark_sent();
+                }
+                Err(_) => {
+                    return Err(Error::SendFrame);
+                }
             }
         }
 
-        if self.tx_waker.read().is_none() {
-            self.tx_waker.write().replace(waker.clone());
-        }
+        self.tx_waker
+            .try_write()
+            .expect("update waker contention")
+            .replace(waker.clone());
 
         Ok(())
-    }
-
-    // BOTH
-    fn frame(&self, idx: u8) -> Result<(&mut pdu_frame::Frame, &mut [u8]), Error> {
-        let idx = usize::from(idx);
-
-        if idx > self.frames.len() {
-            return Err(Error::Pdu(PduError::InvalidIndex(idx)));
-        }
-
-        let frame = unsafe { &mut *self.frames[idx].get() };
-        let data = unsafe {
-            core::slice::from_raw_parts_mut(
-                self.frame_data[idx].get() as *mut u8,
-                self.max_pdu_data,
-            )
-        };
-
-        // let data = todo!();
-
-        Ok((frame, data))
     }
 
     // TX
@@ -198,36 +147,30 @@ impl PduLoop {
         &self,
         command: Command,
         data_length: u16,
-    ) -> Result<PduResponse<&'_ [u8]>, Error> {
-        let idx = self.next_index();
+    ) -> Result<ReceivedFrame<'_>, Error> {
+        let frame = self.storage.alloc_frame(command, data_length)?;
 
-        let (frame, frame_data) = self.frame(idx)?;
-
-        // Remove any previous frame's data or other garbage that might be lying around. For
-        // performance reasons (maybe - need to bench) this only blanks the portion of the buffer
-        // that will be used.
-        frame_data[0..usize::from(data_length)].fill(0);
-
-        frame.replace(command, data_length, idx)?;
+        let frame = frame.mark_sendable();
 
         self.wake_sender();
 
         let res = frame.await?;
 
-        Ok((
-            &frame_data[0..usize::from(data_length)],
-            res.working_counter(),
-        ))
-    }
-
-    fn next_index(&self) -> u8 {
-        self.idx.fetch_add(1, Ordering::AcqRel) % self.frames.len() as u8
+        Ok(res)
     }
 
     /// Tell the packet sender there is data ready to send.
     fn wake_sender(&self) {
-        if let Some(waker) = self.tx_waker.read().as_ref() {
-            waker.wake_by_ref()
+        let waker = self
+            .tx_waker
+            .try_write()
+            .expect("wake_sender contention")
+            .take();
+
+        log::trace!("Wake sender {:?}", waker);
+
+        if let Some(waker) = waker {
+            waker.wake()
         }
     }
 
@@ -237,33 +180,20 @@ impl PduLoop {
         &self,
         register: u16,
         payload_length: u16,
-    ) -> Result<PduResponse<()>, Error> {
-        let idx = self.next_index();
-
-        let (frame, frame_data) = self.frame(idx)?;
-
-        frame.replace(
+    ) -> Result<ReceivedFrame<'_>, Error> {
+        let frame = self.storage.alloc_frame(
             Command::Bwr {
                 address: 0,
                 register,
             },
             payload_length,
-            idx,
         )?;
 
-        let payload_length = usize::from(payload_length);
-
-        let payload = frame_data
-            .get_mut(0..payload_length)
-            .ok_or(Error::Pdu(PduError::TooLong))?;
-
-        payload.fill(0);
+        let frame = frame.mark_sendable();
 
         self.wake_sender();
 
-        let res = frame.await?;
-
-        Ok(((), res.working_counter()))
+        frame.await
     }
 
     // TX
@@ -274,38 +204,29 @@ impl PduLoop {
     ///
     /// The PDU data length will be the larger of `send_data.len()` and `data_length`. If a larger
     /// response than `send_data` is desired, set the expected response length in `data_length`.
-    pub async fn pdu_tx_readwrite_len<'a>(
-        &'a self,
+    pub async fn pdu_tx_readwrite_len(
+        &self,
         command: Command,
         send_data: &[u8],
         data_length: u16,
-    ) -> Result<PduResponse<&'a [u8]>, Error> {
-        let idx = self.next_index();
-
+    ) -> Result<ReceivedFrame<'_>, Error> {
         let send_data_len = send_data.len();
         let payload_length = u16::try_from(send_data.len())?.max(data_length);
 
-        let (frame, frame_data) = self.frame(idx)?;
+        let mut frame = self.storage.alloc_frame(command, data_length)?;
 
-        frame.replace(command, payload_length, idx)?;
-
-        let payload = frame_data
+        let payload = frame
+            .buf_mut()
             .get_mut(0..usize::from(payload_length))
             .ok_or(Error::Pdu(PduError::TooLong))?;
 
-        let (data, rest) = payload.split_at_mut(send_data_len);
+        payload[0..send_data_len].copy_from_slice(send_data);
 
-        data.copy_from_slice(send_data);
-        // If we write fewer bytes than the requested payload length (e.g. write SDO with data
-        // payload section reserved for reply), make sure the remaining data is zeroed out from any
-        // previous request.
-        rest.fill(0);
+        let frame = frame.mark_sendable();
 
         self.wake_sender();
 
-        let res = frame.await?;
-
-        Ok((&payload[0..send_data_len], res.working_counter()))
+        frame.await
     }
 
     // TX
@@ -314,7 +235,7 @@ impl PduLoop {
         &'a self,
         command: Command,
         send_data: &[u8],
-    ) -> Result<PduResponse<&'a [u8]>, Error> {
+    ) -> Result<ReceivedFrame<'_>, Error> {
         self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?)
             .await
     }
@@ -324,10 +245,10 @@ impl PduLoop {
     pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
-        // Look for EtherCAT packets whilst ignoring broadcast packets sent from self.
-        // As per <https://github.com/OpenEtherCATsociety/SOEM/issues/585#issuecomment-1013688786>,
-        // the first slave will set the second bit of the MSB of the MAC address. This means if we
-        // send e.g. 10:10:10:10:10:10, we receive 12:10:10:10:10:10 which is useful for this
+        // Look for EtherCAT packets whilst ignoring broadcast packets sent from self. As per
+        // <https://github.com/OpenEtherCATsociety/SOEM/issues/585#issuecomment-1013688786>, the
+        // first slave will set the second bit of the MSB of the MAC address (U/L bit). This means
+        // if we send e.g. 10:10:10:10:10:10, we receive 12:10:10:10:10:10 which is useful for this
         // filtering.
         if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == MASTER_ADDR {
             return Ok(());
@@ -343,12 +264,15 @@ impl PduLoop {
         let (i, command_code) = map_res(u8, CommandCode::try_from)(i)?;
         let (i, index) = u8(i)?;
 
-        let (frame, frame_data) = self.frame(index)?;
+        let mut frame = self
+            .storage
+            .get_receiving(index)
+            .ok_or_else(|| PduError::InvalidIndex(usize::from(index)))?;
 
-        if frame.pdu.index != index {
+        if frame.index() != index {
             return Err(Error::Pdu(PduError::Validation(
                 PduValidationError::IndexMismatch {
-                    sent: frame.pdu.index,
+                    sent: frame.index(),
                     received: index,
                 },
             )));
@@ -358,11 +282,11 @@ impl PduLoop {
 
         // Check for weird bugs where a slave might return a different command than the one sent for
         // this PDU index.
-        if command.code() != frame.pdu().command().code() {
+        if command.code() != frame.command().code() {
             return Err(Error::Pdu(PduError::Validation(
                 PduValidationError::CommandMismatch {
                     sent: command,
-                    received: frame.pdu().command(),
+                    received: frame.command(),
                 },
             )));
         }
@@ -375,152 +299,238 @@ impl PduLoop {
         log::trace!("Received frame with index {index:#04x}, WKC {working_counter}");
 
         // `_i` should be empty as we `take()`d an exact amount above.
-        debug_assert_eq!(i.len(), 0);
+        debug_assert_eq!(i.len(), 0, "trailing data in received frame");
+
+        let frame_data = frame.buf_mut();
 
         frame_data[0..usize::from(flags.len())].copy_from_slice(data);
 
-        frame.wake_done(flags, irq, working_counter)?;
+        frame.mark_received(flags, irq, working_counter)?;
 
         Ok(())
     }
 }
 
-// TODO: Figure out what to do with this
-#[allow(unused)]
-pub struct PduLoopRef<'a> {
-    frame_data: &'a [UnsafeCell<&'a mut [u8]>],
-    frames: &'a [UnsafeCell<pdu_frame::Frame>],
-    tx_waker: &'a RefCell<Option<Waker>>,
-    idx: &'a AtomicU8,
-    max_pdu_data: usize,
-    max_frames: usize,
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use core::{task::Poll, time::Duration};
+    use super::{storage::PduStorage, *};
+    use crate::pdu_loop::frame_element::FrameState;
+    use core::task::Poll;
     use smoltcp::wire::EthernetAddress;
-    use std::thread;
 
-    static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
-    static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());
+    #[test]
+    fn write_frame() {
+        static STORAGE: PduStorage<1, 128> = PduStorage::<1, 128>::new();
+        static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());
+
+        let data = [0xaau8, 0xbb, 0xcc];
+
+        let mut frame = PDU_LOOP
+            .storage
+            .alloc_frame(
+                Command::Fpwr {
+                    address: 0x5678,
+                    register: 0x1234,
+                },
+                data.len() as u16,
+            )
+            .unwrap();
+
+        frame.buf_mut().copy_from_slice(&data);
+
+        let frame = SendableFrame::new(FrameBox {
+            frame: frame.inner.frame,
+            _lifetime: PhantomData,
+        });
+
+        let mut packet_buf = [0u8; 1536];
+
+        let packet = frame.write_ethernet_packet(&mut packet_buf).unwrap();
+
+        assert_eq!(
+            packet,
+            &[
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
+                0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
+                0x88, 0xa4, // EtherCAT ethertype
+                0x0f, 0x10, // EtherCAT frame header: type PDU, length 3 (plus header)
+                0x05, // Command: FPWR
+                0x00, // Frame index 0
+                0x78, 0x56, // Slave address,
+                0x34, 0x12, // Register address
+                0x03, 0x00, // Flags, 3 byte length
+                0x00, 0x00, // IRQ
+                0xaa, 0xbb, 0xcc, // Our payload
+                0x00, 0x00, // Working counter
+            ]
+        );
+    }
+
+    #[test]
+    fn write_multiple_frame() {
+        static STORAGE: PduStorage<1, 128> = PduStorage::<1, 128>::new();
+        static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());
+
+        let mut packet_buf = [0u8; 1536];
+
+        // ---
+
+        let data = [0xaau8, 0xbb, 0xcc];
+
+        let mut frame = PDU_LOOP
+            .storage
+            .alloc_frame(
+                Command::Fpwr {
+                    address: 0x5678,
+                    register: 0x1234,
+                },
+                data.len() as u16,
+            )
+            .unwrap();
+
+        frame.buf_mut().copy_from_slice(&data);
+
+        let frame = SendableFrame::new(FrameBox {
+            frame: frame.inner.frame,
+            _lifetime: PhantomData,
+        });
+
+        let _packet_1 = frame.write_ethernet_packet(&mut packet_buf).unwrap();
+
+        // Manually reset frame state so it can be reused.
+        unsafe { FrameElement::set_state(frame.inner.frame, FrameState::None) };
+
+        // ---
+
+        let data = [0xaau8, 0xbb];
+
+        let mut frame = PDU_LOOP
+            .storage
+            .alloc_frame(
+                Command::Fpwr {
+                    address: 0x6789,
+                    register: 0x1234,
+                },
+                data.len() as u16,
+            )
+            .unwrap();
+
+        frame.buf_mut().copy_from_slice(&data);
+
+        let frame = SendableFrame::new(FrameBox {
+            frame: frame.inner.frame,
+            _lifetime: PhantomData,
+        });
+
+        let packet_2 = frame.write_ethernet_packet(&mut packet_buf).unwrap();
+
+        // ---
+
+        assert_eq!(
+            packet_2,
+            &[
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
+                0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
+                0x88, 0xa4, // EtherCAT ethertype
+                0x0e, 0x10, // EtherCAT frame header: type PDU, length 2 (plus header)
+                0x05, // Command: FPWR
+                0x00, // Frame index 0
+                0x89, 0x67, // Slave address,
+                0x34, 0x12, // Register address
+                0x02, 0x00, // Flags, 2 byte length
+                0x00, 0x00, // IRQ
+                0xaa, 0xbb, // Our payload
+                0x00, 0x00, // Working counter
+            ]
+        );
+    }
 
     // Test the whole TX/RX loop with multiple threads
-    #[test]
-    fn parallel() {
-        // Comment out to make this test work with miri
+    #[tokio::test]
+    async fn parallel() {
+        // let _ = env_logger::builder().is_test(true).try_init();
         // env_logger::try_init().ok();
+
+        static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
+        static PDU_LOOP: PduLoop = PduLoop::new(STORAGE.as_ref());
+
+        let num_frames = 64;
 
         let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
-        thread::Builder::new()
-            .name("TX task".to_string())
-            .spawn(move || {
-                smol::block_on(async move {
-                    let mut packet_buf = [0u8; 1536];
+        tokio::spawn(async move {
+            let mut packet_buf = [0u8; 1536];
 
-                    log::info!("Spawn TX task");
+            log::info!("Spawn TX task");
 
-                    core::future::poll_fn::<(), _>(move |ctx| {
-                        log::info!("Poll fn");
+            let mut sent = 0;
 
-                        PDU_LOOP
-                            .send_frames_blocking(ctx.waker(), |frame, data| {
-                                let packet = frame
-                                    .write_ethernet_packet(&mut packet_buf, data)
-                                    .expect("Write Ethernet frame");
+            core::future::poll_fn::<(), _>(move |ctx| {
+                log::info!("Send poll fn");
 
-                                s.send(packet.to_vec()).unwrap();
+                PDU_LOOP
+                    .send_frames_blocking(ctx.waker(), |frame| {
+                        let packet = frame
+                            .write_ethernet_packet(&mut packet_buf)
+                            .expect("Write Ethernet frame");
 
-                                // Simulate packet send delay
-                                smol::Timer::after(Duration::from_millis(1));
+                        s.send(packet.to_vec()).unwrap();
 
-                                log::info!("Sent packet");
+                        log::info!("Sent packet");
 
-                                Ok(())
-                            })
-                            .unwrap();
-
-                        Poll::Pending
+                        Ok(())
                     })
-                    .await
-                })
-            })
-            .unwrap();
-
-        thread::Builder::new()
-            .name("RX task".to_string())
-            .spawn(move || {
-                smol::block_on(async move {
-                    log::info!("Spawn RX task");
-
-                    while let Some(ethernet_frame) = r.recv().await {
-                        // Munge fake sent frame into a fake received frame
-                        let ethernet_frame = {
-                            let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
-                            frame.set_src_addr(EthernetAddress([
-                                0x12, 0x10, 0x10, 0x10, 0x10, 0x10,
-                            ]));
-                            frame.into_inner()
-                        };
-
-                        log::info!("Received packet");
-
-                        PDU_LOOP.pdu_rx(&ethernet_frame).expect("RX");
-                    }
-                })
-            })
-            .unwrap();
-
-        // let task_1 = thread::Builder::new()
-        //     .name("Task 1".to_string())
-        //     .spawn(move || {
-        smol::block_on(async move {
-            for i in 0..64 {
-                let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
-
-                log::info!("Send PDU {i}");
-
-                let (result, _wkc) = PDU_LOOP
-                    .pdu_tx_readwrite(
-                        Command::Fpwr {
-                            address: 0x1000,
-                            register: 0x0980,
-                        },
-                        &data,
-                    )
-                    .await
                     .unwrap();
 
-                assert_eq!(result, &data);
+                sent += 1;
+
+                if sent < num_frames {
+                    Poll::Pending
+                } else {
+                    Poll::Ready(())
+                }
+            })
+            .await
+        });
+
+        tokio::spawn(async move {
+            log::info!("Spawn RX task");
+
+            while let Some(ethernet_frame) = r.recv().await {
+                log::trace!("RX task received packet");
+
+                // Munge fake sent frame into a fake received frame
+                let ethernet_frame = {
+                    let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
+                    frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+                    frame.into_inner()
+                };
+
+                PDU_LOOP.pdu_rx(&ethernet_frame).expect("RX");
             }
         });
-        // })
-        // .unwrap();
 
-        // smol::block_on(async move {
-        //     for i in 0..64 {
-        //         let data = [0x11, 0x22, 0x33, 0x44, 0x55, i];
+        for i in 0..64 {
+            let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
 
-        //         log::info!("Send PDU {i}");
+            log::info!("Send PDU {i}");
 
-        //         let (result, _wkc) = pdu_loop
-        //             .pdu_tx_readwrite(
-        //                 Command::Fpwr {
-        //                     address: 0x1000,
-        //                     register: 0x0980,
-        //                 },
-        //                 &data,
-        //                 &Timeouts::default(),
-        //             )
-        //             .await
-        //             .unwrap();
+            let result = PDU_LOOP
+                .pdu_tx_readwrite(
+                    Command::Fpwr {
+                        address: 0x1000,
+                        register: 0x0980,
+                    },
+                    &data,
+                )
+                .await
+                .unwrap()
+                .wkc(0, "testing")
+                .unwrap();
 
-        //         assert_eq!(result, &data);
-        //     }
-        // });
+            assert_eq!(&*result, &data);
+        }
 
-        // task_1.join().unwrap();
+        log::info!("Sent all PDUs");
     }
 }

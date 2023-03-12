@@ -70,7 +70,7 @@ impl<'client> Client<'client> {
     /// Write zeroes to every slave's memory in chunks.
     async fn blank_memory(&self, start: impl Into<u16>, len: u16) -> Result<(), Error> {
         let start: u16 = start.into();
-        let step = self.pdu_loop.max_pdu_data;
+        let step = self.pdu_loop.max_frame_data();
         let range = start..(start + len);
 
         // TODO: This will miss the last step if step is not a multiple of range. Use a loop instead.
@@ -290,48 +290,56 @@ impl<'client> Client<'client> {
     where
         T: PduRead,
     {
-        let (data, working_counter) = timeout(
+        timeout(
             self.timeouts.pdu,
             self.pdu_loop.pdu_tx_readonly(command, T::len()),
         )
-        .await?;
+        .await
+        .and_then(|response| {
+            let (data, working_counter) = response.into_data();
+            let data = &*data;
 
-        let res = T::try_from_slice(data).map_err(|e| {
-            log::error!(
-                "PDU data decode: {:?}, T: {} data {:?}",
-                e,
-                type_name::<T>(),
-                data
-            );
+            let res = T::try_from_slice(data).map_err(|e| {
+                log::error!(
+                    "PDU data decode: {:?}, T: {} data {:?}",
+                    e,
+                    type_name::<T>(),
+                    data
+                );
 
-            PduError::Decode
-        })?;
+                PduError::Decode
+            })?;
 
-        Ok((res, working_counter))
+            Ok((res, working_counter))
+        })
     }
 
     async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
     {
-        let (data, working_counter) = timeout(
+        timeout(
             self.timeouts.pdu,
             self.pdu_loop.pdu_tx_readwrite(command, value.as_slice()),
         )
-        .await?;
+        .await
+        .and_then(|response| {
+            let (data, working_counter) = response.into_data();
+            let data = &*data;
 
-        let res = T::try_from_slice(data).map_err(|e| {
-            log::error!(
-                "PDU data decode: {:?}, T: {} data {:?}",
-                e,
-                type_name::<T>(),
-                data
-            );
+            let res = T::try_from_slice(data).map_err(|e| {
+                log::error!(
+                    "PDU data decode: {:?}, T: {} data {:?}",
+                    e,
+                    type_name::<T>(),
+                    data
+                );
 
-            PduError::Decode
-        })?;
+                PduError::Decode
+            })?;
 
-        Ok((res, working_counter))
+            Ok((res, working_counter))
+        })
     }
 
     /// Send a `BRD` (Broadcast Read).
@@ -490,14 +498,16 @@ impl<'client> Client<'client> {
         value: &'buf mut [u8],
         read_back_len: usize,
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
-        assert!(value.len() <= self.pdu_loop.max_pdu_data, "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), self.pdu_loop.max_pdu_data);
+        assert!(value.len() <= self.pdu_loop.max_frame_data(), "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), self.pdu_loop.max_frame_data());
 
-        let (data, working_counter) = timeout(
+        let response = timeout(
             self.timeouts.pdu,
             self.pdu_loop
                 .pdu_tx_readwrite(Command::Lrw { address }, value),
         )
         .await?;
+
+        let (data, working_counter) = response.into_data();
 
         if data.len() != value.len() {
             log::error!(

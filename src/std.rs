@@ -65,9 +65,9 @@ pub fn tx_rx_task(
     let tx_task = core::future::poll_fn::<(), _>(move |ctx| {
         client_tx
             .pdu_loop
-            .send_frames_blocking(ctx.waker(), |frame, data| {
+            .send_frames_blocking(ctx.waker(), |frame| {
                 let packet = frame
-                    .write_ethernet_packet(&mut packet_buf, data)
+                    .write_ethernet_packet(&mut packet_buf)
                     .expect("Write Ethernet frame");
 
                 tx.send_to(packet, None).unwrap().map_err(|e| {
