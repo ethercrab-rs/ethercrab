@@ -6,6 +6,10 @@ use crate::{
 
 use core::{ops::Deref, ptr::NonNull};
 
+/// A frame element where response data has been received from the EtherCAT network.
+///
+/// A frame may only enter this state when it has been populated with response data from the
+/// network.
 #[derive(Debug)]
 pub struct ReceivedFrame<'sto> {
     pub(in crate::pdu_loop::frame_element) inner: FrameBox<'sto>,
@@ -16,6 +20,10 @@ impl<'sto> ReceivedFrame<'sto> {
         unsafe { self.inner.frame() }.working_counter
     }
 
+    /// Retrieve the frame's data.
+    ///
+    /// If the working counter of the received frame does not match the given expected value, this
+    /// method will return an [`Error::WorkingCounter`] error.
     pub fn wkc(self, expected: u16, context: &'static str) -> Result<RxFrameDataBuf<'sto>, Error> {
         let frame = self.frame();
         let act_wc = frame.working_counter;
@@ -31,7 +39,8 @@ impl<'sto> ReceivedFrame<'sto> {
         }
     }
 
-    /// Retrieve the frame's internal data without checking for working counter.
+    /// Retrieve the frame's internal data and working counter without checking whether the working
+    /// counter has a valid value.
     pub fn into_data(self) -> PduResponse<RxFrameDataBuf<'sto>> {
         let wkc = self.working_counter();
 

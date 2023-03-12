@@ -16,6 +16,8 @@ use core::mem;
 use packed_struct::PackedStruct;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
+/// A frame has been initialised with valid header and data payload and is now ready to be picked up
+/// by the TX loop and sent over the network.
 #[derive(Debug)]
 pub struct SendableFrame<'sto> {
     pub(in crate::pdu_loop) inner: FrameBox<'sto>,
@@ -26,6 +28,7 @@ impl<'a> SendableFrame<'a> {
         Self { inner }
     }
 
+    /// The frame has been sent by the network driver.
     pub fn mark_sent(self) {
         log::trace!("Mark sent");
 

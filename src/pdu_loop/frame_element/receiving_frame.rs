@@ -10,12 +10,19 @@ use crate::{
 
 use core::{future::Future, task::Poll};
 
+/// A frame has been sent and is now waiting for a response from the network.
+///
+/// This state may only be entered once the frame has been sent over the network.
 #[derive(Debug)]
 pub struct ReceivingFrame<'sto> {
     pub inner: FrameBox<'sto>,
 }
 
 impl<'sto> ReceivingFrame<'sto> {
+    /// Mark the frame as fully received.
+    ///
+    /// This method may only be called once the frame response (header and data) has been validated
+    /// and stored in the frame element.
     pub fn mark_received(
         self,
         flags: PduFlags,

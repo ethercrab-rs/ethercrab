@@ -1,7 +1,8 @@
 mod frame_element;
 mod frame_header;
 mod pdu_flags;
-mod storage;
+// NOTE: Pub so doc links work
+pub mod storage;
 
 use crate::{
     command::{Command, CommandCode},
@@ -56,9 +57,6 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 /// has a unique ID (by using the slot index).
 #[derive(Debug)]
 pub struct PduLoop {
-    // frame_data: &'static [UnsafeCell<&'static [u8]>],
-    // frames: &'static [UnsafeCell<pdu_frame::Frame>],
-    // pub(crate) max_pdu_data: usize,
     storage: PduStorageRef<'static>,
 
     /// A waker used to wake up the TX task when a new frame is ready to be sent.

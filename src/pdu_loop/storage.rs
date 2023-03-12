@@ -56,11 +56,15 @@ pub struct PduStorageRef<'a> {
     pub frames: NonNull<FrameElement<0>>,
     pub num_frames: usize,
     pub frame_data_len: usize,
+    /// EtherCAT frame index.
+    ///
+    /// This is incremented atomically to allow simultaneous allocation of available frame elements.
     idx: AtomicU8,
     _lifetime: PhantomData<&'a ()>,
 }
 
 impl<'a> PduStorageRef<'a> {
+    /// Allocate a PDU frame with the given command and data length.
     pub fn alloc_frame(
         &self,
         command: Command,
@@ -78,10 +82,13 @@ impl<'a> PduStorageRef<'a> {
 
         log::trace!("Try to allocate frame #{idx}");
 
+        // Claim frame so it is no longer free and can be used. It must be claimed before
+        // initialisation to avoid race conditions with other threads potentially claiming the same
+        // frame.
         let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(idx)) };
         let frame = unsafe { FrameElement::claim_created(frame) }?;
 
-        // Initialise frame
+        // Initialise frame with EtherCAT header and zeroed data buffer.
         unsafe {
             addr_of_mut!((*frame.as_ptr()).frame).write(PduFrame {
                 index: idx_u8,
@@ -125,6 +132,12 @@ impl<'a> PduStorageRef<'a> {
         })
     }
 
+    /// Retrieve a frame at the given index.
+    ///
+    /// # Safety
+    ///
+    /// If the given index is greater than the value in `PduStorage::N`, this will return garbage
+    /// data off the end of the frame element buffer.
     pub(in crate::pdu_loop) unsafe fn frame_at_index(&self, idx: usize) -> *mut FrameElement<0> {
         let align = core::mem::align_of::<FrameElement<0>>();
         let size = core::mem::size_of::<FrameElement<0>>() + self.frame_data_len;

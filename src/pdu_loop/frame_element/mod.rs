@@ -10,27 +10,30 @@ pub mod received_frame;
 pub mod receiving_frame;
 pub mod sendable_frame;
 
+/// Frame state.
 #[atomic_enum::atomic_enum]
 #[derive(PartialEq, Default)]
 pub enum FrameState {
     // SAFETY: Because we create a bunch of `Frame`s with `MaybeUninit::zeroed`, the `None` state
     // MUST be equal to zero. All other fields in `Frame` are overridden in `replace`, so there
     // should be no UB there.
-    /// The frame is ready to be claimed
+    /// The frame is available ready to be claimed.
     #[default]
     None = 0,
-    /// The frame is claimed and can be initialised ready for sending.
+    /// The frame is claimed with a zeroed data buffer and can be filled with command, data, etc
+    /// ready for sending.
     Created = 1,
-    /// The frame is ready to send when the TX loop next runs.
+    /// The frame has been populated with data and is ready to send when the TX loop next runs.
     Sendable = 2,
-    /// The frame is being sent over the network interface.
+    /// The frame has been sent over the network interface and we are waiting for a response from
+    /// the network.
     Sending = 3,
-    /// A frame response has been received and is now ready for parsing.
+    /// A frame response has been received and validation/parsing is in progress.
     RxBusy = 5,
-    /// Frame response parsing is complete. The frame and its data is ready to be returned in
-    /// `Poll::Ready`.
+    /// Frame response parsing is complete and the returned data is now stored in the frame. The
+    /// frame and its data is ready to be returned in `Poll::Ready` of [`ReceiveFrameFut`].
     RxDone = 6,
-    /// The frame TX/RX is complete, but the frame is still in use by calling code.
+    /// The frame TX/RX is complete, but the frame memory is still held by calling code.
     RxProcessing = 7,
 }
 
@@ -71,12 +74,17 @@ impl<const N: usize> FrameElement<N> {
         NonNull::new_unchecked(buf_ptr)
     }
 
+    /// Set the frame's state without checking its current state.
     pub(in crate::pdu_loop) unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
         let fptr = this.as_ptr();
 
         (*addr_of_mut!((*fptr).status)).store(state, Ordering::Release);
     }
 
+    /// Atomically swap the frame state from `from` to `to`.
+    ///
+    /// If the frame is not currently in the given `from` state, this method will return an error
+    /// with the actual current frame state.
     unsafe fn swap_state(
         this: NonNull<FrameElement<N>>,
         from: FrameState,
@@ -91,7 +99,6 @@ impl<const N: usize> FrameElement<N> {
             Ordering::Relaxed,
         )?;
 
-        // If we got here, it's ours.
         Ok(this)
     }
 
@@ -100,6 +107,12 @@ impl<const N: usize> FrameElement<N> {
     pub unsafe fn claim_created(
         this: NonNull<FrameElement<N>>,
     ) -> Result<NonNull<FrameElement<N>>, PduError> {
+        // SAFETY: We atomically ensure the frame is currently available to use which guarantees no
+        // other thread could take it from under our feet.
+        //
+        // It is imperative that we check the existing state when claiming a frame as created. It
+        // matters slightly less for all other state transitions because once we have a created
+        // frame nothing else is able to take it unless it is put back into the `None` state.
         Self::swap_state(this, FrameState::None, FrameState::Created).map_err(|e| {
             log::error!(
                 "Failed to claim frame: status is {:?}, expected {:?}",
@@ -124,7 +137,7 @@ impl<const N: usize> FrameElement<N> {
     }
 }
 
-// Used to store a FrameElement with erased const generics
+/// Frame data common to all typestates.
 #[derive(Debug)]
 pub struct FrameBox<'sto> {
     pub frame: NonNull<FrameElement<0>>,
