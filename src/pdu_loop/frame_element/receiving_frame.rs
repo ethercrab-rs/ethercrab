@@ -46,6 +46,8 @@ impl<'sto> ReceivingFrame<'sto> {
             PduError::InvalidFrameState
         })?;
 
+        // Frame state must be updated BEFORE the waker is awoken so the future impl returns
+        // `Poll::Ready`.
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::RxDone);
         }
