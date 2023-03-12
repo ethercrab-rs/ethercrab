@@ -14,7 +14,7 @@ use crate::{
     mailbox::MailboxType,
     pdi::PdiSegment,
     pdu_data::{PduData, PduRead},
-    pdu_loop::CheckWorkingCounter,
+    pdu_loop::RxFrameDataBuf,
     register::{RegisterAddress, SupportFlags},
     slave::ports::{Port, Ports},
     slave_state::SlaveState,
@@ -337,7 +337,8 @@ impl<'a> SlaveRef<'a> {
     ) -> Result<&'buf [u8], Error> {
         let request = coe::services::upload(self.client.mailbox_counter(), index, sub_index);
 
-        let (headers, data) = self.send_coe_service(request).await?;
+        let (headers, response) = self.send_coe_service(request).await?;
+        let data: &[u8] = &response;
 
         // Expedited transfers where the data is 4 bytes or less long, denoted in the SDO header
         // size value.
@@ -415,7 +416,7 @@ impl<'a> SlaveRef<'a> {
 
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
     /// and return as a slice.
-    async fn send_coe_service<H>(&self, request: H) -> Result<(H, &[u8]), Error>
+    async fn send_coe_service<H>(&self, request: H) -> Result<(H, RxFrameDataBuf<'a>), Error>
     where
         H: CoeServiceTrait + packed_struct::PackedStructInfo,
         <H as PackedStruct>::ByteArray: AsRef<[u8]>,
@@ -476,7 +477,7 @@ impl<'a> SlaveRef<'a> {
 
         // Receive data from slave send mailbox
         // TODO: Abstract this into a method that returns a slice
-        let response = self
+        let mut response = self
             .client
             .client
             .pdu_loop
@@ -536,7 +537,8 @@ impl<'a> SlaveRef<'a> {
                 sub_index: request.sub_index(),
             }))
         } else {
-            Ok((headers, data))
+            response.trim_front(headers_len);
+            Ok((headers, response))
         }
     }
 }
