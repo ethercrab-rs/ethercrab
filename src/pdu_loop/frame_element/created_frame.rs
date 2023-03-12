@@ -29,3 +29,12 @@ impl<'sto> CreatedFrame<'sto> {
         unsafe { self.inner.buf_mut() }
     }
 }
+
+// SAFETY: This unsafe impl is required due to `FrameBox` containing a `NonNull`, however this impl
+// is ok because FrameBox also holds the lifetime `'sto` of the backing store, which is where the
+// `NonNull<FrameElement>` comes from.
+//
+// For example, if the backing storage is is `'static`, we can send things between threads. If it's
+// not, the associated lifetime will prevent the framebox from being used in anything that requires
+// a 'static bound.
+unsafe impl<'sto> Send for CreatedFrame<'sto> {}
