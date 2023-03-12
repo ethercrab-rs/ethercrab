@@ -55,6 +55,26 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 /// This item orchestrates queuing, sending and receiving responses to individual PDUs. It uses a
 /// fixed length list of frame slots which are cycled through sequentially to ensure each PDU packet
 /// has a unique ID (by using the slot index).
+///
+/// # High level overview
+///
+/// <img alt="High level overview of the PDU loop send/receive process" style="background: white" src="https://mermaid.ink/svg/pako:eNplkcFuwjAMhl8lyrkT9x64jOsmBEzqoRcrcUtEm2SJA0KId5_dFmlbc3GUfP79235oEyzqWmf8LugN7hz0CcbWKz4REjnjInhSBoZBQVbvHJ3vleStqf3uSyAJQwhxDZyaQyPEqdnwhc4Jwa6pT6RbSJf5Y6r8tt2Kaq2O6C0XH0fwdmOBYIakojCizxBBj6rjRrBSN7ggv08xzfTkQvCl0CIbwVyQFAVl8eoM5pleoF_6BzTorrgk_NOcbO4hZVQJcww-v0x0hUrCv4alOxGcQSXzuIuDklFXesQ0grO8oIektZrOOGKra75a4Anp1j-Zg0LhePdG15QKVrpEHs1rmbruYGATGq2jkD7mjU-Lf_4AMq-oMQ" />
+///
+/// Source (MermaidJS)
+///
+/// ```mermaid
+/// sequenceDiagram
+///     participant call as Calling code
+///     participant PDU as PDU loop
+///     participant TXRX as TX/RX thread
+///     participant Network
+///     call ->> PDU: Send command/data
+///     PDU ->> TXRX: Stage frame, wake TX waker
+///     TXRX ->> Network: Send packet to devices
+///     Network ->> TXRX: Receive packet
+///     TXRX ->> PDU: Parse response, wake future
+///     PDU ->> call: Response ready to use
+/// ```
 #[derive(Debug)]
 pub struct PduLoop {
     storage: PduStorageRef<'static>,
