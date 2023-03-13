@@ -76,18 +76,18 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 ///     PDU ->> call: Response ready to use
 /// ```
 #[derive(Debug)]
-pub struct PduLoop {
-    storage: PduStorageRef<'static>,
+pub struct PduLoop<'sto> {
+    storage: PduStorageRef<'sto>,
 
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     tx_waker: RwLock<Option<Waker>>,
 }
 
-unsafe impl Sync for PduLoop {}
+unsafe impl<'sto> Sync for PduLoop<'sto> {}
 
-impl PduLoop {
+impl<'sto> PduLoop<'sto> {
     /// Create a new PDU loop with the given backing storage.
-    pub const fn new(storage: PduStorageRef<'static>) -> Self {
+    pub const fn new(storage: PduStorageRef<'sto>) -> Self {
         assert!(storage.num_frames <= u8::MAX as usize);
 
         Self {

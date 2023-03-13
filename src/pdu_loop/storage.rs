@@ -52,7 +52,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 }
 
 #[derive(Debug)]
-pub struct PduStorageRef<'a> {
+pub struct PduStorageRef<'sto> {
     pub frames: NonNull<FrameElement<0>>,
     pub num_frames: usize,
     pub frame_data_len: usize,
@@ -60,16 +60,16 @@ pub struct PduStorageRef<'a> {
     ///
     /// This is incremented atomically to allow simultaneous allocation of available frame elements.
     idx: AtomicU8,
-    _lifetime: PhantomData<&'a ()>,
+    _lifetime: PhantomData<&'sto ()>,
 }
 
-impl<'a> PduStorageRef<'a> {
+impl<'sto> PduStorageRef<'sto> {
     /// Allocate a PDU frame with the given command and data length.
     pub fn alloc_frame(
         &self,
         command: Command,
         data_length: u16,
-    ) -> Result<CreatedFrame<'a>, Error> {
+    ) -> Result<CreatedFrame<'sto>, Error> {
         let data_length_usize = usize::from(data_length);
 
         if data_length_usize > self.frame_data_len {
@@ -112,7 +112,7 @@ impl<'a> PduStorageRef<'a> {
     }
 
     /// Updates state from SENDING -> RX_BUSY
-    pub fn get_receiving(&self, idx: u8) -> Option<ReceivingFrame<'a>> {
+    pub fn get_receiving(&self, idx: u8) -> Option<ReceivingFrame<'sto>> {
         let idx = usize::from(idx);
 
         if idx >= self.num_frames {

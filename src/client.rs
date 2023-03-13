@@ -25,7 +25,7 @@ use packed_struct::PackedStruct;
 #[derive(Debug)]
 pub struct Client<'client> {
     // TODO: un-pub
-    pub(crate) pdu_loop: &'client PduLoop,
+    pub(crate) pdu_loop: PduLoop<'client>,
     /// The total number of discovered slaves.
     ///
     /// Using an `AtomicU16` here only to satisfy `Sync` requirements, but it's only ever written to
@@ -40,7 +40,7 @@ unsafe impl<'client> Sync for Client<'client> {}
 
 impl<'client> Client<'client> {
     /// Create a new EtherCrab client.
-    pub const fn new(pdu_loop: &'client PduLoop, timeouts: Timeouts) -> Self {
+    pub const fn new(pdu_loop: PduLoop<'client>, timeouts: Timeouts) -> Self {
         Self {
             pdu_loop,
             // slaves: UnsafeCell::new(heapless::Vec::new()),
