@@ -3,8 +3,8 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, RegisterAddress, SlaveGroup,
-    SubIndex, Timeouts,
+    error::Error, std::tx_rx_task, Client, PduStorage, RegisterAddress, SlaveGroup, SubIndex,
+    Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
@@ -28,13 +28,14 @@ const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
-static PDU_LOOP: PduLoop = PduLoop::new(PDU_STORAGE.as_ref());
 
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Starting DC demo...");
 
+    let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+
     let client = Arc::new(Client::new(
-        &PDU_LOOP,
+        pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
@@ -42,7 +43,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         },
     ));
 
-    ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
+    ex.spawn(tx_rx_task(INTERFACE, tx, rx).unwrap()).detach();
 
     let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {

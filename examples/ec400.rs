@@ -5,7 +5,7 @@ use ethercrab::{
     ds402::{Ds402, Ds402Sm},
     error::Error,
     std::tx_rx_task,
-    Client, PduLoop, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
+    Client, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
 };
 use futures_lite::StreamExt;
 use smol::LocalExecutor;
@@ -35,14 +35,15 @@ const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
-static PDU_LOOP: PduLoop = PduLoop::new(PDU_STORAGE.as_ref());
 
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     log::info!("Starting SDO demo...");
 
-    let client = Arc::new(Client::new(&PDU_LOOP, Timeouts::default()));
+    let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
+    let client = Arc::new(Client::new(pdu_loop, Timeouts::default()));
+
+    ex.spawn(tx_rx_task(INTERFACE, tx, rx).unwrap()).detach();
 
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
