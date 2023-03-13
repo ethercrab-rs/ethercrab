@@ -69,6 +69,7 @@ pub struct PduLoop<'sto> {
     storage: PduStorageRef<'sto>,
 }
 
+unsafe impl<'sto> Send for PduLoop<'sto> {}
 unsafe impl<'sto> Sync for PduLoop<'sto> {}
 
 impl<'sto> PduLoop<'sto> {

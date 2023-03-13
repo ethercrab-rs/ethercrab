@@ -5,6 +5,7 @@ use super::{
 use crate::error::Error;
 use core::{marker::PhantomData, ptr::NonNull, task::Waker};
 
+/// Send data frames over a network interface.
 pub struct PduTx<'sto> {
     storage: PduStorageRef<'sto>,
 }
@@ -17,7 +18,6 @@ impl<'sto> PduTx<'sto> {
         Self { storage }
     }
 
-    // TX
     /// Iterate through any PDU TX frames that are ready and send them.
     ///
     /// The blocking `send` function is called for each ready frame. It is given a `SendableFrame`.

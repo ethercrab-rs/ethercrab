@@ -14,6 +14,7 @@ use nom::{
 use packed_struct::PackedStructSlice;
 use smoltcp::wire::EthernetFrame;
 
+/// Receive frames from network interface.
 pub struct PduRx<'sto> {
     storage: PduStorageRef<'sto>,
 }
