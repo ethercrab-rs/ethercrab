@@ -91,9 +91,6 @@ impl<'sto> PduLoop<'sto> {
         assert!(storage.num_frames <= u8::MAX as usize);
 
         Self {
-            // frames: storage.frames,
-            // frame_data: storage.frame_data,
-            // max_pdu_data: storage.max_pdu_data,
             storage,
             tx_waker: RwLock::new(None),
         }

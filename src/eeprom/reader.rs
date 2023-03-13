@@ -79,8 +79,8 @@ impl<'a> EepromSectionReader<'a> {
         }
     }
 
-    async fn read_eeprom_raw<'client>(
-        client: &'client SlaveClient<'client>,
+    async fn read_eeprom_raw<'sto>(
+        client: &'sto SlaveClient<'sto>,
         eeprom_address: u16,
     ) -> Result<[u8; 8], Error> {
         let status = client
@@ -160,7 +160,7 @@ impl<'a> EepromSectionReader<'a> {
     }
 
     /// Wait for EEPROM read or write operation to finish and clear the busy flag.
-    async fn wait<'client>(client: &'client SlaveClient<'client>) -> Result<(), Error> {
+    async fn wait<'sto>(client: &'sto SlaveClient<'sto>) -> Result<(), Error> {
         crate::timer_factory::timeout(client.timeouts().eeprom, async {
             loop {
                 let control = client
