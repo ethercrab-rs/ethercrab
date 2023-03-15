@@ -67,7 +67,7 @@ impl<'sto> ReceivedFrame<'sto> {
 
 impl<'sto> Drop for ReceivedFrame<'sto> {
     fn drop(&mut self) {
-        log::trace!("Drop frame element");
+        log::trace!("Drop frame element idx {}", self.frame().index);
 
         unsafe { FrameElement::set_state(self.inner.frame, FrameState::None) }
     }
