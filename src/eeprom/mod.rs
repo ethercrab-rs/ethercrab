@@ -258,6 +258,10 @@ impl<'a> Eeprom<'a> {
 
             let s = core::str::from_utf8(&bytes).map_err(|_| Error::Eeprom(EepromError::Decode))?;
 
+            // Strip trailing null bytes from string.
+            // TODO: Unit test this when an EEPROM shim is added
+            let s = s.trim_end_matches('\0');
+
             let s = heapless::String::<N>::from_str(s)
                 .map_err(|_| Error::Eeprom(EepromError::Decode))?;
 
