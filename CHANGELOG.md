@@ -15,6 +15,35 @@ An EtherCAT master written in Rust.
   less confusing.
 - **(breaking)** [#16] Remove `TIMER`/`TIMEOUT` generic parameter. `std` environments will now use
   the timer provided by `smol` (`async-io`). `no_std` environments will use `embassy-time`.
+- **(breaking)** [#20] Changed the way the client, tx and rx instances are initialised to only allow
+  one TX and RX to exist.
+
+  Before
+
+  ```rust
+  static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+  static PDU_LOOP: PduLoop = PduLoop::new(PDU_STORAGE.as_ref());
+
+  async fn main_app(ex: &LocalExecutor<'static>) -> Result<(), Error> {
+      let client = Arc::new(Client::new(&PDU_LOOP, Timeouts::default()));
+
+      ex.spawn(tx_rx_task(INTERFACE, &client).unwrap()).detach();
+  }
+  ```
+
+  After
+
+  ```rust
+  static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+
+  async fn main_app(ex: &LocalExecutor<'static>) -> Result<(), Error> {
+      let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+
+      let client = Arc::new(Client::new(pdu_loop, Timeouts::default()));
+
+      ex.spawn(tx_rx_task(INTERFACE, tx, rx).unwrap()).detach();
+  }
+  ```
 
 ### Added
 
@@ -45,5 +74,6 @@ An EtherCAT master written in Rust.
 [#14]: https://github.com/ethercrab-rs/ethercrab/pull/14
 [#16]: https://github.com/ethercrab-rs/ethercrab/pull/16
 [#23]: https://github.com/ethercrab-rs/ethercrab/pull/23
+[#20]: https://github.com/ethercrab-rs/ethercrab/pull/20
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
