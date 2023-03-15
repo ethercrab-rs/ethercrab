@@ -111,7 +111,7 @@ pub enum PduError {
     Decode,
     /// Something went wrong when encoding/decoding the raw Ethernet II frame.
     Ethernet(smoltcp::Error),
-    /// PDU data is too long to fit in the given array.
+    /// PDU data is too long to fit in the given buffer.
     TooLong,
     /// Failed to create an Ethernet II frame.
     CreateFrame(smoltcp::Error),

@@ -12,7 +12,7 @@ use crate::{
     pdu_loop::storage::PduStorageRef,
 };
 
-pub use frame_element::received_frame::RxFrameDataBuf;
+pub use frame_element::{received_frame::RxFrameDataBuf, sendable_frame::SendableFrame};
 pub use pdu_rx::PduRx;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;

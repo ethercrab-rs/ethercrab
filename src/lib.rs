@@ -199,7 +199,7 @@ use smoltcp::wire::{EthernetAddress, EthernetProtocol};
 
 pub use client::Client;
 pub use coe::SubIndex;
-pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx};
+pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::RegisterAddress;
 pub use slave_group::{
     GroupSlave, GroupSlaveIterator, SlaveGroup, SlaveGroupContainer, SlaveGroupRef,
