@@ -30,8 +30,6 @@ impl<'a> SendableFrame<'a> {
 
     /// The frame has been sent by the network driver.
     pub fn mark_sent(self) {
-        log::trace!("Mark sent");
-
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::Sending);
         }
