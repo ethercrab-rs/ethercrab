@@ -167,7 +167,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     ///
     /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
-    pub async fn tx_rx<'client>(&self, client: &'client Client<'client>) -> Result<(), Error> {
+    pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<(), Error> {
         log::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.start_address,

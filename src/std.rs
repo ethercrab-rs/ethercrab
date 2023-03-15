@@ -1,11 +1,10 @@
 //! Items to use when not in `no_std` environments.
 
-use crate::client::Client;
+use crate::pdu_loop::{PduRx, PduTx};
 use core::{future::Future, task::Poll};
 use embassy_futures::select;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
-use std::sync::Arc;
 
 /// Get a TX/RX pair.
 pub fn get_tx_rx(
@@ -48,23 +47,19 @@ pub fn get_tx_rx(
 }
 
 // TODO: Proper error - there are a couple of unwraps in here
-// TODO: Make some sort of split() method to ensure we can only ever have one tx/rx future running
 /// Create a task that waits for PDUs to send, and receives PDU responses.
 pub fn tx_rx_task(
     device: &str,
-    client: &Arc<Client<'static>>,
+    pdu_tx: PduTx<'static>,
+    pdu_rx: PduRx<'static>,
 ) -> Result<impl Future<Output = embassy_futures::select::Either<(), ()>>, std::io::Error> {
-    let client_tx = client.clone();
-    let client_rx = client.clone();
-
     let (mut tx, mut rx) = get_tx_rx(device)?;
 
     let mut packet_buf = [0u8; 1536];
 
     // TODO: Unwraps
     let tx_task = core::future::poll_fn::<(), _>(move |ctx| {
-        client_tx
-            .pdu_loop
+        pdu_tx
             .send_frames_blocking(ctx.waker(), |frame| {
                 let packet = frame
                     .write_ethernet_packet(&mut packet_buf)
@@ -106,8 +101,7 @@ pub fn tx_rx_task(
                         Err(e) => panic!("RX pre: {e}"),
                     };
 
-                    client_rx
-                        .pdu_loop
+                    pdu_rx
                         .pdu_rx(&frame_buf)
                         .map_err(|e| {
                             dbg!(frame_buf.len());
