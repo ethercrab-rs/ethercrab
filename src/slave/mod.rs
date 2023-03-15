@@ -149,8 +149,8 @@ impl Slave {
     ///
     /// This method reads the slave's name and other identifying information, but does not configure
     /// the slave.
-    pub(crate) async fn new<'client>(
-        client: &'client Client<'client>,
+    pub(crate) async fn new<'sto>(
+        client: &'sto Client<'sto>,
         index: usize,
         configured_address: u16,
     ) -> Result<Self, Error> {

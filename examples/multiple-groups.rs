@@ -9,7 +9,7 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, SlaveGroup, SlaveGroupContainer,
+    error::Error, std::tx_rx_task, Client, PduStorage, SlaveGroup, SlaveGroupContainer,
     SlaveGroupRef, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
@@ -27,7 +27,6 @@ const MAX_PDU_DATA: usize = 1100;
 const MAX_FRAMES: usize = 16;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
-static PDU_LOOP: PduLoop = PduLoop::new(PDU_STORAGE.as_ref());
 
 #[derive(Default)]
 struct Groups {
@@ -60,8 +59,10 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Starting multiple groups demo...");
 
+    let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+
     let client = Arc::new(Client::new(
-        &PDU_LOOP,
+        pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
@@ -69,7 +70,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         },
     ));
 
-    ex.spawn(tx_rx_task(&interface, &client).unwrap()).detach();
+    ex.spawn(tx_rx_task(&interface, tx, rx).unwrap()).detach();
 
     let groups = client
         // Initialise up to 16 slave devices
