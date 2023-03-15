@@ -232,6 +232,8 @@ impl<'a> Eeprom<'a> {
         if let Some(mut reader) = self.reader(CategoryType::Strings).await? {
             let num_strings = reader.try_next().await?;
 
+            log::trace!("--> Slave has {} strings", num_strings);
+
             if search_index > num_strings {
                 return Ok(None);
             }
@@ -252,10 +254,19 @@ impl<'a> Eeprom<'a> {
                     string_length: string_len,
                 })?;
 
+            log::trace!("--> Raw string bytes {:?}", bytes);
+
             let s = core::str::from_utf8(&bytes).map_err(|_| Error::Eeprom(EepromError::Decode))?;
 
             let s = heapless::String::<N>::from_str(s)
                 .map_err(|_| Error::Eeprom(EepromError::Decode))?;
+
+            log::trace!(
+                "--> String at search index {} with length {}: {}",
+                search_index,
+                string_len,
+                s
+            );
 
             Ok(Some(s))
         } else {
