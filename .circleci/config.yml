@@ -1,50 +1,55 @@
 target_steps: &target_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.65.0
+    - image: cimg/rust:1.67.0
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
     - restore_cache:
-        key: v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # For docs gen
     - run: rustup target add x86_64-unknown-linux-gnu || true
-    - run: cargo install cargo-deadlinks --target x86_64-unknown-linux-gnu
+    - run: |
+        if ! type "cargo-deadlinks" > /dev/null; then
+          cargo install cargo-deadlinks --target x86_64-unknown-linux-gnu
+        fi
 
     - run: rustup target add $TARGET || true
     - run: cargo test --target $TARGET
+    - run: cargo build --target $TARGET --examples --release
     - run:
         MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" cargo miri test
-        --target $TARGET
-    - run: cargo build --target $TARGET --examples --release
+        --target $TARGET --release
     - run: cargo deadlinks --ignore-fragments
 
     - save_cache:
-        key: v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
+          - /home/circleci/.cargo/bin
 
 target_steps_no_test: &target_steps_no_test
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.65.0
+    - image: cimg/rust:1.67.0
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
     - restore_cache:
-        key: v2-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     - run: rustup target add $TARGET || true
     # TODO: Add --examples when there are some no_std examples ready
     - run: cargo build --target $TARGET --no-default-features --release
 
     - save_cache:
-        key: v2-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
+          - /home/circleci/.cargo/bin
 
 version: 2
 jobs:
