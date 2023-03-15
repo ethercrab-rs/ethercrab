@@ -22,6 +22,7 @@ An EtherCAT master written in Rust.
 
 ### Fixed
 
+- [#23] Strip trailing null bytes (`\0`) in strings read from SII
 - [#14] Fixed various overflow/arithmetic bugs in distributed clock time calculations and PDI
   configuration
 - [#6] Fixed topology detection not stopping at first upstream fork when there is a slave device
@@ -43,5 +44,6 @@ An EtherCAT master written in Rust.
 [#9]: https://github.com/ethercrab-rs/ethercrab/pull/9
 [#14]: https://github.com/ethercrab-rs/ethercrab/pull/14
 [#16]: https://github.com/ethercrab-rs/ethercrab/pull/16
+[#23]: https://github.com/ethercrab-rs/ethercrab/pull/23
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
