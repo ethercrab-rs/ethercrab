@@ -37,10 +37,6 @@ impl<'sto> ReceivingFrame<'sto> {
 
         let frame = unsafe { self.inner.frame() };
 
-        log::trace!("Frame and buf mark_received");
-
-        log::trace!("Mark received, waker is {:?}", frame.waker);
-
         let waker = unsafe { self.inner.take_waker() }.ok_or_else(|| {
             log::error!(
                 "Attempted to wake frame #{} with no waker, possibly caused by timeout",
