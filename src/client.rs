@@ -23,9 +23,9 @@ use packed_struct::PackedStruct;
 /// A medium-level interface over PDUs (e.g. `BRD`, `LRW`, etc) and other EtherCAT master related
 /// infrastructure.
 #[derive(Debug)]
-pub struct Client<'client> {
+pub struct Client<'sto> {
     // TODO: un-pub
-    pub(crate) pdu_loop: &'client PduLoop,
+    pub(crate) pdu_loop: PduLoop<'sto>,
     /// The total number of discovered slaves.
     ///
     /// Using an `AtomicU16` here only to satisfy `Sync` requirements, but it's only ever written to
@@ -36,11 +36,11 @@ pub struct Client<'client> {
     mailbox_counter: AtomicU8,
 }
 
-unsafe impl<'client> Sync for Client<'client> {}
+unsafe impl<'sto> Sync for Client<'sto> {}
 
-impl<'client> Client<'client> {
+impl<'sto> Client<'sto> {
     /// Create a new EtherCrab client.
-    pub const fn new(pdu_loop: &'client PduLoop, timeouts: Timeouts) -> Self {
+    pub const fn new(pdu_loop: PduLoop<'sto>, timeouts: Timeouts) -> Self {
         Self {
             pdu_loop,
             // slaves: UnsafeCell::new(heapless::Vec::new()),

@@ -24,12 +24,14 @@ pub struct SendableFrame<'sto> {
 }
 
 impl<'a> SendableFrame<'a> {
-    pub fn new(inner: FrameBox<'a>) -> Self {
+    pub(in crate::pdu_loop) fn new(inner: FrameBox<'a>) -> Self {
         Self { inner }
     }
 
     /// The frame has been sent by the network driver.
-    pub fn mark_sent(self) {
+    pub(in crate::pdu_loop) fn mark_sent(self) {
+        log::trace!("Mark sent");
+
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::Sending);
         }
@@ -88,6 +90,11 @@ impl<'a> SendableFrame<'a> {
         }
     }
 
+    /// Write an Ethernet II frame containing the EtherCAT payload into `buf`.
+    ///
+    /// The consumed part of the buffer is returned on success, ready for passing to the network
+    /// device. If the buffer is not large enough to hold the full frame, this method will return
+    /// [`Error::Pdu(PduError::TooLong)`](PduError::TooLong).
     pub fn write_ethernet_packet<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
         let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len());
 

@@ -24,12 +24,12 @@ pub struct SlaveGroupRef<'a> {
 }
 
 impl<'a> SlaveGroupRef<'a> {
-    pub(crate) async fn configure_from_eeprom<'client>(
+    pub(crate) async fn configure_from_eeprom<'sto>(
         &mut self,
         // We need to start this group's PDI after that of the previous group. That offset is passed
         // in via `start_offset`.
         mut global_offset: PdiOffset,
-        client: &'client Client<'client>,
+        client: &'sto Client<'sto>,
     ) -> Result<PdiOffset, Error> {
         log::debug!(
             "Going to configure group, starting PDI offset {:#08x}",

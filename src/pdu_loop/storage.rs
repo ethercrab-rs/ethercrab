@@ -1,3 +1,5 @@
+use spin::RwLock;
+
 use crate::{
     command::Command,
     error::{Error, PduError},
@@ -8,19 +10,27 @@ use crate::{
         },
         pdu_flags::PduFlags,
     },
+    PduLoop,
 };
 use core::{
     cell::UnsafeCell,
     marker::PhantomData,
     mem::MaybeUninit,
     ptr::{addr_of_mut, NonNull},
-    sync::atomic::{AtomicU8, Ordering},
+    sync::atomic::{AtomicBool, AtomicU8, Ordering},
+    task::Waker,
 };
+
+use super::{pdu_rx::PduRx, pdu_tx::PduTx};
 
 /// Stores PDU frames that are currently being prepared to send, in flight, or being received and
 /// processed.
 pub struct PduStorage<const N: usize, const DATA: usize> {
     frames: UnsafeCell<MaybeUninit<[FrameElement<DATA>; N]>>,
+    idx: AtomicU8,
+    is_split: AtomicBool,
+    /// A waker used to wake up the TX task when a new frame is ready to be sent.
+    pub(in crate::pdu_loop) tx_waker: RwLock<Option<Waker>>,
 }
 
 unsafe impl<const N: usize, const DATA: usize> Sync for PduStorage<N, DATA> {}
@@ -36,40 +46,66 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 
         let frames = UnsafeCell::new(unsafe { MaybeUninit::zeroed().assume_init() });
 
-        Self { frames }
+        Self {
+            frames,
+            idx: AtomicU8::new(0),
+            is_split: AtomicBool::new(false),
+            tx_waker: RwLock::new(None),
+        }
     }
 
-    /// Get a reference to this `PduStorage` with erased const generics.
-    pub const fn as_ref(&self) -> PduStorageRef<'_> {
-        PduStorageRef {
+    /// Create a PDU loop backed by this storage.
+    ///
+    /// Returns a TX and RX driver, and a handle to the PDU loop. This method will return an error
+    /// if called more than once.
+    pub fn try_split(&self) -> Result<(PduTx<'_>, PduRx<'_>, PduLoop<'_>), ()> {
+        self.is_split
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+            // TODO: Make try_split const when ? is allowed in const methods
+            .map_err(|_| ())?;
+
+        let storage = self.as_ref();
+
+        Ok((
+            PduTx::new(storage.clone()),
+            PduRx::new(storage.clone()),
+            PduLoop::new(storage),
+        ))
+    }
+
+    fn as_ref(&self) -> PduStorageRef {
+        let storage = PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             num_frames: N,
             frame_data_len: DATA,
-            idx: AtomicU8::new(0),
+            idx: &self.idx,
+            tx_waker: &self.tx_waker,
             _lifetime: PhantomData,
-        }
+        };
+        storage
     }
 }
 
-#[derive(Debug)]
-pub struct PduStorageRef<'a> {
+#[derive(Debug, Clone)]
+pub(in crate::pdu_loop) struct PduStorageRef<'sto> {
     pub frames: NonNull<FrameElement<0>>,
     pub num_frames: usize,
     pub frame_data_len: usize,
     /// EtherCAT frame index.
     ///
     /// This is incremented atomically to allow simultaneous allocation of available frame elements.
-    idx: AtomicU8,
-    _lifetime: PhantomData<&'a ()>,
+    idx: &'sto AtomicU8,
+    pub tx_waker: &'sto RwLock<Option<Waker>>,
+    _lifetime: PhantomData<&'sto ()>,
 }
 
-impl<'a> PduStorageRef<'a> {
+impl<'sto> PduStorageRef<'sto> {
     /// Allocate a PDU frame with the given command and data length.
-    pub fn alloc_frame(
+    pub(in crate::pdu_loop) fn alloc_frame(
         &self,
         command: Command,
         data_length: u16,
-    ) -> Result<CreatedFrame<'a>, Error> {
+    ) -> Result<CreatedFrame<'sto>, Error> {
         let data_length_usize = usize::from(data_length);
 
         if data_length_usize > self.frame_data_len {
@@ -112,7 +148,7 @@ impl<'a> PduStorageRef<'a> {
     }
 
     /// Updates state from SENDING -> RX_BUSY
-    pub fn get_receiving(&self, idx: u8) -> Option<ReceivingFrame<'a>> {
+    pub(in crate::pdu_loop) fn get_receiving(&self, idx: u8) -> Option<ReceivingFrame<'sto>> {
         let idx = usize::from(idx);
 
         if idx >= self.num_frames {

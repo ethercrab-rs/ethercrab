@@ -8,8 +8,8 @@
 - [x] SII read
   - [x] Find strings section function
   - [x] Read name in chunks of however many bytes and form into a displayable string
-- [ ] Experiment with using `MaybeUninit` for wakers again
-- [ ] Find a way to split out the PDU TX/RX to ensure we only ever have one of them
+- [-] Experiment with using `MaybeUninit` for wakers again
+- [x] Find a way to split out the PDU TX/RX to ensure we only ever have one of them
 - [x] Read FMMU and SM data from EEPROM
 - [x] Use [embassy-futures](https://crates.io/crates/embassy-futures) for some things instead of
       smol or whatever I'm using now.
@@ -64,8 +64,11 @@
 - [x] EL3004 fails to initialise with
       `thread 'main' panicked at 'Init: NotFound { item: Fmmu, index: None }', examples\dc.rs:55:10`.
       Same with EL3204 and presumably EL3202. Works fine with EL2828 and EL1018
-- [ ] Figure out why LAN9252 doesn't like showing any output. Inputs work fine so maybe a DC sync
-      issue? Idk.
+- [-] Figure out why LAN9252 doesn't like showing any output. Inputs work fine so maybe a DC sync
+  issue? Idk.
+
+  Update 2023-03-13: Stale. Unsure what original issue was about
+
 - [ ] Fix timeouts going into SAFE-OP
   - [x] EL3004
   - [ ] EL3204
