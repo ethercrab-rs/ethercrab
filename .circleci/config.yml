@@ -1,7 +1,7 @@
 target_steps: &target_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.67.0
+    - image: cimg/rust:1.68.0
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
@@ -19,9 +19,6 @@ target_steps: &target_steps
     - run: cargo test --target $TARGET
     - run: cargo bench --no-run --target $TARGET
     - run: cargo build --target $TARGET --examples --release
-    - run:
-        MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" cargo miri test
-        --target $TARGET --release
     - run: cargo deadlinks --ignore-fragments
 
     - save_cache:
@@ -31,10 +28,33 @@ target_steps: &target_steps
           - /home/circleci/.cargo/registry
           - /home/circleci/.cargo/bin
 
+miri_steps: &miri_steps
+  docker:
+    # NOTE: Exact version is overridden in `rust-toolchain.toml`
+    - image: cimg/rust:1.68.0
+  steps:
+    - checkout
+    - run: sudo apt update && sudo apt install -y libpcap-dev
+    - restore_cache:
+        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+
+    # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
+    - run: rustup toolchain add nightly-2023-03-16 --target $TARGET --component miri
+    - run: |
+        export MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation"
+
+        cargo +nightly-2023-03-16 miri test --target $TARGET --release
+
+    - save_cache:
+        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        paths:
+          - ./target
+          - /home/circleci/.cargo/registry
+
 target_steps_no_test: &target_steps_no_test
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.67.0
+    - image: cimg/rust:1.68.0
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
@@ -50,7 +70,6 @@ target_steps_no_test: &target_steps_no_test
         paths:
           - ./target
           - /home/circleci/.cargo/registry
-          - /home/circleci/.cargo/bin
 
 version: 2
 jobs:
@@ -59,6 +78,12 @@ jobs:
     environment:
       - TARGET: "x86_64-unknown-linux-gnu"
     <<: *target_steps
+
+  miri-x86_64-unknown-linux-gnu:
+    resource_class: large
+    environment:
+      - TARGET: "x86_64-unknown-linux-gnu"
+    <<: *miri_steps
   # TODO: Re-enable when we can remove `Box` from the slave group preop hook fn
   # target-thumbv7m-none-eabi:
   #   resource_class: large
@@ -69,6 +94,7 @@ jobs:
 build_jobs: &build_jobs
   jobs:
     - target-x86_64-unknown-linux-gnu
+    - miri-x86_64-unknown-linux-gnu
     # - target-thumbv7m-none-eabi
 
 workflows:
