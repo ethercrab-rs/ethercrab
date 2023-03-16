@@ -54,26 +54,20 @@ const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
-static PDU_LOOP: PduLoop = PduLoop::new(PDU_STORAGE.as_ref());
 
 async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     let interface = std::env::args()
         .nth(1)
         .expect("Provide interface as first argument");
 
-    log::info!("Starting EK1100 demo...");
+    log::info!("Starting EtherCrab demo...");
     log::info!("Ensure an EK1100 is the first slave, with any number of modules connected after");
 
-    let client = Arc::new(Client::<smol::Timer>::new(
-        &PDU_LOOP,
-        Timeouts {
-            wait_loop_delay: Duration::from_millis(2),
-            mailbox_response: Duration::from_millis(1000),
-            ..Default::default()
-        },
-    ));
+    let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    ex.spawn(tx_rx_task(&interface, &client).unwrap()).detach();
+    let client = Arc::new(Client::new(pdu_loop, Timeouts::default()));
+
+    ex.spawn(tx_rx_task(&interface, tx, rx).unwrap()).detach();
 
     let group = SlaveGroup::<MAX_SLAVES, PDI_LEN, _>::new(|slave| {
         Box::pin(async {
