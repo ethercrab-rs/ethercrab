@@ -45,7 +45,7 @@ An EtherCAT master written in Rust.
   }
   ```
 
-- **(breaking)** [#TODO] Changed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
+- **(breaking)** [#25] Changed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
 
 ### Added
 
@@ -77,5 +77,6 @@ An EtherCAT master written in Rust.
 [#16]: https://github.com/ethercrab-rs/ethercrab/pull/16
 [#23]: https://github.com/ethercrab-rs/ethercrab/pull/23
 [#20]: https://github.com/ethercrab-rs/ethercrab/pull/20
+[#25]: https://github.com/ethercrab-rs/ethercrab/pull/25
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
