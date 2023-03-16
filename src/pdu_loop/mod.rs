@@ -240,6 +240,8 @@ mod tests {
     }
 
     #[test]
+    // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
+    #[cfg_attr(miri, ignore)]
     fn single_frame_round_trip() {
         const FRAME_OVERHEAD: usize = 28;
 
