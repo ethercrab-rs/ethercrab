@@ -13,9 +13,7 @@ An EtherCAT master written in pure Rust.
 
 ## MSRV
 
-Unfortunately, nightly Rust is currently required.
-
-The MSRV for EtherCrab can be found in `rust-toolchain.toml`.
+The current MSRV for EtherCrab is 1.68.
 
 ## Example
 
