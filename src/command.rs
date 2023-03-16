@@ -1,11 +1,14 @@
 use cookie_factory::{gen_simple, GenError};
 use nom::{combinator::map, error::ParseError, sequence::pair, IResult};
 
+/// PDU command.
 #[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
 pub enum Command {
+    /// No operation.
     #[default]
     Nop,
 
+    /// APRD.
     Aprd {
         /// Auto increment counter.
         address: u16,
@@ -13,6 +16,7 @@ pub enum Command {
         /// Memory location to read from.
         register: u16,
     },
+    /// FPRD.
     Fprd {
         /// Configured station address.
         address: u16,
@@ -20,6 +24,7 @@ pub enum Command {
         /// Memory location to read from.
         register: u16,
     },
+    /// BRD.
     Brd {
         /// Autoincremented by each slave visited.
         address: u16,
@@ -27,11 +32,13 @@ pub enum Command {
         /// Memory location to read from.
         register: u16,
     },
+    /// LRD.
     Lrd {
         /// Logical address.
         address: u32,
     },
 
+    /// BWR.
     Bwr {
         /// Autoincremented by each slave visited.
         address: u16,
@@ -39,6 +46,7 @@ pub enum Command {
         /// Memory location to write to.
         register: u16,
     },
+    /// APWR.
     Apwr {
         /// Auto increment counter.
         address: u16,
@@ -46,6 +54,7 @@ pub enum Command {
         /// Memory location to write to.
         register: u16,
     },
+    /// FPWR.
     Fpwr {
         /// Configured station address.
         address: u16,
@@ -53,6 +62,7 @@ pub enum Command {
         /// Memory location to read from.
         register: u16,
     },
+    /// FRMW.
     Frmw {
         /// Configured station address.
         address: u16,
@@ -60,11 +70,13 @@ pub enum Command {
         /// Memory location to read from.
         register: u16,
     },
+    /// LWR.
     Lwr {
         /// Logical address.
         address: u32,
     },
 
+    /// LRW.
     Lrw {
         /// Logical address.
         address: u32,
@@ -72,6 +84,7 @@ pub enum Command {
 }
 
 impl Command {
+    /// Get just the command code for a command.
     pub const fn code(&self) -> CommandCode {
         match self {
             Self::Nop => CommandCode::Nop,
@@ -94,6 +107,7 @@ impl Command {
         }
     }
 
+    /// Get the address value for the command.
     pub fn address(&self) -> Result<[u8; 4], GenError> {
         let mut arr = [0x00u8; 4];
 
