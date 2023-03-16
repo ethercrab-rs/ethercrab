@@ -6,7 +6,7 @@ target_steps: &target_steps
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
     - restore_cache:
-        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # For docs gen
     - run: rustup target add x86_64-unknown-linux-gnu || true
@@ -22,7 +22,7 @@ target_steps: &target_steps
     - run: cargo deadlinks --ignore-fragments
 
     - save_cache:
-        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
