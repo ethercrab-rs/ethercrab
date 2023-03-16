@@ -187,8 +187,10 @@ impl<'sto> PduStorageRef<'sto> {
             .pad_to_align()
             .size();
 
-        // NIGHTLY: pointer_byte_offsets
-        self.frames.as_ptr().byte_add(idx * stride)
+        // MSRV: When `pointer_byte_offsets` is stabilised, use `self.frames.as_ptr().byte_add(idx *
+        // stride)`. This code is a rip from the core lib function so should do pretty much the same
+        // thing.
+        self.frames.as_ptr().cast::<u8>().add(idx * stride).cast()
     }
 }
 
