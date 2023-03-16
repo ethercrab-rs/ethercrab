@@ -53,6 +53,7 @@ An EtherCAT master written in Rust.
 
 ### Fixed
 
+- [#26] :tada: EtherCrab now works on stable Rust. The MSRV is 1.68.
 - [#23] Strip trailing null bytes (`\0`) in strings read from SII
 - [#14] Fixed various overflow/arithmetic bugs in distributed clock time calculations and PDI
   configuration
@@ -78,5 +79,6 @@ An EtherCAT master written in Rust.
 [#23]: https://github.com/ethercrab-rs/ethercrab/pull/23
 [#20]: https://github.com/ethercrab-rs/ethercrab/pull/20
 [#25]: https://github.com/ethercrab-rs/ethercrab/pull/25
+[#26]: https://github.com/ethercrab-rs/ethercrab/pull/26
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
