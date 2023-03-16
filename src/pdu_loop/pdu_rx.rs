@@ -28,7 +28,7 @@ impl<'sto> PduRx<'sto> {
     }
 
     /// Parse a PDU from a complete Ethernet II frame.
-    pub fn pdu_rx(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
+    pub fn receive_frame(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self. As per

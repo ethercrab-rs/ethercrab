@@ -102,7 +102,7 @@ pub fn tx_rx_task(
                     };
 
                     pdu_rx
-                        .pdu_rx(&frame_buf)
+                        .receive_frame(&frame_buf)
                         .map_err(|e| {
                             dbg!(frame_buf.len());
 

@@ -185,6 +185,9 @@ mod sync_manager_channel;
 mod timer_factory;
 mod vendors;
 
+#[doc(hidden)]
+pub mod internals;
+
 #[cfg(feature = "std")]
 pub mod std;
 
