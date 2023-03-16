@@ -44,7 +44,8 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
         );
 
-        let frames = UnsafeCell::new(unsafe { MaybeUninit::zeroed().assume_init() });
+        // MSRV: Use MaybeUninit::zeroed when `const_maybe_uninit_zeroed` is stabilised.
+        let frames = UnsafeCell::new(MaybeUninit::uninit());
 
         Self {
             frames,
@@ -74,6 +75,10 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     }
 
     fn as_ref(&self) -> PduStorageRef {
+        // MSRV: Remove when `const_maybe_uninit_zeroed` is stabilised. Rely on
+        // `MaybeUninit::zeroed` in `PduStorage::new()`.
+        unsafe { (&mut *self.frames.get()).as_mut_ptr().write_bytes(0u8, 1) };
+
         let storage = PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             num_frames: N,
