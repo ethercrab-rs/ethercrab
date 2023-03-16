@@ -8,6 +8,10 @@
 //!
 //! Breaking changes may be made at any time.
 //!
+//! # MSRV
+//!
+//! The current MSRV for EtherCrab is 1.68.
+//!
 //! # Examples
 //!
 //! This example increments the output bytes of all detected slaves every tick. It is tested on an
@@ -145,9 +149,6 @@
 //! }
 //! ```
 
-#![feature(const_maybe_uninit_zeroed)]
-#![feature(pin_macro)]
-#![feature(pointer_byte_offsets)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
 #![deny(missing_copy_implementations)]
