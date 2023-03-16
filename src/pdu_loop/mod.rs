@@ -188,6 +188,7 @@ mod tests {
         sendable_frame::SendableFrame, FrameBox, FrameElement, FrameState,
     };
     use core::{marker::PhantomData, task::Poll};
+    use futures_lite::future::poll_once;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
     #[test]
@@ -236,6 +237,60 @@ mod tests {
                 0x00, 0x00, // Working counter
             ]
         );
+    }
+
+    #[test]
+    fn single_frame_round_trip() {
+        const FRAME_OVERHEAD: usize = 28;
+
+        // 1 frame, up to 128 bytes payload
+        let storage = PduStorage::<1, 128>::new();
+
+        let (tx, rx, pdu_loop) = storage.try_split().unwrap();
+
+        let data = [0xaau8, 0xbb, 0xcc, 0xdd];
+
+        let mut packet_buf = [0u8; 1536];
+        let mut written_packet = Vec::new();
+        written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
+
+        // Poll future up to first await point. This gets the frame ready and marks it as sendable
+        // so TX can pick it up, but we don't want to wait for the response so we won't poll it
+        // again.
+        let frame_fut = poll_once(pdu_loop.pdu_tx_readwrite(
+            Command::Fpwr {
+                address: 0x5678,
+                register: 0x1234,
+            },
+            &data,
+        ));
+
+        let _ = smol::block_on(frame_fut);
+
+        let send_fut = poll_once(core::future::poll_fn::<(), _>(|ctx| {
+            tx.send_frames_blocking(ctx.waker(), |frame| {
+                let packet = frame
+                    .write_ethernet_packet(&mut packet_buf)
+                    .expect("Write Ethernet frame");
+
+                written_packet.copy_from_slice(packet);
+
+                Ok(())
+            })
+            .unwrap();
+
+            Poll::Ready(())
+        }));
+
+        let _ = smol::block_on(send_fut);
+
+        assert_eq!(written_packet.len(), FRAME_OVERHEAD + data.len());
+
+        // ---
+
+        let result = rx.receive_frame(&written_packet);
+
+        assert!(result.is_ok());
     }
 
     #[test]
