@@ -45,6 +45,8 @@ An EtherCAT master written in Rust.
   }
   ```
 
+- **(breaking)** [#TODO] Changed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
+
 ### Added
 
 - [#1] Added `SlaveGroup::len` and `SlaveGroup::is_empty` methods.

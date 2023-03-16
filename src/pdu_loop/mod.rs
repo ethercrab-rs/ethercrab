@@ -377,7 +377,7 @@ mod tests {
                     frame.into_inner()
                 };
 
-                rx.pdu_rx(&ethernet_frame).expect("RX");
+                rx.receive_frame(&ethernet_frame).expect("RX");
             }
         });
 
