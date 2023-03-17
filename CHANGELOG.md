@@ -46,6 +46,7 @@ An EtherCAT master written in Rust.
   ```
 
 - **(breaking)** [#25] Changed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
+- **(breaking)** [#TODO] Removed `PduError::Encode` variant.
 
 ### Added
 
