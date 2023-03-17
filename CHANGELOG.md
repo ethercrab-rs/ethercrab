@@ -50,6 +50,7 @@ An EtherCAT master written in Rust.
 
 ### Added
 
+- [#TODO] Added `Copy`, `Clone`, `PartialEq` and `Eq` implementations to `Error` and `PduError`.
 - [#1] Added `SlaveGroup::len` and `SlaveGroup::is_empty` methods.
 - [#29] Implement `Display` for `Error`, `PduError`, `MailboxError`, `EepromError`,
   `VisibleStringError` and `PduValidationError`

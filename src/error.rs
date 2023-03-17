@@ -4,7 +4,7 @@ use crate::{coe::abort_code::AbortCode, command::Command, SlaveState};
 use core::{cell::BorrowError, fmt, num::TryFromIntError, str::Utf8Error};
 
 /// An EtherCrab error.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Error {
     /// A low level error occurred when producing or consuming a PDU.
     Pdu(PduError),
@@ -162,7 +162,7 @@ pub enum Item {
 }
 
 /// Low-level PDU (Process Data Unit) error.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PduError {
     /// Failed to decode raw PDU data into a given data type.
     Decode,
