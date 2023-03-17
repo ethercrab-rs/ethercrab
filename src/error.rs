@@ -1,7 +1,7 @@
 //! EtherCrab error types.
 
 use crate::{coe::abort_code::AbortCode, command::Command, SlaveState};
-use core::{cell::BorrowError, num::TryFromIntError, str::Utf8Error};
+use core::{cell::BorrowError, fmt, num::TryFromIntError, str::Utf8Error};
 
 /// An EtherCrab error.
 #[derive(Debug)]
@@ -73,10 +73,67 @@ pub enum Error {
         /// The actual state.
         actual: SlaveState,
 
-        /// An optional slave address. If this is `None`, the state represents the network as a
-        /// whole.
-        configured_address: Option<u16>,
+        /// Slave address.
+        configured_address: u16,
     },
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Pdu(e) => write!(f, "pdu: {}", e),
+            Error::WorkingCounter {
+                expected,
+                received,
+                context,
+            } => write!(
+                f,
+                "working counter expected {}, got {} ({})",
+                expected,
+                received,
+                context.unwrap_or("[no context provided]")
+            ),
+            Error::Borrow => write!(f, ""),
+            Error::Timeout => write!(f, ""),
+            Error::Eeprom(e) => write!(f, "eeprom: {}", e),
+            Error::Capacity(item) => write!(f, "not enough capacity for {:?}", item),
+            Error::StringTooLong {
+                max_length,
+                string_length,
+            } => write!(
+                f,
+                "string of {} bytes is too long to fit in max storage of {} bytes",
+                string_length, max_length
+            ),
+            Error::Mailbox(e) => write!(f, "mailbox: {e}"),
+            Error::SendFrame => write!(f, "failed to send EtherCAT frame"),
+            Error::IntegerTypeConversion => write!(f, "failed to convert between integer types"),
+            Error::PdiTooLong {
+                max_length,
+                desired_length,
+            } => write!(
+                f,
+                "Process Data Image is too long ({} bytes), max length is {}",
+                desired_length, max_length
+            ),
+            Error::NotFound { item, index } => {
+                write!(f, "item kind {:?} not found (index: {:?})", item, index)
+            }
+            Error::Internal => write!(f, "internal error"),
+            Error::Topology => write!(f, "topology"),
+            Error::StateTransition => write!(f, "a slave failed to transition to a new state"),
+            Error::UnknownSlave => write!(f, "unknown slave device"),
+            Error::InvalidState {
+                expected,
+                actual,
+                configured_address,
+            } => write!(
+                f,
+                "slave {:#06x} state is invalid: {}, expected {}",
+                configured_address, actual, expected
+            ),
+        }
+    }
 }
 
 impl From<BorrowError> for Error {
@@ -127,7 +184,26 @@ pub enum PduError {
     /// frames too quickly.
     InvalidFrameState,
     /// Failed to swap atomic state for a PDU frame.
+    ///
+    /// This is an internal error and should not appear in user code. Please [open an
+    /// issue](https://github.com/ethercrab-rs/ethercrab/issues/new) if this is encountered.
     SwapState,
+}
+
+impl fmt::Display for PduError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PduError::Decode => write!(f, "failed to decode raw PDU data into type"),
+            PduError::Ethernet(e) => write!(f, "network: {}", e),
+            PduError::TooLong => write!(f, "data is too long to fit in given buffer"),
+            PduError::CreateFrame(e) => write!(f, "failed to create frame: {}", e),
+            PduError::Encode(e) => write!(f, "failed to encode frame: {}", e),
+            PduError::InvalidIndex(index) => write!(f, "invalid PDU index {}", index),
+            PduError::Validation(e) => write!(f, "received PDU validation failed: {}", e),
+            PduError::InvalidFrameState => write!(f, "invalid PDU frame state"),
+            PduError::SwapState => write!(f, "failed to swap frame state"),
+        }
+    }
 }
 
 /// CoE mailbox error.
@@ -160,6 +236,29 @@ pub enum MailboxError {
     },
 }
 
+impl fmt::Display for MailboxError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MailboxError::Aborted {
+                code,
+                address,
+                sub_index,
+            } => write!(f, "{:#06x}:{} aborted: {}", address, sub_index, code),
+            MailboxError::TooLong { address, sub_index } => write!(
+                f,
+                "{:#06x}:{} returned data is too long",
+                address, sub_index
+            ),
+            MailboxError::NoMailbox => write!(f, "device has no mailbox"),
+            MailboxError::SdoResponseInvalid { address, sub_index } => write!(
+                f,
+                "{:#06x}:{} invalid response from device",
+                address, sub_index
+            ),
+        }
+    }
+}
+
 /// EEPROM (SII) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum EepromError {
@@ -173,6 +272,17 @@ pub enum EepromError {
     SectionUnderrun,
 }
 
+impl fmt::Display for EepromError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EepromError::Decode => f.write_str("failed to decode data"),
+            EepromError::SectionOverrun => f.write_str("section too large to fit in buffer"),
+            EepromError::NoCategory => f.write_str("category not found"),
+            EepromError::SectionUnderrun => f.write_str("section too short to fill buffer"),
+        }
+    }
+}
+
 /// An EtherCat "visible string" (i.e. a human readable string) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum VisibleStringError {
@@ -180,6 +290,15 @@ pub enum VisibleStringError {
     Decode(Utf8Error),
     /// The source data is too long to fit in a given storage type.
     TooLong,
+}
+
+impl fmt::Display for VisibleStringError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VisibleStringError::Decode(e) => write!(f, "failed to decode string: {}", e),
+            VisibleStringError::TooLong => write!(f, "string is too long"),
+        }
+    }
 }
 
 /// A PDU response failed to validate.
@@ -199,6 +318,27 @@ pub enum PduValidationError {
         /// Received command.
         received: Command,
     },
+}
+
+impl fmt::Display for PduValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::IndexMismatch { sent, received } => {
+                write!(
+                    f,
+                    "PDU index mismatch: sent {}, received {}",
+                    sent, received
+                )
+            }
+            Self::CommandMismatch { sent, received } => {
+                write!(
+                    f,
+                    "PDU command mismatch: sent {}, received {}",
+                    sent, received
+                )
+            }
+        }
+    }
 }
 
 impl From<PduError> for Error {
