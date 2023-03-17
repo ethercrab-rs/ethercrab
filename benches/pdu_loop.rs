@@ -27,7 +27,7 @@ fn do_bench(b: &mut Bencher) {
             &DATA,
         ));
 
-        let _ = smol::block_on(frame_fut);
+        let _ = futures_lite::future::block_on(frame_fut);
 
         // --- Send frame
 
@@ -46,7 +46,7 @@ fn do_bench(b: &mut Bencher) {
             Poll::Ready(())
         }));
 
-        let _ = smol::block_on(send_fut);
+        let _ = futures_lite::future::block_on(send_fut);
 
         assert_eq!(written_packet.len(), FRAME_OVERHEAD + DATA.len());
 
