@@ -26,7 +26,7 @@ use core::{
 };
 use nom::{bytes::complete::take, number::complete::le_u32, IResult};
 use num_enum::TryFromPrimitive;
-use packed_struct::{PackedStruct, PackedStructSlice};
+use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
 #[derive(Default, Copy, Clone)]
 pub struct SlaveIdentity {
@@ -273,6 +273,8 @@ impl<'a> SlaveRef<'a> {
 
         let request = coe::services::download(counter, index, sub_index, data, len as u8);
 
+        log::trace!("CoE download");
+
         let (_response, _data) = self.send_coe_service(request).await?;
 
         // TODO: Validate reply?
@@ -337,6 +339,8 @@ impl<'a> SlaveRef<'a> {
     ) -> Result<&'buf [u8], Error> {
         let request = coe::services::upload(self.client.mailbox_counter(), index, sub_index);
 
+        log::trace!("CoE upload");
+
         let (headers, response) = self.send_coe_service(request).await?;
         let data: &[u8] = &response;
 
@@ -384,6 +388,8 @@ impl<'a> SlaveRef<'a> {
                     let request =
                         coe::services::upload_segmented(self.client.mailbox_counter(), toggle);
 
+                    log::trace!("CoE upload segmented");
+
                     let (headers, data) = self.send_coe_service(request).await?;
 
                     // The spec defines the data length as n-3, so we'll just go with that magic
@@ -416,9 +422,12 @@ impl<'a> SlaveRef<'a> {
 
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
     /// and return as a slice.
-    async fn send_coe_service<H>(&self, request: H) -> Result<(H, RxFrameDataBuf<'a>), Error>
+    async fn send_coe_service<H>(
+        &self,
+        request: H,
+    ) -> Result<(H::Response, RxFrameDataBuf<'a>), Error>
     where
-        H: CoeServiceTrait + packed_struct::PackedStructInfo,
+        H: CoeServiceTrait,
         <H as PackedStruct>::ByteArray: AsRef<[u8]>,
     {
         let write_mailbox = self
@@ -493,11 +502,11 @@ impl<'a> SlaveRef<'a> {
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
 
-        let headers_len = H::packed_bits() / 8;
+        let headers_len = H::Response::packed_bits() / 8;
 
         let (headers, data) = response.split_at(headers_len);
 
-        let headers = H::unpack_from_slice(headers).map_err(|e| {
+        let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
             log::error!("Failed to unpack mailbox response headers: {e}");
 
             e

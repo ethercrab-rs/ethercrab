@@ -1,6 +1,6 @@
 use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SegmentSdoHeader, SubIndex};
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
-use packed_struct::prelude::PackedStruct;
+use packed_struct::{prelude::PackedStruct, PackedStructInfo};
 
 #[derive(Debug, Copy, Clone, PackedStruct)]
 pub struct DownloadExpeditedRequest {
@@ -24,6 +24,16 @@ pub struct UploadRequest {
 }
 
 #[derive(Debug, Copy, Clone, PackedStruct)]
+pub struct Response {
+    #[packed_field(size_bytes = "6")]
+    pub header: MailboxHeader,
+    #[packed_field(size_bytes = "2")]
+    pub coe_header: CoeHeader,
+    #[packed_field(size_bytes = "4")]
+    pub sdo_header: InitSdoHeader,
+}
+
+#[derive(Debug, Copy, Clone, PackedStruct)]
 pub struct SegmentedUploadRequest {
     #[packed_field(size_bytes = "6")]
     pub header: MailboxHeader,
@@ -34,6 +44,8 @@ pub struct SegmentedUploadRequest {
 }
 
 pub trait CoeServiceTrait: PackedStruct {
+    type Response: PackedStruct + PackedStructInfo + CoeServiceTrait + core::fmt::Debug;
+
     fn counter(&self) -> u8;
     fn is_aborted(&self) -> bool;
     fn mailbox_type(&self) -> MailboxType;
@@ -41,7 +53,28 @@ pub trait CoeServiceTrait: PackedStruct {
     fn sub_index(&self) -> u8;
 }
 
+impl CoeServiceTrait for Response {
+    type Response = Self;
+
+    fn counter(&self) -> u8 {
+        self.header.counter
+    }
+    fn is_aborted(&self) -> bool {
+        self.sdo_header.flags.command == InitSdoFlags::ABORT_REQUEST
+    }
+    fn mailbox_type(&self) -> MailboxType {
+        self.header.mailbox_type
+    }
+    fn address(&self) -> u16 {
+        self.sdo_header.index
+    }
+    fn sub_index(&self) -> u8 {
+        self.sdo_header.sub_index
+    }
+}
 impl CoeServiceTrait for UploadRequest {
+    type Response = Response;
+
     fn counter(&self) -> u8 {
         self.header.counter
     }
@@ -59,6 +92,8 @@ impl CoeServiceTrait for UploadRequest {
     }
 }
 impl CoeServiceTrait for DownloadExpeditedRequest {
+    type Response = Response;
+
     fn counter(&self) -> u8 {
         self.header.counter
     }
@@ -76,6 +111,8 @@ impl CoeServiceTrait for DownloadExpeditedRequest {
     }
 }
 impl CoeServiceTrait for SegmentedUploadRequest {
+    type Response = Self;
+
     fn counter(&self) -> u8 {
         self.header.counter
     }
