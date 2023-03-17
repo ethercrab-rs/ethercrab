@@ -85,7 +85,7 @@ impl<'a> SlaveConfigurator<'a> {
             return Err(Error::InvalidState {
                 expected: SlaveState::PreOp,
                 actual: state,
-                configured_address: Some(self.slave.configured_address),
+                configured_address: self.slave.configured_address,
             });
         }
 

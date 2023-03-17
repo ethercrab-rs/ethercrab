@@ -1,3 +1,5 @@
+use core::fmt;
+
 use cookie_factory::{gen_simple, GenError};
 use nom::{combinator::map, error::ParseError, sequence::pair, IResult};
 
@@ -81,6 +83,38 @@ pub enum Command {
         /// Logical address.
         address: u32,
     },
+}
+
+impl fmt::Display for Command {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Command::Nop => write!(f, "NOP"),
+            Command::Aprd { address, register } => {
+                write!(f, "APRD(addr {}, reg {})", address, register)
+            }
+            Command::Fprd { address, register } => {
+                write!(f, "FPRD(addr {}, reg {}", address, register)
+            }
+            Command::Brd { address, register } => {
+                write!(f, "BRD(addr {}, reg {}", address, register)
+            }
+            Command::Lrd { address } => write!(f, "LRD(addr {})", address),
+            Command::Bwr { address, register } => {
+                write!(f, "BWR(addr {}, reg {}", address, register)
+            }
+            Command::Apwr { address, register } => {
+                write!(f, "APWR(addr {}, reg {}", address, register)
+            }
+            Command::Fpwr { address, register } => {
+                write!(f, "FPWR(addr {}, reg {}", address, register)
+            }
+            Command::Frmw { address, register } => {
+                write!(f, "FRMW(addr {}, reg {}", address, register)
+            }
+            Command::Lwr { address } => write!(f, "LWR(addr {})", address),
+            Command::Lrw { address } => write!(f, "LRW(addr {})", address),
+        }
+    }
 }
 
 impl Command {

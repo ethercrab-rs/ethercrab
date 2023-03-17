@@ -50,6 +50,8 @@ An EtherCAT master written in Rust.
 ### Added
 
 - [#1] Added `SlaveGroup::len` and `SlaveGroup::is_empty` methods.
+- [#29] Implement `Display` for `Error`, `PduError`, `MailboxError`, `EepromError`,
+  `VisibleStringError` and `PduValidationError`
 
 ### Fixed
 
@@ -82,5 +84,6 @@ An EtherCAT master written in Rust.
 [#25]: https://github.com/ethercrab-rs/ethercrab/pull/25
 [#26]: https://github.com/ethercrab-rs/ethercrab/pull/26
 [#28]: https://github.com/ethercrab-rs/ethercrab/pull/28
+[#29]: https://github.com/ethercrab-rs/ethercrab/pull/26
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
