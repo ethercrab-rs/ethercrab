@@ -46,9 +46,11 @@ An EtherCAT master written in Rust.
   ```
 
 - **(breaking)** [#25] Changed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
+- **(breaking)** [#30] Removed `PduError::Encode` variant.
 
 ### Added
 
+- [#30] Added `Copy`, `Clone`, `PartialEq` and `Eq` implementations to `Error` and `PduError`.
 - [#1] Added `SlaveGroup::len` and `SlaveGroup::is_empty` methods.
 - [#29] Implement `Display` for `Error`, `PduError`, `MailboxError`, `EepromError`,
   `VisibleStringError` and `PduValidationError`
@@ -84,6 +86,7 @@ An EtherCAT master written in Rust.
 [#25]: https://github.com/ethercrab-rs/ethercrab/pull/25
 [#26]: https://github.com/ethercrab-rs/ethercrab/pull/26
 [#28]: https://github.com/ethercrab-rs/ethercrab/pull/28
-[#29]: https://github.com/ethercrab-rs/ethercrab/pull/26
+[#29]: https://github.com/ethercrab-rs/ethercrab/pull/29
+[#30]: https://github.com/ethercrab-rs/ethercrab/pull/30
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

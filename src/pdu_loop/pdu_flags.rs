@@ -1,5 +1,5 @@
 use crate::LEN_MASK;
-use packed_struct::PackedStruct;
+use packed_struct::{PackedStruct, PackedStructInfo};
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct PduFlags {
@@ -38,6 +38,12 @@ impl PackedStruct for PduFlags {
             circulated,
             is_not_last,
         })
+    }
+}
+
+impl PackedStructInfo for PduFlags {
+    fn packed_bits() -> usize {
+        8 * 2
     }
 }
 

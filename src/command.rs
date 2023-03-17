@@ -1,6 +1,5 @@
+use crate::generate::le_u16;
 use core::fmt;
-
-use cookie_factory::{gen_simple, GenError};
 use nom::{combinator::map, error::ParseError, sequence::pair, IResult};
 
 /// PDU command.
@@ -142,13 +141,13 @@ impl Command {
     }
 
     /// Get the address value for the command.
-    pub fn address(&self) -> Result<[u8; 4], GenError> {
+    pub fn address(&self) -> [u8; 4] {
         let mut arr = [0x00u8; 4];
 
         let buf = arr.as_mut_slice();
 
         match *self {
-            Command::Nop => gen_simple(cookie_factory::bytes::le_u32(0u32), buf),
+            Command::Nop => arr,
 
             Command::Aprd { address, register }
             | Command::Apwr { address, register }
@@ -157,15 +156,15 @@ impl Command {
             | Command::Frmw { address, register }
             | Command::Brd { address, register }
             | Command::Bwr { address, register } => {
-                let buf = gen_simple(cookie_factory::bytes::le_u16(address), buf)?;
-                gen_simple(cookie_factory::bytes::le_u16(register), buf)
+                let buf = le_u16(address, buf);
+                let _buf = le_u16(register, buf);
+
+                arr
             }
             Command::Lrd { address } | Command::Lwr { address } | Command::Lrw { address } => {
-                gen_simple(cookie_factory::bytes::le_u32(address), buf)
+                address.to_le_bytes()
             }
-        }?;
-
-        Ok(arr)
+        }
     }
 }
 

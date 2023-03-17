@@ -4,7 +4,7 @@ use crate::{coe::abort_code::AbortCode, command::Command, SlaveState};
 use core::{cell::BorrowError, fmt, num::TryFromIntError, str::Utf8Error};
 
 /// An EtherCrab error.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Error {
     /// A low level error occurred when producing or consuming a PDU.
     Pdu(PduError),
@@ -162,7 +162,7 @@ pub enum Item {
 }
 
 /// Low-level PDU (Process Data Unit) error.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PduError {
     /// Failed to decode raw PDU data into a given data type.
     Decode,
@@ -172,8 +172,6 @@ pub enum PduError {
     TooLong,
     /// Failed to create an Ethernet II frame.
     CreateFrame(smoltcp::Error),
-    /// Failed to encode one or more values into raw byte data.
-    Encode(cookie_factory::GenError),
     /// A frame index was given that does not point to a frame.
     InvalidIndex(usize),
     /// A received frame is invalid.
@@ -197,7 +195,6 @@ impl fmt::Display for PduError {
             PduError::Ethernet(e) => write!(f, "network: {}", e),
             PduError::TooLong => write!(f, "data is too long to fit in given buffer"),
             PduError::CreateFrame(e) => write!(f, "failed to create frame: {}", e),
-            PduError::Encode(e) => write!(f, "failed to encode frame: {}", e),
             PduError::InvalidIndex(index) => write!(f, "invalid PDU index {}", index),
             PduError::Validation(e) => write!(f, "received PDU validation failed: {}", e),
             PduError::InvalidFrameState => write!(f, "invalid PDU frame state"),
@@ -350,12 +347,6 @@ impl From<PduError> for Error {
 impl From<PduValidationError> for PduError {
     fn from(e: PduValidationError) -> Self {
         Self::Validation(e)
-    }
-}
-
-impl From<cookie_factory::GenError> for PduError {
-    fn from(e: cookie_factory::GenError) -> Self {
-        Self::Encode(e)
     }
 }
 
