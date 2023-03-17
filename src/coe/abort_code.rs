@@ -135,4 +135,11 @@ mod tests {
 
         assert_eq!(decoded.to_string(), "0x12345678: Unknown code");
     }
+
+    #[test]
+    fn parse_code() {
+        let code = 0x06090036;
+
+        assert_eq!(AbortCode::from(code), AbortCode::MaxMin);
+    }
 }
