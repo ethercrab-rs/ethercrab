@@ -35,7 +35,8 @@
 //! use async_ctrlc::CtrlC;
 //! use async_io::Timer;
 //! use ethercrab::{
-//!     error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, SlaveGroup, SubIndex, Timeouts
+//!     error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, SlaveGroup, SubIndex, Timeouts,
+//!     ClientConfig
 //! };
 //! use futures_lite::{FutureExt, StreamExt};
 //! use smol::LocalExecutor;
@@ -62,7 +63,7 @@
 //!
 //!     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 //!
-//!     let client = Arc::new(Client::new(pdu_loop, Timeouts::default()));
+//!     let client = Arc::new(Client::new(pdu_loop, Timeouts::default(), ClientConfig::default()));
 //!
 //!     ex.spawn(tx_rx_task(&interface, tx, rx).unwrap()).detach();
 //!
@@ -166,6 +167,7 @@ mod al_control;
 mod al_status_code;
 mod base_data_types;
 mod client;
+mod client_config;
 mod coe;
 mod command;
 mod dc;
@@ -197,6 +199,7 @@ use nom::IResult;
 use smoltcp::wire::{EthernetAddress, EthernetProtocol};
 
 pub use client::Client;
+pub use client_config::ClientConfig;
 pub use coe::SubIndex;
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::RegisterAddress;
