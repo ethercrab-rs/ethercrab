@@ -174,6 +174,7 @@ pub mod ds402;
 mod eeprom;
 pub mod error;
 mod fmmu;
+mod generate;
 mod mailbox;
 mod pdi;
 mod pdu_data;

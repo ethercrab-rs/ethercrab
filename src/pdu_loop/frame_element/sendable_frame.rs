@@ -1,19 +1,14 @@
 use super::FrameBox;
 use crate::{
     error::PduError,
+    generate::{le_u16, le_u8, skip, write_packed, write_slice},
     pdu_loop::{
         frame_element::{FrameElement, FrameState},
         frame_header::FrameHeader,
     },
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
-use cookie_factory::{
-    bytes::{le_u16, le_u8},
-    combinator::{skip, slice},
-    gen_simple, GenError,
-};
 use core::mem;
-use packed_struct::PackedStruct;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 /// A frame has been initialised with valid header and data payload and is now ready to be picked up
@@ -49,45 +44,36 @@ impl<'a> SendableFrame<'a> {
         usize::from(self.ethercat_payload_len()) + mem::size_of::<FrameHeader>()
     }
 
-    fn write_ethernet_payload<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
+    fn write_ethernet_payload<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let (frame, data) = unsafe { self.inner.frame_and_buf() };
 
         let header = FrameHeader::pdu(self.ethercat_payload_len());
 
-        let buf = gen_simple(le_u16(header.0), buf).map_err(PduError::Encode)?;
+        let buf = le_u16(header.0, buf);
 
-        let buf = gen_simple(le_u8(frame.command.code() as u8), buf)?;
-        let buf = gen_simple(le_u8(frame.index), buf)?;
+        let buf = le_u8(frame.command.code() as u8, buf);
+        let buf = le_u8(frame.index, buf);
 
         // Write address and register data
-        let buf = gen_simple(slice(frame.command.address()?), buf)?;
+        let buf = write_slice(&frame.command.address(), buf);
 
-        let buf = gen_simple(le_u16(u16::from_le_bytes(frame.flags.pack().unwrap())), buf)?;
-        let buf = gen_simple(le_u16(frame.irq), buf)?;
+        let buf = write_packed(frame.flags, buf);
+        let buf = le_u16(frame.irq, buf);
 
         // Probably a read; the data area of the frame to send could be any old garbage, so we'll
         // skip over it.
         let buf = if data.is_empty() {
-            gen_simple(skip(usize::from(frame.flags.len())), buf)?
+            skip(usize::from(frame.flags.len()), buf)
         }
         // Probably a write
         else {
-            gen_simple(slice(data), buf)?
+            write_slice(data, buf)
         };
 
         // Working counter is always zero when sending
-        let buf = gen_simple(le_u16(0u16), buf)?;
+        let buf = le_u16(0u16, buf);
 
-        if !buf.is_empty() {
-            log::error!(
-                "Expected fully used buffer, got {} bytes left instead",
-                buf.len()
-            );
-
-            Err(PduError::Encode(GenError::BufferTooBig(buf.len())))
-        } else {
-            Ok(buf)
-        }
+        buf
     }
 
     /// Write an Ethernet II frame containing the EtherCAT payload into `buf`.
@@ -108,7 +94,7 @@ impl<'a> SendableFrame<'a> {
 
         let ethernet_payload = ethernet_frame.payload_mut();
 
-        self.write_ethernet_payload(ethernet_payload)?;
+        self.write_ethernet_payload(ethernet_payload);
 
         Ok(ethernet_frame.into_inner())
     }
