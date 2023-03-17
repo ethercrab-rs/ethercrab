@@ -2,7 +2,8 @@ use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SegmentSdoHeader
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 use packed_struct::{prelude::PackedStruct, PackedStructInfo};
 
-/// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download request.
+/// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download
+/// request.
 #[derive(Debug, Copy, Clone, PackedStruct)]
 pub struct SdoExpeditedDownload {
     #[packed_field(size_bytes = "12")]
