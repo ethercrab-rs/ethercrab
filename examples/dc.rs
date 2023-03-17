@@ -3,8 +3,8 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduStorage, RegisterAddress, SlaveGroup, SubIndex,
-    Timeouts,
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, RegisterAddress, SlaveGroup,
+    SubIndex, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
@@ -41,6 +41,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             mailbox_response: Duration::from_millis(1000),
             ..Default::default()
         },
+        ClientConfig::default(),
     ));
 
     ex.spawn(tx_rx_task(INTERFACE, tx, rx).unwrap()).detach();

@@ -5,7 +5,7 @@ use async_io::Timer;
 use ethercrab::{
     error::{Error, MailboxError},
     std::tx_rx_task,
-    Client, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
+    Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
@@ -35,7 +35,11 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(pdu_loop, Timeouts::default()));
+    let client = Arc::new(Client::new(
+        pdu_loop,
+        Timeouts::default(),
+        ClientConfig::default(),
+    ));
 
     ex.spawn(tx_rx_task(INTERFACE, tx, rx).unwrap()).detach();
 

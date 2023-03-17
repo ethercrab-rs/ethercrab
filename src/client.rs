@@ -12,7 +12,7 @@ use crate::{
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
     timer_factory::timeout,
-    Timeouts, BASE_SLAVE_ADDR,
+    ClientConfig, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
     any::type_name,
@@ -34,20 +34,21 @@ pub struct Client<'sto> {
     pub(crate) timeouts: Timeouts,
     /// The 1-7 cyclic counter used when working with mailbox requests.
     mailbox_counter: AtomicU8,
+    config: ClientConfig,
 }
 
 unsafe impl<'sto> Sync for Client<'sto> {}
 
 impl<'sto> Client<'sto> {
     /// Create a new EtherCrab client.
-    pub const fn new(pdu_loop: PduLoop<'sto>, timeouts: Timeouts) -> Self {
+    pub const fn new(pdu_loop: PduLoop<'sto>, timeouts: Timeouts, config: ClientConfig) -> Self {
         Self {
             pdu_loop,
-            // slaves: UnsafeCell::new(heapless::Vec::new()),
             num_slaves: AtomicU16::new(0),
             timeouts,
             // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
             mailbox_counter: AtomicU8::new(1),
+            config,
         }
     }
 
@@ -181,7 +182,7 @@ impl<'sto> Client<'sto> {
         // If there are slave devices that support distributed clocks, run static drift compensation
         if let Some(dc_master) = dc_master {
             // TODO: Configurable number of iterations. 10k takes forever on Windows.
-            dc::run_dc_static_sync(self, dc_master, 10_000).await?;
+            dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations).await?;
         }
 
         while let Some(slave) = slaves.pop_front() {
