@@ -2,19 +2,21 @@ use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SegmentSdoHeader
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 use packed_struct::{prelude::PackedStruct, PackedStructInfo};
 
+/// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download request.
 #[derive(Debug, Copy, Clone, PackedStruct)]
-pub struct DownloadExpeditedRequest {
-    #[packed_field(size_bytes = "6")]
-    pub header: MailboxHeader,
-    #[packed_field(size_bytes = "2")]
-    pub coe_header: CoeHeader,
-    #[packed_field(size_bytes = "4")]
-    pub sdo_header: InitSdoHeader,
+pub struct SdoExpeditedDownload {
+    #[packed_field(size_bytes = "12")]
+    pub headers: SdoNormal,
     pub data: [u8; 4],
 }
 
+/// A normal SDO request or response with no additional payload.
+///
+/// These fields are common to non-segmented (i.e. "normal") SDO requests and responses.
+///
+/// See ETG1000.6 Section 5.6.2 SDO.
 #[derive(Debug, Copy, Clone, PackedStruct)]
-pub struct UploadRequest {
+pub struct SdoNormal {
     #[packed_field(size_bytes = "6")]
     pub header: MailboxHeader,
     #[packed_field(size_bytes = "2")]
@@ -23,18 +25,9 @@ pub struct UploadRequest {
     pub sdo_header: InitSdoHeader,
 }
 
+/// Headers belonging to segmented SDO transfers.
 #[derive(Debug, Copy, Clone, PackedStruct)]
-pub struct Response {
-    #[packed_field(size_bytes = "6")]
-    pub header: MailboxHeader,
-    #[packed_field(size_bytes = "2")]
-    pub coe_header: CoeHeader,
-    #[packed_field(size_bytes = "4")]
-    pub sdo_header: InitSdoHeader,
-}
-
-#[derive(Debug, Copy, Clone, PackedStruct)]
-pub struct SegmentedUploadRequest {
+pub struct SdoSegmented {
     #[packed_field(size_bytes = "6")]
     pub header: MailboxHeader,
     #[packed_field(size_bytes = "2")]
@@ -43,9 +36,8 @@ pub struct SegmentedUploadRequest {
     pub sdo_header: SegmentSdoHeader,
 }
 
-pub trait CoeServiceTrait: PackedStruct {
-    type Response: PackedStruct + PackedStructInfo + CoeServiceTrait + core::fmt::Debug;
-
+/// Functionality common to all service responses (normal, expedited, segmented).
+pub trait CoeServiceResponse: PackedStruct + PackedStructInfo {
     fn counter(&self) -> u8;
     fn is_aborted(&self) -> bool;
     fn mailbox_type(&self) -> MailboxType;
@@ -53,66 +45,16 @@ pub trait CoeServiceTrait: PackedStruct {
     fn sub_index(&self) -> u8;
 }
 
-impl CoeServiceTrait for Response {
-    type Response = Self;
+/// Must be implemented for any type used to send a CoE service.
+pub trait CoeServiceRequest: PackedStruct {
+    type Response: CoeServiceResponse;
 
-    fn counter(&self) -> u8 {
-        self.header.counter
-    }
-    fn is_aborted(&self) -> bool {
-        self.sdo_header.flags.command == InitSdoFlags::ABORT_REQUEST
-    }
-    fn mailbox_type(&self) -> MailboxType {
-        self.header.mailbox_type
-    }
-    fn address(&self) -> u16 {
-        self.sdo_header.index
-    }
-    fn sub_index(&self) -> u8 {
-        self.sdo_header.sub_index
-    }
+    /// Get the auto increment counter value for this request.
+    fn counter(&self) -> u8;
 }
-impl CoeServiceTrait for UploadRequest {
-    type Response = Response;
 
-    fn counter(&self) -> u8 {
-        self.header.counter
-    }
-    fn is_aborted(&self) -> bool {
-        self.sdo_header.flags.command == InitSdoFlags::ABORT_REQUEST
-    }
-    fn mailbox_type(&self) -> MailboxType {
-        self.header.mailbox_type
-    }
-    fn address(&self) -> u16 {
-        self.sdo_header.index
-    }
-    fn sub_index(&self) -> u8 {
-        self.sdo_header.sub_index
-    }
-}
-impl CoeServiceTrait for DownloadExpeditedRequest {
-    type Response = Response;
-
-    fn counter(&self) -> u8 {
-        self.header.counter
-    }
-    fn is_aborted(&self) -> bool {
-        self.sdo_header.flags.command == InitSdoFlags::ABORT_REQUEST
-    }
-    fn mailbox_type(&self) -> MailboxType {
-        self.header.mailbox_type
-    }
-    fn address(&self) -> u16 {
-        self.sdo_header.index
-    }
-    fn sub_index(&self) -> u8 {
-        self.sdo_header.sub_index
-    }
-}
-impl CoeServiceTrait for SegmentedUploadRequest {
-    type Response = Self;
-
+impl CoeServiceResponse for SdoSegmented {
+    /// Get the auto increment counter value for this response.
     fn counter(&self) -> u8 {
         self.header.counter
     }
@@ -130,41 +72,85 @@ impl CoeServiceTrait for SegmentedUploadRequest {
     }
 }
 
+impl CoeServiceResponse for SdoNormal {
+    fn counter(&self) -> u8 {
+        self.header.counter
+    }
+    fn is_aborted(&self) -> bool {
+        self.sdo_header.flags.command == InitSdoFlags::ABORT_REQUEST
+    }
+    fn mailbox_type(&self) -> MailboxType {
+        self.header.mailbox_type
+    }
+    fn address(&self) -> u16 {
+        self.sdo_header.index
+    }
+    fn sub_index(&self) -> u8 {
+        self.sdo_header.sub_index
+    }
+}
+
+impl CoeServiceRequest for SdoExpeditedDownload {
+    type Response = SdoNormal;
+
+    fn counter(&self) -> u8 {
+        self.headers.header.counter
+    }
+}
+
+impl CoeServiceRequest for SdoNormal {
+    type Response = Self;
+
+    fn counter(&self) -> u8 {
+        self.header.counter
+    }
+}
+
+impl CoeServiceRequest for SdoSegmented {
+    type Response = Self;
+
+    fn counter(&self) -> u8 {
+        self.header.counter
+    }
+}
+
 pub fn download(
     counter: u8,
     index: u16,
     access: SubIndex,
     data: [u8; 4],
     len: u8,
-) -> DownloadExpeditedRequest {
-    DownloadExpeditedRequest {
-        header: MailboxHeader {
-            length: 0x0a,
-            address: 0x0000,
-            priority: Priority::Lowest,
-            mailbox_type: MailboxType::Coe,
-            counter,
-        },
-        coe_header: CoeHeader {
-            service: CoeService::SdoRequest,
-        },
-        sdo_header: InitSdoHeader {
-            flags: InitSdoFlags {
-                size_indicator: true,
-                expedited_transfer: true,
-                size: 4u8.saturating_sub(len),
-                complete_access: access.complete_access(),
-                command: InitSdoFlags::DOWNLOAD_REQUEST,
+) -> SdoExpeditedDownload {
+    SdoExpeditedDownload {
+        headers: SdoNormal {
+            header: MailboxHeader {
+                length: 0x0a,
+                address: 0x0000,
+                priority: Priority::Lowest,
+                mailbox_type: MailboxType::Coe,
+                counter,
             },
-            index,
-            sub_index: access.sub_index(),
+            coe_header: CoeHeader {
+                service: CoeService::SdoRequest,
+            },
+            sdo_header: InitSdoHeader {
+                flags: InitSdoFlags {
+                    size_indicator: true,
+                    expedited_transfer: true,
+                    size: 4u8.saturating_sub(len),
+                    complete_access: access.complete_access(),
+                    command: InitSdoFlags::DOWNLOAD_REQUEST,
+                },
+                index,
+                sub_index: access.sub_index(),
+            },
         },
         data,
     }
 }
 
-pub fn upload_segmented(counter: u8, toggle: bool) -> SegmentedUploadRequest {
-    SegmentedUploadRequest {
+pub fn upload_segmented(counter: u8, toggle: bool) -> SdoSegmented {
+    SdoSegmented {
         header: MailboxHeader {
             length: 0x0a,
             address: 0x0000,
@@ -185,8 +171,8 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SegmentedUploadRequest {
     }
 }
 
-pub fn upload(counter: u8, index: u16, access: SubIndex) -> UploadRequest {
-    UploadRequest {
+pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
+    SdoNormal {
         header: MailboxHeader {
             length: 0x0a,
             address: 0x0000,

@@ -81,7 +81,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                 // Control word, u16
                 // NOTE: The lower word specifies the field length
                 slave
-                    .write_sdo(0x1600, SubIndex::Index(1), 0x6040u16)
+                    .write_sdo(0x1600, SubIndex::Index(1), 0x6040_0010u32)
                     .await?;
                 // Target velocity, i32
                 slave

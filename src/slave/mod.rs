@@ -6,7 +6,12 @@ use self::slave_client::SlaveClient;
 use crate::{
     all_consumed,
     client::Client,
-    coe::{self, abort_code::AbortCode, services::CoeServiceTrait, SubIndex},
+    coe::{
+        self,
+        abort_code::AbortCode,
+        services::{CoeServiceRequest, CoeServiceResponse},
+        SubIndex,
+    },
     command::Command,
     dl_status::DlStatus,
     eeprom::types::{FromEeprom, MailboxProtocols, SiiOwner},
@@ -25,7 +30,6 @@ use core::{
     fmt::{self, Debug, Write},
 };
 use nom::{bytes::complete::take, number::complete::le_u32, IResult};
-use num_enum::TryFromPrimitive;
 use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
 #[derive(Default, Copy, Clone)]
@@ -365,8 +369,8 @@ impl<'a> SlaveRef<'a> {
             // The provided buffer isn't long enough to contain all mailbox data.
             if complete_size > buf.len() as u32 {
                 return Err(Error::Mailbox(MailboxError::TooLong {
-                    address: request.address(),
-                    sub_index: request.sub_index(),
+                    address: headers.address(),
+                    sub_index: headers.sub_index(),
                 }));
             }
 
@@ -427,7 +431,7 @@ impl<'a> SlaveRef<'a> {
         request: H,
     ) -> Result<(H::Response, RxFrameDataBuf<'a>), Error>
     where
-        H: CoeServiceTrait,
+        H: CoeServiceRequest,
         <H as PackedStruct>::ByteArray: AsRef<[u8]>,
     {
         let write_mailbox = self
@@ -524,8 +528,8 @@ impl<'a> SlaveRef<'a> {
 
             Err(Error::Mailbox(MailboxError::Aborted {
                 code,
-                address: request.address(),
-                sub_index: request.sub_index(),
+                address: headers.address(),
+                sub_index: headers.sub_index(),
             }))
         }
         // Validate that the mailbox response is to the request we just sent
@@ -543,8 +547,8 @@ impl<'a> SlaveRef<'a> {
             );
 
             Err(Error::Mailbox(MailboxError::SdoResponseInvalid {
-                address: request.address(),
-                sub_index: request.sub_index(),
+                address: headers.address(),
+                sub_index: headers.sub_index(),
             }))
         } else {
             response.trim_front(headers_len);
