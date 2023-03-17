@@ -1,5 +1,3 @@
-use spin::RwLock;
-
 use crate::{
     command::Command,
     error::{Error, PduError},
@@ -20,6 +18,7 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
     task::Waker,
 };
+use spin::RwLock;
 
 use super::{pdu_rx::PduRx, pdu_tx::PduTx};
 
@@ -133,7 +132,7 @@ impl<'sto> PduStorageRef<'sto> {
         unsafe {
             addr_of_mut!((*frame.as_ptr()).frame).write(PduFrame {
                 index: idx_u8,
-                waker: spin::RwLock::new(None),
+                waker: None,
                 command,
                 flags: PduFlags::with_len(data_length),
                 irq: 0,

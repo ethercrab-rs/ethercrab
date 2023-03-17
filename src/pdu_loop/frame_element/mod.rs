@@ -45,7 +45,7 @@ pub struct PduFrame {
     pub irq: u16,
     pub working_counter: u16,
 
-    pub waker: spin::RwLock<Option<Waker>>,
+    pub waker: Option<Waker>,
 }
 
 /// An individual frame state, PDU header config, and data buffer.
@@ -166,17 +166,11 @@ pub struct FrameBox<'sto> {
 
 impl<'sto> FrameBox<'sto> {
     unsafe fn replace_waker(&self, waker: Waker) {
-        (*addr_of!((*self.frame.as_ptr()).frame.waker))
-            .try_write()
-            .expect("Contention replace_waker")
-            .replace(waker);
+        (*addr_of_mut!((*self.frame.as_ptr()).frame.waker)).replace(waker);
     }
 
     unsafe fn take_waker(&self) -> Option<Waker> {
-        (*addr_of!((*self.frame.as_ptr()).frame.waker))
-            .try_write()
-            .expect("Contention take_waker")
-            .take()
+        (*addr_of_mut!((*self.frame.as_ptr()).frame.waker)).take()
     }
 
     unsafe fn frame(&self) -> &PduFrame {
