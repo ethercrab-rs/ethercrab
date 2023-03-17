@@ -1,7 +1,7 @@
 use core::fmt;
 
 /// Defined in ETG1000.6 Table 41 – SDO Abort Codes
-#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive)]
 #[repr(u32)]
 pub enum AbortCode {
     /// Toggle bit not changed
@@ -77,6 +77,10 @@ pub enum AbortCode {
 
     /// Object dictionary dynamic generation fails or no object dictionary is present
     NoObjectDictionary = 0x08000023,
+
+    /// Unknown abort code.
+    #[num_enum(catch_all)]
+    Unknown(u32),
 }
 
 impl fmt::Display for AbortCode {
@@ -112,6 +116,23 @@ impl fmt::Display for AbortCode {
             Self::TransferFailedLocal => f.write_str("0x08000021: Data cannot be transferred or stored to the application because of local control"),
             Self::InvalidState => f.write_str("0x08000022:  Data cannot be transferred or stored to the application because of the present device state"),
             Self::NoObjectDictionary => f.write_str("0x08000023: Object dictionary dynamic generation fails or no object dictionary is present"),
+            Self::Unknown(code) => write!(f, "{:#010x}: Unknown code", code),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_code() {
+        let code = 0x1234_5678u32;
+
+        let decoded = AbortCode::from(code);
+
+        assert_eq!(decoded, AbortCode::Unknown(0x1234_5678u32));
+
+        assert_eq!(decoded.to_string(), "0x12345678: Unknown code");
     }
 }

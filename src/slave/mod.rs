@@ -506,11 +506,12 @@ impl<'a> SlaveRef<'a> {
         if headers.is_aborted() {
             let code = data[0..4]
                 .try_into()
-                .map_err(|_| ())
-                .and_then(|arr| {
-                    AbortCode::try_from_primitive(u32::from_le_bytes(arr)).map_err(|_| ())
-                })
-                .unwrap_or(AbortCode::General);
+                .map(|arr| AbortCode::from(u32::from_le_bytes(arr)))
+                .map_err(|_| {
+                    log::error!("Not enough data to decode abort code u32");
+
+                    Error::Internal
+                })?;
 
             Err(Error::Mailbox(MailboxError::Aborted {
                 code,
