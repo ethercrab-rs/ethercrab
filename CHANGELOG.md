@@ -47,6 +47,8 @@ An EtherCAT master written in Rust.
 
 - **(breaking)** [#25] Changed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
 - **(breaking)** [#30] Removed `PduError::Encode` variant.
+- **(breaking)** [#31] Added a `ClientConfig` argument to `Client::new` to allow configuration of
+  various EtherCrab behaviours.
 
 ### Added
 
@@ -88,5 +90,6 @@ An EtherCAT master written in Rust.
 [#28]: https://github.com/ethercrab-rs/ethercrab/pull/28
 [#29]: https://github.com/ethercrab-rs/ethercrab/pull/29
 [#30]: https://github.com/ethercrab-rs/ethercrab/pull/30
+[#31]: https://github.com/ethercrab-rs/ethercrab/pull/31
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
