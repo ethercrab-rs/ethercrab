@@ -1,6 +1,6 @@
-//! Configuration passed to [`Client`].
+//! Configuration passed to [`Client`](crate::Client).
 
-/// Configuration passed to [`Client`].
+/// Configuration passed to [`Client`](crate::Client).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ClientConfig {
     /// The number of `FRMW` packets to send during the static phase of Distributed Clocks (DC)
