@@ -24,7 +24,7 @@ impl<'a> SendableFrame<'a> {
     }
 
     /// The frame has been sent by the network driver.
-    pub(in crate::pdu_loop) fn mark_sent(self) {
+    pub(crate) fn mark_sent(self) {
         log::trace!("Mark sent");
 
         unsafe {
@@ -40,6 +40,13 @@ impl<'a> SendableFrame<'a> {
         unsafe { self.inner.frame() }.flags.len() + pdu_overhead
     }
 
+    /// The length in bytes required to hold the full Ethernet II frame, containing an EtherCAT
+    /// payload.
+    pub(crate) fn ethernet_frame_len(&self) -> usize {
+        EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len())
+    }
+
+    /// The length in bytes required to hold a full EtherCAT frame.
     fn ethernet_payload_len(&self) -> usize {
         usize::from(self.ethercat_payload_len()) + mem::size_of::<FrameHeader>()
     }
@@ -82,7 +89,7 @@ impl<'a> SendableFrame<'a> {
     /// device. If the buffer is not large enough to hold the full frame, this method will return
     /// [`Error::Pdu(PduError::TooLong)`](PduError::TooLong).
     pub fn write_ethernet_packet<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
-        let ethernet_len = EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len());
+        let ethernet_len = self.ethernet_frame_len();
 
         let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
 
