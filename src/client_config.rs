@@ -9,7 +9,7 @@ pub struct ClientConfig {
     /// Defaults to 10000.
     ///
     /// If this is set to zero, no static sync will be performed.
-    pub(crate) dc_static_sync_iterations: u32,
+    pub dc_static_sync_iterations: u32,
 }
 
 impl Default for ClientConfig {
