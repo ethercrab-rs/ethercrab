@@ -7,7 +7,7 @@ use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
 
 /// Get a TX/RX pair.
-pub fn get_tx_rx(
+fn get_tx_rx(
     device: &str,
 ) -> Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>), std::io::Error> {
     let interfaces = datalink::interfaces();
