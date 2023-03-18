@@ -20,10 +20,15 @@ impl<'sto> PduTx<'sto> {
 
     /// Iterate through any PDU TX frames that are ready and send them.
     ///
-    /// The blocking `send` function is called for each ready frame. It is given a [`SendableFrame`].
-    pub fn send_frames_blocking<F>(&self, waker: &Waker, mut send: F) -> Result<(), Error>
+    /// The blocking `send` function is called for each ready frame.
+    pub fn send_frames_blocking<F>(
+        &self,
+        waker: &Waker,
+        packet_buf: &mut [u8],
+        mut send: F,
+    ) -> Result<(), Error>
     where
-        F: FnMut(&SendableFrame<'_>) -> Result<(), ()>,
+        F: FnMut(&[u8]) -> Result<(), ()>,
     {
         for idx in 0..self.storage.num_frames {
             let frame = unsafe { NonNull::new_unchecked(self.storage.frame_at_index(idx)) };
@@ -37,7 +42,9 @@ impl<'sto> PduTx<'sto> {
                 continue;
             };
 
-            match send(&sending) {
+            let packet = sending.write_ethernet_packet(packet_buf)?;
+
+            match send(&packet) {
                 Ok(_) => {
                     sending.mark_sent();
                 }

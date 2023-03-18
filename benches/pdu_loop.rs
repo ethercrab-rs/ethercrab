@@ -32,12 +32,8 @@ fn do_bench(b: &mut Bencher) {
         // --- Send frame
 
         let send_fut = futures_lite::future::poll_once(core::future::poll_fn::<(), _>(|ctx| {
-            tx.send_frames_blocking(ctx.waker(), |frame| {
-                let packet = frame
-                    .write_ethernet_packet(&mut packet_buf)
-                    .expect("Write Ethernet frame");
-
-                written_packet.copy_from_slice(packet);
+            tx.send_frames_blocking(ctx.waker(), &mut packet_buf, |frame| {
+                written_packet.copy_from_slice(frame);
 
                 Ok(())
             })

@@ -12,7 +12,7 @@ use crate::{
     pdu_loop::storage::PduStorageRef,
 };
 
-pub use frame_element::{received_frame::RxFrameDataBuf, sendable_frame::SendableFrame};
+pub use frame_element::received_frame::RxFrameDataBuf;
 pub use pdu_rx::PduRx;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
@@ -270,12 +270,8 @@ mod tests {
         let _ = smol::block_on(frame_fut);
 
         let send_fut = poll_once(core::future::poll_fn::<(), _>(|ctx| {
-            tx.send_frames_blocking(ctx.waker(), |frame| {
-                let packet = frame
-                    .write_ethernet_packet(&mut packet_buf)
-                    .expect("Write Ethernet frame");
-
-                written_packet.copy_from_slice(packet);
+            tx.send_frames_blocking(ctx.waker(), &mut packet_buf, |frame| {
+                written_packet.copy_from_slice(frame);
 
                 Ok(())
             })
@@ -397,12 +393,8 @@ mod tests {
             core::future::poll_fn::<(), _>(move |ctx| {
                 log::info!("Send poll fn");
 
-                tx.send_frames_blocking(ctx.waker(), |frame| {
-                    let packet = frame
-                        .write_ethernet_packet(&mut packet_buf)
-                        .expect("Write Ethernet frame");
-
-                    s.send(packet.to_vec()).unwrap();
+                tx.send_frames_blocking(ctx.waker(), &mut packet_buf, |frame| {
+                    s.send(frame.to_vec()).unwrap();
 
                     log::info!("Sent packet");
 

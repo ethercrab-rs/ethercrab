@@ -60,12 +60,8 @@ pub fn tx_rx_task(
     // TODO: Unwraps
     let tx_task = core::future::poll_fn::<(), _>(move |ctx| {
         pdu_tx
-            .send_frames_blocking(ctx.waker(), |frame| {
-                let packet = frame
-                    .write_ethernet_packet(&mut packet_buf)
-                    .expect("Write Ethernet frame");
-
-                tx.send_to(packet, None).unwrap().map_err(|e| {
+            .send_frames_blocking(ctx.waker(), &mut packet_buf, |frame| {
+                tx.send_to(frame, None).unwrap().map_err(|e| {
                     log::error!("Failed to send packet: {e}");
                 })
             })
