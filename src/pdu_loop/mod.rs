@@ -103,15 +103,11 @@ impl<'sto> PduLoop<'sto> {
 
     /// Tell the packet sender there is data ready to send.
     fn wake_sender(&self) {
-        self.storage
-            .tx_waker
-            .try_write()
-            .and_then(|mut writer| writer.take())
-            .map(|waker| {
-                log::trace!("Wake sender {:?}", waker);
+        let waker = self.storage.tx_waker.read();
 
-                waker.wake()
-            });
+        if let Some(waker) = &*waker {
+            waker.wake_by_ref()
+        }
     }
 
     /// Broadcast (BWR) a packet full of zeroes, up to `max_data_length`.
