@@ -117,16 +117,7 @@ impl<'sto> PduStorageRef<'sto> {
             return Err(PduError::TooLong.into());
         }
 
-        let idx_u8 = self
-            .idx
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current_idx| {
-                if current_idx < (self.num_frames - 1) as u8 {
-                    Some(current_idx + 1)
-                } else {
-                    Some(0)
-                }
-            })
-            .unwrap();
+        let idx_u8 = self.idx.fetch_add(1, Ordering::Relaxed) % self.num_frames as u8;
 
         let idx = usize::from(idx_u8);
 

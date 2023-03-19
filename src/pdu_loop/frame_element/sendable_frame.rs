@@ -1,6 +1,6 @@
 use super::FrameBox;
 use crate::{
-    error::PduError,
+    error::{Error, PduError},
     generate::{le_u16, le_u8, skip, write_packed, write_slice},
     pdu_loop::{
         frame_element::{FrameElement, FrameState},
@@ -8,6 +8,7 @@ use crate::{
     },
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
+use core::future::Future;
 use core::mem;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
@@ -18,15 +19,15 @@ pub struct SendableFrame<'sto> {
     pub(in crate::pdu_loop) inner: FrameBox<'sto>,
 }
 
-impl<'a> SendableFrame<'a> {
-    pub(in crate::pdu_loop) fn new(inner: FrameBox<'a>) -> Self {
+unsafe impl<'sto> Send for SendableFrame<'sto> {}
+
+impl<'sto> SendableFrame<'sto> {
+    pub(in crate::pdu_loop) fn new(inner: FrameBox<'sto>) -> Self {
         Self { inner }
     }
 
     /// The frame has been sent by the network driver.
-    pub(crate) fn mark_sent(self) {
-        log::trace!("Mark sent");
-
+    fn mark_sent(self) {
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::Sending);
         }
@@ -88,7 +89,10 @@ impl<'a> SendableFrame<'a> {
     /// The consumed part of the buffer is returned on success, ready for passing to the network
     /// device. If the buffer is not large enough to hold the full frame, this method will return
     /// [`Error::Pdu(PduError::TooLong)`](PduError::TooLong).
-    pub fn write_ethernet_packet<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
+    pub(in crate::pdu_loop) fn write_ethernet_packet<'buf>(
+        &self,
+        buf: &'buf mut [u8],
+    ) -> Result<&'buf [u8], PduError> {
         let ethernet_len = self.ethernet_frame_len();
 
         let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
@@ -104,5 +108,21 @@ impl<'a> SendableFrame<'a> {
         self.write_ethernet_payload(ethernet_payload);
 
         Ok(ethernet_frame.into_inner())
+    }
+
+    pub async fn send<'buf, F, O>(self, packet_buf: &'buf mut [u8], send: F) -> Result<(), Error>
+    where
+        F: FnOnce(&'buf [u8]) -> O,
+        O: Future<Output = Result<(), Error>>,
+    {
+        let bytes = self.write_ethernet_packet(packet_buf)?;
+
+        send(bytes).await?;
+
+        // FIXME: Release frame on failure
+
+        self.mark_sent();
+
+        Ok(())
     }
 }

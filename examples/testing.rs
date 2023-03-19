@@ -24,7 +24,7 @@ const MAX_SLAVES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = 1100;
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
-const MAX_FRAMES: usize = 255;
+const MAX_FRAMES: usize = 16;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
@@ -69,8 +69,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
-            // pdu: Duration::from_millis(100),
-            // eeprom: Duration::from_millis(100),
+            pdu: Duration::from_millis(100),
+            eeprom: Duration::from_millis(100),
             ..Default::default()
         },
         ClientConfig {

@@ -166,16 +166,21 @@ pub struct FrameBox<'sto> {
 
 impl<'sto> FrameBox<'sto> {
     unsafe fn replace_waker(&self, waker: Waker) {
-        (*addr_of!((*self.frame.as_ptr()).frame.waker))
-            .try_write()
-            .expect("Contention replace_waker")
-            .replace(waker);
+        let current_waker_guard =
+            (*addr_of!((*self.frame.as_ptr()).frame.waker)).upgradeable_read();
+
+        if let Some(current_waker) = &*current_waker_guard {
+            if !waker.will_wake(current_waker) {
+                current_waker_guard.upgrade().replace(waker);
+            }
+        } else {
+            current_waker_guard.upgrade().replace(waker);
+        }
     }
 
     unsafe fn take_waker(&self) -> Option<Waker> {
         (*addr_of!((*self.frame.as_ptr()).frame.waker))
-            .try_write()
-            .expect("Contention take_waker")
+            .write()
             .take()
     }
 

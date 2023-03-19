@@ -1,7 +1,10 @@
 //! Items to use when not in `no_std` environments.
 
-use crate::pdu_loop::{PduRx, PduTx};
-use core::{future::Future, task::Poll};
+use crate::{
+    error::Error,
+    pdu_loop::{PduRx, PduTx},
+};
+use core::future::Future;
 use embassy_futures::select;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
@@ -46,71 +49,87 @@ fn get_tx_rx(
 /// Create a task that waits for PDUs to send, and receives PDU responses.
 pub fn tx_rx_task(
     device: &str,
-    pdu_tx: PduTx<'static>,
-    pdu_rx: PduRx<'static>,
-) -> Result<impl Future<Output = embassy_futures::select::Either<(), ()>>, std::io::Error> {
+    mut pdu_tx: PduTx<'static>,
+    mut pdu_rx: PduRx<'static>,
+) -> Result<impl Future<Output = Result<(), Error>>, std::io::Error> {
     let (mut tx, mut rx) = get_tx_rx(device)?;
 
     let mut packet_buf = [0u8; 1536];
 
-    // TODO: Unwraps
-    let tx_task = core::future::poll_fn::<(), _>(move |ctx| {
-        pdu_tx
-            .send_frames_blocking(ctx.waker(), &mut packet_buf, |frame| {
-                tx.send_to(frame, None).unwrap().map_err(|e| {
-                    log::error!("Failed to send packet: {e}");
-                })
-            })
-            .unwrap();
+    let task = async move {
+        // TODO: Unwraps
+        let tx_task = async {
+            loop {
+                let frames = pdu_tx.next().await;
 
-        Poll::Pending
-    });
+                for frame in frames {
+                    frame
+                        .send(&mut packet_buf, |frame_bytes| async {
+                            tx.send_to(frame_bytes, None)
+                                .unwrap()
+                                .map_err(|e| {
+                                    log::error!("Failed to send packet: {e}");
+                                })
+                                .expect("TX");
 
-    // TODO: Unwraps
-    let rx_task = smol::unblock(move || {
-        let mut frame_buf: Vec<u8> = Vec::new();
-
-        loop {
-            match rx.next() {
-                Ok(ethernet_frame) => {
-                    match EthernetFrame::new_checked(ethernet_frame) {
-                        // We got a full frame
-                        Ok(_) => {
-                            if !frame_buf.is_empty() {
-                                log::warn!("{} existing frame bytes", frame_buf.len());
-                            }
-
-                            frame_buf.extend_from_slice(ethernet_frame);
-                        }
-                        // Truncated frame - try adding them together
-                        Err(smoltcp::Error::Truncated) => {
-                            log::warn!("Truncated frame: len {}", ethernet_frame.len());
-
-                            frame_buf.extend_from_slice(ethernet_frame);
-
-                            continue;
-                        }
-                        Err(e) => panic!("RX pre: {e}"),
-                    };
-
-                    pdu_rx
-                        .receive_frame(&frame_buf)
-                        .map_err(|e| {
-                            dbg!(frame_buf.len());
-
-                            e
+                            Ok(())
                         })
-                        .expect("RX");
-
-                    frame_buf.truncate(0);
-                }
-                Err(e) => {
-                    // If an error occurs, we can handle it here
-                    panic!("An error occurred while reading: {e}");
+                        .await
+                        .expect("TX");
                 }
             }
-        }
-    });
+        };
 
-    Ok(select::select(tx_task, rx_task))
+        // TODO: Unwraps
+        let rx_task = smol::unblock(move || {
+            let mut frame_buf: Vec<u8> = Vec::new();
+
+            loop {
+                match rx.next() {
+                    Ok(ethernet_frame) => {
+                        match EthernetFrame::new_checked(ethernet_frame) {
+                            // We got a full frame
+                            Ok(_) => {
+                                if !frame_buf.is_empty() {
+                                    log::warn!("{} existing frame bytes", frame_buf.len());
+                                }
+
+                                frame_buf.extend_from_slice(ethernet_frame);
+                            }
+                            // Truncated frame - try adding them together
+                            Err(smoltcp::Error::Truncated) => {
+                                log::warn!("Truncated frame: len {}", ethernet_frame.len());
+
+                                frame_buf.extend_from_slice(ethernet_frame);
+
+                                continue;
+                            }
+                            Err(e) => panic!("RX pre: {e}"),
+                        };
+
+                        pdu_rx
+                            .receive_frame(&frame_buf)
+                            .map_err(|e| {
+                                dbg!(frame_buf.len());
+
+                                e
+                            })
+                            .expect("RX");
+
+                        frame_buf.truncate(0);
+                    }
+                    Err(e) => {
+                        // If an error occurs, we can handle it here
+                        panic!("An error occurred while reading: {e}");
+                    }
+                }
+            }
+        });
+
+        select::select(tx_task, rx_task).await;
+
+        Ok(())
+    };
+
+    Ok(task)
 }

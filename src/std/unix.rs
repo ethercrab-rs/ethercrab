@@ -12,8 +12,8 @@ use std::io;
 /// Spawn a TX and RX task.
 pub fn tx_rx_task(
     interface: &str,
-    pdu_tx: PduTx<'static>,
-    pdu_rx: PduRx<'static>,
+    mut pdu_tx: PduTx<'static>,
+    mut pdu_rx: PduRx<'static>,
 ) -> Result<impl Future<Output = Result<(), Error>>, std::io::Error> {
     let socket = smoltcp::phy::RawSocket::new(interface, Medium::Ethernet)?;
     let socket_rx = smoltcp::phy::RawSocket::new(interface, Medium::Ethernet)?;
@@ -21,33 +21,46 @@ pub fn tx_rx_task(
     let mut async_socket = smol::Async::new(socket)?;
     let mut async_socket_rx = smol::Async::new(socket_rx)?;
 
+    let mut packet_buf = [0u8; 1536];
+
     let task = async move {
         let tx_task = async {
-            while let Some(frame) = pdu_tx.next().await {
-                async_socket
-                    .write_with_mut(|iface| {
-                        // transmit() always returns Some() (at time of writing), so this unwrap
-                        // should optimise out.
-                        let tx_token = iface.transmit().unwrap();
+            loop {
+                let frames = pdu_tx.next().await;
 
-                        tx_token
-                            .consume(
-                                smoltcp::time::Instant::now(),
-                                frame.ethernet_frame_len(),
-                                |buf| {
-                                    frame.write_ethernet_packet(buf).expect("write frame");
+                for frame in frames {
+                    frame
+                        .send(&mut packet_buf, |frame_bytes| async {
+                            async_socket
+                                .write_with_mut(|iface| {
+                                    // transmit() always returns Some() (at time of writing), so this unwrap
+                                    // should optimise out.
+                                    let tx_token = iface.transmit().unwrap();
+
+                                    tx_token
+                                        .consume(
+                                            smoltcp::time::Instant::now(),
+                                            frame_bytes.len(),
+                                            |buf| {
+                                                buf.copy_from_slice(frame_bytes);
+
+                                                Ok(())
+                                            },
+                                        )
+                                        .expect("consume");
 
                                     Ok(())
-                                },
-                            )
-                            .expect("consume");
+                                })
+                                .await
+                                .map_err(|e| {
+                                    log::error!("Send failed: {}", e);
 
-                        Ok(())
-                    })
-                    .await
-                    .expect("TX");
-
-                frame.mark_sent();
+                                    Error::SendFrame
+                                })
+                        })
+                        .await
+                        .expect("TX");
+                }
             }
         };
 
@@ -72,7 +85,6 @@ pub fn tx_rx_task(
                 .expect("Read loop");
         };
 
-        // select::select3(tx_wake, tx_task, rx_task).await;
         select::select(tx_task, rx_task).await;
 
         Ok(())

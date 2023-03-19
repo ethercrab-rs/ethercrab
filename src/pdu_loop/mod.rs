@@ -180,7 +180,7 @@ mod tests {
     use crate::pdu_loop::frame_element::{
         sendable_frame::SendableFrame, FrameBox, FrameElement, FrameState,
     };
-    use core::{marker::PhantomData, task::Poll};
+    use core::marker::PhantomData;
     use futures_lite::future::poll_once;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
@@ -241,11 +241,10 @@ mod tests {
         // 1 frame, up to 128 bytes payload
         let storage = PduStorage::<1, 128>::new();
 
-        let (tx, rx, pdu_loop) = storage.try_split().unwrap();
+        let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
 
         let data = [0xaau8, 0xbb, 0xcc, 0xdd];
 
-        let mut packet_buf = [0u8; 1536];
         let mut written_packet = Vec::new();
         written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
@@ -262,16 +261,22 @@ mod tests {
 
         let _ = smol::block_on(frame_fut);
 
-        let send_fut = poll_once(core::future::poll_fn::<(), _>(|ctx| {
-            tx.send_frames_blocking(ctx.waker(), &mut packet_buf, |frame| {
-                written_packet.copy_from_slice(frame);
+        let send_fut = poll_once(async {
+            let mut packet_buf = [0u8; 1536];
 
-                Ok(())
-            })
-            .unwrap();
+            let frames = tx.next().await;
 
-            Poll::Ready(())
-        }));
+            for frame in frames {
+                frame
+                    .send(&mut packet_buf, |bytes| async {
+                        written_packet.copy_from_slice(bytes);
+
+                        Ok(())
+                    })
+                    .await
+                    .unwrap();
+            }
+        });
 
         let _ = smol::block_on(send_fut);
 
@@ -370,58 +375,53 @@ mod tests {
         // env_logger::try_init().ok();
 
         static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
-        let (tx, rx, pdu_loop) = STORAGE.try_split().unwrap();
+        let (mut tx, mut rx, pdu_loop) = STORAGE.try_split().unwrap();
 
-        let num_frames = 64;
+        let tx_rx_task = async move {
+            let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
-        let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+            let tx_task = async {
+                log::info!("Spawn TX task");
 
-        tokio::spawn(async move {
-            let mut packet_buf = [0u8; 1536];
+                let mut packet_buf = [0u8; 1536];
 
-            log::info!("Spawn TX task");
+                loop {
+                    let frames = tx.next().await;
 
-            let mut sent = 0;
+                    for frame in frames {
+                        frame
+                            .send(&mut packet_buf, |bytes| async {
+                                s.send(bytes.to_vec()).unwrap();
 
-            core::future::poll_fn::<(), _>(move |ctx| {
-                log::info!("Send poll fn");
-
-                tx.send_frames_blocking(ctx.waker(), &mut packet_buf, |frame| {
-                    s.send(frame.to_vec()).unwrap();
-
-                    log::info!("Sent packet");
-
-                    Ok(())
-                })
-                .unwrap();
-
-                sent += 1;
-
-                if sent < num_frames {
-                    Poll::Pending
-                } else {
-                    Poll::Ready(())
+                                Ok(())
+                            })
+                            .await
+                            .unwrap();
+                    }
                 }
-            })
-            .await
-        });
+            };
 
-        tokio::spawn(async move {
-            log::info!("Spawn RX task");
+            let rx_task = async {
+                log::info!("Spawn RX task");
 
-            while let Some(ethernet_frame) = r.recv().await {
-                log::trace!("RX task received packet");
+                while let Some(ethernet_frame) = r.recv().await {
+                    log::trace!("RX task received packet");
 
-                // Munge fake sent frame into a fake received frame
-                let ethernet_frame = {
-                    let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
-                    frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
-                    frame.into_inner()
-                };
+                    // Munge fake sent frame into a fake received frame
+                    let ethernet_frame = {
+                        let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
+                        frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+                        frame.into_inner()
+                    };
 
-                rx.receive_frame(&ethernet_frame).expect("RX");
-            }
-        });
+                    rx.receive_frame(&ethernet_frame).expect("RX");
+                }
+            };
+
+            embassy_futures::select::select(tx_task, rx_task).await;
+        };
+
+        tokio::spawn(tx_rx_task);
 
         for i in 0..64 {
             let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
