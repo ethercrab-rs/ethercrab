@@ -17,7 +17,10 @@ An EtherCAT master written in Rust.
 
 ### Changed
 
-- **(breaking)** [#TODO] `send_frames_blocking` now gives the raw Ethernet II frame to the send closure instead of a `SendableFrame`.
+- **(breaking)** [#32] To mitigate some internal issues, `PduStorage` now requires `N` (the number
+  of storage elements) to be a power of two.
+- **(breaking)** [#32] `send_frames_blocking` is removed. It is replaced with the async
+  `PduTx::next()` method which returns an iterator over sendable frames.
 - **(breaking)** [#30] Removed `PduError::Encode` variant.
 - **(breaking)** [#25] Changed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
 - **(breaking)** [#20] Changed the way the client, tx and rx instances are initialised to only allow
@@ -92,5 +95,6 @@ An EtherCAT master written in Rust.
 [#29]: https://github.com/ethercrab-rs/ethercrab/pull/29
 [#30]: https://github.com/ethercrab-rs/ethercrab/pull/30
 [#31]: https://github.com/ethercrab-rs/ethercrab/pull/31
+[#32]: https://github.com/ethercrab-rs/ethercrab/pull/32
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
