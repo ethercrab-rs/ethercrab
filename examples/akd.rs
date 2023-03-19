@@ -41,7 +41,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         ClientConfig::default(),
     ));
 
-    ex.spawn(tx_rx_task(INTERFACE, tx, rx).unwrap()).detach();
+    ex.spawn(tx_rx_task(INTERFACE, tx, rx).expect("spawn TX/RX task"))
+        .detach();
 
     // let num_slaves = client.num_slaves();
 

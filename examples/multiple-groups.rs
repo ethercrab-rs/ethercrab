@@ -71,7 +71,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         ClientConfig::default(),
     ));
 
-    ex.spawn(tx_rx_task(&interface, tx, rx).unwrap()).detach();
+    ex.spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
+        .detach();
 
     let groups = client
         // Initialise up to 16 slave devices
