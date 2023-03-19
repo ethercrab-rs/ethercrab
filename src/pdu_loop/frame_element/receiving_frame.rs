@@ -100,7 +100,11 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
     ) -> Poll<Self::Output> {
         let rxin = match self.frame.take() {
             Some(r) => r,
-            None => return Poll::Ready(Err(PduError::InvalidFrameState.into())),
+            None => {
+                log::error!("Frame is taken");
+
+                return Poll::Ready(Err(PduError::InvalidFrameState.into()));
+            }
         };
 
         let swappy = unsafe {
@@ -109,21 +113,24 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         let was = match swappy {
             Ok(_frame_element) => {
-                log::trace!("Frame future is ready");
                 return Poll::Ready(Ok(ReceivedFrame { inner: rxin }));
             }
             Err(e) => e,
         };
 
         match was {
-            FrameState::Sendable | FrameState::Sending => {
+            FrameState::Sendable | FrameState::Sending | FrameState::RxBusy => {
                 unsafe { rxin.replace_waker(cx.waker().clone()) };
 
                 self.frame = Some(rxin);
 
                 Poll::Pending
             }
-            _ => Poll::Ready(Err(PduError::InvalidFrameState.into())),
+            state => {
+                log::error!("Frame is in invalid state {:?}", state);
+
+                Poll::Ready(Err(PduError::InvalidFrameState.into()))
+            }
         }
     }
 }

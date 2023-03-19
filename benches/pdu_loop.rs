@@ -1,4 +1,3 @@
-use core::task::Poll;
 use criterion::{criterion_group, criterion_main, Bencher, Criterion, Throughput};
 use ethercrab::{internals::Command, PduStorage};
 
@@ -10,7 +9,7 @@ fn do_bench(b: &mut Bencher) {
     // 1 frame, up to 128 bytes payload
     let storage = PduStorage::<1, 128>::new();
 
-    let (tx, rx, pdu_loop) = storage.try_split().unwrap();
+    let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
 
     let mut packet_buf = [0u8; 1536];
     let mut written_packet = Vec::new();
@@ -19,36 +18,33 @@ fn do_bench(b: &mut Bencher) {
     b.iter(|| {
         //  --- Prepare frame
 
-        let frame_fut = futures_lite::future::poll_once(pdu_loop.pdu_tx_readwrite(
+        let frame_fut = pdu_loop.pdu_tx_readwrite(
             Command::Fpwr {
                 address: 0x5678,
                 register: 0x1234,
             },
             &DATA,
-        ));
-
-        let _ = futures_lite::future::block_on(frame_fut);
+        );
 
         // --- Send frame
 
-        let send_fut = futures_lite::future::poll_once(core::future::poll_fn::<(), _>(|ctx| {
-            tx.send_frames_blocking(ctx.waker(), |frame| {
-                let packet = frame
-                    .write_ethernet_packet(&mut packet_buf)
-                    .expect("Write Ethernet frame");
+        let send_fut = async {
+            let frames = tx.next().await;
 
-                written_packet.copy_from_slice(packet);
+            for frame in frames {
+                frame
+                    .send(&mut packet_buf, |bytes| async {
+                        written_packet.copy_from_slice(bytes);
 
-                Ok(())
-            })
-            .unwrap();
+                        Ok(())
+                    })
+                    .await
+                    .unwrap();
+            }
+        };
 
-            Poll::Ready(())
-        }));
-
-        let _ = futures_lite::future::block_on(send_fut);
-
-        assert_eq!(written_packet.len(), FRAME_OVERHEAD + DATA.len());
+        let _ =
+            futures_lite::future::block_on(embassy_futures::select::select(frame_fut, send_fut));
 
         // --- Receive frame
 

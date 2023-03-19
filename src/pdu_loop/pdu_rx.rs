@@ -21,6 +21,7 @@ pub struct PduRx<'sto> {
 
 // SAFETY: We're tied to the lifetime of the backing storage with 'sto.
 unsafe impl<'sto> Send for PduRx<'sto> {}
+unsafe impl<'sto> Sync for PduRx<'sto> {}
 
 impl<'sto> PduRx<'sto> {
     pub(in crate::pdu_loop) fn new(storage: PduStorageRef<'sto>) -> Self {
@@ -28,7 +29,8 @@ impl<'sto> PduRx<'sto> {
     }
 
     /// Parse a PDU from a complete Ethernet II frame.
-    pub fn receive_frame(&self, ethernet_frame: &[u8]) -> Result<(), Error> {
+    // NOTE: &mut self so this struct can only be used in one place.
+    pub fn receive_frame(&mut self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self. As per
@@ -90,6 +92,8 @@ impl<'sto> PduRx<'sto> {
         let frame_data = frame.buf_mut();
 
         frame_data[0..usize::from(flags.len())].copy_from_slice(data);
+
+        // FIXME: Release frame if any of this method fails
 
         frame.mark_received(flags, irq, working_counter)?;
 

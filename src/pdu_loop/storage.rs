@@ -1,5 +1,3 @@
-use spin::RwLock;
-
 use crate::{
     command::Command,
     error::{Error, PduError},
@@ -20,11 +18,14 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
     task::Waker,
 };
+use spin::RwLock;
 
 use super::{pdu_rx::PduRx, pdu_tx::PduTx};
 
 /// Stores PDU frames that are currently being prepared to send, in flight, or being received and
 /// processed.
+///
+/// The number of storage elements `N` must be a power of 2.
 pub struct PduStorage<const N: usize, const DATA: usize> {
     frames: UnsafeCell<MaybeUninit<[FrameElement<DATA>; N]>>,
     idx: AtomicU8,
@@ -37,12 +38,24 @@ unsafe impl<const N: usize, const DATA: usize> Sync for PduStorage<N, DATA> {}
 
 impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     /// Create a new `PduStorage` instance.
+    ///
+    /// The number of storage elements `N` must be a power of 2.
     pub const fn new() -> Self {
         // MSRV: Make `N` a `u8` when `generic_const_exprs` is stablised
+        // If possible, try using `NonZeroU8`.
         assert!(
             N <= u8::MAX as usize,
             "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
         );
+        assert!(N > 0, "Storage must contain at least one element");
+
+        // Index wrapping limitations require a power of 2 number of storage elements.
+        if N > 1 {
+            assert!(
+                N as u32 % N.ilog2() == 0,
+                "The number of storage elements must be a power of 2"
+            );
+        }
 
         // MSRV: Use MaybeUninit::zeroed when `const_maybe_uninit_zeroed` is stabilised.
         let frames = UnsafeCell::new(MaybeUninit::uninit());
@@ -117,7 +130,7 @@ impl<'sto> PduStorageRef<'sto> {
             return Err(PduError::TooLong.into());
         }
 
-        let idx_u8 = self.idx.fetch_add(1, Ordering::AcqRel) % self.num_frames as u8;
+        let idx_u8 = self.idx.fetch_add(1, Ordering::Relaxed) % self.num_frames as u8;
 
         let idx = usize::from(idx_u8);
 
