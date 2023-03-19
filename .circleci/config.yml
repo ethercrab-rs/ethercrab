@@ -4,7 +4,6 @@ target_steps: &target_steps
     - image: cimg/rust:1.68.0
   steps:
     - checkout
-    - run: sudo apt update && sudo apt install -y libpcap-dev
     - restore_cache:
         key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
@@ -84,6 +83,29 @@ jobs:
     environment:
       - TARGET: "x86_64-unknown-linux-gnu"
     <<: *miri_steps
+
+  windows-cross:
+    resource_class: large
+    docker:
+      # NOTE: Exact version is overridden in `rust-toolchain.toml`
+      - image: cimg/rust:1.68.0
+    steps:
+      - checkout
+      - restore_cache:
+          key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+
+      - run: rustup target add x86_64-pc-windows-gnu
+      - run: sudo apt update && sudo apt install -y mingw-w64
+      # FIXME: change to "build" when possible. Currently fails with a link error about "-lPacket"
+      # for libpcap. A bit of a dead end here: https://github.com/libpnet/libpnet/issues/479
+      - run: cargo check --target x86_64-pc-windows-gnu --release --examples
+
+      - save_cache:
+          key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+          paths:
+            - ./target
+            - /home/circleci/.cargo/registry
+
   # TODO: Re-enable when we can remove `Box` from the slave group preop hook fn
   # target-thumbv7m-none-eabi:
   #   resource_class: large
@@ -95,6 +117,7 @@ build_jobs: &build_jobs
   jobs:
     - target-x86_64-unknown-linux-gnu
     - miri-x86_64-unknown-linux-gnu
+    - windows-cross
     # - target-thumbv7m-none-eabi
 
 workflows:

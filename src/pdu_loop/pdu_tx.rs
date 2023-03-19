@@ -95,6 +95,7 @@ impl<'sto> PduTx<'sto> {
         }
     }
 
+    #[cfg_attr(windows, allow(unused))]
     pub(crate) fn next(&'sto self) -> PduTxFut<'sto> {
         PduTxFut { tx: self }
     }
