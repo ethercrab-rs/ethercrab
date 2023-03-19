@@ -1,5 +1,3 @@
-use spin::RwLock;
-
 use crate::{
     command::Command,
     error::{Error, PduError},
@@ -20,6 +18,7 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
     task::Waker,
 };
+use spin::RwLock;
 
 use super::{pdu_rx::PduRx, pdu_tx::PduTx};
 
@@ -43,6 +42,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             N <= u8::MAX as usize,
             "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
         );
+        assert!(N > 0, "Storage must contain at least one element");
 
         // MSRV: Use MaybeUninit::zeroed when `const_maybe_uninit_zeroed` is stabilised.
         let frames = UnsafeCell::new(MaybeUninit::uninit());
