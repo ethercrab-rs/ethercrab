@@ -9,9 +9,8 @@
 use async_ctrlc::CtrlC;
 use async_io::Timer;
 use ethercrab::{
-    error::Error,
-    std::{tx_rx_task, tx_rx_task_new},
-    Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupContainer, SlaveGroupRef, Timeouts,
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
+    SlaveGroupContainer, SlaveGroupRef, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
@@ -25,7 +24,7 @@ const MAX_SLAVES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = 1100;
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
-const MAX_FRAMES: usize = 16;
+const MAX_FRAMES: usize = 255;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
@@ -62,16 +61,21 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    ex.spawn(tx_rx_task_new(interface, tx, rx)).detach();
+    ex.spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
+        .detach();
 
     let client = Arc::new(Client::new(
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
+            // pdu: Duration::from_millis(100),
+            // eeprom: Duration::from_millis(100),
             ..Default::default()
         },
-        ClientConfig::default(),
+        ClientConfig {
+            dc_static_sync_iterations: 0,
+        },
     ));
 
     let groups = client
@@ -95,7 +99,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     let slow_task = smol::spawn(async move {
         // EtherCAT slaves have a maximum cycle time. We'll use 5ms here.
-        let mut slow_cycle_time = Timer::interval(Duration::from_millis(500));
+        let mut slow_cycle_time = Timer::interval(Duration::from_micros(100));
 
         let slow_duration = Duration::from_millis(250);
 
@@ -126,7 +130,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     });
 
     let fast_task = smol::spawn(async move {
-        let mut fast_cycle_time = Timer::interval(Duration::from_millis(500));
+        let mut fast_cycle_time = Timer::interval(Duration::from_micros(100));
 
         while let Some(_) = fast_cycle_time.next().await {
             fast_outputs.tx_rx(&client).await.expect("TX/RX");
