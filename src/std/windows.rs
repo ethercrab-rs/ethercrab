@@ -4,11 +4,7 @@ use crate::pdu_loop::{PduRx, PduTx};
 use core::{future::Future, task::Poll};
 use embassy_futures::select;
 use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
-use smoltcp::{
-    phy::{Device, Medium, RxToken, TxToken},
-    wire::EthernetFrame,
-};
-use std::{io, sync::Arc};
+use smoltcp::wire::EthernetFrame;
 
 /// Get a TX/RX pair.
 fn get_tx_rx(
@@ -30,8 +26,6 @@ fn get_tx_rx(
             panic!();
         }
     };
-
-    dbg!(interface);
 
     let config = pnet::datalink::Config {
         write_buffer_size: 16384,
@@ -119,93 +113,4 @@ pub fn tx_rx_task(
     });
 
     Ok(select::select(tx_task, rx_task))
-}
-
-/// Spawn a TX and RX task.
-// TODO: Return a result
-pub fn tx_rx_task_new(
-    interface: String,
-    pdu_tx: PduTx<'static>,
-    pdu_rx: PduRx<'static>,
-) -> impl Future<Output = ()> {
-    let socket = smoltcp::phy::RawSocket::new(&interface, Medium::Ethernet).unwrap();
-    let socket_rx = smoltcp::phy::RawSocket::new(&interface, Medium::Ethernet).unwrap();
-
-    let mut async_socket = smol::Async::new(socket).unwrap();
-    let mut async_socket_rx = smol::Async::new(socket_rx).unwrap();
-
-    let notify = Arc::new(async_notify::Notify::new());
-    let notify2 = notify.clone();
-
-    let task = async move {
-        let tx_wake = core::future::poll_fn(|ctx| {
-            pdu_tx.set_waker(ctx.waker().clone());
-
-            notify.notify();
-
-            Poll::<()>::Pending
-        });
-
-        let tx_task = async {
-            loop {
-                notify2.notified().await;
-
-                async_socket
-                    .write_with_mut(|iface| {
-                        if let Some(frame) = pdu_tx.next_sendable_frame() {
-                            // transmit() always returns Some() (at time of writing), so this unwrap
-                            // should optimise out.
-                            let tx_token = iface.transmit().unwrap();
-
-                            tx_token
-                                .consume(
-                                    smoltcp::time::Instant::now(),
-                                    frame.ethernet_frame_len(),
-                                    |buf| {
-                                        frame.write_ethernet_packet(buf).expect("write frame");
-
-                                        Ok(())
-                                    },
-                                )
-                                .expect("consume");
-
-                            frame.mark_sent();
-
-                            // There might be more frames to send. WouldBlock signals that this
-                            // closure should be called again.
-                            Err::<(), _>(io::Error::from(io::ErrorKind::WouldBlock))
-                        } else {
-                            Ok(())
-                        }
-                    })
-                    .await
-                    .expect("TX");
-            }
-        };
-
-        let rx_task = async {
-            async_socket_rx
-                .read_with_mut(|iface| {
-                    if let Some((receiver, _)) = iface.receive() {
-                        receiver
-                            .consume(smoltcp::time::Instant::now(), |frame_buf| {
-                                pdu_rx.receive_frame(&frame_buf).map_err(|e| {
-                                    log::error!("Failed to receive packet: {}", e);
-
-                                    smoltcp::Error::Malformed
-                                })
-                            })
-                            .expect("RX packet");
-                    }
-
-                    Err::<(), _>(io::Error::from(io::ErrorKind::WouldBlock))
-                })
-                .await
-                .expect("Read loop");
-        };
-
-        select::select3(tx_wake, tx_task, rx_task).await;
-    };
-
-    task
 }
