@@ -43,7 +43,7 @@ impl<'sto> SendableFrame<'sto> {
 
     /// The length in bytes required to hold the full Ethernet II frame, containing an EtherCAT
     /// payload.
-    pub(crate) fn ethernet_frame_len(&self) -> usize {
+    fn ethernet_frame_len(&self) -> usize {
         EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len())
     }
 

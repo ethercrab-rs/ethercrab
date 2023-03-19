@@ -23,19 +23,6 @@ impl<'sto> PduTx<'sto> {
     }
 
     fn next_sendable_frame(&self) -> Option<SendableFrame<'sto>> {
-        // let mut n = 0;
-        // for idx in 0..self.storage.num_frames {
-        //     let frame = unsafe { NonNull::new_unchecked(self.storage.frame_at_index(idx)) };
-
-        //     if unsafe { FrameElement::is_sendable(frame) } {
-        //         n += 1;
-        //     }
-        // }
-
-        // if n > 1 {
-        //     dbg!(n);
-        // }
-
         for idx in 0..self.storage.num_frames {
             let frame = unsafe { NonNull::new_unchecked(self.storage.frame_at_index(idx)) };
 
