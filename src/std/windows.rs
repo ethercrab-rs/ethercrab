@@ -87,7 +87,7 @@ pub fn tx_rx_task(
             loop {
                 match rx.next() {
                     Ok(ethernet_frame) => {
-                        match EthernetFrame::new_checked(ethernet_frame) {
+                        match EthernetFrame::new_unchecked(ethernet_frame).check_len() {
                             // We got a full frame
                             Ok(_) => {
                                 if !frame_buf.is_empty() {
@@ -97,14 +97,13 @@ pub fn tx_rx_task(
                                 frame_buf.extend_from_slice(ethernet_frame);
                             }
                             // Truncated frame - try adding them together
-                            Err(smoltcp::Error::Truncated) => {
+                            Err(_) => {
                                 log::warn!("Truncated frame: len {}", ethernet_frame.len());
 
                                 frame_buf.extend_from_slice(ethernet_frame);
 
                                 continue;
                             }
-                            Err(e) => panic!("RX pre: {e}"),
                         };
 
                         pdu_rx
@@ -123,6 +122,8 @@ pub fn tx_rx_task(
                         panic!("An error occurred while reading: {e}");
                     }
                 }
+
+                std::thread::yield_now();
             }
         });
 

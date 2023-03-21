@@ -40,6 +40,7 @@ impl<'sto> PduTx<'sto> {
         None
     }
 
+    #[cfg_attr(windows, allow(unused))]
     pub(crate) fn lock_waker<'lock>(&self) -> RwLockWriteGuard<'lock, Option<Waker>>
     where
         'sto: 'lock,
