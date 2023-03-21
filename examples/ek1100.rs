@@ -110,14 +110,11 @@ async fn main() -> Result<(), Error> {
     let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
     tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let group = Arc::new(group);
-    let group2 = group.clone();
-
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Increment every output byte for every slave device by one
-        for slave in group2.slaves() {
+        for slave in group.slaves() {
             let (_i, o) = slave.io();
 
             for byte in o.iter_mut() {
