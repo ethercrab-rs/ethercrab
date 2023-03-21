@@ -97,7 +97,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         // EtherCAT slaves have a maximum cycle time. We'll use 5ms here.
         let mut slow_cycle_time = Timer::interval(Duration::from_millis(3));
 
-        let slow_duration = Duration::from_millis(100);
+        let slow_duration = Duration::from_millis(250);
 
         // Only update "slow" outputs every 250ms using this instant
         let mut tick = Instant::now();

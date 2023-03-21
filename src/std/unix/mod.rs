@@ -37,13 +37,14 @@ impl Future for TxRxFut<'_> {
 
                         // FIXME: Release frame
 
-                        // TODO: Better error
-                        return Poll::Ready(Err(Error::SendFrame));
+                        return Poll::Ready(Err(Error::PartialSend {
+                            len: data.len(),
+                            sent: bytes_written,
+                        }));
                     }
 
                     frame.mark_sent();
                 }
-                // TODO: Return a better error type
                 // FIXME: Release frame on failure
                 Poll::Ready(Err(e)) => {
                     log::error!("Send PDU failed: {e}");
@@ -59,19 +60,21 @@ impl Future for TxRxFut<'_> {
                 let packet = &buf[0..n];
 
                 // FIXME: Release frame on failure
-                self.rx.receive_frame(packet).expect("bad news");
+                if let Err(e) = self.rx.receive_frame(packet) {
+                    log::error!("Failed to receive frame: {}", e);
+
+                    return Poll::Ready(Err(Error::ReceiveFrame));
+                }
             }
-            // TODO: Return a better error type
             // FIXME: Release frame on failure
             Poll::Ready(Err(e)) => {
                 log::error!("Receive PDU failed: {e}");
 
-                return Poll::Ready(Err(Error::SendFrame));
+                return Poll::Ready(Err(Error::ReceiveFrame));
             }
             Poll::Pending => (),
         }
 
-        // self.tx.set_waker(ctx.waker());
         waker.replace(ctx.waker().clone());
 
         Poll::Pending
