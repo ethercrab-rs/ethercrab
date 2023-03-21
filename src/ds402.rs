@@ -207,6 +207,8 @@ impl<'a> Ds402Sm<'a> {
     }
 
     /// Put the slave into "switch on disabled" state. Returns true when finished.
+    // TODO: Some sort of typestate API to transition between higher level states so we can't do
+    // this during normal op
     pub fn tick_shutdown(&mut self) -> bool {
         let status = self.sm.context().status_word();
 
