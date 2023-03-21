@@ -1,26 +1,12 @@
 //! Configure Distributed Clocks (DC) for EK1100 and a couple of other modules.
 
-use async_ctrlc::CtrlC;
+use env_logger::Env;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, RegisterAddress, SlaveGroup,
     SubIndex, Timeouts,
 };
-use futures_lite::{FutureExt, StreamExt};
-use smol::LocalExecutor;
-use smol::Timer;
 use std::{sync::Arc, time::Duration};
-
-#[cfg(target_os = "windows")]
-// ASRock NIC
-// const INTERFACE: &str = "\\Device\\NPF_{BEE3ADE3-E30E-4A64-BC67-C31320804CA9}";
-// // USB NIC
-// const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
-// Lenovo USB-C NIC
-const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
-// Silver USB NIC
-// const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
-#[cfg(not(target_os = "windows"))]
-const INTERFACE: &str = "eth0";
+use tokio::time::MissedTickBehavior;
 
 const MAX_SLAVES: usize = 16;
 const MAX_PDU_DATA: usize = 1100;
@@ -29,8 +15,16 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
-    log::info!("Starting DC demo...");
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
+    let interface = std::env::args()
+        .nth(1)
+        .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+
+    log::info!("Starting Distributed Clocks demo...");
+    log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
@@ -44,11 +38,11 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         ClientConfig::default(),
     ));
 
-    ex.spawn(tx_rx_task(INTERFACE, tx, rx).expect("spawn TX/RX task"))
-        .detach();
+    tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {
+            // Special configuration is required for some slave devices
             if slave.name() == "EL3004" {
                 log::info!("Found EL3004. Configuring...");
 
@@ -87,10 +81,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                     .await
                     .unwrap_or(0);
                 log::info!("Inputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
-
-                // Force IO into free run mode
-                // slave.write_sdo(0x1c32, SubIndex::Index(1), 0u16).await?;
-                // slave.write_sdo(0x1c33, SubIndex::Index(1), 0u16).await?;
             }
 
             Ok(())
@@ -117,12 +107,13 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     }
 
     // NOTE: This is currently hardcoded as 2ms inside the DC sync config, so keep them the same.
-    let mut tick_interval = Timer::interval(Duration::from_millis(5));
+    let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
+    tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     let group = Arc::new(group);
     let group2 = group.clone();
 
-    while let Some(_) = tick_interval.next().await {
+    loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Dynamic drift compensation
@@ -137,20 +128,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                 *byte = byte.wrapping_add(1);
             }
         }
+
+        tick_interval.tick().await;
     }
-
-    Ok(())
-}
-
-fn main() -> Result<(), Error> {
-    env_logger::init();
-    let local_ex = LocalExecutor::new();
-
-    let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
-
-    futures_lite::future::block_on(
-        local_ex.run(ctrlc.race(async { main_inner(&local_ex).await.unwrap() })),
-    );
-
-    Ok(())
 }

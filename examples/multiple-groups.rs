@@ -1,4 +1,4 @@
-//! Demonstrate sorting slaves into multipel slave groups.
+//! Demonstrate sorting slaves into multiple slave groups.
 //!
 //! This demo is designed to be used with the following slave devices:
 //!
@@ -6,18 +6,16 @@
 //! - EL2889 (2 bytes of outputs)
 //! - EL2828 (1 byte of outputs)
 
-use async_ctrlc::CtrlC;
+use env_logger::Env;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
     SlaveGroupContainer, SlaveGroupRef, Timeouts,
 };
-use futures_lite::{FutureExt, StreamExt};
-use smol::LocalExecutor;
-use smol::Timer;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tokio::time::MissedTickBehavior;
 
 /// Maximum number of slaves that can be stored.
 const MAX_SLAVES: usize = 16;
@@ -52,16 +50,23 @@ impl SlaveGroupContainer for Groups {
     }
 }
 
-async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
     let interface = std::env::args()
         .nth(1)
-        .expect("Provide interface as first argument");
+       .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
 
     log::info!("Starting multiple groups demo...");
+    log::info!(
+        "Ensure an EK1100 is the first slave device, with an EL2828 and EL2889 following it"
+    );
+    log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(
+    let client = Client::new(
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
@@ -69,13 +74,17 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             ..Default::default()
         },
         ClientConfig::default(),
-    ));
+    );
 
-    ex.spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
-        .detach();
+    // Network TX/RX should run in a separate thread to avoid timeouts. Tokio doesn't guarantee a
+    // separate thread is used but this is good enough for an example. If using `tokio`, make sure
+    // the `rt-multi-thread` feature is enabled.
+    tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
+    let client = Arc::new(client);
+
+    // Read configurations from slave EEPROMs and configure devices.
     let groups = client
-        // Initialise up to 16 slave devices
         .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
             match slave.name.as_str() {
                 "EL2889" | "EK1100" => groups.slow_outputs.push(slave),
@@ -93,9 +102,9 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     let client_slow = client.clone();
 
-    let slow_task = smol::spawn(async move {
-        // EtherCAT slaves have a maximum cycle time. We'll use 5ms here.
-        let mut slow_cycle_time = Timer::interval(Duration::from_millis(3));
+    let slow_task = tokio::spawn(async move {
+        let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(3));
+        slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         let slow_duration = Duration::from_millis(250);
 
@@ -109,7 +118,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         el2889.io().1[0] = 0x01;
         el2889.io().1[1] = 0x80;
 
-        while let Some(_) = slow_cycle_time.next().await {
+        loop {
             slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
 
             // Increment every output byte for every slave device by one
@@ -122,13 +131,16 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                 o[0] = o[0].rotate_left(1);
                 o[1] = o[1].rotate_right(1);
             }
+
+            slow_cycle_time.tick().await;
         }
     });
 
-    let fast_task = smol::spawn(async move {
-        let mut fast_cycle_time = Timer::interval(Duration::from_millis(5));
+    let fast_task = tokio::spawn(async move {
+        let mut fast_cycle_time = tokio::time::interval(Duration::from_millis(5));
+        fast_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-        while let Some(_) = fast_cycle_time.next().await {
+        loop {
             fast_outputs.tx_rx(&client).await.expect("TX/RX");
 
             // Increment every output byte for every slave device by one
@@ -139,23 +151,15 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                     *byte = byte.wrapping_add(1);
                 }
             }
+
+            fast_cycle_time.tick().await;
         }
     });
 
-    futures_lite::future::race(slow_task, fast_task).await;
+    let (slow, fast) = tokio::join!(slow_task, fast_task);
 
-    Ok(())
-}
-
-fn main() -> Result<(), Error> {
-    env_logger::init();
-    let local_ex = LocalExecutor::new();
-
-    let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
-
-    futures_lite::future::block_on(
-        local_ex.run(ctrlc.race(async { main_inner(&local_ex).await.unwrap() })),
-    );
+    slow.expect("slow task failed");
+    fast.expect("fast task failed");
 
     Ok(())
 }

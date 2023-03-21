@@ -35,15 +35,13 @@ $env:RUST_LOG="debug" ; cargo run --example ek1100 --release -- '\Device\NPF_{FF
 ```
 
 ```rust
-use async_ctrlc::CtrlC;
-use async_io::Timer;
+
+use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, SlaveGroup, SubIndex, Timeouts,
-    ClientConfig
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SubIndex, Timeouts,
 };
-use futures_lite::{FutureExt, StreamExt};
-use smol::LocalExecutor;
 use std::{sync::Arc, time::Duration};
+use tokio::time::MissedTickBehavior;
 
 /// Maximum number of slaves that can be stored.
 const MAX_SLAVES: usize = 16;
@@ -56,23 +54,36 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
     let interface = std::env::args()
         .nth(1)
-        .expect("Provide interface as first argument");
+        .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
 
-    log::info!("Starting EtherCrab demo...");
+    log::info!("Starting EK1100 demo...");
     log::info!("Ensure an EK1100 is the first slave, with any number of modules connected after");
+    log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(pdu_loop, Timeouts::default(), ClientConfig::default()));
+    let client = Arc::new(Client::new(
+        pdu_loop,
+        Timeouts {
+            wait_loop_delay: Duration::from_millis(2),
+            mailbox_response: Duration::from_millis(1000),
+            ..Default::default()
+        },
+        ClientConfig::default(),
+    ));
 
-    ex.spawn(tx_rx_task(&interface, tx, rx).unwrap()).detach();
+    tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN, _>::new(|slave| {
+    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {
-            // EL3004 needs some specific config during init to function properly
+            // Special case: if an EL3004 module is discovered, it needs some specific config during
+            // init to function properly
             if slave.name() == "EL3004" {
                 log::info!("Found EL3004. Configuring...");
 
@@ -104,7 +115,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         .await
         .expect("Init");
 
-    log::info!("Group has {} slaves", group.len());
+    log::info!("Discovered {} slaves", group.len());
 
     for slave in group.slaves() {
         let (i, o) = slave.io();
@@ -118,39 +129,25 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         );
     }
 
-    let mut tick_interval = Timer::interval(Duration::from_millis(5));
+    let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
+    tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let group = Arc::new(group);
-    let group2 = group.clone();
-
-    while let Some(_) = tick_interval.next().await {
+    loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Increment every output byte for every slave device by one
-        for slave in group2.slaves() {
+        for slave in group.slaves() {
             let (_i, o) = slave.io();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);
             }
         }
+
+        tick_interval.tick().await;
     }
-
-    Ok(())
 }
 
-fn main() -> Result<(), Error> {
-    env_logger::init();
-    let local_ex = LocalExecutor::new();
-
-    let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
-
-    futures_lite::future::block_on(
-        local_ex.run(ctrlc.race(async { main_inner(&local_ex).await.unwrap() })),
-    );
-
-    Ok(())
-}
 ```
 
 ## Current goals
