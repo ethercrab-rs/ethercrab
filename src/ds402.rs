@@ -152,13 +152,13 @@ impl<'a> Ds402<'a> {
     pub fn status_word(&self) -> StatusWord {
         let status = u16::from_le_bytes(self.slave.inputs()[0..=1].try_into().unwrap());
 
-        unsafe { StatusWord::from_bits_unchecked(status) }
+        StatusWord::from_bits_truncate(status)
     }
 
     fn set_control_word(&mut self, state: ControlWord) {
         let (control, _rest) = self.slave.outputs().split_at_mut(2);
 
-        let state = state.bits.to_le_bytes();
+        let state = state.bits().to_le_bytes();
 
         control.copy_from_slice(&state);
     }
@@ -241,23 +241,24 @@ bitflags::bitflags! {
         const PAUSE = 1 << 8;
 
         /// Shutdown state.
-        const STATE_SHUTDOWN = Self::QUICK_STOP.bits | Self::DISABLE_VOLTAGE.bits;
+        const STATE_SHUTDOWN = Self::QUICK_STOP.bits() | Self::DISABLE_VOLTAGE.bits();
         /// Switched on state.
-        const STATE_SWITCH_ON = Self::QUICK_STOP.bits | Self::DISABLE_VOLTAGE.bits | Self::SWITCH_ON.bits;
+        const STATE_SWITCH_ON = Self::QUICK_STOP.bits() | Self::DISABLE_VOLTAGE.bits() | Self::SWITCH_ON.bits();
         /// Voltage disabled state.
         const STATE_DISABLE_VOLTAGE = 0;
         /// Quick stop state.
-        const STATE_QUICK_STOP = Self::DISABLE_VOLTAGE.bits;
+        const STATE_QUICK_STOP = Self::DISABLE_VOLTAGE.bits();
         /// Operation disabled state.
-        const STATE_DISABLE_OP = Self::QUICK_STOP.bits | Self::DISABLE_VOLTAGE.bits | Self::SWITCH_ON.bits;
+        const STATE_DISABLE_OP = Self::QUICK_STOP.bits() | Self::DISABLE_VOLTAGE.bits() | Self::SWITCH_ON.bits();
         /// Operation enabled state.
-        const STATE_ENABLE_OP = Self::ENABLE_OP.bits | Self::QUICK_STOP.bits | Self::DISABLE_VOLTAGE.bits | Self::SWITCH_ON.bits;
+        const STATE_ENABLE_OP = Self::ENABLE_OP.bits() | Self::QUICK_STOP.bits() | Self::DISABLE_VOLTAGE.bits() | Self::SWITCH_ON.bits();
         /// Fault reset state.
-        const STATE_FAULT_RESET = Self::RESET_FAULT.bits;
+        const STATE_FAULT_RESET = Self::RESET_FAULT.bits();
     }
 }
 
 bitflags::bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     /// AKD EtherCAT Communications Manual section   5.3.56
     pub struct StatusWord: u16 {
         /// Ready to switch on
@@ -298,23 +299,25 @@ bitflags::bitflags! {
 impl StatusWord {
     /// Mandatory status bits as per ETG6010 section 5.3.
     const MANDATORY: Self = Self::from_bits_truncate(
-        Self::READY_TO_SWITCH_ON.bits
-            | Self::SWITCHED_ON.bits
-            | Self::OP_ENABLED.bits
-            | Self::FAULT.bits
-            | Self::SWITCH_ON_DISABLED.bits,
+        Self::READY_TO_SWITCH_ON.bits()
+            | Self::SWITCHED_ON.bits()
+            | Self::OP_ENABLED.bits()
+            | Self::FAULT.bits()
+            | Self::SWITCH_ON_DISABLED.bits(),
     );
 
     // const STATE_NOT_READY_TO_SWITCH_ON: Self = Self::empty();
-    const STATE_SWITCH_ON_DISABLED: Self = Self::from_bits_truncate(Self::SWITCH_ON_DISABLED.bits);
-    const STATE_READY_TO_SWITCH_ON: Self = Self::from_bits_truncate(Self::READY_TO_SWITCH_ON.bits);
+    const STATE_SWITCH_ON_DISABLED: Self =
+        Self::from_bits_truncate(Self::SWITCH_ON_DISABLED.bits());
+    const STATE_READY_TO_SWITCH_ON: Self =
+        Self::from_bits_truncate(Self::READY_TO_SWITCH_ON.bits());
     const STATE_SWITCHED_ON: Self =
-        Self::from_bits_truncate(Self::READY_TO_SWITCH_ON.bits | Self::SWITCHED_ON.bits);
+        Self::from_bits_truncate(Self::READY_TO_SWITCH_ON.bits() | Self::SWITCHED_ON.bits());
     const STATE_OP_ENABLE: Self = Self::from_bits_truncate(
-        Self::OP_ENABLED.bits | Self::READY_TO_SWITCH_ON.bits | Self::SWITCHED_ON.bits,
+        Self::OP_ENABLED.bits() | Self::READY_TO_SWITCH_ON.bits() | Self::SWITCHED_ON.bits(),
     );
     // const STATE_FAULT_REACTION_ACTIVE: Self =
-    //     Self::from_bits_truncate(Self::STATE_OP_ENABLE.bits | Self::FAULT.bits);
+    //     Self::from_bits_truncate(Self::STATE_OP_ENABLE.bits() | Self::FAULT.bits());
 
     fn mandatory(self) -> Self {
         self.intersection(Self::MANDATORY)
