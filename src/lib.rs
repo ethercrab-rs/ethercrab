@@ -210,7 +210,8 @@ pub use slave_state::SlaveState;
 pub use timer_factory::Timeouts;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
-const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(0x88a4);
+const ETHERCAT_ETHERTYPE_RAW: u16 = 0x88a4;
+const ETHERCAT_ETHERTYPE: EthernetProtocol = EthernetProtocol::Unknown(ETHERCAT_ETHERTYPE_RAW);
 const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
 
 /// Starting address for discovered slaves.

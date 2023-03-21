@@ -1,6 +1,7 @@
 //! Copied from SmolTCP's RawSocketDesc, with inspiration from
 //! [https://github.com/embassy-rs/embassy](https://github.com/embassy-rs/embassy/blob/master/examples/std/src/tuntap.rs).
 
+use crate::ETHERCAT_ETHERTYPE_RAW;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::{io, mem};
 
@@ -20,14 +21,13 @@ pub struct RawSocketDesc {
 
 impl RawSocketDesc {
     pub fn new(name: &str) -> io::Result<RawSocketDesc> {
-        let protocol = libc::ETH_P_ALL as i16;
+        let protocol = ETHERCAT_ETHERTYPE_RAW as i16;
 
         let lower = unsafe {
             let lower = libc::socket(
                 // Ethernet II frames
                 libc::AF_PACKET,
                 libc::SOCK_RAW | libc::SOCK_NONBLOCK,
-                // Receive all protocols
                 protocol.to_be() as i32,
             );
             if lower == -1 {
