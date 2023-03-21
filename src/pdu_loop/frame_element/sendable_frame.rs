@@ -125,37 +125,4 @@ impl<'sto> SendableFrame<'sto> {
 
         Ok(())
     }
-
-    // pub fn poll_send<'buf, F>(&self, packet_buf: &'buf mut [u8], send: F)
-    // where
-    //     F: FnOnce(&[u8]) -> Poll<u8>,
-    // {
-    //     // FIXME: Release frame on failure
-    //     let data = self.write_ethernet_packet(&mut packet_buf)?;
-
-    //     // match Pin::new(&mut self.socket).poll_write(ctx, data) {
-    //     //     Poll::Ready(Ok(bytes_written)) => {
-    //     //         if bytes_written != data.len() {
-    //     //             log::error!("Only wrote {} of {} bytes", bytes_written, data.len());
-
-    //     //             // FIXME: Release frame
-
-    //     //             // TODO: Better error
-    //     //             return Poll::Ready(Err(Error::SendFrame));
-    //     //         }
-
-    //     //         frame.mark_sent();
-
-    //     //         Poll::Ready(Ok(()))
-    //     //     }
-    //     //     // TODO: Return a better error type
-    //     //     // FIXME: Release frame on failure
-    //     //     Poll::Ready(Err(e)) => {
-    //     //         log::error!("Send PDU failed: {e}");
-
-    //     //         Poll::Ready(Err(Error::SendFrame))
-    //     //     }
-    //     //     Poll::Pending => Poll::Pending,
-    //     // }
-    // }
 }

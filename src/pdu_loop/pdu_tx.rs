@@ -40,94 +40,10 @@ impl<'sto> PduTx<'sto> {
         None
     }
 
-    // pub(crate) fn sendable_frames<'iter>(&'sto self) -> SendableFramesIter<'iter>
-    // where
-    //     'sto: 'iter,
-    // {
-    //     SendableFramesIter::new(self)
-    // }
-
-    // // TODO: Un-pub
-    // pub(crate) fn set_waker(&self, waker: &Waker) {
-    //     let current_waker_guard = self.storage.tx_waker.upgradeable_read();
-
-    //     if let Some(current_waker) = &*current_waker_guard {
-    //         if !waker.will_wake(current_waker) {
-    //             current_waker_guard.upgrade().replace(waker.clone());
-    //         }
-    //     } else {
-    //         current_waker_guard.upgrade().replace(waker.clone());
-    //     }
-    // }
-
     pub(crate) fn lock_waker<'lock>(&self) -> RwLockWriteGuard<'lock, Option<Waker>>
     where
         'sto: 'lock,
     {
         self.storage.tx_waker.write()
     }
-
-    // /// Wait for the next sendable frame to become available.
-    // // NOTE: &mut self so this struct can only be used in one place.
-    // pub fn next<'fut>(&'fut mut self) -> PduTxFut<'fut> {
-    //     PduTxFut { tx: self }
-    // }
 }
-
-// pub struct PduTxFut<'a> {
-//     tx: &'a PduTx<'a>,
-// }
-
-// impl<'a> core::future::Future for PduTxFut<'a> {
-//     type Output = SendableFramesIter<'a>;
-
-//     fn poll(
-//         self: core::pin::Pin<&mut Self>,
-//         ctx: &mut core::task::Context<'_>,
-//     ) -> Poll<Self::Output> {
-//         let mut waker = self.tx.lock_waker();
-
-//         match self.tx.next_sendable_frame() {
-//             Some(frame) => Poll::Ready(SendableFramesIter::new(self.tx, frame)),
-//             None => {
-//                 // TODO: Use waker.will_wake for optimisation. Check in benchmarks!
-//                 waker.replace(ctx.waker().clone());
-
-//                 Poll::Pending
-//             }
-//         }
-//     }
-// }
-
-// pub struct SendableFramesIter<'a> {
-//     tx: &'a PduTx<'a>,
-
-//     idx: usize,
-// }
-
-// impl<'a> SendableFramesIter<'a> {
-//     pub fn new(tx: &'a PduTx<'a>) -> Self {
-//         Self { tx, idx: 0 }
-//     }
-// }
-
-// impl<'a> Iterator for SendableFramesIter<'a> {
-//     type Item = SendableFrame<'a>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         while self.idx < self.tx.storage.num_frames {
-//             let frame = unsafe { NonNull::new_unchecked(self.tx.storage.frame_at_index(self.idx)) };
-
-//             if let Some(frame) = unsafe { FrameElement::claim_sending(frame) } {
-//                 return Some(SendableFrame::new(FrameBox {
-//                     frame,
-//                     _lifetime: PhantomData,
-//                 }));
-//             }
-
-//             self.idx += 1;
-//         }
-
-//         None
-//     }
-// }
