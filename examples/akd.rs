@@ -183,7 +183,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         let status = {
             let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-            unsafe { AkdStatusWord::from_bits_unchecked(status) }
+            AkdStatusWord::from_bits_truncate(status)
         };
 
         if status.contains(AkdStatusWord::FAULT) {
@@ -202,7 +202,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                 let status = {
                     let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-                    unsafe { AkdStatusWord::from_bits_unchecked(status) }
+                    AkdStatusWord::from_bits_truncate(status)
                 };
 
                 if !status.contains(AkdStatusWord::FAULT) {
@@ -233,7 +233,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             let status = {
                 let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-                unsafe { AkdStatusWord::from_bits_unchecked(status) }
+                AkdStatusWord::from_bits_truncate(status)
             };
 
             if status.contains(AkdStatusWord::READY_TO_SWITCH_ON) {
@@ -265,7 +265,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             let status = {
                 let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-                unsafe { AkdStatusWord::from_bits_unchecked(status) }
+                AkdStatusWord::from_bits_truncate(status)
             };
 
             if status.contains(AkdStatusWord::SWITCHED_ON) {
@@ -297,7 +297,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             let pos = u32::from_le_bytes(i[0..=3].try_into().unwrap());
             let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
 
-            let status = unsafe { AkdStatusWord::from_bits_unchecked(status) };
+            let status = AkdStatusWord::from_bits_truncate(status);
 
             (pos, status)
         };
@@ -338,12 +338,13 @@ bitflags::bitflags! {
         /// Pause/halt
         const PAUSE = 1 << 8;
 
-        const SHUTDOWN = Self::DISABLE_VOLTAGE.bits | Self::QUICK_STOP.bits;
+        const SHUTDOWN = Self::DISABLE_VOLTAGE.bits() | Self::QUICK_STOP.bits();
     }
 }
 
 bitflags::bitflags! {
     /// AKD EtherCAT Communications Manual section   5.3.56
+    #[derive(Debug)]
     struct AkdStatusWord: u16 {
         /// Ready to switch on
         const READY_TO_SWITCH_ON = 1 << 0;
