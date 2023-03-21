@@ -1,27 +1,13 @@
 //! Configure a Kollmorgen AKD servo drive and put it in enabled state.
 
-use async_ctrlc::CtrlC;
+use env_logger::Env;
 use ethercrab::{
     error::{Error, MailboxError},
     std::tx_rx_task,
     Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
 };
-use futures_lite::{FutureExt, StreamExt};
-use smol::LocalExecutor;
-use smol::Timer;
 use std::{sync::Arc, time::Duration};
-
-#[cfg(target_os = "windows")]
-// ASRock NIC
-// const INTERFACE: &str = "TODO";
-// // USB NIC
-// const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
-// Lenovo USB-C NIC
-const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
-// Silver USB NIC
-// const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
-#[cfg(not(target_os = "windows"))]
-const INTERFACE: &str = "eth1";
+use tokio::time::MissedTickBehavior;
 
 const MAX_SLAVES: usize = 16;
 const MAX_PDU_DATA: usize = 1100;
@@ -30,21 +16,31 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
-    log::info!("Starting SDO demo...");
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
+    let interface = std::env::args()
+        .nth(1)
+        .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+
+    log::info!("Starting AKD demo...");
+    log::info!("Ensure a Kollmorgen AKD drive is the first slave device");
+    log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
     let client = Arc::new(Client::new(
         pdu_loop,
-        Timeouts::default(),
+        Timeouts {
+            wait_loop_delay: Duration::from_millis(2),
+            mailbox_response: Duration::from_millis(1000),
+            ..Default::default()
+        },
         ClientConfig::default(),
     ));
 
-    ex.spawn(tx_rx_task(INTERFACE, tx, rx).expect("spawn TX/RX task"))
-        .detach();
-
-    // let num_slaves = client.num_slaves();
+    tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {
@@ -64,8 +60,6 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
             // --- Writes ---
 
-            log::info!("Found {}", slave.name());
-
             let profile = match slave.read_sdo::<u32>(0x1000, SubIndex::Index(0)).await {
                 Err(Error::Mailbox(MailboxError::NoMailbox)) => Ok(None),
                 Ok(device_type) => Ok(Some(device_type & 0xffff)),
@@ -74,7 +68,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
             // CiA 402/DS402 device
             if profile == Some(402) {
-                log::info!("CiA402 drive found");
+                log::info!("Slave {} supports DS402", slave.name());
             }
 
             // AKD config
@@ -113,18 +107,16 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                     let shaft_revolutions =
                         slave.read_sdo::<u32>(0x6092, SubIndex::Index(2)).await?;
 
-                    dbg!(
-                        encoder_increments,
-                        num_revs,
-                        gear_ratio_motor,
-                        gear_ratio_final,
-                        feed,
-                        shaft_revolutions,
-                    );
-
                     let counts_per_rev = encoder_increments / num_revs;
 
-                    log::info!("Counts per rev {}", counts_per_rev);
+                    log::info!("Drive info");
+                    log::info!("--> Encoder increments     {}", encoder_increments);
+                    log::info!("--> Number of revolutions  {}", num_revs);
+                    log::info!("--> Gear ratio (motor)     {}", gear_ratio_motor);
+                    log::info!("--> Gear ratio (final)     {}", gear_ratio_final);
+                    log::info!("--> Feed                   {}", feed);
+                    log::info!("--> Shaft revolutions      {}", shaft_revolutions);
+                    log::info!("--> Counts per rev         {}", counts_per_rev);
                 }
             }
 
@@ -144,9 +136,9 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Slaves moved to OP state");
 
-    log::info!("Group has {} slaves", group.len());
+    log::info!("Discovered {} slaves", group.len());
 
-    let slave = group.slave(0).unwrap();
+    let slave = group.slave(0).expect("first slave not found");
 
     // Run twice to prime PDI
     group.tx_rx(&client).await.expect("TX/RX");
@@ -167,10 +159,12 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         Duration::from_millis(unsafe { cycle_time_ms.round().to_int_unchecked() })
     };
 
-    log::debug!("Cycle time: {} ms", cycle_time.as_millis());
+    log::info!("Cycle time: {} ms", cycle_time.as_millis());
 
-    // AKD will error with F706 if cycle time is not 2ms or less
-    let mut cyclic_interval = Timer::interval(cycle_time);
+    // AKD will error with F706 if cycle time is not 2ms or less, but we're reading it from the
+    // drive so we should be fine.
+    let mut cyclic_interval = tokio::time::interval(cycle_time);
+    cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     // Check for and clear faults
     {
@@ -194,7 +188,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             let reset = reset.bits().to_le_bytes();
             control.copy_from_slice(&reset);
 
-            while let Some(_) = cyclic_interval.next().await {
+            loop {
                 group.tx_rx(&client).await.expect("TX/RX");
 
                 let (i, _o) = slave.io();
@@ -210,6 +204,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
                     break;
                 }
+
+                cyclic_interval.tick().await;
             }
         }
     }
@@ -225,7 +221,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         let value = value.bits().to_le_bytes();
         control.copy_from_slice(&value);
 
-        while let Some(_) = cyclic_interval.next().await {
+        loop {
             group.tx_rx(&client).await.expect("TX/RX");
 
             let (i, _o) = slave.io();
@@ -241,6 +237,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
                 break;
             }
+
+            cyclic_interval.tick().await;
         }
     }
 
@@ -257,7 +255,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         let reset = reset.bits().to_le_bytes();
         control.copy_from_slice(&reset);
 
-        while let Some(_) = cyclic_interval.next().await {
+        loop {
             group.tx_rx(&client).await.expect("TX/RX");
 
             let (i, o) = slave.io();
@@ -283,12 +281,14 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
                 break;
             }
+
+            cyclic_interval.tick().await;
         }
     }
 
     let mut velocity: i32 = 0;
 
-    while let Some(_) = cyclic_interval.next().await {
+    loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
         let (i, o) = slave.io();
@@ -311,9 +311,9 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         if velocity < 100_000_0 {
             velocity += 200;
         }
-    }
 
-    Ok(())
+        cyclic_interval.tick().await;
+    }
 }
 
 bitflags::bitflags! {
@@ -379,17 +379,4 @@ bitflags::bitflags! {
         /// Manufacturer-specific (reserved)
         const MAN_SPECIFIC_2 = 1 << 15;
     }
-}
-
-fn main() -> Result<(), Error> {
-    env_logger::init();
-    let local_ex = LocalExecutor::new();
-
-    let ctrlc = CtrlC::new().expect("cannot create Ctrl+C handler?");
-
-    futures_lite::future::block_on(
-        local_ex.run(ctrlc.race(async { main_inner(&local_ex).await.unwrap() })),
-    );
-
-    Ok(())
 }

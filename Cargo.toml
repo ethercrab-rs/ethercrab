@@ -37,12 +37,11 @@ pnet = { version = "0.31.0", features = ["std"], optional = true }
 libc = "0.2.134"
 
 [dev-dependencies]
-async-ctrlc = "1.2.0"
 criterion = { version = "0.4.0", features = ["html_reports"] }
 ctrlc = "3.2.3"
 env_logger = "0.10.0"
 futures-lite = { version = "1.12.0", default-features = false }
-tokio = { version = "1.21.2", features = ["rt-multi-thread", "macros", "sync"] }
+tokio = { version = "1.21.2", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [features]
 default = ["std"]
