@@ -27,7 +27,7 @@ packed_struct = { version = "0.10.0", default-features = false }
 safe-transmute = { version = "0.11.2", default-features = false }
 smlang = "0.6.0"
 smol = { version = "1.2.5", optional = true }
-smoltcp = { version = "0.8.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet", "phy-raw_socket" ] }
+smoltcp = { version = "0.9.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet", "phy-raw_socket" ] }
 spin = { version = "0.9.4", default-features = false, features = ["rwlock"] }
 
 [target.'cfg(windows)'.dependencies]
