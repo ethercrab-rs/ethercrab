@@ -1,6 +1,5 @@
 //! Configure a Leadshine EtherCat EL7 series drive and turn the motor.
 
-use async_io::Timer;
 use ethercrab::{
     ds402::{Ds402, Ds402Sm},
     error::Error,
@@ -9,6 +8,7 @@ use ethercrab::{
 };
 use futures_lite::StreamExt;
 use smol::LocalExecutor;
+use smol::Timer;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},

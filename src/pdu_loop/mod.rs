@@ -264,18 +264,16 @@ mod tests {
         let send_fut = poll_once(async {
             let mut packet_buf = [0u8; 1536];
 
-            let frames = tx.next().await;
+            let frame = tx.next_sendable_frame().expect("need a frame");
 
-            for frame in frames {
-                frame
-                    .send(&mut packet_buf, |bytes| async {
-                        written_packet.copy_from_slice(bytes);
+            frame
+                .send(&mut packet_buf, |bytes| async {
+                    written_packet.copy_from_slice(bytes);
 
-                        Ok(())
-                    })
-                    .await
-                    .unwrap();
-            }
+                    Ok(())
+                })
+                .await
+                .unwrap();
         });
 
         let _ = smol::block_on(send_fut);
@@ -386,9 +384,7 @@ mod tests {
                 let mut packet_buf = [0u8; 1536];
 
                 loop {
-                    let frames = tx.next().await;
-
-                    for frame in frames {
+                    while let Some(frame) = tx.next_sendable_frame() {
                         frame
                             .send(&mut packet_buf, |bytes| async {
                                 s.send(bytes.to_vec()).unwrap();
@@ -398,6 +394,8 @@ mod tests {
                             .await
                             .unwrap();
                     }
+
+                    smol::future::yield_now().await;
                 }
             };
 

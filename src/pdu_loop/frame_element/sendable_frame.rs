@@ -27,7 +27,7 @@ impl<'sto> SendableFrame<'sto> {
     }
 
     /// The frame has been sent by the network driver.
-    fn mark_sent(self) {
+    pub(crate) fn mark_sent(self) {
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::Sending);
         }
@@ -89,7 +89,7 @@ impl<'sto> SendableFrame<'sto> {
     /// The consumed part of the buffer is returned on success, ready for passing to the network
     /// device. If the buffer is not large enough to hold the full frame, this method will return
     /// [`Error::Pdu(PduError::TooLong)`](PduError::TooLong).
-    pub(in crate::pdu_loop) fn write_ethernet_packet<'buf>(
+    pub(crate) fn write_ethernet_packet<'buf>(
         &self,
         buf: &'buf mut [u8],
     ) -> Result<&'buf [u8], PduError> {
