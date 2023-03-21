@@ -36,6 +36,16 @@ pub enum Error {
     Mailbox(MailboxError),
     /// Failed to send a frame over the network interace.
     SendFrame,
+    /// Failed to receive a frame properly.
+    ReceiveFrame,
+    /// A frame was only partially sent.
+    PartialSend {
+        /// Frame length in bytes.
+        len: usize,
+
+        /// The number of bytes sent.
+        sent: usize,
+    },
     /// A value may be too large or otherwise could not be converted into a target type.
     ///
     /// E.g. converting `99_999usize` into a `u16` will fail as the value is larger than `u16::MAX`.
@@ -107,6 +117,10 @@ impl fmt::Display for Error {
             ),
             Error::Mailbox(e) => write!(f, "mailbox: {e}"),
             Error::SendFrame => write!(f, "failed to send EtherCAT frame"),
+            Error::ReceiveFrame => write!(f, "failed to receive an EtherCAT frame"),
+            Error::PartialSend { len, sent } => {
+                write!(f, "frame of {} bytes only had {} bytes sent", len, sent)
+            }
             Error::IntegerTypeConversion => write!(f, "failed to convert between integer types"),
             Error::PdiTooLong {
                 max_length,

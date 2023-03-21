@@ -60,9 +60,7 @@ pub fn tx_rx_task(
         // TODO: Unwraps
         let tx_task = async {
             loop {
-                let frames = pdu_tx.next().await;
-
-                for frame in frames {
+                while let Some(frame) = pdu_tx.next_sendable_frame() {
                     frame
                         .send(&mut packet_buf, |frame_bytes| async {
                             tx.send_to(frame_bytes, None)
@@ -77,6 +75,8 @@ pub fn tx_rx_task(
                         .await
                         .expect("TX");
                 }
+
+                smol::future::yield_now().await;
             }
         };
 

@@ -7,13 +7,13 @@
 //! - EL2828 (1 byte of outputs)
 
 use async_ctrlc::CtrlC;
-use async_io::Timer;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
     SlaveGroupContainer, SlaveGroupRef, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
+use smol::Timer;
 use std::{
     sync::Arc,
     time::{Duration, Instant},

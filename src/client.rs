@@ -296,6 +296,15 @@ impl<'sto> Client<'sto> {
             self.pdu_loop.pdu_tx_readonly(command, T::len()),
         )
         .await
+        .map_err(|e| {
+            log::error!(
+                "Read service timeout, command {:?}, timeout {} ms",
+                command,
+                self.timeouts.pdu.as_millis()
+            );
+
+            e
+        })
         .and_then(|response| {
             let (data, working_counter) = response.into_data();
             let data = &*data;
@@ -324,6 +333,15 @@ impl<'sto> Client<'sto> {
             self.pdu_loop.pdu_tx_readwrite(command, value.as_slice()),
         )
         .await
+        .map_err(|e| {
+            log::error!(
+                "Write service timeout, command {:?}, timeout {} ms",
+                command,
+                self.timeouts.pdu.as_millis()
+            );
+
+            e
+        })
         .and_then(|response| {
             let (data, working_counter) = response.into_data();
             let data = &*data;
@@ -506,7 +524,12 @@ impl<'sto> Client<'sto> {
             self.pdu_loop
                 .pdu_tx_readwrite(Command::Lrw { address }, value),
         )
-        .await?;
+        .await
+        .map_err(|e| {
+            log::error!("LRW timeout, max time {} ms", self.timeouts.pdu.as_millis());
+
+            e
+        })?;
 
         let (data, working_counter) = response.into_data();
 
