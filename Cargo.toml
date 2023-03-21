@@ -35,10 +35,8 @@ pnet = { version = "0.31.0", features = ["std"], optional = true }
 
 [target."cfg(unix)".dependencies]
 libc = "0.2.134"
-nix = { version = "0.26.2", default-features = false, features = ["sched", "process"] }
 
 [dev-dependencies]
-async-ctrlc = "1.2.0"
 criterion = { version = "0.4.0", features = ["html_reports"] }
 ctrlc = "3.2.3"
 env_logger = "0.10.0"
