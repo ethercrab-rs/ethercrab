@@ -33,9 +33,11 @@ spin = { version = "0.9.4", default-features = false, features = ["rwlock"] }
 [target.'cfg(windows)'.dependencies]
 pnet = { version = "0.31.0", features = ["std"], optional = true }
 
+[target."cfg(unix)".dependencies]
+libc = "0.2.134"
+
 [dev-dependencies]
 async-ctrlc = "1.2.0"
-async-io = "1.9.0"
 chrono = "0.4.22"
 criterion = { version = "0.4.0", features = ["html_reports"] }
 ctrlc = "3.2.3"
