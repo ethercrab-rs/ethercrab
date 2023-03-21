@@ -1,14 +1,14 @@
 //! Configure a Leadshine EtherCat EL7 series drive and turn the motor.
+//!
+//! This demonstrates using the DS402 state machine to operate a DS402 compliant servo drive.
 
+use env_logger::Env;
 use ethercrab::{
     ds402::{Ds402, Ds402Sm},
     error::Error,
     std::tx_rx_task,
     Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
 };
-use futures_lite::StreamExt;
-use smol::LocalExecutor;
-use smol::Timer;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -16,39 +16,44 @@ use std::{
     },
     time::Duration,
 };
+use tokio::time::MissedTickBehavior;
 
-#[cfg(target_os = "windows")]
-// ASRock NIC
-// const INTERFACE: &str = "TODO";
-// // USB NIC
-// const INTERFACE: &str = "\\Device\\NPF_{DCEDC919-0A20-47A2-9788-FC57D0169EDB}";
-// Lenovo USB-C NIC
-const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
-// Silver USB NIC
-// const INTERFACE: &str = "\\Device\\NPF_{CC0908D5-3CB8-46D6-B8A2-575D0578008D}";
-#[cfg(not(target_os = "windows"))]
-const INTERFACE: &str = "eth1";
-
+/// Maximum number of slaves that can be stored.
 const MAX_SLAVES: usize = 16;
+/// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = 1100;
+/// Maximum number of EtherCAT frames that can be in flight at any one time.
 const MAX_FRAMES: usize = 16;
+/// Maximum total PDI length.
 const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
-    log::info!("Starting SDO demo...");
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
+    let interface = std::env::args()
+        .nth(1)
+       .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+
+    log::info!("Starting EC400 demo...");
+    log::info!("Ensure an EC400 servo drive is the first and only slave");
+    log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
     let client = Arc::new(Client::new(
         pdu_loop,
-        Timeouts::default(),
+        Timeouts {
+            wait_loop_delay: Duration::from_millis(2),
+            mailbox_response: Duration::from_millis(1000),
+            ..Default::default()
+        },
         ClientConfig::default(),
     ));
 
-    ex.spawn(tx_rx_task(INTERFACE, tx, rx).expect("spawn TX/RX task"))
-        .detach();
+    tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -58,28 +63,8 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    // let num_slaves = client.num_slaves();
-
     let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {
-            // --- Reads ---
-
-            // // Name
-            // dbg!(slave
-            //     .read_sdo::<heapless::String<64>>(0x1008, SdoAccess::Index(0))
-            //     .await
-            //     .unwrap());
-
-            // // Software version. For AKD, this should equal "M_01-20-00-003"
-            // dbg!(slave
-            //     .read_sdo::<heapless::String<64>>(0x100a, SdoAccess::Index(0))
-            //     .await
-            //     .unwrap());
-
-            // --- Writes ---
-
-            log::info!("Found {}", slave.name());
-
             if slave.name() == "ELP-EC400S" {
                 // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
                 slave.write_sdo(0x1600, SubIndex::Index(0), 0u8).await?;
@@ -139,7 +124,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Slaves moved to OP state");
 
-    log::info!("Group has {} slaves", group.len());
+    log::info!("Discovered {} slaves", group.len());
 
     for slave in group.slaves() {
         let (i, o) = slave.io();
@@ -156,6 +141,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
     // Run twice to prime PDI
     group.tx_rx(&client).await.expect("TX/RX");
 
+    // Read cycle time from servo drive
     let cycle_time = {
         let slave = group.slave(0).unwrap();
 
@@ -176,19 +162,17 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
 
     log::info!("Cycle time: {} ms", cycle_time.as_millis());
 
-    // AKD will error with F706 if cycle time is not 2ms or less
-    let mut cyclic_interval = Timer::interval(cycle_time);
+    let mut cyclic_interval = tokio::time::interval(cycle_time);
+    cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     let slave = group.slave(0).expect("No servo!");
     let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
 
     let mut velocity: i32 = 0;
 
-    // let mut slave = group.slave(0, &client).unwrap();
-
     let accel = 300;
 
-    while let Some(_) = cyclic_interval.next().await {
+    loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
         if servo.tick() {
@@ -229,11 +213,13 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
                 break;
             }
         }
+
+        cyclic_interval.tick().await;
     }
 
     log::info!("Servo stopped, shutting drive down");
 
-    while let Some(_) = cyclic_interval.next().await {
+    loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
         if servo.tick_shutdown() {
@@ -254,16 +240,11 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
             "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
             o
         );
+
+        cyclic_interval.tick().await;
     }
 
-    Ok(())
-}
-
-fn main() -> Result<(), Error> {
-    env_logger::init();
-    let local_ex = LocalExecutor::new();
-
-    futures_lite::future::block_on(local_ex.run(main_inner(&local_ex))).unwrap();
+    log::info!("Drive is shut down");
 
     Ok(())
 }
