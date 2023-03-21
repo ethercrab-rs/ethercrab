@@ -15,12 +15,12 @@
 //! ```
 
 use async_ctrlc::CtrlC;
-use async_io::Timer;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SubIndex, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
+use smol::Timer;
 use std::{sync::Arc, time::Duration};
 
 /// Maximum number of slaves that can be stored.

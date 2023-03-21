@@ -1,7 +1,6 @@
 //! Configure a Kollmorgen AKD servo drive and put it in enabled state.
 
 use async_ctrlc::CtrlC;
-use async_io::Timer;
 use ethercrab::{
     error::{Error, MailboxError},
     std::tx_rx_task,
@@ -9,6 +8,7 @@ use ethercrab::{
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
+use smol::Timer;
 use std::{sync::Arc, time::Duration};
 
 #[cfg(target_os = "windows")]

@@ -7,13 +7,13 @@
 //! - EL2828 (1 byte of outputs)
 
 use async_ctrlc::CtrlC;
-use async_io::Timer;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
     SlaveGroupContainer, SlaveGroupRef, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
+use smol::Timer;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -97,7 +97,7 @@ async fn main_inner(ex: &LocalExecutor<'static>) -> Result<(), Error> {
         // EtherCAT slaves have a maximum cycle time. We'll use 5ms here.
         let mut slow_cycle_time = Timer::interval(Duration::from_millis(3));
 
-        let slow_duration = Duration::from_millis(250);
+        let slow_duration = Duration::from_millis(100);
 
         // Only update "slow" outputs every 250ms using this instant
         let mut tick = Instant::now();

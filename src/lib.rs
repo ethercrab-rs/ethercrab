@@ -33,12 +33,12 @@
 //!
 //! ```rust,no_run
 //! use async_ctrlc::CtrlC;
-//! use async_io::Timer;
 //! use ethercrab::{
 //!     error::Error, std::tx_rx_task, Client, PduLoop, PduStorage, SlaveGroup, SubIndex, Timeouts,
 //!     ClientConfig
 //! };
 //! use futures_lite::{FutureExt, StreamExt};
+//! use smol::Timer;
 //! use smol::LocalExecutor;
 //! use std::{sync::Arc, time::Duration};
 //!

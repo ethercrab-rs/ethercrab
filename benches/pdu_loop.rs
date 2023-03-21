@@ -29,18 +29,16 @@ fn do_bench(b: &mut Bencher) {
         // --- Send frame
 
         let send_fut = async {
-            let frames = tx.next().await;
+            let frame = tx.next_sendable_frame().unwrap();
 
-            for frame in frames {
-                frame
-                    .send(&mut packet_buf, |bytes| async {
-                        written_packet.copy_from_slice(bytes);
+            frame
+                .send(&mut packet_buf, |bytes| async {
+                    written_packet.copy_from_slice(bytes);
 
-                        Ok(())
-                    })
-                    .await
-                    .unwrap();
-            }
+                    Ok(())
+                })
+                .await
+                .unwrap();
         };
 
         let _ =

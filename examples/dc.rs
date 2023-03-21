@@ -1,13 +1,13 @@
 //! Configure Distributed Clocks (DC) for EK1100 and a couple of other modules.
 
 use async_ctrlc::CtrlC;
-use async_io::Timer;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, RegisterAddress, SlaveGroup,
     SubIndex, Timeouts,
 };
 use futures_lite::{FutureExt, StreamExt};
 use smol::LocalExecutor;
+use smol::Timer;
 use std::{sync::Arc, time::Duration};
 
 #[cfg(target_os = "windows")]
