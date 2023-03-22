@@ -18,3 +18,8 @@ linux-test *args:
      sudo setcap cap_net_raw=pe $BIN
      echo "$BIN {{args}}"
      $BIN {{args}}
+
+linux-bench *args:
+     cargo bench {{args}} --no-run
+     fd . --type executable ./target/release/deps -x sudo setcap cap_net_raw=pe
+     cargo bench {{args}}
