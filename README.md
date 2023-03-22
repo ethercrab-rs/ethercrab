@@ -182,6 +182,20 @@ These may change at any time.
   Current test hardware consists of a Kollmorgen AKD servo drive and three Leadshine EL7 servo
   drives
 
+## Performance
+
+This table shows runs of `just linux-bench loopback` on various hardware configurations. The
+benchmark repeatedly sends a `BRD` so should only show the overhead of EtherCAT frame TX/RX, not any
+creation or parsing of the payload. This means that sending larger frames should be more efficient
+and that the benchmark is an absolute worst case scenario.
+
+Take any benchmark results with a huge pinch of salt.
+
+| PC                             | Case   | Target(s) | Frames/sec | KiB/sec | Notes                                 |
+| ------------------------------ | ------ | --------- | ---------- | ------- | ------------------------------------- |
+| i3-7100T, RTL8111, kernel 5.15 | `BRD`  | EK1100    | 22000      | 602     | No core affinity set, no `SCHED_FIFO` |
+| i3-7100T, RTL8111, kernel 5.15 | `LRMW` | EK1100    | 21700      | 1240    | 32 byte payload plus above            |
+
 ## Sponsors
 
 ![GitHub Sponsors](https://img.shields.io/github/sponsors/jamwaffles)
