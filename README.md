@@ -196,6 +196,24 @@ byte payload which should hopefully give a somewhat representative sample of bes
 | --------------------- | ----- | --------- | ---------- | ------------ | -------------- |
 | i3-7100T, kernel 5.15 | `LWR` | EK1100    | 61000      | 2.07 MiB/sec | 8 byte payload |
 
+### Profiling
+
+To profile an example:
+
+```bash
+cargo build --example <example name> --profile profiling
+
+# Might need sudo sysctl kernel.perf_event_paranoid=-1
+# Might need sudo sysctl kernel.perf_event_mlock_kb=2048
+sudo setcap cap_net_raw=pe ./target/profiling/examples/<example name>
+sudo perf record ./target/profiling/examples/<example name> <example args>
+
+# Ctrl + C when you're done
+
+sudo chown $USER perf.data
+samply load perf.data
+```
+
 ## Sponsors
 
 ![GitHub Sponsors](https://img.shields.io/github/sponsors/jamwaffles)
