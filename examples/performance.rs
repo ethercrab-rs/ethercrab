@@ -3,57 +3,63 @@
 //! Please note that this example is currently quite unstable on my (@jamwaffles) test system so
 //! YMMV!
 
-use env_logger::Env;
-use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
-    SlaveGroupContainer, SlaveGroupRef, Timeouts,
-};
-use rustix::process::CpuSet;
-use smol::LocalExecutor;
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use thread_priority::{
-    RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
-};
-use tokio::time::MissedTickBehavior;
-
-/// Maximum number of slaves that can be stored.
-const MAX_SLAVES: usize = 16;
-/// Maximum PDU data payload size - set this to the max PDI size or higher.
-const MAX_PDU_DATA: usize = 1100;
-/// Maximum number of EtherCAT frames that can be in flight at any one time.
-const MAX_FRAMES: usize = 16;
-
-static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
-
-#[derive(Default)]
-struct Groups {
-    /// EL2889 and EK1100. 2 items, 2 bytes of PDI for 16 output bits.
-    ///
-    /// We'll keep the EK1100 in here as it has no PDI but still needs to live somewhere.
-    slow_outputs: SlaveGroup<2, 2>,
-    /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-    fast_outputs: SlaveGroup<1, 1>,
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("This example is only supported on Unix systems");
 }
 
-impl SlaveGroupContainer for Groups {
-    fn num_groups(&self) -> usize {
-        2
+#[cfg(unix)]
+#[tokio::main]
+async fn main() -> Result<(), ethercrab::error::Error> {
+    use env_logger::Env;
+    use ethercrab::{
+        error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
+        SlaveGroupContainer, SlaveGroupRef, Timeouts,
+    };
+    use rustix::process::CpuSet;
+    use smol::LocalExecutor;
+    use std::{
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+    use thread_priority::{
+        RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
+    };
+    use tokio::time::MissedTickBehavior;
+
+    /// Maximum number of slaves that can be stored.
+    const MAX_SLAVES: usize = 16;
+    /// Maximum PDU data payload size - set this to the max PDI size or higher.
+    const MAX_PDU_DATA: usize = 1100;
+    /// Maximum number of EtherCAT frames that can be in flight at any one time.
+    const MAX_FRAMES: usize = 16;
+
+    static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+
+    #[derive(Default)]
+    struct Groups {
+        /// EL2889 and EK1100. 2 items, 2 bytes of PDI for 16 output bits.
+        ///
+        /// We'll keep the EK1100 in here as it has no PDI but still needs to live somewhere.
+        slow_outputs: SlaveGroup<2, 2>,
+        /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
+        fast_outputs: SlaveGroup<1, 1>,
     }
 
-    fn group(&mut self, index: usize) -> Option<SlaveGroupRef> {
-        match index {
-            0 => Some(self.slow_outputs.as_mut_ref()),
-            1 => Some(self.fast_outputs.as_mut_ref()),
-            _ => None,
+    impl SlaveGroupContainer for Groups {
+        fn num_groups(&self) -> usize {
+            2
+        }
+
+        fn group(&mut self, index: usize) -> Option<SlaveGroupRef> {
+            match index {
+                0 => Some(self.slow_outputs.as_mut_ref()),
+                1 => Some(self.fast_outputs.as_mut_ref()),
+                _ => None,
+            }
         }
     }
-}
 
-#[tokio::main]
-async fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let interface = std::env::args()
