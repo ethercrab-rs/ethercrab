@@ -184,17 +184,17 @@ These may change at any time.
 
 ## Performance
 
-This table shows runs of `just linux-bench loopback` on various hardware configurations. The
-benchmark repeatedly sends a `BRD` so should only show the overhead of EtherCAT frame TX/RX, not any
-creation or parsing of the payload. This means that sending larger frames should be more efficient
-and that the benchmark is an absolute worst case scenario.
+This table shows runs of `just linux-bench loopback`. If you would like to benchmark a specific
+hardware configuration, please run the same command on your machine and open a PR with the results
+added to this table.
 
-Take any benchmark results with a huge pinch of salt.
+As usual, take any benchmark results with a huge pinch of salt, however the benchmark uses the PDU
+TX/RX loop, a network interface in the form of `lo`, and sends a `LWR` EtherCAT packet with an 8
+byte payload which should hopefully give a somewhat representative sample of best case performance.
 
-| PC                             | Case   | Target(s) | Frames/sec | KiB/sec | Notes                                 |
-| ------------------------------ | ------ | --------- | ---------- | ------- | ------------------------------------- |
-| i3-7100T, RTL8111, kernel 5.15 | `BRD`  | EK1100    | 22000      | 602     | No core affinity set, no `SCHED_FIFO` |
-| i3-7100T, RTL8111, kernel 5.15 | `LRMW` | EK1100    | 21700      | 1240    | 32 byte payload plus above            |
+| PC                    | Case  | Target(s) | Frames/sec | Speed        | Notes          |
+| --------------------- | ----- | --------- | ---------- | ------------ | -------------- |
+| i3-7100T, kernel 5.15 | `LWR` | EK1100    | 61000      | 2.07 MiB/sec | 8 byte payload |
 
 ## Sponsors
 

@@ -1,5 +1,3 @@
-//! Requires at least one EtherCAT device connected to `en2ps0`.
-
 #[cfg(not(unix))]
 fn main() {}
 
@@ -9,13 +7,15 @@ fn main() {}
 fn main() {
     use criterion::{criterion_group, Bencher, Criterion, Throughput};
     use ethercrab::std::tx_rx_task;
+    use ethercrab::PduStorage;
     use ethercrab::{Client, ClientConfig, Timeouts};
-    use ethercrab::{PduStorage, RegisterAddress};
     use std::time::Duration;
+
+    const DATA: [u8; 8] = [0x11u8, 0x22, 0x33, 0x44, 0xaa, 0xbb, 0xcc, 0xdd];
 
     fn do_bench(b: &mut Bencher, rt: &tokio::runtime::Runtime, client: &Client) {
         b.to_async(rt).iter(|| async {
-            let _: (u16, u16) = client.brd(RegisterAddress::Type).await.expect("write");
+            let _ = client.lwr(0x1234_5678, DATA).await.expect("write");
         })
     }
 
@@ -31,6 +31,7 @@ fn main() {
             Timeouts {
                 wait_loop_delay: Duration::from_millis(2),
                 mailbox_response: Duration::from_millis(1000),
+                pdu: Duration::from_millis(1000),
                 ..Default::default()
             },
             ClientConfig::default(),
@@ -39,7 +40,7 @@ fn main() {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
 
         // TODO: Configurable interface
-        rt.spawn(tx_rx_task("enp2s0", pdu_tx, pdu_rx).expect("spawn tx/rx"));
+        rt.spawn(tx_rx_task("lo", pdu_tx, pdu_rx).expect("spawn tx/rx"));
 
         let mut group = c.benchmark_group("loopback");
 
@@ -47,7 +48,9 @@ fn main() {
 
         group.bench_function("elements", |b| do_bench(b, &rt, &client));
 
-        group.throughput(Throughput::Bytes(ETHERCAT_FRAME_HEADER_LEN));
+        group.throughput(Throughput::Bytes(
+            ETHERCAT_FRAME_HEADER_LEN + DATA.len() as u64,
+        ));
 
         group.bench_function("bytes", |b| do_bench(b, &rt, &client));
 

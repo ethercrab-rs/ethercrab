@@ -46,6 +46,8 @@ tokio = { version = "1.21.2", features = ["rt-multi-thread", "macros", "sync", "
 [features]
 default = ["std"]
 std = ["pnet", "smol"]
+# Development only - DO NOT USE
+bench-hacks = []
 
 [[example]]
 name = "akd"
