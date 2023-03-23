@@ -35,6 +35,8 @@ pnet = { version = "0.31.0", features = ["std"], optional = true }
 
 [target."cfg(unix)".dependencies]
 libc = "0.2.134"
+rustix = { version = "0.37.3", default-features = false, features = ["process"] }
+thread-priority = "0.13.1"
 
 [dev-dependencies]
 criterion = { version = "0.4.0", features = ["html_reports", "async_tokio"] }
@@ -76,3 +78,7 @@ harness = false
 [[bench]]
 name = "loopback"
 harness = false
+
+[profile.profiling]
+inherits = "release"
+debug = true
