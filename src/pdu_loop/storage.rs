@@ -52,7 +52,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
         // Index wrapping limitations require a power of 2 number of storage elements.
         if N > 1 {
             assert!(
-                N as u32 % N.ilog2() == 0,
+                N.count_ones() == 1,
                 "The number of storage elements must be a power of 2"
             );
         }
