@@ -6,14 +6,14 @@ use crate::{
 };
 use core::future::Future;
 use embassy_futures::select;
-use pnet::datalink::{self, DataLinkReceiver, DataLinkSender};
+use pnet_datalink::{self, channel, Channel, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
 
 /// Get a TX/RX pair.
 fn get_tx_rx(
     device: &str,
 ) -> Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>), std::io::Error> {
-    let interfaces = datalink::interfaces();
+    let interfaces = pnet_datalink::interfaces();
 
     let interface = match interfaces.iter().find(|interface| interface.name == device) {
         Some(interface) => interface,
@@ -30,14 +30,14 @@ fn get_tx_rx(
         }
     };
 
-    let config = pnet::datalink::Config {
+    let config = pnet_datalink::Config {
         write_buffer_size: 16384,
         read_buffer_size: 16384,
         ..Default::default()
     };
 
-    let (tx, rx) = match datalink::channel(&interface, config) {
-        Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
+    let (tx, rx) = match channel(&interface, config) {
+        Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("Unhandled channel type"),
         Err(e) => return Err(e),
     };
