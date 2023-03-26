@@ -31,7 +31,7 @@ smoltcp = { version = "0.9.1", default-features = false, features = [ "proto-ipv
 spin = { version = "0.9.4", default-features = false, features = ["rwlock"] }
 
 [target.'cfg(windows)'.dependencies]
-pnet = { version = "0.31.0", features = ["std"], optional = true }
+pnet_datalink = { version = "0.33.0", features = ["std"], optional = true }
 
 [target."cfg(unix)".dependencies]
 libc = "0.2.134"
@@ -47,7 +47,7 @@ tokio = { version = "1.21.2", features = ["rt-multi-thread", "macros", "sync", "
 
 [features]
 default = ["std"]
-std = ["pnet", "smol"]
+std = ["pnet_datalink", "smol"]
 # Development only - DO NOT USE
 bench-hacks = []
 
