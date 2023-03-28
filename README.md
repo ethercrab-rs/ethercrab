@@ -192,9 +192,10 @@ As usual, take any benchmark results with a huge pinch of salt, however the benc
 TX/RX loop, a network interface in the form of `lo`, and sends a `LWR` EtherCAT packet with an 8
 byte payload which should hopefully give a somewhat representative sample of best case performance.
 
-| PC                    | Case  | Target(s) | Frames/sec | Speed        | Notes          |
-| --------------------- | ----- | --------- | ---------- | ------------ | -------------- |
-| i3-7100T, kernel 5.15 | `LWR` | EK1100    | 61000      | 2.07 MiB/sec | 8 byte payload |
+| PC                    | Case  | Frames/sec | Speed         | Notes                                           |
+| --------------------- | ----- | ---------- | ------------- | ----------------------------------------------- |
+| i9-12900, kernel 5.19 | `LWR` | 236000     | 8.06 MiB/sec  | 8 byte payload, `rt-multi-thread` Tokio runtime |
+| i9-12900, kernel 5.19 | `LWR` | 702000     | 23.69 MiB/sec | 8 byte payload, single thread Tokio runtime     |
 
 ### Profiling
 
