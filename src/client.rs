@@ -188,7 +188,6 @@ impl<'sto> Client<'sto> {
 
         // If there are slave devices that support distributed clocks, run static drift compensation
         if let Some(dc_master) = dc_master {
-            // TODO: Configurable number of iterations. 10k takes forever on Windows.
             dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations).await?;
         }
 
