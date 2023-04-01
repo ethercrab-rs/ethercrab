@@ -17,6 +17,7 @@ An EtherCAT master written in Rust.
 
 ### Changed
 
+- **(breaking)** [#39] Change group init closure to return `Result<SlaveGroupRef, Error>`
 - **(breaking)** [#32] To mitigate some internal issues, `PduStorage` now requires `N` (the number
   of storage elements) to be a power of two.
 - **(breaking)** [#33] `send_frames_blocking` is removed. It is replaced with
@@ -98,5 +99,6 @@ An EtherCAT master written in Rust.
 [#31]: https://github.com/ethercrab-rs/ethercrab/pull/31
 [#32]: https://github.com/ethercrab-rs/ethercrab/pull/32
 [#33]: https://github.com/ethercrab-rs/ethercrab/pull/33
+[#39]: https://github.com/ethercrab-rs/ethercrab/pull/39
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

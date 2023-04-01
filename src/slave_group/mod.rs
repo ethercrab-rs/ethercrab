@@ -1,17 +1,19 @@
 mod configurator;
 mod container;
 mod group_slave;
+mod slave_storage;
 
+use self::slave_storage::SlaveStorage;
 use crate::{
     error::{Error, Item},
-    slave::{IoRanges, Slave, SlaveRef},
+    slave::{IoRanges, SlaveRef},
     Client,
 };
 use core::{cell::UnsafeCell, future::Future, pin::Pin};
-pub use group_slave::GroupSlave;
 
 pub use configurator::SlaveGroupRef;
 pub use container::SlaveGroupContainer;
+pub use group_slave::GroupSlave;
 
 // TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
 // `Box`ing here, and make this work without an allocator. See also
@@ -25,7 +27,7 @@ type HookFn = for<'any> fn(&'any SlaveRef) -> HookFuture<'any>;
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
 /// slave PDI sections.
 pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize> {
-    slaves: heapless::Vec<Slave, MAX_SLAVES>,
+    slaves: SlaveStorage<MAX_SLAVES>,
     preop_safeop_hook: Option<HookFn>,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.
@@ -74,16 +76,13 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     pub fn new(preop_safeop_hook: HookFn) -> Self {
         Self {
             preop_safeop_hook: Some(preop_safeop_hook),
-            ..Default::default()
+            slaves: SlaveStorage::new(),
+            pdi: UnsafeCell::new([0u8; MAX_PDI]),
+            read_pdi_len: Default::default(),
+            pdi_len: Default::default(),
+            start_address: 0,
+            group_working_counter: 0,
         }
-    }
-
-    // TODO: Move away from this group struct; it should only be possible to use this before init
-    /// Add a slave to the group.
-    pub fn push(&mut self, slave: Slave) -> Result<(), Error> {
-        self.slaves
-            .push(slave)
-            .map_err(|_| Error::Capacity(Item::Slave))
     }
 
     /// Get the number of slave devices in this group.
@@ -194,9 +193,10 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     }
 
     /// Get a reference to the slave group, with const generic parameters erased.
-    pub fn as_mut_ref(&mut self) -> SlaveGroupRef<'_> {
+    // TODO: Typestate so we can only do this during init
+    pub fn as_mut<'group>(&'group mut self) -> SlaveGroupRef<'group> {
         SlaveGroupRef {
-            slaves: self.slaves.as_mut(),
+            slaves: self.slaves.as_ref(),
             max_pdi_len: MAX_PDI,
             preop_safeop_hook: self.preop_safeop_hook.as_ref(),
             read_pdi_len: &mut self.read_pdi_len,
@@ -221,7 +221,7 @@ impl<'a, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
     type Item = GroupSlave<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx >= self.group.slaves.len() {
+        if self.idx >= self.group.len() {
             return None;
         }
 

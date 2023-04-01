@@ -1,4 +1,4 @@
-use super::HookFn;
+use super::{slave_storage::SlaveStorageRef, HookFn};
 use crate::{
     error::Error,
     pdi::PdiOffset,
@@ -12,18 +12,24 @@ use crate::{
 };
 use core::time::Duration;
 
-/// TODO: Doc
+/// A reference to a [`SlaveGroup`](crate::SlaveGroup) returned by the closure passed to
+/// [`Client::init`](crate::Client::init).
 pub struct SlaveGroupRef<'a> {
     pub(crate) pdi_len: &'a mut usize,
     pub(crate) read_pdi_len: &'a mut usize,
     pub(crate) max_pdi_len: usize,
     pub(crate) start_address: &'a mut u32,
     pub(crate) group_working_counter: &'a mut u16,
-    pub(crate) slaves: &'a mut [Slave],
+    pub(crate) slaves: SlaveStorageRef<'a>,
     pub(crate) preop_safeop_hook: Option<&'a HookFn>,
 }
 
 impl<'a> SlaveGroupRef<'a> {
+    /// Add a slave to this group.
+    pub(crate) fn push(&mut self, slave: Slave) -> Result<(), Error> {
+        self.slaves.push(slave)
+    }
+
     pub(crate) async fn configure_from_eeprom<'sto>(
         &mut self,
         // We need to start this group's PDI after that of the previous group. That offset is passed
