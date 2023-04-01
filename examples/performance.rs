@@ -117,8 +117,8 @@ async fn main() -> Result<(), ethercrab::error::Error> {
     let groups = client
         .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
             match slave.name.as_str() {
-                "EL2889" | "EK1100" => groups.slow_outputs.push(slave),
-                "EL2828" => groups.fast_outputs.push(slave),
+                "EL2889" | "EK1100" => Ok(groups.slow_outputs.as_mut()),
+                "EL2828" => Ok(groups.fast_outputs.as_mut()),
                 _ => Err(Error::UnknownSlave),
             }
         })

@@ -83,13 +83,9 @@ async fn main() -> Result<(), Error> {
 
     let client = Arc::new(client);
 
-    let mut ass = 0;
-
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
         .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
-            ass += 1;
-
             match slave.name.as_str() {
                 "EL2889" | "EK1100" => Ok(groups.slow_outputs.as_mut()),
                 "EL2828" => Ok(groups.fast_outputs.as_mut()),
