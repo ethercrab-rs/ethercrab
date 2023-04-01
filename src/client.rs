@@ -12,7 +12,7 @@ use crate::{
     slave_group::SlaveGroupContainer,
     slave_state::SlaveState,
     timer_factory::timeout,
-    ClientConfig, Timeouts, BASE_SLAVE_ADDR,
+    ClientConfig, SlaveGroupRef, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
     any::type_name,
@@ -135,10 +135,17 @@ impl<'sto> Client<'sto> {
 
     /// Detect slaves, set their configured station addresses, assign to groups, configure slave
     /// devices from EEPROM.
+    ///
+    /// The `group_filter` closure should return a [`SlaveGroupRef`] to add the slave to. All slaves
+    /// must be assigned to a group even if they are unused.
+    ///
+    /// If a slave device cannot or should not be added to a group for some reason (e.g. an
+    /// unrecognised slave was detected on the network), an
+    /// [`Err(Error::UnknownSlave)`](Error::UnknownSlave) should be returned.
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
         mut groups: G,
-        mut group_filter: impl FnMut(&mut G, Slave) -> Result<(), Error>,
+        mut group_filter: impl for<'g> FnMut(&'g mut G, &Slave) -> Result<SlaveGroupRef<'g>, Error>,
     ) -> Result<G, Error>
     where
         G: SlaveGroupContainer,
@@ -181,25 +188,13 @@ impl<'sto> Client<'sto> {
 
         // If there are slave devices that support distributed clocks, run static drift compensation
         if let Some(dc_master) = dc_master {
-            // TODO: Configurable number of iterations. 10k takes forever on Windows.
             dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations).await?;
         }
 
         while let Some(slave) = slaves.pop_front() {
-            let configured_address = slave.configured_address;
-            let slave_name = slave.name.clone();
+            let mut group = group_filter(&mut groups, &slave)?;
 
-            let before_count = groups.total_slaves();
-
-            group_filter(&mut groups, slave)?;
-
-            if groups.total_slaves() != before_count + 1 {
-                log::error!(
-                    "Slave {:#06x} ({}) was not assigned to a group. All slaves must be assigned.",
-                    configured_address,
-                    slave_name
-                );
-            }
+            group.push(slave)?;
         }
 
         let mut offset = PdiOffset::default();
