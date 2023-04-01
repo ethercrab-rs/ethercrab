@@ -43,8 +43,8 @@ impl SlaveGroupContainer for Groups {
 
     fn group(&mut self, index: usize) -> Option<SlaveGroupRef> {
         match index {
-            0 => Some(self.slow_outputs.as_mut_ref()),
-            1 => Some(self.fast_outputs.as_mut_ref()),
+            0 => Some(self.slow_outputs.as_mut()),
+            1 => Some(self.fast_outputs.as_mut()),
             _ => None,
         }
     }
@@ -87,8 +87,8 @@ async fn main() -> Result<(), Error> {
     let groups = client
         .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
             match slave.name.as_str() {
-                "EL2889" | "EK1100" => groups.slow_outputs.push(slave),
-                "EL2828" => groups.fast_outputs.push(slave),
+                "EL2889" | "EK1100" => Ok(groups.slow_outputs.as_mut()),
+                "EL2828" => Ok(groups.fast_outputs.as_mut()),
                 _ => Err(Error::UnknownSlave),
             }
         })

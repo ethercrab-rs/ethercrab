@@ -33,7 +33,7 @@ impl<const N: usize, const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupCo
     }
 
     fn group(&mut self, index: usize) -> Option<SlaveGroupRef> {
-        self.get_mut(index).map(|group| group.as_mut_ref())
+        self.get_mut(index).map(|group| group.as_mut())
     }
 }
 
@@ -45,6 +45,6 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupContainer
     }
 
     fn group(&mut self, _index: usize) -> Option<SlaveGroupRef> {
-        Some(self.as_mut_ref())
+        Some(self.as_mut())
     }
 }
