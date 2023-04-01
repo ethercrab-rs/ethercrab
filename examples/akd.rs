@@ -125,7 +125,7 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        .init::<16, _>(groups, |groups, slave| groups.push(slave))
+        .init::<16, _>(groups, |groups, _slave| Ok(groups.as_mut()))
         .await
         .expect("Init");
 
