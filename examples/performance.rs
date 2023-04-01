@@ -53,8 +53,8 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
         fn group(&mut self, index: usize) -> Option<SlaveGroupRef> {
             match index {
-                0 => Some(self.slow_outputs.as_mut_ref()),
-                1 => Some(self.fast_outputs.as_mut_ref()),
+                0 => Some(self.slow_outputs.as_mut()),
+                1 => Some(self.fast_outputs.as_mut()),
                 _ => None,
             }
         }
