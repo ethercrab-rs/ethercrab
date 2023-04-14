@@ -38,7 +38,8 @@ impl<'a> SlaveGroupRef<'a> {
         client: &'sto Client<'sto>,
     ) -> Result<PdiOffset, Error> {
         log::debug!(
-            "Going to configure group, starting PDI offset {:#08x}",
+            "Going to configure group with {} slave(s), starting PDI offset {:#08x}",
+            self.slaves.len(),
             global_offset.start_address
         );
 

@@ -5,26 +5,30 @@ use crate::{error::Error, slave::Slave};
 use core::{
     mem::MaybeUninit,
     ops::{Deref, DerefMut},
+    slice,
 };
 
 pub struct SlaveStorage<const N: usize> {
-    num_slaves: usize,
-    slaves: MaybeUninit<[Slave; N]>,
+    len: usize,
+    slaves: [MaybeUninit<Slave>; N],
 }
 
 impl<const N: usize> SlaveStorage<N> {
+    const ELEM: MaybeUninit<Slave> = MaybeUninit::uninit();
+    const INIT: [MaybeUninit<Slave>; N] = [Self::ELEM; N]; // important for optimization of `new`
+
     pub const fn new() -> Self {
         Self {
-            slaves: MaybeUninit::uninit(),
-            num_slaves: 0,
+            slaves: Self::INIT,
+            len: 0,
         }
     }
 
     pub fn as_ref(&mut self) -> SlaveStorageRef {
         SlaveStorageRef {
             max_slaves: N,
-            num_slaves: &mut self.num_slaves,
-            slaves: unsafe { self.slaves.assume_init_mut() },
+            len: &mut self.len,
+            slaves: &mut self.slaves,
         }
     }
 }
@@ -39,35 +43,31 @@ impl<const N: usize> Deref for SlaveStorage<N> {
     type Target = [Slave];
 
     fn deref(&self) -> &Self::Target {
-        let slaves = unsafe { self.slaves.assume_init_ref() };
-
-        &slaves[0..self.num_slaves]
+        unsafe { slice::from_raw_parts(self.slaves.as_ptr() as *const Slave, self.len) }
     }
 }
 
 impl<const N: usize> DerefMut for SlaveStorage<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        let slaves = unsafe { self.slaves.assume_init_mut() };
-
-        &mut slaves[0..self.num_slaves]
+        unsafe { slice::from_raw_parts_mut(self.slaves.as_ptr() as *mut Slave, self.len) }
     }
 }
 
 pub struct SlaveStorageRef<'a> {
     max_slaves: usize,
-    num_slaves: &'a mut usize,
-    slaves: &'a mut [Slave],
+    len: &'a mut usize,
+    slaves: &'a mut [MaybeUninit<Slave>],
 }
 
 impl<'a> SlaveStorageRef<'a> {
     pub fn push(&mut self, slave: Slave) -> Result<(), Error> {
-        if *self.num_slaves >= self.max_slaves {
+        if *self.len >= self.max_slaves {
             return Err(Error::Capacity(crate::error::Item::Slave));
         }
 
-        *self.num_slaves += 1;
+        unsafe { *self.slaves.get_unchecked_mut(*self.len) = MaybeUninit::new(slave) };
 
-        self.slaves[*self.num_slaves] = slave;
+        *self.len += 1;
 
         Ok(())
     }
@@ -77,12 +77,109 @@ impl<'a> Deref for SlaveStorageRef<'a> {
     type Target = [Slave];
 
     fn deref(&self) -> &Self::Target {
-        &self.slaves[0..*self.num_slaves]
+        unsafe { slice::from_raw_parts(self.slaves.as_ptr() as *const Slave, *self.len) }
     }
 }
 
 impl<'a> DerefMut for SlaveStorageRef<'a> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.slaves[0..*self.num_slaves]
+        unsafe { slice::from_raw_parts_mut(self.slaves.as_ptr() as *mut Slave, *self.len) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_slave() {
+        let slave = Slave {
+            configured_address: 0x1001,
+            ..Slave::default()
+        };
+
+        let mut storage = SlaveStorage::<16>::new();
+
+        let mut s = storage.as_ref();
+
+        s.push(slave).expect("capacity");
+
+        assert_eq!(
+            s.deref(),
+            &[Slave {
+                configured_address: 0x1001,
+                ..Slave::default()
+            }]
+        );
+    }
+
+    #[test]
+    fn many() {
+        let mut storage = SlaveStorage::<16>::new();
+
+        let mut s = storage.as_ref();
+
+        s.push(Slave {
+            configured_address: 0x1001,
+            ..Slave::default()
+        })
+        .unwrap();
+
+        s.push(Slave {
+            configured_address: 0x1002,
+            ..Slave::default()
+        })
+        .unwrap();
+
+        s.push(Slave {
+            configured_address: 0x1003,
+            ..Slave::default()
+        })
+        .unwrap();
+
+        assert_eq!(
+            s.deref(),
+            &[
+                Slave {
+                    configured_address: 0x1001,
+                    ..Slave::default()
+                },
+                Slave {
+                    configured_address: 0x1002,
+                    ..Slave::default()
+                },
+                Slave {
+                    configured_address: 0x1003,
+                    ..Slave::default()
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn full() {
+        let mut storage = SlaveStorage::<2>::new();
+
+        let mut s = storage.as_ref();
+
+        s.push(Slave {
+            configured_address: 0x1001,
+            ..Slave::default()
+        })
+        .unwrap();
+
+        s.push(Slave {
+            configured_address: 0x1002,
+            ..Slave::default()
+        })
+        .unwrap();
+
+        assert_eq!(
+            s.push(Slave {
+                configured_address: 0x1003,
+                ..Slave::default()
+            }),
+            Err(Error::Capacity(crate::error::Item::Slave))
+        );
     }
 }
