@@ -76,12 +76,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     pub fn new(preop_safeop_hook: HookFn) -> Self {
         Self {
             preop_safeop_hook: Some(preop_safeop_hook),
-            slaves: SlaveStorage::new(),
-            pdi: UnsafeCell::new([0u8; MAX_PDI]),
-            read_pdi_len: Default::default(),
-            pdi_len: Default::default(),
-            start_address: 0,
-            group_working_counter: 0,
+            ..Default::default()
         }
     }
 
