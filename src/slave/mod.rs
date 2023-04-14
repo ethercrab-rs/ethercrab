@@ -32,7 +32,7 @@ use core::{
 use nom::{bytes::complete::take, number::complete::le_u32, IResult};
 use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Copy, Clone, PartialEq)]
 pub struct SlaveIdentity {
     pub vendor_id: u32,
     pub product_id: u32,
@@ -74,27 +74,27 @@ impl FromEeprom for SlaveIdentity {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct SlaveConfig {
     pub io: IoRanges,
     pub mailbox: MailboxConfig,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct MailboxConfig {
     read: Option<Mailbox>,
     write: Option<Mailbox>,
     supported_protocols: MailboxProtocols,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Mailbox {
     address: u16,
     len: u16,
     sync_manager: u8,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct IoRanges {
     pub input: PdiSegment,
     pub output: PdiSegment,
@@ -114,7 +114,10 @@ impl IoRanges {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+// Gated by test feature so we can easily create test cases, but not expose a `Default`-ed `Slave`
+// to the user as this is an invalid state.
+#[cfg_attr(test, derive(Default))]
 pub struct Slave {
     /// Configured station address.
     pub(crate) configured_address: u16,

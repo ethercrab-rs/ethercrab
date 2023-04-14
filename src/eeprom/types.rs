@@ -678,7 +678,7 @@ bitflags::bitflags! {
     /// Supported mailbox category.
     ///
     /// Defined in ETG1000.6 Table 18 or ETG2010 Table 4.
-    #[derive(Copy, Clone, Default, Debug)]
+    #[derive(Copy, Clone, Default, Debug, PartialEq)]
     pub struct MailboxProtocols: u16 {
         /// ADS over EtherCAT (routing and parallel services).
         const AOE = 0x0001;

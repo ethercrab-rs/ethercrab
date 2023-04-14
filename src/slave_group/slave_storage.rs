@@ -86,3 +86,100 @@ impl<'a> DerefMut for SlaveStorageRef<'a> {
         unsafe { slice::from_raw_parts_mut(self.slaves.as_ptr() as *mut Slave, *self.len) }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_slave() {
+        let slave = Slave {
+            configured_address: 0x1001,
+            ..Slave::default()
+        };
+
+        let mut storage = SlaveStorage::<16>::new();
+
+        let mut s = storage.as_ref();
+
+        s.push(slave).expect("capacity");
+
+        assert_eq!(
+            s.deref(),
+            &[Slave {
+                configured_address: 0x1001,
+                ..Slave::default()
+            }]
+        );
+    }
+
+    #[test]
+    fn many() {
+        let mut storage = SlaveStorage::<16>::new();
+
+        let mut s = storage.as_ref();
+
+        s.push(Slave {
+            configured_address: 0x1001,
+            ..Slave::default()
+        })
+        .unwrap();
+
+        s.push(Slave {
+            configured_address: 0x1002,
+            ..Slave::default()
+        })
+        .unwrap();
+
+        s.push(Slave {
+            configured_address: 0x1003,
+            ..Slave::default()
+        })
+        .unwrap();
+
+        assert_eq!(
+            s.deref(),
+            &[
+                Slave {
+                    configured_address: 0x1001,
+                    ..Slave::default()
+                },
+                Slave {
+                    configured_address: 0x1002,
+                    ..Slave::default()
+                },
+                Slave {
+                    configured_address: 0x1003,
+                    ..Slave::default()
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn full() {
+        let mut storage = SlaveStorage::<2>::new();
+
+        let mut s = storage.as_ref();
+
+        s.push(Slave {
+            configured_address: 0x1001,
+            ..Slave::default()
+        })
+        .unwrap();
+
+        s.push(Slave {
+            configured_address: 0x1002,
+            ..Slave::default()
+        })
+        .unwrap();
+
+        assert_eq!(
+            s.push(Slave {
+                configured_address: 0x1003,
+                ..Slave::default()
+            }),
+            Err(Error::Capacity(crate::error::Item::Slave))
+        );
+    }
+}

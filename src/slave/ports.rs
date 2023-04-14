@@ -34,7 +34,7 @@ pub enum Topology {
     Fork,
 }
 
-#[derive(Default, Copy, Clone, Debug)]
+#[derive(Default, Copy, Clone, Debug, PartialEq)]
 pub struct Ports(pub [Port; 4]);
 
 impl Ports {
