@@ -3,12 +3,12 @@
 //! Please note that this example is currently quite unstable on my (@jamwaffles) test system so
 //! YMMV!
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn main() {
-    eprintln!("This example is only supported on Unix systems");
+    eprintln!("This example is only supported on Linux systems");
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[tokio::main]
 async fn main() -> Result<(), ethercrab::error::Error> {
     use env_logger::Env;
