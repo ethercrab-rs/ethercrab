@@ -30,10 +30,10 @@ smol = { version = "1.2.5", optional = true }
 smoltcp = { version = "0.9.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet", "phy-raw_socket" ] }
 spin = { version = "0.9.4", default-features = false, features = ["rwlock"] }
 
-[target.'cfg(windows)'.dependencies]
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 pnet_datalink = { version = "0.33.0", features = ["std"], optional = true }
 
-[target."cfg(unix)".dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2.134"
 rustix = { version = "0.37.3", default-features = false, features = ["process"] }
 thread-priority = "0.13.1"
