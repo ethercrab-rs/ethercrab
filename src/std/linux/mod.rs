@@ -8,8 +8,7 @@ use crate::{
     pdu_loop::{PduRx, PduTx},
 };
 use core::{future::Future, pin::Pin, task::Poll};
-use smol::io::{AsyncRead, AsyncWrite};
-use smol::Async;
+use futures_lite::io::{Async, AsyncRead, AsyncWrite};
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
@@ -105,7 +104,7 @@ pub fn tx_rx_task(
 ) -> Result<impl Future<Output = Result<(), Error>>, std::io::Error> {
     let socket = RawSocketDesc::new(interface)?;
 
-    let async_socket = smol::Async::new(socket)?;
+    let async_socket = async_io::Async::new(socket)?;
 
     let task = TxRxFut {
         socket: async_socket,
