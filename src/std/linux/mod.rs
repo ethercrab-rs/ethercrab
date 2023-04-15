@@ -7,8 +7,9 @@ use crate::{
     error::Error,
     pdu_loop::{PduRx, PduTx},
 };
+use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
-use futures_lite::io::{Async, AsyncRead, AsyncWrite};
+use futures_lite::io::{AsyncRead, AsyncWrite};
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
