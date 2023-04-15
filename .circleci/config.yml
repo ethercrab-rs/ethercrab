@@ -70,28 +70,28 @@ target_steps_no_test: &target_steps_no_test
           - ./target
           - /home/circleci/.cargo/registry
 
-cross: &cross-steps
-    resource_class: large
-    docker:
-      # NOTE: Exact version is overridden in `rust-toolchain.toml`
-      - image: cimg/rust:1.68.0
-    steps:
-      - checkout
-      - restore_cache:
-          key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+cross: &cross_steps
+  resource_class: large
+  docker:
+    # NOTE: Exact version is overridden in `rust-toolchain.toml`
+    - image: cimg/rust:1.68.0
+  steps:
+    - checkout
+    - restore_cache:
+        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
-      - run: rustup target add $TARGET
-      # For Windows
-      - run: sudo apt update && sudo apt install -y mingw-w64
-      # FIXME: change to "build" when possible. Currently fails with a link error about "-lPacket"
-      # for libpcap on Windows. A bit of a dead end here: https://github.com/libpnet/libpnet/issues/479
-      - run: cargo check --target $TARGET --release --examples
+    - run: rustup target add $TARGET
+    # For Windows
+    - run: sudo apt update && sudo apt install -y mingw-w64
+    # FIXME: change to "build" when possible. Currently fails with a link error about "-lPacket"
+    # for libpcap on Windows. A bit of a dead end here: https://github.com/libpnet/libpnet/issues/479
+    - run: cargo check --target $TARGET --release --examples
 
-      - save_cache:
-          key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
-          paths:
-            - ./target
-            - /home/circleci/.cargo/registry
+    - save_cache:
+        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        paths:
+          - ./target
+          - /home/circleci/.cargo/registry
 
 version: 2
 jobs:
