@@ -40,7 +40,7 @@ impl<'sto> PduTx<'sto> {
         None
     }
 
-    #[cfg_attr(windows, allow(unused))]
+    #[cfg_attr(any(target_os = "windows", target_os = "macos"), allow(unused))]
     pub(crate) fn lock_waker<'lock>(&self) -> RwLockWriteGuard<'lock, Option<Waker>>
     where
         'sto: 'lock,
