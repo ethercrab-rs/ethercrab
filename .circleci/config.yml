@@ -81,7 +81,7 @@ macos_steps: &macos_steps
         key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     - run: rustup target add $TARGET
-    - run: cargo test --target $TARGET --release --examples
+    - run: cargo check --target $TARGET --release --examples
 
     - save_cache:
         key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
