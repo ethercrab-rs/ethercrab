@@ -70,6 +70,29 @@ target_steps_no_test: &target_steps_no_test
           - ./target
           - /home/circleci/.cargo/registry
 
+cross: &cross-steps
+    resource_class: large
+    docker:
+      # NOTE: Exact version is overridden in `rust-toolchain.toml`
+      - image: cimg/rust:1.68.0
+    steps:
+      - checkout
+      - restore_cache:
+          key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+
+      - run: rustup target add $TARGET
+      # For Windows
+      - run: sudo apt update && sudo apt install -y mingw-w64
+      # FIXME: change to "build" when possible. Currently fails with a link error about "-lPacket"
+      # for libpcap on Windows. A bit of a dead end here: https://github.com/libpnet/libpnet/issues/479
+      - run: cargo check --target $TARGET --release --examples
+
+      - save_cache:
+          key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+          paths:
+            - ./target
+            - /home/circleci/.cargo/registry
+
 version: 2
 jobs:
   target-x86_64-unknown-linux-gnu:
@@ -85,26 +108,19 @@ jobs:
     <<: *miri_steps
 
   windows-cross:
-    resource_class: large
-    docker:
-      # NOTE: Exact version is overridden in `rust-toolchain.toml`
-      - image: cimg/rust:1.68.0
-    steps:
-      - checkout
-      - restore_cache:
-          key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+    environment:
+      - TARGET: "x86_64-pc-windows-gnu"
+    <<: *cross_steps
 
-      - run: rustup target add x86_64-pc-windows-gnu
-      - run: sudo apt update && sudo apt install -y mingw-w64
-      # FIXME: change to "build" when possible. Currently fails with a link error about "-lPacket"
-      # for libpcap. A bit of a dead end here: https://github.com/libpnet/libpnet/issues/479
-      - run: cargo check --target x86_64-pc-windows-gnu --release --examples
+  macos-cross:
+    environment:
+      - TARGET: "x86_64-apple-darwin"
+    <<: *cross_steps
 
-      - save_cache:
-          key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
-          paths:
-            - ./target
-            - /home/circleci/.cargo/registry
+  macos-arm-cross:
+    environment:
+      - TARGET: "aarch64-apple-darwin"
+    <<: *cross_steps
 
   # TODO: Re-enable when we can remove `Box` from the slave group preop hook fn
   # target-thumbv7m-none-eabi:
@@ -118,6 +134,8 @@ build_jobs: &build_jobs
     - target-x86_64-unknown-linux-gnu
     - miri-x86_64-unknown-linux-gnu
     - windows-cross
+    - macos-cross
+    - macos-arm-cross
     # - target-thumbv7m-none-eabi
 
 workflows:
