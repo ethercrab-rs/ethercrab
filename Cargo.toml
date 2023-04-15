@@ -28,7 +28,7 @@ futures-lite = { version = "1.12.0", default-features = false }
 heapless = "0.7.16"
 log = "0.4.17"
 nom = { version = "7.1.1", default-features = false }
-num_enum = { version = "0.5.7", default-features = false }
+num_enum = { version = "0.6.0", default-features = false }
 packed_struct = { version = "0.10.0", default-features = false }
 safe-transmute = { version = "0.11.2", default-features = false }
 smlang = "0.6.0"
