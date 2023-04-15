@@ -259,7 +259,7 @@ mod tests {
             &data,
         ));
 
-        let _ = smol::block_on(frame_fut);
+        let _ = async_io::block_on(frame_fut);
 
         let send_fut = poll_once(async {
             let mut packet_buf = [0u8; 1536];
@@ -276,7 +276,7 @@ mod tests {
                 .unwrap();
         });
 
-        let _ = smol::block_on(send_fut);
+        let _ = async_io::block_on(send_fut);
 
         assert_eq!(written_packet.len(), FRAME_OVERHEAD + data.len());
 
@@ -395,7 +395,7 @@ mod tests {
                             .unwrap();
                     }
 
-                    smol::future::yield_now().await;
+                    futures_lite::future::yield_now().await;
                 }
             };
 
