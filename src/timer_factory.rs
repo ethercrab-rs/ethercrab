@@ -12,7 +12,7 @@ pub async fn timer(duration: Duration) {
 
 #[cfg(feature = "std")]
 pub async fn timer(duration: Duration) {
-    smol::Timer::after(duration).await;
+    async_io::Timer::after(duration).await;
 }
 
 pub async fn timeout<O, F>(timeout: Duration, future: F) -> Result<O, Error>

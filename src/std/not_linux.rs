@@ -76,12 +76,12 @@ pub fn tx_rx_task(
                         .expect("TX");
                 }
 
-                smol::future::yield_now().await;
+                futures_lite::future::yield_now().await;
             }
         };
 
         // TODO: Unwraps
-        let rx_task = smol::unblock(move || {
+        let rx_task = blocking::unblock(move || {
             let mut frame_buf: Vec<u8> = Vec::new();
 
             loop {
