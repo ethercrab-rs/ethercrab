@@ -1,4 +1,4 @@
-use super::{slave_storage::SlaveStorageRef, HookFn};
+use super::HookFn;
 use crate::{
     error::Error,
     pdi::PdiOffset,

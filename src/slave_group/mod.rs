@@ -1,15 +1,13 @@
 mod configurator;
 mod container;
 mod group_slave;
-mod slave_storage;
 
-use self::slave_storage::SlaveStorage;
 use crate::{
     error::{Error, Item},
     slave::{IoRanges, Slave, SlaveRef},
     Client,
 };
-use core::{cell::UnsafeCell, future::Future, hash::Hash, pin::Pin, sync::atomic::AtomicUsize};
+use core::{cell::UnsafeCell, future::Future, pin::Pin, sync::atomic::AtomicUsize};
 
 pub use configurator::SlaveGroupRef;
 pub use container::SlaveGroupContainer;
