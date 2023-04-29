@@ -12,7 +12,7 @@ use crate::{
     slave_group::{Bikeshed, SlaveGroupContainer},
     slave_state::SlaveState,
     timer_factory::timeout,
-    ClientConfig, SlaveGroupRef, Timeouts, BASE_SLAVE_ADDR,
+    ClientConfig, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
     any::type_name,
@@ -183,7 +183,8 @@ impl<'sto> Client<'sto> {
         log::debug!("Configuring topology/distributed clocks");
 
         // Configure distributed clock offsets/propagation delays, perform static drift
-        // compensation. We need the slaves in a list to do this.
+        // compensation. We need the slaves in a single list so we can read the topology.
+        // TODO: Build topology on the fly, that way we can do away with `MAX_SLAVES`.
         let dc_master = dc::configure_dc(self, slaves.as_mut_slices().0).await?;
 
         // If there are slave devices that support distributed clocks, run static drift compensation
