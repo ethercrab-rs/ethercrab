@@ -6,10 +6,10 @@ mod slave_storage;
 use self::slave_storage::SlaveStorage;
 use crate::{
     error::{Error, Item},
-    slave::{IoRanges, SlaveRef},
+    slave::{IoRanges, Slave, SlaveRef},
     Client,
 };
-use core::{cell::UnsafeCell, future::Future, pin::Pin};
+use core::{cell::UnsafeCell, future::Future, hash::Hash, pin::Pin, sync::atomic::AtomicUsize};
 
 pub use configurator::SlaveGroupRef;
 pub use container::SlaveGroupContainer;
@@ -22,12 +22,18 @@ type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 
 
 type HookFn = for<'any> fn(&'any SlaveRef) -> HookFuture<'any>;
 
+static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct GroupId(usize);
+
 /// A group of one or more EtherCAT slaves.
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
 /// slave PDI sections.
 pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize> {
-    slaves: SlaveStorage<MAX_SLAVES>,
+    id: GroupId,
+    slaves: heapless::Vec<Slave, MAX_SLAVES>,
     preop_safeop_hook: Option<HookFn>,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.
@@ -41,6 +47,20 @@ pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize> {
     group_working_counter: u16,
 }
 
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Eq for SlaveGroup<MAX_SLAVES, MAX_PDI> {}
+
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> PartialEq for SlaveGroup<MAX_SLAVES, MAX_PDI> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+// impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Hash for SlaveGroup<MAX_SLAVES, MAX_PDI> {
+//     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+//         self.id.0.hash(state);
+//     }
+// }
+
 // FIXME: Remove these unsafe impls if possible. There's some weird quirkiness when moving a group
 // into an async block going on...
 unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Sync
@@ -52,9 +72,27 @@ unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Send
 {
 }
 
+/// A trait implemented only by [`SlaveGroup`] so multiple groups with different const params can be
+/// stored in a hashmap, `Vec`, etc.
+#[sealed::sealed]
+pub trait Bikeshed {
+    #[doc(hidden)]
+    fn push(&mut self, slave: Slave) -> Result<(), Error>;
+}
+
+#[sealed::sealed]
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Bikeshed for SlaveGroup<MAX_SLAVES, MAX_PDI> {
+    fn push(&mut self, slave: Slave) -> Result<(), Error> {
+        self.slaves
+            .push(slave)
+            .map_err(|_| Error::Capacity(crate::error::Item::Slave))
+    }
+}
+
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Default for SlaveGroup<MAX_SLAVES, MAX_PDI> {
     fn default() -> Self {
         Self {
+            id: Default::default(),
             slaves: Default::default(),
             preop_safeop_hook: Default::default(),
             pdi: UnsafeCell::new([0u8; MAX_PDI]),
@@ -75,6 +113,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     /// The hook can be used to configure slaves using SDOs.
     pub fn new(preop_safeop_hook: HookFn) -> Self {
         Self {
+            id: GroupId(GROUP_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)),
             preop_safeop_hook: Some(preop_safeop_hook),
             ..Default::default()
         }

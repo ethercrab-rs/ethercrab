@@ -20,7 +20,7 @@ pub struct SlaveGroupRef<'a> {
     pub(crate) max_pdi_len: usize,
     pub(crate) start_address: &'a mut u32,
     pub(crate) group_working_counter: &'a mut u16,
-    pub(crate) slaves: SlaveStorageRef<'a>,
+    pub(crate) slaves: &'a mut [Slave],
     pub(crate) preop_safeop_hook: Option<&'a HookFn>,
 }
 
@@ -29,7 +29,7 @@ impl<'a> SlaveGroupRef<'a> {
         group: &'a mut SlaveGroup<MAX_SLAVES, MAX_PDI>,
     ) -> Self {
         Self {
-            slaves: group.slaves.as_ref(),
+            slaves: &mut group.slaves,
             max_pdi_len: MAX_PDI,
             preop_safeop_hook: group.preop_safeop_hook.as_ref(),
             read_pdi_len: &mut group.read_pdi_len,
@@ -37,11 +37,6 @@ impl<'a> SlaveGroupRef<'a> {
             start_address: &mut group.start_address,
             group_working_counter: &mut group.group_working_counter,
         }
-    }
-
-    /// Add a slave to this group.
-    pub(crate) fn push(&mut self, slave: Slave) -> Result<(), Error> {
-        self.slaves.push(slave)
     }
 
     pub(crate) async fn configure_from_eeprom<'sto>(

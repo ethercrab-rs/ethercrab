@@ -9,7 +9,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
-    slave_group::SlaveGroupContainer,
+    slave_group::{Bikeshed, SlaveGroupContainer},
     slave_state::SlaveState,
     timer_factory::timeout,
     ClientConfig, SlaveGroupRef, Timeouts, BASE_SLAVE_ADDR,
@@ -145,7 +145,7 @@ impl<'sto> Client<'sto> {
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
         mut groups: G,
-        mut group_filter: impl for<'g> FnMut(&'g mut G, &Slave) -> Result<SlaveGroupRef<'g>, Error>,
+        mut group_filter: impl for<'g> FnMut(&'g mut G, &Slave) -> Result<&'g mut dyn Bikeshed, Error>,
     ) -> Result<G, Error>
     where
         G: SlaveGroupContainer,
@@ -192,7 +192,7 @@ impl<'sto> Client<'sto> {
         }
 
         while let Some(slave) = slaves.pop_front() {
-            let mut group = group_filter(&mut groups, &slave)?;
+            let group = group_filter(&mut groups, &slave)?;
 
             group.push(slave)?;
         }

@@ -107,7 +107,7 @@
 //!
 //!     let group = client
 //!         // Initialise up to 16 slave devices
-//!         .init::<16, _>(group, |groups, _slave| Ok(groups.as_mut()))
+//!         .init::<16, _>(group, |groups, _slave| Ok(groups))
 //!         .await
 //!         .expect("Init");
 //!

@@ -87,8 +87,8 @@ async fn main() -> Result<(), Error> {
     let groups = client
         .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
             match slave.name.as_str() {
-                "EL2889" | "EK1100" => Ok(groups.slow_outputs.as_mut()),
-                "EL2828" => Ok(groups.fast_outputs.as_mut()),
+                "EL2889" | "EK1100" => Ok(&mut groups.slow_outputs),
+                "EL2828" => Ok(&mut groups.fast_outputs),
                 _ => Err(Error::UnknownSlave),
             }
         })
