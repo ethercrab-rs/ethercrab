@@ -8,7 +8,7 @@ use crate::{
         slave_client::SlaveClient,
         Slave,
     },
-    Client,
+    Client, SlaveGroup,
 };
 use core::time::Duration;
 
@@ -25,6 +25,20 @@ pub struct SlaveGroupRef<'a> {
 }
 
 impl<'a> SlaveGroupRef<'a> {
+    pub(in crate::slave_group) fn new<const MAX_SLAVES: usize, const MAX_PDI: usize>(
+        group: &'a mut SlaveGroup<MAX_SLAVES, MAX_PDI>,
+    ) -> Self {
+        Self {
+            slaves: group.slaves.as_ref(),
+            max_pdi_len: MAX_PDI,
+            preop_safeop_hook: group.preop_safeop_hook.as_ref(),
+            read_pdi_len: &mut group.read_pdi_len,
+            pdi_len: &mut group.pdi_len,
+            start_address: &mut group.start_address,
+            group_working_counter: &mut group.group_working_counter,
+        }
+    }
+
     /// Add a slave to this group.
     pub(crate) fn push(&mut self, slave: Slave) -> Result<(), Error> {
         self.slaves.push(slave)

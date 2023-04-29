@@ -190,15 +190,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     /// Get a reference to the slave group, with const generic parameters erased.
     // TODO: Typestate so we can only do this during init
     pub fn as_mut<'group>(&'group mut self) -> SlaveGroupRef<'group> {
-        SlaveGroupRef {
-            slaves: self.slaves.as_ref(),
-            max_pdi_len: MAX_PDI,
-            preop_safeop_hook: self.preop_safeop_hook.as_ref(),
-            read_pdi_len: &mut self.read_pdi_len,
-            pdi_len: &mut self.pdi_len,
-            start_address: &mut self.start_address,
-            group_working_counter: &mut self.group_working_counter,
-        }
+        SlaveGroupRef::new(self)
     }
 }
 
