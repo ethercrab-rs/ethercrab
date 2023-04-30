@@ -9,7 +9,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
-    slave_group::{Bikeshed, SlaveGroupContainer},
+    slave_group::Bikeshed,
     slave_state::SlaveState,
     timer_factory::timeout,
     ClientConfig, Timeouts, BASE_SLAVE_ADDR,
@@ -147,10 +147,7 @@ impl<'sto> Client<'sto> {
         &self,
         groups: G,
         mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn Bikeshed, Error>,
-    ) -> Result<G, Error>
-    where
-        G: SlaveGroupContainer,
-    {
+    ) -> Result<G, Error> {
         self.reset_slaves().await?;
 
         // Each slave increments working counter, so we can use it as a total count of slaves

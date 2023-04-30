@@ -8,8 +8,7 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
-    SlaveGroupContainer, SlaveGroupRef, Timeouts,
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
 };
 use std::{
     sync::Arc,
@@ -34,20 +33,6 @@ struct Groups {
     slow_outputs: SlaveGroup<2, 2>,
     /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
     fast_outputs: SlaveGroup<1, 1>,
-}
-
-impl SlaveGroupContainer for Groups {
-    fn num_groups(&self) -> usize {
-        2
-    }
-
-    fn group(&mut self, index: usize) -> Option<SlaveGroupRef> {
-        match index {
-            0 => Some(self.slow_outputs.as_mut()),
-            1 => Some(self.fast_outputs.as_mut()),
-            _ => None,
-        }
-    }
 }
 
 #[tokio::main]

@@ -1,5 +1,4 @@
 mod configurator;
-mod container;
 mod group_slave;
 
 use crate::{
@@ -10,7 +9,6 @@ use crate::{
 use core::{cell::UnsafeCell, future::Future, pin::Pin, sync::atomic::AtomicUsize};
 
 pub use configurator::SlaveGroupRef;
-pub use container::SlaveGroupContainer;
 pub use group_slave::GroupSlave;
 
 // TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
