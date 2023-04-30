@@ -38,16 +38,6 @@ pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize> {
     id: GroupId,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
     preop_safeop_hook: Option<HookFn>,
-    // slaves: heapless::Vec<Slave, MAX_SLAVES>,
-    // /// The number of bytes at the beginning of the PDI reserved for slave inputs.
-    // read_pdi_len: usize,
-    // /// The total length (I and O) of the PDI for this group.
-    // pdi_len: usize,
-    // start_address: u32,
-    // /// Expected working counter when performing a read/write to all slaves in this group.
-    // ///
-    // /// This should be equivalent to `(slaves with inputs) + (2 * slaves with outputs)`.
-    // group_working_counter: u16,
     inner: UnsafeCell<GroupInner<MAX_SLAVES>>,
 }
 
@@ -66,20 +56,6 @@ struct GroupInner<const MAX_SLAVES: usize> {
     group_working_counter: u16,
 }
 
-// impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Eq for SlaveGroup<MAX_SLAVES, MAX_PDI> {}
-
-// impl<const MAX_SLAVES: usize, const MAX_PDI: usize> PartialEq for SlaveGroup<MAX_SLAVES, MAX_PDI> {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.id == other.id
-//     }
-// }
-
-// impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Hash for SlaveGroup<MAX_SLAVES, MAX_PDI> {
-//     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-//         self.id.0.hash(state);
-//     }
-// }
-
 // FIXME: Remove these unsafe impls if possible. There's some weird quirkiness when moving a group
 // into an async block going on...
 unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Sync
@@ -93,20 +69,23 @@ unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Send
 
 /// A trait implemented only by [`SlaveGroup`] so multiple groups with different const params can be
 /// stored in a hashmap, `Vec`, etc.
+#[doc(hidden)]
 #[sealed::sealed]
-pub trait Bikeshed {
-    #[doc(hidden)]
+pub trait SlaveGroupHandle {
+    /// Get the group's ID.
     fn id(&self) -> GroupId;
 
-    #[doc(hidden)]
+    /// Add a slave device to this group.
     unsafe fn push(&self, slave: Slave) -> Result<(), Error>;
 
-    #[doc(hidden)]
+    /// Get a reference to the group with const generic params erased.
     fn as_ref(&self) -> SlaveGroupRef<'_>;
 }
 
 #[sealed::sealed]
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Bikeshed for SlaveGroup<MAX_SLAVES, MAX_PDI> {
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupHandle
+    for SlaveGroup<MAX_SLAVES, MAX_PDI>
+{
     fn id(&self) -> GroupId {
         self.id
     }

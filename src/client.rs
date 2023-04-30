@@ -9,7 +9,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
-    slave_group::Bikeshed,
+    slave_group::SlaveGroupHandle,
     slave_state::SlaveState,
     timer_factory::timeout,
     ClientConfig, Timeouts, BASE_SLAVE_ADDR,
@@ -137,16 +137,61 @@ impl<'sto> Client<'sto> {
     /// Detect slaves, set their configured station addresses, assign to groups, configure slave
     /// devices from EEPROM.
     ///
-    /// The `group_filter` closure should return a [`SlaveGroupRef`] to add the slave to. All slaves
+    /// The `group_filter` closure should return a [`&dyn
+    /// SlaveGroupHandle`](crate::slave_group::SlaveGroupHandle) to add the slave to. All slaves
     /// must be assigned to a group even if they are unused.
     ///
     /// If a slave device cannot or should not be added to a group for some reason (e.g. an
     /// unrecognised slave was detected on the network), an
     /// [`Err(Error::UnknownSlave)`](Error::UnknownSlave) should be returned.
-    pub async fn init<const MAX_SLAVES: usize, G>(
+    ///
+    /// # Examples
+    ///
+    /// ## Multiple groups
+    ///
+    /// This example groups slave devices into two different groups.
+    ///
+    /// ```rust,no_run
+    /// use ethercrab::{
+    ///     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    /// };
+    ///
+    /// const MAX_GROUPS: usize = 2;
+    /// const MAX_PDU_DATA: usize = 1100;
+    /// const MAX_FRAMES: usize = 16;
+    ///
+    /// static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+    ///
+    /// /// A custom struct containing two groups to assign slave devices into.
+    /// #[derive(Default)]
+    /// struct Groups {
+    ///     /// 2 slave devices, totalling 1 byte of PDI.
+    ///     group_1: SlaveGroup<2, 1>,
+    ///     /// 1 slave device, totalling 4 bytes of PDI
+    ///     group_2: SlaveGroup<1, 4>,
+    /// }
+    ///
+    /// let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+    ///
+    /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    ///
+    /// # async {
+    /// let groups = client
+    ///     .init::<MAX_GROUPS, _>(Groups::default(), |groups, slave| {
+    ///         match slave.name.as_str() {
+    ///             "COUPLER" | "IO69420" => Ok(&groups.group_1),
+    ///             "COOLSERVO" => Ok(&groups.group_2),
+    ///             _ => Err(Error::UnknownSlave),
+    ///         }
+    ///     })
+    ///     .await
+    ///     .expect("Init");
+    /// # };
+    /// ```
+    pub async fn init<const MAX_GROUPS: usize, G>(
         &self,
         groups: G,
-        mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn Bikeshed, Error>,
+        mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn SlaveGroupHandle, Error>,
     ) -> Result<G, Error> {
         self.reset_slaves().await?;
 
@@ -157,7 +202,7 @@ impl<'sto> Client<'sto> {
         // pretty much anything.
         self.num_slaves.store(num_slaves, Ordering::Relaxed);
 
-        let mut slaves = heapless::Deque::<Slave, MAX_SLAVES>::new();
+        let mut slaves = heapless::Deque::<Slave, MAX_GROUPS>::new();
 
         // Set configured address for all discovered slaves
         for slave_idx in 0..num_slaves {
@@ -191,7 +236,7 @@ impl<'sto> Client<'sto> {
         }
 
         // TODO: MAX_GROUPS
-        let mut testo = FnvIndexMap::<_, _, MAX_SLAVES>::new();
+        let mut testo = FnvIndexMap::<_, _, MAX_GROUPS>::new();
 
         while let Some(slave) = slaves.pop_front() {
             let group = group_filter(&groups, &slave)?;

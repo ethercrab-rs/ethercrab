@@ -106,8 +106,7 @@
 //!     });
 //!
 //!     let group = client
-//!         // Initialise up to 16 slave devices
-//!         .init::<16, _>(group, |groups, _slave| Ok(groups.as_mut()))
+//!         .init::<1, _>(group, |groups, _slave| Ok(groups))
 //!         .await
 //!         .expect("Init");
 //!
@@ -198,7 +197,7 @@ pub use client_config::ClientConfig;
 pub use coe::SubIndex;
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx};
 pub use register::RegisterAddress;
-pub use slave_group::{Bikeshed, GroupSlave, GroupSlaveIterator, SlaveGroup};
+pub use slave_group::{GroupId, GroupSlave, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle};
 pub use slave_state::SlaveState;
 pub use timer_factory::Timeouts;
 
