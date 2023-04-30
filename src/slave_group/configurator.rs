@@ -12,6 +12,7 @@ use crate::{
 };
 use core::{cell::UnsafeCell, time::Duration};
 
+#[derive(Debug)]
 struct GroupInnerRef<'a> {
     slaves: &'a mut [Slave],
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.

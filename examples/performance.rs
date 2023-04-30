@@ -13,8 +13,7 @@ fn main() {
 async fn main() -> Result<(), ethercrab::error::Error> {
     use env_logger::Env;
     use ethercrab::{
-        error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
-        SlaveGroupContainer, SlaveGroupRef, Timeouts,
+        error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
     };
     use rustix::process::CpuSet;
     use smol::LocalExecutor;
@@ -44,20 +43,6 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         slow_outputs: SlaveGroup<2, 2>,
         /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
         fast_outputs: SlaveGroup<1, 1>,
-    }
-
-    impl SlaveGroupContainer for Groups {
-        fn num_groups(&self) -> usize {
-            2
-        }
-
-        fn group(&mut self, index: usize) -> Option<SlaveGroupRef> {
-            match index {
-                0 => Some(self.slow_outputs.as_mut()),
-                1 => Some(self.fast_outputs.as_mut()),
-                _ => None,
-            }
-        }
     }
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -117,8 +102,8 @@ async fn main() -> Result<(), ethercrab::error::Error> {
     let groups = client
         .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
             match slave.name.as_str() {
-                "EL2889" | "EK1100" => Ok(groups.slow_outputs.as_mut()),
-                "EL2828" => Ok(groups.fast_outputs.as_mut()),
+                "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
+                "EL2828" => Ok(&groups.fast_outputs),
                 _ => Err(Error::UnknownSlave),
             }
         })
