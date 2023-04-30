@@ -235,8 +235,9 @@ impl<'sto> Client<'sto> {
             dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations).await?;
         }
 
-        // TODO: MAX_GROUPS
-        let mut testo = FnvIndexMap::<_, _, MAX_GROUPS>::new();
+        // A unique list of groups so we can iterate over them and assign consecutive PDIs to each
+        // one.
+        let mut group_map = FnvIndexMap::<_, _, MAX_GROUPS>::new();
 
         while let Some(slave) = slaves.pop_front() {
             let group = group_filter(&groups, &slave)?;
@@ -245,14 +246,14 @@ impl<'sto> Client<'sto> {
             // held over this line.
             unsafe { group.push(slave)? };
 
-            testo
+            group_map
                 .insert(usize::from(group.id()), group.as_ref())
                 .map_err(|_| Error::Capacity(Item::Group))?;
         }
 
         let mut offset = PdiOffset::default();
 
-        for (id, group) in testo.into_iter() {
+        for (id, group) in group_map.into_iter() {
             // SAFETY: This internally mutates the group. No other references may be held
             // accross this line.
             offset = unsafe { group.configure_from_eeprom(offset, self).await? };

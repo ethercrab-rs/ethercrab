@@ -1,4 +1,4 @@
-use super::{GroupId, HookFn};
+use super::HookFn;
 use crate::{
     error::Error,
     pdi::PdiOffset,
@@ -29,30 +29,9 @@ struct GroupInnerRef<'a> {
 /// A reference to a [`SlaveGroup`](crate::SlaveGroup) returned by the closure passed to
 /// [`Client::init`](crate::Client::init).
 pub struct SlaveGroupRef<'a> {
-    id: GroupId,
     max_pdi_len: usize,
     preop_safeop_hook: &'a Option<HookFn>,
     inner: UnsafeCell<GroupInnerRef<'a>>,
-}
-
-impl<'a> Ord for SlaveGroupRef<'a> {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.id.cmp(&other.id)
-    }
-}
-
-impl<'a> Eq for SlaveGroupRef<'a> {}
-
-impl<'a> PartialEq for SlaveGroupRef<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl<'a> PartialOrd for SlaveGroupRef<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        self.id.partial_cmp(&other.id)
-    }
 }
 
 impl<'a> SlaveGroupRef<'a> {
@@ -60,7 +39,6 @@ impl<'a> SlaveGroupRef<'a> {
         group: &'a SlaveGroup<MAX_SLAVES, MAX_PDI>,
     ) -> Self {
         Self {
-            id: group.id,
             max_pdi_len: MAX_PDI,
             preop_safeop_hook: &group.preop_safeop_hook,
             inner: {
