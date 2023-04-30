@@ -66,13 +66,13 @@ struct GroupInner<const MAX_SLAVES: usize> {
     group_working_counter: u16,
 }
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Eq for SlaveGroup<MAX_SLAVES, MAX_PDI> {}
+// impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Eq for SlaveGroup<MAX_SLAVES, MAX_PDI> {}
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize> PartialEq for SlaveGroup<MAX_SLAVES, MAX_PDI> {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
+// impl<const MAX_SLAVES: usize, const MAX_PDI: usize> PartialEq for SlaveGroup<MAX_SLAVES, MAX_PDI> {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.id == other.id
+//     }
+// }
 
 // impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Hash for SlaveGroup<MAX_SLAVES, MAX_PDI> {
 //     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
@@ -126,7 +126,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Bikeshed for SlaveGroup<MAX_
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Default for SlaveGroup<MAX_SLAVES, MAX_PDI> {
     fn default() -> Self {
         Self {
-            id: Default::default(),
+            id: GroupId(GROUP_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)),
             pdi: UnsafeCell::new([0u8; MAX_PDI]),
             preop_safeop_hook: Default::default(),
             inner: UnsafeCell::new(GroupInner::default()),
@@ -143,7 +143,6 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     /// The hook can be used to configure slaves using SDOs.
     pub fn new(preop_safeop_hook: HookFn) -> Self {
         Self {
-            id: GroupId(GROUP_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)),
             preop_safeop_hook: Some(preop_safeop_hook),
             ..Default::default()
         }
@@ -297,5 +296,29 @@ impl<'a, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
         self.idx += 1;
 
         Some(slave)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn group_unique_id_defaults() {
+        let g1 = SlaveGroup::<16, 16>::default();
+        let g2 = SlaveGroup::<16, 16>::default();
+        let g3 = SlaveGroup::<16, 16>::default();
+
+        assert_ne!(g1.id, g2.id);
+        assert_ne!(g2.id, g3.id);
+        assert_ne!(g1.id, g3.id);
+    }
+
+    #[test]
+    fn group_unique_id_same_fn() {
+        let g1 = SlaveGroup::<16, 16>::new(|_| Box::pin(async { Ok(()) }));
+        let g2 = SlaveGroup::<16, 16>::new(|_| Box::pin(async { Ok(()) }));
+
+        assert_ne!(g1.id, g2.id);
     }
 }
