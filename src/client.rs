@@ -18,6 +18,7 @@ use core::{
     any::type_name,
     sync::atomic::{AtomicU16, AtomicU8, Ordering},
 };
+use heapless::FnvIndexMap;
 use packed_struct::PackedStruct;
 
 /// A medium-level interface over PDUs (e.g. `BRD`, `LRW`, etc) and other EtherCAT master related
@@ -144,8 +145,8 @@ impl<'sto> Client<'sto> {
     /// [`Err(Error::UnknownSlave)`](Error::UnknownSlave) should be returned.
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
-        mut groups: G,
-        mut group_filter: impl for<'g> FnMut(&'g mut G, &Slave) -> Result<&'g mut dyn Bikeshed, Error>,
+        groups: G,
+        mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn Bikeshed, Error>,
     ) -> Result<G, Error>
     where
         G: SlaveGroupContainer,
@@ -192,24 +193,29 @@ impl<'sto> Client<'sto> {
             dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations).await?;
         }
 
-        while let Some(slave) = slaves.pop_front() {
-            let group = group_filter(&mut groups, &slave)?;
+        // TODO: MAX_GROUPS
+        let mut testo = FnvIndexMap::<_, _, MAX_SLAVES>::new();
 
-            group.push(slave)?;
+        while let Some(slave) = slaves.pop_front() {
+            let group = group_filter(&groups, &slave)?;
+
+            // SAFETY: This mutates the internal slave list, so a reference to `group` may not be
+            // held over this line.
+            unsafe { group.push(slave)? };
+
+            testo
+                .insert(usize::from(group.id()), group.as_ref())
+                .map_err(|_| Error::Capacity(Item::Group))?;
         }
 
         let mut offset = PdiOffset::default();
 
-        // Loop through groups and configure the slaves in each one.
-        for i in 0..groups.num_groups() {
-            let mut group = groups.group(i).ok_or(Error::NotFound {
-                item: Item::Group,
-                index: Some(i),
-            })?;
+        for (id, group) in testo.into_iter() {
+            // SAFETY: This internally mutates the group. No other references may be held
+            // accross this line.
+            offset = unsafe { group.configure_from_eeprom(offset, self).await? };
 
-            offset = group.configure_from_eeprom(offset, self).await?;
-
-            log::debug!("After group #{i} offset: {:?}", offset);
+            log::debug!("After group ID {id} offset: {:?}", offset);
         }
 
         log::debug!("Total PDI {} bytes", offset.start_address);

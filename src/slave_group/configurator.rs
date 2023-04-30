@@ -1,4 +1,4 @@
-use super::HookFn;
+use super::{GroupId, HookFn};
 use crate::{
     error::Error,
     pdi::PdiOffset,
@@ -10,53 +10,92 @@ use crate::{
     },
     Client, SlaveGroup,
 };
-use core::time::Duration;
+use core::{cell::UnsafeCell, time::Duration};
+
+struct GroupInnerRef<'a> {
+    slaves: &'a mut [Slave],
+    /// The number of bytes at the beginning of the PDI reserved for slave inputs.
+    read_pdi_len: &'a mut usize,
+    /// The total length (I and O) of the PDI for this group.
+    pdi_len: &'a mut usize,
+    start_address: &'a mut u32,
+    /// Expected working counter when performing a read/write to all slaves in this group.
+    ///
+    /// This should be equivalent to `(slaves with inputs) + (2 * slaves with outputs)`.
+    group_working_counter: &'a mut u16,
+}
 
 /// A reference to a [`SlaveGroup`](crate::SlaveGroup) returned by the closure passed to
 /// [`Client::init`](crate::Client::init).
 pub struct SlaveGroupRef<'a> {
-    pub(crate) pdi_len: &'a mut usize,
-    pub(crate) read_pdi_len: &'a mut usize,
-    pub(crate) max_pdi_len: usize,
-    pub(crate) start_address: &'a mut u32,
-    pub(crate) group_working_counter: &'a mut u16,
-    pub(crate) slaves: &'a mut [Slave],
-    pub(crate) preop_safeop_hook: Option<&'a HookFn>,
+    id: GroupId,
+    max_pdi_len: usize,
+    preop_safeop_hook: &'a Option<HookFn>,
+    inner: UnsafeCell<GroupInnerRef<'a>>,
+}
+
+impl<'a> Ord for SlaveGroupRef<'a> {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.id.cmp(&other.id)
+    }
+}
+
+impl<'a> Eq for SlaveGroupRef<'a> {}
+
+impl<'a> PartialEq for SlaveGroupRef<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl<'a> PartialOrd for SlaveGroupRef<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        self.id.partial_cmp(&other.id)
+    }
 }
 
 impl<'a> SlaveGroupRef<'a> {
     pub(in crate::slave_group) fn new<const MAX_SLAVES: usize, const MAX_PDI: usize>(
-        group: &'a mut SlaveGroup<MAX_SLAVES, MAX_PDI>,
+        group: &'a SlaveGroup<MAX_SLAVES, MAX_PDI>,
     ) -> Self {
         Self {
-            slaves: &mut group.slaves,
+            id: group.id,
             max_pdi_len: MAX_PDI,
-            preop_safeop_hook: group.preop_safeop_hook.as_ref(),
-            read_pdi_len: &mut group.read_pdi_len,
-            pdi_len: &mut group.pdi_len,
-            start_address: &mut group.start_address,
-            group_working_counter: &mut group.group_working_counter,
+            preop_safeop_hook: &group.preop_safeop_hook,
+            inner: {
+                let inner = unsafe { &mut *group.inner.get() };
+
+                UnsafeCell::new(GroupInnerRef {
+                    slaves: &mut inner.slaves,
+                    read_pdi_len: &mut inner.read_pdi_len,
+                    pdi_len: &mut inner.pdi_len,
+                    start_address: &mut inner.start_address,
+                    group_working_counter: &mut inner.group_working_counter,
+                })
+            },
         }
     }
 
-    pub(crate) async fn configure_from_eeprom<'sto>(
-        &mut self,
+    pub(crate) async unsafe fn configure_from_eeprom<'sto>(
+        &self,
         // We need to start this group's PDI after that of the previous group. That offset is passed
         // in via `start_offset`.
         mut global_offset: PdiOffset,
         client: &'sto Client<'sto>,
     ) -> Result<PdiOffset, Error> {
+        let inner = unsafe { &mut *self.inner.get() };
+
         log::debug!(
             "Going to configure group with {} slave(s), starting PDI offset {:#08x}",
-            self.slaves.len(),
+            inner.slaves.len(),
             global_offset.start_address
         );
 
         // Set the starting position in the PDI for this group's segment
-        *self.start_address = global_offset.start_address;
+        *inner.start_address = global_offset.start_address;
 
         // Configure master read PDI mappings in the first section of the PDI
-        for slave in self.slaves.iter_mut() {
+        for slave in inner.slaves.iter_mut() {
             let mut slave_config = SlaveConfigurator::new(client, slave);
 
             // TODO: Split `SlaveGroupRef::configure_from_eeprom` so we can put all slaves into
@@ -75,18 +114,22 @@ impl<'a> SlaveGroupRef<'a> {
 
             // We're in PRE-OP at this point
             global_offset = slave_config
-                .configure_fmmus(global_offset, *self.start_address, PdoDirection::MasterRead)
+                .configure_fmmus(
+                    global_offset,
+                    *inner.start_address,
+                    PdoDirection::MasterRead,
+                )
                 .await?;
         }
 
-        *self.read_pdi_len = (global_offset.start_address - *self.start_address) as usize;
+        *inner.read_pdi_len = (global_offset.start_address - *inner.start_address) as usize;
 
         log::debug!("Slave mailboxes configured and init hooks called");
 
         // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
-        for (_i, slave) in self.slaves.iter_mut().enumerate() {
+        for (_i, slave) in inner.slaves.iter_mut().enumerate() {
             let addr = slave.configured_address;
             let name = slave.name.clone();
 
@@ -96,7 +139,7 @@ impl<'a> SlaveGroupRef<'a> {
             global_offset = slave_config
                 .configure_fmmus(
                     global_offset,
-                    *self.start_address,
+                    *inner.start_address,
                     PdoDirection::MasterWrite,
                 )
                 .await?;
@@ -148,18 +191,18 @@ impl<'a> SlaveGroupRef<'a> {
 
             // We have both inputs and outputs at this stage, so can correctly calculate the group
             // WKC.
-            *self.group_working_counter += slave.config.io.working_counter_sum();
+            *inner.group_working_counter += slave.config.io.working_counter_sum();
         }
 
         log::debug!("Slave FMMUs configured for group. Able to move to SAFE-OP");
 
-        let pdi_len = (global_offset.start_address - *self.start_address) as usize;
+        let pdi_len = (global_offset.start_address - *inner.start_address) as usize;
 
         log::debug!(
             "Group PDI length: start {}, {} total bytes ({} input bytes)",
-            self.start_address,
+            inner.start_address,
             pdi_len,
-            *self.read_pdi_len
+            *inner.read_pdi_len
         );
 
         if pdi_len > self.max_pdi_len {
@@ -168,7 +211,7 @@ impl<'a> SlaveGroupRef<'a> {
                 desired_length: pdi_len,
             })
         } else {
-            *self.pdi_len = pdi_len;
+            *inner.pdi_len = pdi_len;
 
             Ok(global_offset)
         }

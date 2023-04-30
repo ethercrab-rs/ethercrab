@@ -22,8 +22,15 @@ type HookFn = for<'any> fn(&'any SlaveRef) -> HookFuture<'any>;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(Debug, Default, PartialEq, Eq)]
-struct GroupId(usize);
+/// A group's unique ID.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GroupId(usize);
+
+impl From<GroupId> for usize {
+    fn from(value: GroupId) -> Self {
+        value.0
+    }
+}
 
 /// A group of one or more EtherCAT slaves.
 ///
@@ -31,9 +38,25 @@ struct GroupId(usize);
 /// slave PDI sections.
 pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize> {
     id: GroupId,
-    slaves: heapless::Vec<Slave, MAX_SLAVES>,
-    preop_safeop_hook: Option<HookFn>,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
+    preop_safeop_hook: Option<HookFn>,
+    // slaves: heapless::Vec<Slave, MAX_SLAVES>,
+    // /// The number of bytes at the beginning of the PDI reserved for slave inputs.
+    // read_pdi_len: usize,
+    // /// The total length (I and O) of the PDI for this group.
+    // pdi_len: usize,
+    // start_address: u32,
+    // /// Expected working counter when performing a read/write to all slaves in this group.
+    // ///
+    // /// This should be equivalent to `(slaves with inputs) + (2 * slaves with outputs)`.
+    // group_working_counter: u16,
+    inner: UnsafeCell<GroupInner<MAX_SLAVES>>,
+}
+
+#[derive(Default)]
+struct GroupInner<const MAX_SLAVES: usize> {
+    slaves: heapless::Vec<Slave, MAX_SLAVES>,
+
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.
     read_pdi_len: usize,
     /// The total length (I and O) of the PDI for this group.
@@ -75,15 +98,30 @@ unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Send
 #[sealed::sealed]
 pub trait Bikeshed {
     #[doc(hidden)]
-    fn push(&mut self, slave: Slave) -> Result<(), Error>;
+    fn id(&self) -> GroupId;
+
+    #[doc(hidden)]
+    unsafe fn push(&self, slave: Slave) -> Result<(), Error>;
+
+    #[doc(hidden)]
+    fn as_ref(&self) -> SlaveGroupRef<'_>;
 }
 
 #[sealed::sealed]
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Bikeshed for SlaveGroup<MAX_SLAVES, MAX_PDI> {
-    fn push(&mut self, slave: Slave) -> Result<(), Error> {
-        self.slaves
+    fn id(&self) -> GroupId {
+        self.id
+    }
+
+    unsafe fn push(&self, slave: Slave) -> Result<(), Error> {
+        (&mut *self.inner.get())
+            .slaves
             .push(slave)
             .map_err(|_| Error::Capacity(crate::error::Item::Slave))
+    }
+
+    fn as_ref(&self) -> SlaveGroupRef<'_> {
+        SlaveGroupRef::new(self)
     }
 }
 
@@ -91,13 +129,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Default for SlaveGroup<MAX_S
     fn default() -> Self {
         Self {
             id: Default::default(),
-            slaves: Default::default(),
-            preop_safeop_hook: Default::default(),
             pdi: UnsafeCell::new([0u8; MAX_PDI]),
-            read_pdi_len: Default::default(),
-            pdi_len: Default::default(),
-            start_address: 0,
-            group_working_counter: 0,
+            preop_safeop_hook: Default::default(),
+            inner: UnsafeCell::new(GroupInner::default()),
         }
     }
 }
@@ -117,14 +151,18 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         }
     }
 
+    fn inner(&self) -> &GroupInner<MAX_SLAVES> {
+        unsafe { &*self.inner.get() }
+    }
+
     /// Get the number of slave devices in this group.
     pub fn len(&self) -> usize {
-        self.slaves.len()
+        self.inner().slaves.len()
     }
 
     /// Check whether this slave group is empty or not.
     pub fn is_empty(&self) -> bool {
-        self.slaves.is_empty()
+        self.inner().slaves.is_empty()
     }
 
     /// Get an iterator over all slaves in this group.
@@ -137,7 +175,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 
     /// Retrieve a reference to a slave in this group by index.
     pub fn slave(&self, index: usize) -> Result<GroupSlave, Error> {
-        let slave = self.slaves.get(index).ok_or(Error::NotFound {
+        let slave = self.inner().slaves.get(index).ok_or(Error::NotFound {
             item: Item::Slave,
             index: Some(index),
         })?;
@@ -161,7 +199,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         log::trace!(
             "--> Group PDI: {:?} ({} byte subset of {} max)",
             i_data,
-            self.pdi_len,
+            self.inner().pdi_len,
             MAX_PDI
         );
 
@@ -185,13 +223,13 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     fn pdi_mut(&self) -> &mut [u8] {
         let all_buf = unsafe { &mut *self.pdi.get() };
 
-        &mut all_buf[0..self.pdi_len]
+        &mut all_buf[0..self.inner().pdi_len]
     }
 
     fn pdi(&self) -> &[u8] {
         let all_buf = unsafe { &*self.pdi.get() };
 
-        &all_buf[0..self.pdi_len]
+        &all_buf[0..self.inner().pdi_len]
     }
 
     /// Drive the slave group's inputs and outputs.
@@ -201,13 +239,17 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<(), Error> {
         log::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
-            self.start_address,
+            self.inner().start_address,
             self.pdi_mut().len(),
-            self.read_pdi_len
+            self.inner().read_pdi_len
         );
 
         let (_res, _wkc) = client
-            .lrw_buf(self.start_address, self.pdi_mut(), self.read_pdi_len)
+            .lrw_buf(
+                self.inner().start_address,
+                self.pdi_mut(),
+                self.inner().read_pdi_len,
+            )
             .await?;
 
         Ok(())
