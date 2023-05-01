@@ -9,6 +9,7 @@ use ethercrab::{
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
 
+/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
 const MAX_PDU_DATA: usize = 1100;
 const MAX_FRAMES: usize = 16;
@@ -22,7 +23,7 @@ async fn main() -> Result<(), Error> {
 
     let interface = std::env::args()
         .nth(1)
-        .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+        .expect("Provide network interface as first argument.");
 
     log::info!("Starting AKD demo...");
     log::info!("Ensure a Kollmorgen AKD drive is the first slave device");
@@ -42,7 +43,7 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
+    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {
             // --- Reads ---
 
@@ -125,7 +126,8 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        .init::<16, _>(groups, |groups, _slave| Ok(groups.as_mut()))
+        // Initialise a single group
+        .init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
         .await
         .expect("Init");
 

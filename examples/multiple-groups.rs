@@ -8,8 +8,7 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
-    SlaveGroupContainer, SlaveGroupRef, Timeouts,
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
 };
 use std::{
     sync::Arc,
@@ -17,7 +16,7 @@ use std::{
 };
 use tokio::time::MissedTickBehavior;
 
-/// Maximum number of slaves that can be stored.
+/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = 1100;
@@ -36,27 +35,13 @@ struct Groups {
     fast_outputs: SlaveGroup<1, 1>,
 }
 
-impl SlaveGroupContainer for Groups {
-    fn num_groups(&self) -> usize {
-        2
-    }
-
-    fn group(&mut self, index: usize) -> Option<SlaveGroupRef> {
-        match index {
-            0 => Some(self.slow_outputs.as_mut()),
-            1 => Some(self.fast_outputs.as_mut()),
-            _ => None,
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let interface = std::env::args()
         .nth(1)
-       .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+        .expect("Provide network interface as first argument.");
 
     log::info!("Starting multiple groups demo...");
     log::info!(
@@ -87,8 +72,8 @@ async fn main() -> Result<(), Error> {
     let groups = client
         .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
             match slave.name.as_str() {
-                "EL2889" | "EK1100" => Ok(groups.slow_outputs.as_mut()),
-                "EL2828" => Ok(groups.fast_outputs.as_mut()),
+                "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
+                "EL2828" => Ok(&groups.fast_outputs),
                 _ => Err(Error::UnknownSlave),
             }
         })

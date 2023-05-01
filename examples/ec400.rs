@@ -35,7 +35,7 @@ async fn main() -> Result<(), Error> {
 
     let interface = std::env::args()
         .nth(1)
-       .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+        .expect("Provide network interface as first argument.");
 
     log::info!("Starting EC400 demo...");
     log::info!("Ensure an EC400 servo drive is the first and only slave");
@@ -63,7 +63,7 @@ async fn main() -> Result<(), Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
+    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {
             if slave.name() == "ELP-EC400S" {
                 // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
@@ -113,7 +113,8 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        .init::<16, _>(groups, |groups, _slave| Ok(groups.as_mut()))
+        // Initialise a single group
+        .init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
         .await
         .expect("Init");
 

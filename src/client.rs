@@ -9,15 +9,16 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
-    slave_group::SlaveGroupContainer,
+    slave_group::SlaveGroupHandle,
     slave_state::SlaveState,
     timer_factory::timeout,
-    ClientConfig, SlaveGroupRef, Timeouts, BASE_SLAVE_ADDR,
+    ClientConfig, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
     any::type_name,
     sync::atomic::{AtomicU16, AtomicU8, Ordering},
 };
+use heapless::FnvIndexMap;
 use packed_struct::PackedStruct;
 
 /// A medium-level interface over PDUs (e.g. `BRD`, `LRW`, etc) and other EtherCAT master related
@@ -136,20 +137,64 @@ impl<'sto> Client<'sto> {
     /// Detect slaves, set their configured station addresses, assign to groups, configure slave
     /// devices from EEPROM.
     ///
-    /// The `group_filter` closure should return a [`SlaveGroupRef`] to add the slave to. All slaves
+    /// The `group_filter` closure should return a [`&dyn
+    /// SlaveGroupHandle`](crate::slave_group::SlaveGroupHandle) to add the slave to. All slaves
     /// must be assigned to a group even if they are unused.
     ///
     /// If a slave device cannot or should not be added to a group for some reason (e.g. an
     /// unrecognised slave was detected on the network), an
     /// [`Err(Error::UnknownSlave)`](Error::UnknownSlave) should be returned.
+    ///
+    /// `MAX_SLAVES` must be a power of 2 greater than 1.
+    ///
+    /// # Examples
+    ///
+    /// ## Multiple groups
+    ///
+    /// This example groups slave devices into two different groups.
+    ///
+    /// ```rust,no_run
+    /// use ethercrab::{
+    ///     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    /// };
+    ///
+    /// const MAX_SLAVES: usize = 2;
+    /// const MAX_PDU_DATA: usize = 1100;
+    /// const MAX_FRAMES: usize = 16;
+    ///
+    /// static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+    ///
+    /// /// A custom struct containing two groups to assign slave devices into.
+    /// #[derive(Default)]
+    /// struct Groups {
+    ///     /// 2 slave devices, totalling 1 byte of PDI.
+    ///     group_1: SlaveGroup<2, 1>,
+    ///     /// 1 slave device, totalling 4 bytes of PDI
+    ///     group_2: SlaveGroup<1, 4>,
+    /// }
+    ///
+    /// let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+    ///
+    /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    ///
+    /// # async {
+    /// let groups = client
+    ///     .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
+    ///         match slave.name.as_str() {
+    ///             "COUPLER" | "IO69420" => Ok(&groups.group_1),
+    ///             "COOLSERVO" => Ok(&groups.group_2),
+    ///             _ => Err(Error::UnknownSlave),
+    ///         }
+    ///     })
+    ///     .await
+    ///     .expect("Init");
+    /// # };
+    /// ```
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
-        mut groups: G,
-        mut group_filter: impl for<'g> FnMut(&'g mut G, &Slave) -> Result<SlaveGroupRef<'g>, Error>,
-    ) -> Result<G, Error>
-    where
-        G: SlaveGroupContainer,
-    {
+        groups: G,
+        mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn SlaveGroupHandle, Error>,
+    ) -> Result<G, Error> {
         self.reset_slaves().await?;
 
         // Each slave increments working counter, so we can use it as a total count of slaves
@@ -183,7 +228,7 @@ impl<'sto> Client<'sto> {
         log::debug!("Configuring topology/distributed clocks");
 
         // Configure distributed clock offsets/propagation delays, perform static drift
-        // compensation. We need the slaves in a list to do this.
+        // compensation. We need the slaves in a single list so we can read the topology.
         let dc_master = dc::configure_dc(self, slaves.as_mut_slices().0).await?;
 
         // If there are slave devices that support distributed clocks, run static drift compensation
@@ -191,24 +236,30 @@ impl<'sto> Client<'sto> {
             dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations).await?;
         }
 
-        while let Some(slave) = slaves.pop_front() {
-            let mut group = group_filter(&mut groups, &slave)?;
+        // A unique list of groups so we can iterate over them and assign consecutive PDIs to each
+        // one.
+        let mut group_map = FnvIndexMap::<_, _, MAX_SLAVES>::new();
 
-            group.push(slave)?;
+        while let Some(slave) = slaves.pop_front() {
+            let group = group_filter(&groups, &slave)?;
+
+            // SAFETY: This mutates the internal slave list, so a reference to `group` may not be
+            // held over this line.
+            unsafe { group.push(slave)? };
+
+            group_map
+                .insert(usize::from(group.id()), group.as_ref())
+                .map_err(|_| Error::Capacity(Item::Group))?;
         }
 
         let mut offset = PdiOffset::default();
 
-        // Loop through groups and configure the slaves in each one.
-        for i in 0..groups.num_groups() {
-            let mut group = groups.group(i).ok_or(Error::NotFound {
-                item: Item::Group,
-                index: Some(i),
-            })?;
+        for (id, group) in group_map.into_iter() {
+            // SAFETY: This internally mutates the group. No other references may be held accross
+            // this line.
+            offset = unsafe { group.configure_from_eeprom(offset, self).await? };
 
-            offset = group.configure_from_eeprom(offset, self).await?;
-
-            log::debug!("After group #{i} offset: {:?}", offset);
+            log::debug!("After group ID {id} offset: {:?}", offset);
         }
 
         log::debug!("Total PDI {} bytes", offset.start_address);
