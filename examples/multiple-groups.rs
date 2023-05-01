@@ -68,8 +68,8 @@ async fn main() -> Result<(), Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
-        // Initialise 2 groups. This number must match or exceed the number of different groups
-        // returned from the closure. In this example, `Groups` has two fields.
+        // Initialise 2 groups. This number must be a power of 2 that matches or exceeds the number
+        // of different groups returned from the closure. In this example, `Groups` has two fields.
         .init::<2, _>(Groups::default(), |groups, slave| {
             match slave.name.as_str() {
                 "EL2889" | "EK1100" => Ok(&groups.slow_outputs),

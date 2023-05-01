@@ -106,8 +106,8 @@
 //!     });
 //!
 //!     let group = client
-//!         // Initialise a single group
-//!         .init::<1, _>(group, |groups, _slave| Ok(groups))
+//!         // Initialise a single group. The const generic here must be a power of 2 greater than 1.
+//!         .init::<2, _>(group, |group, _slave| Ok(group))
 //!         .await
 //!         .expect("Init");
 //!

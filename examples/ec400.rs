@@ -35,7 +35,7 @@ async fn main() -> Result<(), Error> {
 
     let interface = std::env::args()
         .nth(1)
-       .expect("Provide network interface as first argument.");
+        .expect("Provide network interface as first argument.");
 
     log::info!("Starting EC400 demo...");
     log::info!("Ensure an EC400 servo drive is the first and only slave");
@@ -113,8 +113,8 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        // Initialise a single group
-        .init::<1, _>(group, |group, _slave| Ok(group))
+        // Initialise a single group. The const generic here must be a power of 2 greater than 1.
+        .init::<2, _>(group, |group, _slave| Ok(group))
         .await
         .expect("Init");
 

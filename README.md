@@ -109,8 +109,9 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        // Initialise a single group
-        .init::<1, _>(group, |groups, _slave| Ok(groups))
+        // Initialise a single group. This number must be a power of 2 that matches or exceeds the
+        // number of different groups returned from the closure.
+        .init::<2, _>(group, |groups, _slave| Ok(groups))
         .await
         .expect("Init");
 
