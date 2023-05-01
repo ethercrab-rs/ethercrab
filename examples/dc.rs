@@ -88,7 +88,8 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        .init::<16, _>(group, |groups, _slave| Ok(groups))
+        // Initialise a single group
+        .init::<1, _>(group, |group, _slave| Ok(group))
         .await
         .expect("Init");
 

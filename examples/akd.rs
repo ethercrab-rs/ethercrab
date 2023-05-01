@@ -42,7 +42,7 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
+    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
         Box::pin(async {
             // --- Reads ---
 
@@ -125,7 +125,8 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        .init::<16, _>(groups, |groups, _slave| Ok(groups))
+        // Initialise a single group
+        .init::<1, _>(group, |group, _slave| Ok(group))
         .await
         .expect("Init");
 

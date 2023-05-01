@@ -88,8 +88,8 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        // Initialise up to 16 slave devices
-        .init::<MAX_SLAVES, _>(group, |groups, _slave| Ok(groups))
+        // Initialise a single group
+        .init::<1, _>(group, |group, _slave| Ok(group))
         .await
         .expect("Init");
 

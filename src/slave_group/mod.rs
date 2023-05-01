@@ -242,12 +242,6 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         //     Ok(())
         // }
     }
-
-    /// Get a reference to the slave group, with const generic parameters erased.
-    // TODO: Typestate so we can only do this during init
-    pub fn as_mut<'group>(&'group mut self) -> SlaveGroupRef<'group> {
-        SlaveGroupRef::new(self)
-    }
 }
 
 /// An iterator over all slaves in a group.
