@@ -106,6 +106,7 @@
 //!     });
 //!
 //!     let group = client
+//!         // Initialise a single group
 //!         .init::<1, _>(group, |groups, _slave| Ok(groups))
 //!         .await
 //!         .expect("Init");

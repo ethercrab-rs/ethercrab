@@ -35,7 +35,6 @@ $env:RUST_LOG="debug" ; cargo run --example ek1100 --release -- '\Device\NPF_{FF
 ```
 
 ```rust
-
 use env_logger::Env;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SubIndex, Timeouts,
@@ -110,8 +109,8 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        // Initialise up to 16 slave devices
-        .init::<16, _>(group, |groups, _slave| Ok(groups))
+        // Initialise a single group
+        .init::<1, _>(group, |groups, _slave| Ok(groups))
         .await
         .expect("Init");
 
