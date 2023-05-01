@@ -42,7 +42,7 @@ use ethercrab::{
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
 
-/// Maximum number of slaves that can be stored.
+/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = 1100;
@@ -109,9 +109,8 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        // Initialise a single group. This number must be a power of 2 that matches or exceeds the
-        // number of different groups returned from the closure.
-        .init::<2, _>(group, |groups, _slave| Ok(groups))
+        // Initialise a single group
+        .init::<MAX_SLAVES, _>(group, |groups, _slave| Ok(groups))
         .await
         .expect("Init");
 

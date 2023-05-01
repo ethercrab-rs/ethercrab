@@ -24,9 +24,6 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#45]The grouping closure passed to `Client::init` now requires a
   `&dyn SlaveGroupHandle` to be returned. This is a sealed trait only implemented for `SlaveGroup`s
   and allows some internal refactors by erasing the const generics from `SlaveGroup`.
-- **(breaking)** [#45] The const generic on §Client::init` now defines the max number of _groups_,
-  not the max number of slave devices, and should match or exceed the number of unique groups passed
-  in (struct fields, array/tuple items, etc)
 - **(breaking)** [#32] To mitigate some internal issues, `PduStorage` now requires `N` (the number
   of storage elements) to be a power of two.
 - **(breaking)** [#33] `send_frames_blocking` is removed. It is replaced with

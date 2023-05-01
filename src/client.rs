@@ -145,6 +145,8 @@ impl<'sto> Client<'sto> {
     /// unrecognised slave was detected on the network), an
     /// [`Err(Error::UnknownSlave)`](Error::UnknownSlave) should be returned.
     ///
+    /// `MAX_SLAVES` must be a power of 2 greater than 1.
+    ///
     /// # Examples
     ///
     /// ## Multiple groups
@@ -156,7 +158,7 @@ impl<'sto> Client<'sto> {
     ///     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
     /// };
     ///
-    /// const MAX_GROUPS: usize = 2;
+    /// const MAX_SLAVES: usize = 2;
     /// const MAX_PDU_DATA: usize = 1100;
     /// const MAX_FRAMES: usize = 16;
     ///
@@ -177,7 +179,7 @@ impl<'sto> Client<'sto> {
     ///
     /// # async {
     /// let groups = client
-    ///     .init::<MAX_GROUPS, _>(Groups::default(), |groups, slave| {
+    ///     .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
     ///         match slave.name.as_str() {
     ///             "COUPLER" | "IO69420" => Ok(&groups.group_1),
     ///             "COOLSERVO" => Ok(&groups.group_2),
@@ -188,7 +190,7 @@ impl<'sto> Client<'sto> {
     ///     .expect("Init");
     /// # };
     /// ```
-    pub async fn init<const MAX_GROUPS: usize, G>(
+    pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
         groups: G,
         mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn SlaveGroupHandle, Error>,
@@ -202,7 +204,7 @@ impl<'sto> Client<'sto> {
         // pretty much anything.
         self.num_slaves.store(num_slaves, Ordering::Relaxed);
 
-        let mut slaves = heapless::Deque::<Slave, MAX_GROUPS>::new();
+        let mut slaves = heapless::Deque::<Slave, MAX_SLAVES>::new();
 
         // Set configured address for all discovered slaves
         for slave_idx in 0..num_slaves {
@@ -236,7 +238,7 @@ impl<'sto> Client<'sto> {
 
         // A unique list of groups so we can iterate over them and assign consecutive PDIs to each
         // one.
-        let mut group_map = FnvIndexMap::<_, _, MAX_GROUPS>::new();
+        let mut group_map = FnvIndexMap::<_, _, MAX_SLAVES>::new();
 
         while let Some(slave) = slaves.pop_front() {
             let group = group_filter(&groups, &slave)?;

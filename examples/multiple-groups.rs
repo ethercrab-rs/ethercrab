@@ -16,6 +16,8 @@ use std::{
 };
 use tokio::time::MissedTickBehavior;
 
+/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
+const MAX_SLAVES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = 1100;
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
@@ -68,9 +70,7 @@ async fn main() -> Result<(), Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
-        // Initialise 2 groups. This number must be a power of 2 that matches or exceeds the number
-        // of different groups returned from the closure. In this example, `Groups` has two fields.
-        .init::<2, _>(Groups::default(), |groups, slave| {
+        .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
             match slave.name.as_str() {
                 "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
                 "EL2828" => Ok(&groups.fast_outputs),
