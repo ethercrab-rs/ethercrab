@@ -227,7 +227,6 @@ impl<'sto> Client<'sto> {
 
         // Configure distributed clock offsets/propagation delays, perform static drift
         // compensation. We need the slaves in a single list so we can read the topology.
-        // TODO: Build topology on the fly, that way we can do away with `MAX_SLAVES`.
         let dc_master = dc::configure_dc(self, slaves.as_mut_slices().0).await?;
 
         // If there are slave devices that support distributed clocks, run static drift compensation

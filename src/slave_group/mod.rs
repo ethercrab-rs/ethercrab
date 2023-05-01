@@ -21,6 +21,7 @@ type HookFn = for<'any> fn(&'any SlaveRef) -> HookFuture<'any>;
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 
 /// A group's unique ID.
+#[doc(hidden)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GroupId(usize);
 
