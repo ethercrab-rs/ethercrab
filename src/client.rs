@@ -254,8 +254,8 @@ impl<'sto> Client<'sto> {
         let mut offset = PdiOffset::default();
 
         for (id, group) in group_map.into_iter() {
-            // SAFETY: This internally mutates the group. No other references may be held
-            // accross this line.
+            // SAFETY: This internally mutates the group. No other references may be held accross
+            // this line.
             offset = unsafe { group.configure_from_eeprom(offset, self).await? };
 
             log::debug!("After group ID {id} offset: {:?}", offset);

@@ -15,16 +15,25 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#31] Added a `ClientConfig` argument to `Client::new` to allow configuration of
   various EtherCrab behaviours.
 
+### Removed
+
+- **(breaking)** [#45] The `SlaveGroupContainer` trait is no longer needed and has been removed.
+
 ### Changed
 
-- **(breaking)** [#39] Change group init closure to return `Result<SlaveGroupRef, Error>`
+- **(breaking)** [#45]The grouping closure passed to `Client::init` now requires a
+  `&dyn SlaveGroupHandle` to be returned. This is a sealed trait only implemented for `SlaveGroup`s
+  and allows some internal refactors by erasing the const generics from `SlaveGroup`.
+- **(breaking)** [#45] The const generic on §Client::init` now defines the max number of _groups_,
+  not the max number of slave devices, and should match or exceed the number of unique groups passed
+  in (struct fields, array/tuple items, etc)
 - **(breaking)** [#32] To mitigate some internal issues, `PduStorage` now requires `N` (the number
   of storage elements) to be a power of two.
 - **(breaking)** [#33] `send_frames_blocking` is removed. It is replaced with
   `PduTx::next_sendable_frame` which can be used to send any available frames in a loop until it
   returns `None`.
 - **(breaking)** [#30] Removed `PduError::Encode` variant.
-- **(breaking)** [#25] Changed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
+- **(breaking)** [#25] Renamed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
 - **(breaking)** [#20] Changed the way the client, tx and rx instances are initialised to only allow
   one TX and RX to exist.
 
@@ -99,6 +108,6 @@ An EtherCAT master written in Rust.
 [#31]: https://github.com/ethercrab-rs/ethercrab/pull/31
 [#32]: https://github.com/ethercrab-rs/ethercrab/pull/32
 [#33]: https://github.com/ethercrab-rs/ethercrab/pull/33
-[#39]: https://github.com/ethercrab-rs/ethercrab/pull/39
+[#45]: https://github.com/ethercrab-rs/ethercrab/pull/45
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
