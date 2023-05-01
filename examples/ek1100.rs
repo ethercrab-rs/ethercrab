@@ -21,7 +21,7 @@ use ethercrab::{
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
 
-/// Maximum number of slaves that can be stored.
+/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = 1100;
@@ -38,7 +38,7 @@ async fn main() -> Result<(), Error> {
 
     let interface = std::env::args()
         .nth(1)
-        .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+        .expect("Provide network interface as first argument.");
 
     log::info!("Starting EK1100 demo...");
     log::info!("Ensure an EK1100 is the first slave, with any number of modules connected after");
@@ -88,8 +88,8 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        // Initialise up to 16 slave devices
-        .init::<MAX_SLAVES, _>(group, |groups, _slave| Ok(groups.as_mut()))
+        // Initialise a single group
+        .init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
         .await
         .expect("Init");
 
