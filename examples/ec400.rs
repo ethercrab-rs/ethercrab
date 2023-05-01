@@ -35,7 +35,7 @@ async fn main() -> Result<(), Error> {
 
     let interface = std::env::args()
         .nth(1)
-       .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+       .expect("Provide network interface as first argument.");
 
     log::info!("Starting EC400 demo...");
     log::info!("Ensure an EC400 servo drive is the first and only slave");

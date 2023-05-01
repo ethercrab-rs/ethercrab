@@ -47,7 +47,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
     let interface = std::env::args()
         .nth(1)
-       .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+        .expect("Provide network interface as first argument.");
 
     log::info!("Starting multiple groups demo...");
     log::info!(
