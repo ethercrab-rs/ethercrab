@@ -63,7 +63,7 @@ async fn main() -> Result<(), Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
+    let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(Box::new(|slave| {
         Box::pin(async {
             if slave.name() == "ELP-EC400S" {
                 // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
@@ -110,7 +110,7 @@ async fn main() -> Result<(), Error> {
 
             Ok(())
         })
-    });
+    }));
 
     let group = client
         .init::<16, _>(groups, |groups, _slave| Ok(groups.as_mut()))
