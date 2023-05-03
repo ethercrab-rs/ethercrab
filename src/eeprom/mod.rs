@@ -25,10 +25,6 @@ impl<'a> Eeprom<'a> {
         Self { client }
     }
 
-    async fn reader(&self, category: CategoryType) -> Result<Option<EepromSectionReader>, Error> {
-        EepromSectionReader::new(self.client, category).await
-    }
-
     /// Get the device name.
     ///
     /// Note that the string index is hard coded to `1` instead of reading the string index from the
@@ -64,8 +60,7 @@ impl<'a> Eeprom<'a> {
 
     #[allow(unused)]
     pub(crate) async fn general(&self) -> Result<SiiGeneral, Error> {
-        let mut reader = self
-            .reader(CategoryType::General)
+        let mut reader = EepromSectionReader::new(self.client, CategoryType::General)
             .await?
             .ok_or(Error::Eeprom(EepromError::NoCategory))?;
 
@@ -92,7 +87,9 @@ impl<'a> Eeprom<'a> {
 
         log::trace!("Get sync managers");
 
-        if let Some(mut reader) = self.reader(CategoryType::SyncManager).await? {
+        if let Some(mut reader) =
+            EepromSectionReader::new(self.client, CategoryType::SyncManager).await?
+        {
             while let Some(bytes) = reader
                 .take_vec::<{ SyncManager::STORAGE_SIZE }>(self.client)
                 .await?
@@ -111,7 +108,7 @@ impl<'a> Eeprom<'a> {
     }
 
     pub async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
-        let category = self.reader(CategoryType::Fmmu).await?;
+        let category = EepromSectionReader::new(self.client, CategoryType::Fmmu).await?;
 
         log::trace!("Get FMMUs");
 
@@ -137,7 +134,9 @@ impl<'a> Eeprom<'a> {
 
         log::trace!("Get FMMU mappings");
 
-        if let Some(mut reader) = self.reader(CategoryType::FmmuExtended).await? {
+        if let Some(mut reader) =
+            EepromSectionReader::new(self.client, CategoryType::FmmuExtended).await?
+        {
             while let Some(bytes) = reader
                 .take_vec::<{ FmmuEx::STORAGE_SIZE }>(self.client)
                 .await?
@@ -164,7 +163,7 @@ impl<'a> Eeprom<'a> {
 
         log::trace!("Get {:?} PDUs", category);
 
-        if let Some(mut reader) = self.reader(category).await? {
+        if let Some(mut reader) = EepromSectionReader::new(self.client, category).await? {
             while let Some(pdo) = reader
                 .take_vec::<{ Pdo::STORAGE_SIZE }>(self.client)
                 .await?
@@ -233,7 +232,9 @@ impl<'a> Eeprom<'a> {
         // Turn 1-based EtherCAT string indexing into normal 0-based.
         let search_index = search_index - 1;
 
-        if let Some(mut reader) = self.reader(CategoryType::Strings).await? {
+        if let Some(mut reader) =
+            EepromSectionReader::new(self.client, CategoryType::Strings).await?
+        {
             let num_strings = reader.try_next(self.client).await?;
 
             log::trace!("--> Slave has {} strings", num_strings);
