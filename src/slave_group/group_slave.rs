@@ -1,7 +1,7 @@
 use crate::{
     error::Error,
     pdu_data::{PduData, PduRead},
-    slave::{slave_client::SlaveClient, Slave, SlaveRef},
+    slave::{Slave, SlaveRef},
     Client, SubIndex,
 };
 use core::fmt::Debug;
@@ -60,10 +60,7 @@ impl<'a> GroupSlave<'a> {
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
-        let slave = SlaveRef::new(
-            SlaveClient::new(client, self.slave.configured_address),
-            self.slave,
-        );
+        let slave = SlaveRef::new(client, self.slave.configured_address, self.slave);
 
         slave.read_sdo(index, sub_index).await
     }
@@ -80,10 +77,7 @@ impl<'a> GroupSlave<'a> {
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
-        let slave = SlaveRef::new(
-            SlaveClient::new(client, self.slave.configured_address),
-            self.slave,
-        );
+        let slave = SlaveRef::new(client, self.slave.configured_address, self.slave);
 
         slave.write_sdo(index, sub_index, value).await
     }

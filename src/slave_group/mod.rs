@@ -16,7 +16,7 @@ pub use group_slave::GroupSlave;
 // <https://users.rust-lang.org/t/store-async-closure-on-struct-in-no-std/82929>
 type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'any>>;
 
-type HookFn = for<'any> fn(&'any SlaveRef) -> HookFuture<'any>;
+type HookFn = for<'any> fn(&'any SlaveRef<'any, &'any mut Slave>) -> HookFuture<'any>;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 

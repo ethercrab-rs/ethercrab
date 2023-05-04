@@ -181,8 +181,6 @@ mod slave;
 mod slave_group;
 mod slave_state;
 mod sync_manager_channel;
-// DELETEME
-mod testo;
 mod timer_factory;
 mod vendors;
 
