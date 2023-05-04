@@ -1,6 +1,9 @@
 //! DS402 state machine.
 
-use crate::{error::Error as EthercrabError, GroupSlave};
+use crate::{
+    error::Error as EthercrabError,
+    slave::{pdi::SlavePdi, SlaveRef},
+};
 use core::fmt;
 
 smlang::statemachine! {
@@ -129,12 +132,12 @@ impl Clone for States {
 #[derive(Debug)]
 pub struct Ds402<'a> {
     /// The EtherCat slave.
-    pub slave: GroupSlave<'a>,
+    pub slave: SlaveRef<'a, SlavePdi<'a>>,
 }
 
 impl<'a> Ds402<'a> {
     /// Create a new DS402 state machine.
-    pub fn new(slave: GroupSlave<'a>) -> Result<Self, EthercrabError> {
+    pub fn new(slave: SlaveRef<'a, SlavePdi<'a>>) -> Result<Self, EthercrabError> {
         Ok(Self { slave })
     }
 
@@ -186,7 +189,7 @@ impl<'a> Ds402Sm<'a> {
     }
 
     /// Get a reference to the underlying EtherCAT slave device.
-    pub fn slave(&self) -> &GroupSlave {
+    pub fn slave(&self) -> &SlaveRef<'a, SlavePdi<'a>> {
         &self.sm.context().slave
     }
 

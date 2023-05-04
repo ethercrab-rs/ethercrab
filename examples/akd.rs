@@ -140,18 +140,14 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Discovered {} slaves", group.len());
 
-    let slave = group.slave(0).expect("first slave not found");
+    let slave = group.slave(&client, 0).expect("first slave not found");
 
     // Run twice to prime PDI
     group.tx_rx(&client).await.expect("TX/RX");
 
     let cycle_time = {
-        let base = slave
-            .read_sdo::<u8>(&client, 0x60c2, SubIndex::Index(1))
-            .await?;
-        let x10 = slave
-            .read_sdo::<i8>(&client, 0x60c2, SubIndex::Index(2))
-            .await?;
+        let base = slave.read_sdo::<u8>(0x60c2, SubIndex::Index(1)).await?;
+        let x10 = slave.read_sdo::<i8>(0x60c2, SubIndex::Index(2)).await?;
 
         let base = f32::from(base);
         let x10 = 10.0f32.powi(i32::from(x10));

@@ -1,15 +1,13 @@
 mod configurator;
-mod group_slave;
 
 use crate::{
     error::{Error, Item},
-    slave::{IoRanges, Slave, SlaveRef},
+    slave::{pdi::SlavePdi, IoRanges, Slave, SlaveRef},
     Client,
 };
 use core::{cell::UnsafeCell, future::Future, pin::Pin, sync::atomic::AtomicUsize};
 
 pub use configurator::SlaveGroupRef;
-pub use group_slave::GroupSlave;
 
 // TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
 // `Box`ing here, and make this work without an allocator. See also
@@ -143,15 +141,23 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     }
 
     /// Get an iterator over all slaves in this group.
-    pub fn slaves(&self) -> GroupSlaveIterator<'_, MAX_SLAVES, MAX_PDI> {
+    pub fn slaves<'group, 'client>(
+        &'group self,
+        client: &'client Client<'client>,
+    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI> {
         GroupSlaveIterator {
             group: self,
             idx: 0,
+            client,
         }
     }
 
     /// Retrieve a reference to a slave in this group by index.
-    pub fn slave(&self, index: usize) -> Result<GroupSlave, Error> {
+    pub fn slave<'client>(
+        &self,
+        client: &'client Client<'client>,
+        index: usize,
+    ) -> Result<SlaveRef<'client, SlavePdi<'_>>, Error> {
         let slave = self.inner().slaves.get(index).ok_or(Error::NotFound {
             item: Item::Slave,
             index: Some(index),
@@ -194,7 +200,11 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             EMPTY_PDI_SLICE
         };
 
-        Ok(GroupSlave::new(slave, inputs, outputs))
+        Ok(SlaveRef::new(
+            client,
+            slave.configured_address,
+            SlavePdi::new(slave, inputs, outputs),
+        ))
     }
 
     fn pdi_mut(&self) -> &mut [u8] {
@@ -247,15 +257,18 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 /// An iterator over all slaves in a group.
 ///
 /// Created by calling [`SlaveGroup::slaves`](crate::slave_group::SlaveGroup::slaves).
-pub struct GroupSlaveIterator<'a, const MAX_SLAVES: usize, const MAX_PDI: usize> {
-    group: &'a SlaveGroup<MAX_SLAVES, MAX_PDI>,
+pub struct GroupSlaveIterator<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize> {
+    group: &'group SlaveGroup<MAX_SLAVES, MAX_PDI>,
     idx: usize,
+    client: &'client Client<'client>,
 }
 
-impl<'a, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
-    for GroupSlaveIterator<'a, MAX_SLAVES, MAX_PDI>
+impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
+    for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI>
+where
+    'client: 'group,
 {
-    type Item = GroupSlave<'a>;
+    type Item = SlaveRef<'group, SlavePdi<'group>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx >= self.group.len() {
@@ -263,7 +276,7 @@ impl<'a, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
         }
 
         // Squelch errors. If we're failing at this point, something is _very_ wrong.
-        let slave = self.group.slave(self.idx).map_err(|e| {
+        let slave = self.group.slave(self.client, self.idx).map_err(|e| {
             log::error!("Failed to get slave at index {} from group with {} slaves: {e:?}. This is very wrong. Please open an issue.", self.idx, self.group.len());
         }).ok()?;
 

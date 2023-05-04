@@ -96,13 +96,13 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Group has {} slaves", group.len());
 
-    for slave in group.slaves() {
+    for slave in group.slaves(&client) {
         let (i, o) = slave.io();
 
         log::info!(
             "-> Slave {} {} has inputs: {}, outputs: {}",
-            slave.configured_address,
-            slave.name,
+            slave.configured_address(),
+            slave.name(),
             i.len(),
             o.len(),
         );
@@ -123,7 +123,7 @@ async fn main() -> Result<(), Error> {
             .frmw::<u64>(0x1000, RegisterAddress::DcSystemTime)
             .await?;
 
-        for slave in group2.slaves() {
+        for slave in group2.slaves(&client) {
             let (_i, o) = slave.io();
 
             for byte in o.iter_mut() {

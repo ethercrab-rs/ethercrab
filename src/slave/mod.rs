@@ -1,5 +1,6 @@
 pub(crate) mod configuration;
 mod eeprom;
+pub mod pdi;
 pub mod ports;
 mod types;
 
@@ -36,6 +37,7 @@ use core::{
 use nom::{bytes::complete::take, number::complete::le_u32};
 use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
+pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -177,8 +179,14 @@ impl<'a, S> SlaveRef<'a, S>
 where
     S: Borrow<Slave>,
 {
+    /// Get the human readable name of the slave device.
     pub fn name(&self) -> &str {
         self.state.borrow().name.as_str()
+    }
+
+    /// Get the configured station address of the slave device.
+    pub fn configured_address(&self) -> u16 {
+        self.configured_address
     }
 
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox

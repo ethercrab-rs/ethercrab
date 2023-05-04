@@ -113,13 +113,13 @@
 //!
 //!     log::info!("Discovered {} slaves", group.len());
 //!
-//!     for slave in group.slaves() {
+//!     for slave in group.slaves(&client) {
 //!         let (i, o) = slave.io();
 //!
 //!         log::info!(
 //!             "-> Slave {} {} has {} input bytes, {} output bytes",
-//!             slave.configured_address,
-//!             slave.name,
+//!             slave.configured_address(),
+//!             slave.name(),
 //!             i.len(),
 //!             o.len(),
 //!         );
@@ -132,7 +132,7 @@
 //!         group.tx_rx(&client).await.expect("TX/RX");
 //!
 //!         // Increment every output byte for every slave device by one
-//!         for slave in group.slaves() {
+//!         for slave in group.slaves(&client) {
 //!             let (_i, o) = slave.io();
 //!
 //!             for byte in o.iter_mut() {
@@ -198,7 +198,9 @@ pub use client_config::ClientConfig;
 pub use coe::SubIndex;
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx};
 pub use register::RegisterAddress;
-pub use slave_group::{GroupId, GroupSlave, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle};
+// TODO
+// pub use slave::{Slave, SlavePdi, SlaveRef};
+pub use slave_group::{GroupId, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle};
 pub use slave_state::SlaveState;
 pub use timer_factory::Timeouts;
 

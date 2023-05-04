@@ -127,13 +127,13 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Discovered {} slaves", group.len());
 
-    for slave in group.slaves() {
+    for slave in group.slaves(&client) {
         let (i, o) = slave.io();
 
         log::info!(
             "-> Slave {} {} inputs: {} bytes, outputs: {} bytes",
-            slave.configured_address,
-            slave.name,
+            slave.configured_address(),
+            slave.name(),
             i.len(),
             o.len(),
         );
@@ -144,14 +144,10 @@ async fn main() -> Result<(), Error> {
 
     // Read cycle time from servo drive
     let cycle_time = {
-        let slave = group.slave(0).unwrap();
+        let slave = group.slave(&client, 0).unwrap();
 
-        let base = slave
-            .read_sdo::<u8>(&client, 0x60c2, SubIndex::Index(1))
-            .await?;
-        let x10 = slave
-            .read_sdo::<i8>(&client, 0x60c2, SubIndex::Index(2))
-            .await?;
+        let base = slave.read_sdo::<u8>(0x60c2, SubIndex::Index(1)).await?;
+        let x10 = slave.read_sdo::<i8>(0x60c2, SubIndex::Index(2)).await?;
 
         let base = f32::from(base);
         let x10 = 10.0f32.powi(i32::from(x10));
@@ -166,7 +162,7 @@ async fn main() -> Result<(), Error> {
     let mut cyclic_interval = tokio::time::interval(cycle_time);
     cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let slave = group.slave(0).expect("No servo!");
+    let slave = group.slave(&client, 0).expect("No servo!");
     let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
 
     let mut velocity: i32 = 0;
