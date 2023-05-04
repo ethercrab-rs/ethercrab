@@ -3,7 +3,7 @@ use crate::{
     error::Error,
     pdi::PdiOffset,
     register::RegisterAddress,
-    slave::{PdoDirection, Slave, SlaveRef},
+    slave::{configuration::PdoDirection, Slave, SlaveRef},
     Client, SlaveGroup,
 };
 use core::{cell::UnsafeCell, time::Duration};

@@ -307,10 +307,7 @@ mod tests {
     use super::*;
     use crate::{
         register::SupportFlags,
-        slave::{
-            ports::{tests::make_ports, Port, Ports},
-            SlaveConfig, SlaveIdentity,
-        },
+        slave::ports::{tests::make_ports, Port, Ports},
     };
 
     fn ports_passthrough() -> Ports {
@@ -331,14 +328,13 @@ mod tests {
         let slave_defaults = Slave {
             configured_address: 0x0000,
             ports: Ports::default(),
-            config: SlaveConfig::default(),
-            identity: SlaveIdentity::default(),
             name: "Default".into(),
             flags: SupportFlags::default(),
             dc_receive_time: 0,
             index: 0,
             parent_index: None,
             propagation_delay: 0,
+            ..Default::default()
         };
 
         let parents = [
@@ -390,14 +386,13 @@ mod tests {
         let slave_defaults = Slave {
             configured_address: 0x1000,
             ports: Ports::default(),
-            config: SlaveConfig::default(),
-            identity: SlaveIdentity::default(),
             name: "Default".into(),
             flags: SupportFlags::default(),
             dc_receive_time: 0,
             index: 0,
             parent_index: None,
             propagation_delay: 0,
+            ..Default::default()
         };
 
         let parents = [];
@@ -450,14 +445,13 @@ mod tests {
         let mut slave = Slave {
             configured_address: 0x1000,
             ports,
-            config: SlaveConfig::default(),
-            identity: SlaveIdentity::default(),
             name: "Default".into(),
             flags: SupportFlags::default(),
             dc_receive_time: 0,
             index: 0,
             parent_index: None,
             propagation_delay: 0,
+            ..Default::default()
         };
 
         let mut parents = [];
