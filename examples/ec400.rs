@@ -67,35 +67,35 @@ async fn main() -> Result<(), Error> {
         Box::pin(async {
             if slave.name() == "ELP-EC400S" {
                 // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
-                slave.write_sdo(0x1600, 0, 0u8).await?;
+                slave.sdo_write(0x1600, 0, 0u8).await?;
                 // Control word, u16
                 // NOTE: The lower word specifies the field length
-                slave.write_sdo(0x1600, 1, 0x6040_0010u32).await?;
+                slave.sdo_write(0x1600, 1, 0x6040_0010u32).await?;
                 // Target velocity, i32
-                slave.write_sdo(0x1600, 2, 0x60ff_0020u32).await?;
-                slave.write_sdo(0x1600, 0, 2u8).await?;
+                slave.sdo_write(0x1600, 2, 0x60ff_0020u32).await?;
+                slave.sdo_write(0x1600, 0, 2u8).await?;
 
-                slave.write_sdo(0x1a00, 0, 0u8).await?;
+                slave.sdo_write(0x1a00, 0, 0u8).await?;
                 // Status word, u16
-                slave.write_sdo(0x1a00, 1, 0x6041_0010u32).await?;
+                slave.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
                 // Actual position, i32
-                slave.write_sdo(0x1a00, 2, 0x6064_0020u32).await?;
+                slave.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
                 // Actual velocity, i32
-                slave.write_sdo(0x1a00, 3, 0x606c_0020u32).await?;
-                slave.write_sdo(0x1a00, 0, 0x03u8).await?;
+                slave.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
+                slave.sdo_write(0x1a00, 0, 0x03u8).await?;
 
-                slave.write_sdo(0x1c12, 0, 0u8).await?;
-                slave.write_sdo(0x1c12, 1, 0x1600).await?;
-                slave.write_sdo(0x1c12, 0, 1u8).await?;
+                slave.sdo_write(0x1c12, 0, 0u8).await?;
+                slave.sdo_write(0x1c12, 1, 0x1600).await?;
+                slave.sdo_write(0x1c12, 0, 1u8).await?;
 
-                slave.write_sdo(0x1c13, 0, 0u8).await?;
-                slave.write_sdo(0x1c13, 1, 0x1a00).await?;
-                slave.write_sdo(0x1c13, 0, 1u8).await?;
+                slave.sdo_write(0x1c13, 0, 0u8).await?;
+                slave.sdo_write(0x1c13, 1, 0x1a00).await?;
+                slave.sdo_write(0x1c13, 0, 1u8).await?;
 
                 // Opmode - Cyclic Synchronous Position
                 // slave.write_sdo(0x6060, 0, 0x08).await?;
                 // Opmode - Cyclic Synchronous Velocity
-                slave.write_sdo(0x6060, 0, 0x09u8).await?;
+                slave.sdo_write(0x6060, 0, 0x09u8).await?;
             }
 
             Ok(())
@@ -136,8 +136,8 @@ async fn main() -> Result<(), Error> {
     let cycle_time = {
         let slave = group.slave(&client, 0).unwrap();
 
-        let base = slave.read_sdo::<u8>(0x60c2, 1).await?;
-        let x10 = slave.read_sdo::<i8>(0x60c2, 2).await?;
+        let base = slave.sdo_read::<u8>(0x60c2, 1).await?;
+        let x10 = slave.sdo_read::<i8>(0x60c2, 2).await?;
 
         let base = f32::from(base);
         let x10 = 10.0f32.powi(i32::from(x10));

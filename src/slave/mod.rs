@@ -334,7 +334,9 @@ where
     }
 
     /// Write a value to the given SDO index (address) and sub-index.
-    pub async fn write_sdo<T>(
+    ///
+    /// Note that this method currently only supports expedited SDO downloads (4 bytes maximum).
+    pub async fn sdo_write<T>(
         &self,
         index: u16,
         sub_index: impl Into<SubIndex>,
@@ -349,8 +351,10 @@ where
         let counter = self.client.mailbox_counter();
 
         if T::len() > 4 {
+            log::error!("Only 4 byte SDO writes or smaller are supported currently.");
+
             // TODO: Normal SDO download. Only expedited requests for now
-            panic!("Data too long");
+            return Err(Error::Internal);
         }
 
         let mut data = [0u8; 4];
@@ -462,7 +466,9 @@ where
     }
 
     /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
-    pub async fn read_sdo<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
+    ///
+    /// Note that currently this method only supports reads of up to 32 bytes.
+    pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,
@@ -525,7 +531,7 @@ impl<'a, S> SlaveRef<'a, S> {
     ///
     /// Note that while this method is marked safe, raw alterations to slave config or behaviour can
     /// break higher level interactions with EtherCrab.
-    pub async fn read_register<T>(&self, register: impl Into<u16>) -> Result<T, Error>
+    pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
     where
         T: PduRead,
         <T as PduRead>::Error: Debug,
@@ -537,7 +543,7 @@ impl<'a, S> SlaveRef<'a, S> {
     ///
     /// Note that while this method is marked safe, raw alterations to slave config or behaviour can
     /// break higher level interactions with EtherCrab.
-    pub async fn write_register<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
+    pub async fn register_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,

@@ -9,8 +9,8 @@ An EtherCAT master written in Rust.
 ### Added
 
 - [#TODO] Add the ability to read/write registers/SDOs from grouped slave devices, with the methods
-  `SlaveRef::read_register`, `SlaveRef::write_register`, `SlaveRef::read_sdo` and
-  `SlaveRef::write_sdo`.
+  `SlaveRef::register_read`, `SlaveRef::register_write`, `SlaveRef::sdo_read` and
+  `SlaveRef::sdo_write`.
 - [#30] Added `Copy`, `Clone`, `PartialEq` and `Eq` implementations to `Error` and `PduError`.
 - [#1] Added `SlaveGroup::len` and `SlaveGroup::is_empty` methods.
 - [#29] Implement `Display` for `Error`, `PduError`, `MailboxError`, `EepromError`,
@@ -24,7 +24,7 @@ An EtherCAT master written in Rust.
 
 ### Changed
 
-- [#TODO] Slave `read_sdo` and `write_sdo` methods no longer require the use of `SubIndex`. For
+- [#TODO] Slave `sdo_read` and `sdo_write` methods no longer require the use of `SubIndex`. For
   single accesses, a raw `u8` can be passed instead for cleaner configuration code.
 - **(breaking)** [#TODO] `SlaveGroup::slaves` is renamed to `SlaveGroup::iter`
 - **(breaking)** [#TODO] Grouped slaves that were previously represented as `GroupSlave`s are now

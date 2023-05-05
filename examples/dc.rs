@@ -48,25 +48,25 @@ async fn main() -> Result<(), Error> {
                 log::info!("Found EL3004. Configuring...");
 
                 // Taken from TwinCAT
-                slave.write_sdo(0x1c12, 0, 0u8).await?;
-                slave.write_sdo(0x1c13, 0, 0u8).await?;
+                slave.sdo_write(0x1c12, 0, 0u8).await?;
+                slave.sdo_write(0x1c13, 0, 0u8).await?;
 
-                slave.write_sdo(0x1c13, 1, 0x1a00u16).await?;
-                slave.write_sdo(0x1c13, 2, 0x1a02u16).await?;
-                slave.write_sdo(0x1c13, 3, 0x1a04u16).await?;
-                slave.write_sdo(0x1c13, 4, 0x1a06u16).await?;
-                slave.write_sdo(0x1c13, 0, 4u8).await?;
+                slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+                slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+                slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+                slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+                slave.sdo_write(0x1c13, 0, 4u8).await?;
             } else if slave.name() == "LAN9252-EVB-HBI" {
                 log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
 
-                let sync_type = slave.read_sdo::<u16>(0x1c32, 1).await?;
-                let cycle_time = slave.read_sdo::<u32>(0x1c32, 2).await?;
-                let shift_time = slave.read_sdo::<u32>(0x1c32, 3).await.unwrap_or(0);
+                let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
+                let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
+                let shift_time = slave.sdo_read::<u32>(0x1c32, 3).await.unwrap_or(0);
                 log::info!("Outputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
 
-                let sync_type = slave.read_sdo::<u16>(0x1c33, 1).await?;
-                let cycle_time = slave.read_sdo::<u32>(0x1c33, 2).await?;
-                let shift_time = slave.read_sdo::<u32>(0x1c33, 3).await.unwrap_or(0);
+                let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
+                let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
+                let shift_time = slave.sdo_read::<u32>(0x1c33, 3).await.unwrap_or(0);
                 log::info!("Inputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
             }
 
