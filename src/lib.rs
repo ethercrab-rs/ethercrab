@@ -34,7 +34,7 @@
 //! ```rust,no_run
 //! use env_logger::Env;
 //! use ethercrab::{
-//!     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SubIndex, Timeouts,
+//!     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
 //! };
 //! use std::{sync::Arc, time::Duration};
 //! use tokio::time::MissedTickBehavior;
@@ -83,22 +83,22 @@
 //!             if slave.name() == "EL3004" {
 //!                 log::info!("Found EL3004. Configuring...");
 //!
-//!                 slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
-//!                 slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
+//!                 slave.write_sdo(0x1c12, 0, 0u8).await?;
+//!                 slave.write_sdo(0x1c13, 0, 0u8).await?;
 //!
 //!                 slave
-//!                     .write_sdo(0x1c13, SubIndex::Index(1), 0x1a00u16)
+//!                     .write_sdo(0x1c13, 1, 0x1a00u16)
 //!                     .await?;
 //!                 slave
-//!                     .write_sdo(0x1c13, SubIndex::Index(2), 0x1a02u16)
+//!                     .write_sdo(0x1c13, 2, 0x1a02u16)
 //!                     .await?;
 //!                 slave
-//!                     .write_sdo(0x1c13, SubIndex::Index(3), 0x1a04u16)
+//!                     .write_sdo(0x1c13, 3, 0x1a04u16)
 //!                     .await?;
 //!                 slave
-//!                     .write_sdo(0x1c13, SubIndex::Index(4), 0x1a06u16)
+//!                     .write_sdo(0x1c13, 4, 0x1a06u16)
 //!                     .await?;
-//!                 slave.write_sdo(0x1c13, SubIndex::Index(0), 4u8).await?;
+//!                 slave.write_sdo(0x1c13, 0, 4u8).await?;
 //!             }
 //!
 //!             Ok(())
@@ -113,8 +113,8 @@
 //!
 //!     log::info!("Discovered {} slaves", group.len());
 //!
-//!     for slave in group.slaves(&client) {
-//!         let (i, o) = slave.io();
+//!     for slave in group.iter(&client) {
+//!         let (i, o) = slave.io_raw();
 //!
 //!         log::info!(
 //!             "-> Slave {} {} has {} input bytes, {} output bytes",
@@ -132,8 +132,8 @@
 //!         group.tx_rx(&client).await.expect("TX/RX");
 //!
 //!         // Increment every output byte for every slave device by one
-//!         for slave in group.slaves(&client) {
-//!             let (_i, o) = slave.io();
+//!         for slave in group.iter(&client) {
+//!             let (_i, o) = slave.io_raw();
 //!
 //!             for byte in o.iter_mut() {
 //!                 *byte = byte.wrapping_add(1);

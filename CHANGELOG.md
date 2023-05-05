@@ -8,6 +8,9 @@ An EtherCAT master written in Rust.
 
 ### Added
 
+- [#TODO] Add the ability to read/write registers/SDOs from grouped slave devices, with the methods
+  `SlaveRef::read_register`, `SlaveRef::write_register`, `SlaveRef::read_sdo` and
+  `SlaveRef::write_sdo`.
 - [#30] Added `Copy`, `Clone`, `PartialEq` and `Eq` implementations to `Error` and `PduError`.
 - [#1] Added `SlaveGroup::len` and `SlaveGroup::is_empty` methods.
 - [#29] Implement `Display` for `Error`, `PduError`, `MailboxError`, `EepromError`,
@@ -21,11 +24,15 @@ An EtherCAT master written in Rust.
 
 ### Changed
 
+- [#TODO] Slave `read_sdo` and `write_sdo` methods no longer require the use of `SubIndex`. For
+  single accesses, a raw `u8` can be passed instead for cleaner configuration code.
 - **(breaking)** [#TODO] `SlaveGroup::slaves` is renamed to `SlaveGroup::iter`
 - **(breaking)** [#TODO] Grouped slaves that were previously represented as `GroupSlave`s are now
   represented as `SlaveRef<'_, SlavePdi<'_>>` instead. `GroupSlave` is removed.
 - **(breaking)** [#TODO] The `io()`, `inputs()` and `outputs()` methods on grouped slaves have been
   renamed to `io_raw()`, `inputs_raw()` and `outputs_raw()` respecitively.
+- **(breaking)** [#TODO] The `Slave.name` and `Slave.identity` fields have been replaced with
+  methods of the same name.
 - **(breaking)** [#45] The grouping closure passed to `Client::init` now requires a
   `&dyn SlaveGroupHandle` to be returned. This is a sealed trait only implemented for `SlaveGroup`s
   and allows some internal refactors by erasing the const generics from `SlaveGroup`.

@@ -256,7 +256,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 
 /// An iterator over all slaves in a group.
 ///
-/// Created by calling [`SlaveGroup::slaves`](crate::slave_group::SlaveGroup::slaves).
+/// Created by calling [`SlaveGroup::iter`](crate::slave_group::SlaveGroup::iter).
 pub struct GroupSlaveIterator<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize> {
     group: &'group SlaveGroup<MAX_SLAVES, MAX_PDI>,
     idx: usize,

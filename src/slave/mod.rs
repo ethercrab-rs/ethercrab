@@ -523,9 +523,9 @@ impl<'a, S> SlaveRef<'a, S> {
 
     /// Read a register.
     ///
-    /// Note that while this method is marked safe, alterations to slave config or behaviour can
-    /// break interactions with EtherCrab.
-    pub async fn read_raw<T>(&self, register: RegisterAddress) -> Result<T, Error>
+    /// Note that while this method is marked safe, raw alterations to slave config or behaviour can
+    /// break higher level interactions with EtherCrab.
+    pub async fn read_register<T>(&self, register: impl Into<u16>) -> Result<T, Error>
     where
         T: PduRead,
         <T as PduRead>::Error: Debug,
@@ -535,9 +535,9 @@ impl<'a, S> SlaveRef<'a, S> {
 
     /// Write a register.
     ///
-    /// Note that while this method is marked safe, alterations to slave config or behaviour can
-    /// break interactions with EtherCrab.
-    pub async fn write_raw<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
+    /// Note that while this method is marked safe, raw alterations to slave config or behaviour can
+    /// break higher level interactions with EtherCrab.
+    pub async fn write_register<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,
@@ -549,7 +549,7 @@ impl<'a, S> SlaveRef<'a, S> {
 
     pub(crate) async fn read_ignore_wkc<T>(
         &self,
-        register: RegisterAddress,
+        register: impl Into<u16>,
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
