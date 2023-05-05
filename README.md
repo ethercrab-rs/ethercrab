@@ -110,7 +110,7 @@ async fn main() -> Result<(), Error> {
 
     let group = client
         // Initialise a single group
-        .init::<MAX_SLAVES, _>(group, |groups, _slave| Ok(groups))
+        .init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
         .await
         .expect("Init");
 
@@ -149,37 +149,25 @@ async fn main() -> Result<(), Error> {
 
 ```
 
-## Current goals
+## Current and future features
 
-- [x] Become a member of the
-      [EtherCAT Technologies Group (ETG)](https://www.ethercat.org/default.htm) and get access to
-      the EtherCAT specification.
-- [x] Explore basic master architecture to support current design goals
-- [x] Autoconfigure slaves from their EEPROM data
-  - [x] Also support configuration using CoE data
-- [x] A first pass at a safe `async` API
-  - [ ] Tested in no_std environments with either [RTIC](https://rtic.rs) (once async support is
-        released) or [Embassy](https://embassy.dev/)
-- [x] Usable in multi-threaded Linux systems with e.g. `tokio` or `std::thread` and `block_on`.
-- [x] Configuration and cyclic communication with multiple EtherCAT slaves.
-- [ ] Basic support for [CiA402](https://www.can-cia.org/can-knowledge/canopen/cia402/) torque,
-      position and velocity control of common servo drives in a high-level way.
-
-Current test hardware is an EK1100 + modules and two LAN9252 dev boards.
-
-## Future goals
-
-These may change at any time.
-
-- [-] ~~A blocking API which spins on internal futures for best compatibility, possibly using
-  [casette](https://lib.rs/crates/cassette) or [nb-executor](https://lib.rs/crates/nb-executor).~~
+- [x] `async` API
+- [x] Usable in `no_std` contexts as long as an allocator is available
+- [x] Autoconfigure slaves from their EEPROM (SII) data during startup
+  - [x] Supports configuration using CoE data
+- [x] Safely usable in multi-threaded Linux systems with e.g. `tokio` or `std::thread` and
+      `block_on`.
+- [x] Support for SDO read/writes to configure slave devices
+- [ ] Distributed clocks
+  - [x] Detection of delays between slave devices in topology
+  - [x] Static drift compensation on startup
+  - [ ] Cyclic synchronisation during OP
+- [x] Basic support for [CiA402](https://www.can-cia.org/can-knowledge/canopen/cia402/)/DS402 drives
+  - [ ] A higher level DS402 API for torque, position and velocity control of common servo drives in
+        a more abstract way.
 - [ ] Integration with LinuxCNC as a HAL component using
       [the Rust `linuxcnc-hal`](https://github.com/jamwaffles/linuxcnc-hal-rs).
-- [ ] A multiplatform configuration/debugging/management GUI
-- [ ] Loading slave configurations from ESI XML files
-
-  Current test hardware consists of a Kollmorgen AKD servo drive and three Leadshine EL7 servo
-  drives
+- [ ] Load slave configurations from ESI XML files
 
 ## Performance
 
