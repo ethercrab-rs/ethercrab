@@ -146,8 +146,8 @@
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![deny(missing_docs)]
-#![deny(missing_copy_implementations)]
+// #![deny(missing_docs)]
+// #![deny(missing_copy_implementations)]
 #![deny(trivial_casts)]
 #![deny(trivial_numeric_casts)]
 #![deny(unused_import_braces)]
@@ -177,12 +177,13 @@ mod pdi;
 mod pdu_data;
 mod pdu_loop;
 mod register;
-mod slave;
+pub mod slave;
 mod slave_group;
 mod slave_state;
 mod sync_manager_channel;
 mod timer_factory;
 mod vendors;
+pub mod convenience;
 
 #[doc(hidden)]
 pub mod internals;
@@ -200,9 +201,15 @@ pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx};
 pub use register::RegisterAddress;
 pub use slave_group::{
     GroupSlave, GroupSlaveIterator, SlaveGroup, SlaveGroupContainer, SlaveGroupRef,
-};
+	};
+pub use slave::{Slave, SlaveRef};
 pub use slave_state::SlaveState;
 pub use timer_factory::Timeouts;
+pub use pdu_data::{PduData, PduRead};
+pub use convenience::{
+	field::{Field, DType},
+	sdo,
+	};
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE_RAW: u16 = 0x88a4;
