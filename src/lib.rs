@@ -83,22 +83,22 @@
 //!             if slave.name() == "EL3004" {
 //!                 log::info!("Found EL3004. Configuring...");
 //!
-//!                 slave.write_sdo(0x1c12, 0, 0u8).await?;
-//!                 slave.write_sdo(0x1c13, 0, 0u8).await?;
+//!                 slave.sdo_write(0x1c12, 0, 0u8).await?;
+//!                 slave.sdo_write(0x1c13, 0, 0u8).await?;
 //!
 //!                 slave
-//!                     .write_sdo(0x1c13, 1, 0x1a00u16)
+//!                     .sdo_write(0x1c13, 1, 0x1a00u16)
 //!                     .await?;
 //!                 slave
-//!                     .write_sdo(0x1c13, 2, 0x1a02u16)
+//!                     .sdo_write(0x1c13, 2, 0x1a02u16)
 //!                     .await?;
 //!                 slave
-//!                     .write_sdo(0x1c13, 3, 0x1a04u16)
+//!                     .sdo_write(0x1c13, 3, 0x1a04u16)
 //!                     .await?;
 //!                 slave
-//!                     .write_sdo(0x1c13, 4, 0x1a06u16)
+//!                     .sdo_write(0x1c13, 4, 0x1a06u16)
 //!                     .await?;
-//!                 slave.write_sdo(0x1c13, 0, 4u8).await?;
+//!                 slave.sdo_write(0x1c13, 0, 4u8).await?;
 //!             }
 //!
 //!             Ok(())
