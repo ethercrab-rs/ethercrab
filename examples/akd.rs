@@ -4,7 +4,7 @@ use env_logger::Env;
 use ethercrab::{
     error::{Error, MailboxError},
     std::tx_rx_task,
-    Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
+    Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -61,7 +61,7 @@ async fn main() -> Result<(), Error> {
 
             // --- Writes ---
 
-            let profile = match slave.read_sdo::<u32>(0x1000, SubIndex::Index(0)).await {
+            let profile = match slave.sdo_read::<u32>(0x1000, 0).await {
                 Err(Error::Mailbox(MailboxError::NoMailbox)) => Ok(None),
                 Ok(device_type) => Ok(Some(device_type & 0xffff)),
                 Err(e) => Err(e),
@@ -74,39 +74,31 @@ async fn main() -> Result<(), Error> {
 
             // AKD config
             if slave.name() == "AKD" {
-                slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
+                slave.sdo_write(0x1c12, 0, 0u8).await?;
                 // 0x1702 = fixed velocity mapping
-                slave
-                    .write_sdo(0x1c12, SubIndex::Index(1), 0x1702u16)
-                    .await?;
-                slave.write_sdo(0x1c12, SubIndex::Index(0), 0x01u8).await?;
+                slave.sdo_write(0x1c12, 1, 0x1702u16).await?;
+                slave.sdo_write(0x1c12, 0, 0x01u8).await?;
 
                 // Must set both read AND write SDOs for AKD otherwise it times out going into OP
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
-                slave
-                    .write_sdo(0x1c13, SubIndex::Index(1), 0x1B01u16)
-                    .await?;
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 0x01u8).await?;
+                slave.sdo_write(0x1c13, 0, 0u8).await?;
+                slave.sdo_write(0x1c13, 1, 0x1B01u16).await?;
+                slave.sdo_write(0x1c13, 0, 0x01u8).await?;
 
                 // Opmode - Cyclic Synchronous Position
-                // slave.write_sdo(0x6060, SubIndex::Index(0), 0x08).await?;
+                // slave.write_sdo(0x6060, 0, 0x08).await?;
                 // Opmode - Cyclic Synchronous Velocity
-                slave.write_sdo(0x6060, SubIndex::Index(0), 0x09u8).await?;
+                slave.sdo_write(0x6060, 0, 0x09u8).await?;
 
                 {
                     // Shows up as default value of 2^20, but I'm using a 2^32 counts/rev encoder.
-                    let encoder_increments =
-                        slave.read_sdo::<u32>(0x608f, SubIndex::Index(1)).await?;
-                    let num_revs = slave.read_sdo::<u32>(0x608f, SubIndex::Index(2)).await?;
+                    let encoder_increments = slave.sdo_read::<u32>(0x608f, 1).await?;
+                    let num_revs = slave.sdo_read::<u32>(0x608f, 2).await?;
 
-                    let gear_ratio_motor =
-                        slave.read_sdo::<u32>(0x6091, SubIndex::Index(1)).await?;
-                    let gear_ratio_final =
-                        slave.read_sdo::<u32>(0x6091, SubIndex::Index(2)).await?;
+                    let gear_ratio_motor = slave.sdo_read::<u32>(0x6091, 1).await?;
+                    let gear_ratio_final = slave.sdo_read::<u32>(0x6091, 2).await?;
 
-                    let feed = slave.read_sdo::<u32>(0x6092, SubIndex::Index(1)).await?;
-                    let shaft_revolutions =
-                        slave.read_sdo::<u32>(0x6092, SubIndex::Index(2)).await?;
+                    let feed = slave.sdo_read::<u32>(0x6092, 1).await?;
+                    let shaft_revolutions = slave.sdo_read::<u32>(0x6092, 2).await?;
 
                     let counts_per_rev = encoder_increments / num_revs;
 
@@ -140,18 +132,14 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Discovered {} slaves", group.len());
 
-    let slave = group.slave(0).expect("first slave not found");
+    let slave = group.slave(&client, 0).expect("first slave not found");
 
     // Run twice to prime PDI
     group.tx_rx(&client).await.expect("TX/RX");
 
     let cycle_time = {
-        let base = slave
-            .read_sdo::<u8>(&client, 0x60c2, SubIndex::Index(1))
-            .await?;
-        let x10 = slave
-            .read_sdo::<i8>(&client, 0x60c2, SubIndex::Index(2))
-            .await?;
+        let base = slave.sdo_read::<u8>(0x60c2, 1).await?;
+        let x10 = slave.sdo_read::<i8>(0x60c2, 2).await?;
 
         let base = f32::from(base);
         let x10 = 10.0f32.powi(i32::from(x10));
@@ -174,7 +162,7 @@ async fn main() -> Result<(), Error> {
 
         group.tx_rx(&client).await.expect("TX/RX");
 
-        let (i, o) = slave.io();
+        let (i, o) = slave.io_raw();
 
         let status = {
             let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
@@ -193,7 +181,7 @@ async fn main() -> Result<(), Error> {
             loop {
                 group.tx_rx(&client).await.expect("TX/RX");
 
-                let (i, _o) = slave.io();
+                let (i, _o) = slave.io_raw();
 
                 let status = {
                     let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
@@ -216,7 +204,7 @@ async fn main() -> Result<(), Error> {
     {
         log::info!("Putting drive in shutdown state");
 
-        let (_i, o) = slave.io();
+        let (_i, o) = slave.io_raw();
 
         let (_pos_cmd, control) = o.split_at_mut(4);
         let value = AkdControlWord::SHUTDOWN;
@@ -226,7 +214,7 @@ async fn main() -> Result<(), Error> {
         loop {
             group.tx_rx(&client).await.expect("TX/RX");
 
-            let (i, _o) = slave.io();
+            let (i, _o) = slave.io_raw();
 
             let status = {
                 let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
@@ -248,7 +236,7 @@ async fn main() -> Result<(), Error> {
     {
         log::info!("Switching drive on");
 
-        let (_i, o) = slave.io();
+        let (_i, o) = slave.io_raw();
 
         let (_pos_cmd, control) = o.split_at_mut(4);
         let reset = AkdControlWord::SWITCH_ON
@@ -260,7 +248,7 @@ async fn main() -> Result<(), Error> {
         loop {
             group.tx_rx(&client).await.expect("TX/RX");
 
-            let (i, o) = slave.io();
+            let (i, o) = slave.io_raw();
 
             let status = {
                 let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
@@ -293,7 +281,7 @@ async fn main() -> Result<(), Error> {
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
-        let (i, o) = slave.io();
+        let (i, o) = slave.io_raw();
 
         let (pos, status) = {
             let pos = u32::from_le_bytes(i[0..=3].try_into().unwrap());

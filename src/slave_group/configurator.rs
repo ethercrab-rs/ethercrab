@@ -3,11 +3,7 @@ use crate::{
     error::Error,
     pdi::PdiOffset,
     register::RegisterAddress,
-    slave::{
-        configurator::{PdoDirection, SlaveConfigurator},
-        slave_client::SlaveClient,
-        Slave,
-    },
+    slave::{configuration::PdoDirection, Slave, SlaveRef},
     Client, SlaveGroup,
 };
 use core::{cell::UnsafeCell, time::Duration};
@@ -75,7 +71,7 @@ impl<'a> SlaveGroupRef<'a> {
 
         // Configure master read PDI mappings in the first section of the PDI
         for slave in inner.slaves.iter_mut() {
-            let mut slave_config = SlaveConfigurator::new(client, slave);
+            let mut slave_config = SlaveRef::new(client, slave.configured_address, slave);
 
             // TODO: Split `SlaveGroupRef::configure_from_eeprom` so we can put all slaves into
             // SAFE-OP without waiting, then wait globally for all slaves to reach that state.
@@ -84,9 +80,9 @@ impl<'a> SlaveGroupRef<'a> {
             slave_config.configure_mailboxes().await?;
 
             if let Some(hook) = self.preop_safeop_hook {
-                let conf = slave_config.as_ref();
+                // let conf = slave_config.as_ref();
 
-                let fut = (hook)(&conf);
+                let fut = (hook)(&slave_config);
 
                 fut.await?;
             }
@@ -112,7 +108,7 @@ impl<'a> SlaveGroupRef<'a> {
             let addr = slave.configured_address;
             let name = slave.name.clone();
 
-            let mut slave_config = SlaveConfigurator::new(client, slave);
+            let mut slave_config = SlaveRef::new(client, slave.configured_address, slave);
 
             // Still in PRE-OP
             global_offset = slave_config
@@ -128,16 +124,19 @@ impl<'a> SlaveGroupRef<'a> {
             // if i == 0 {
             if false {
                 log::info!("Slave {:#06x} {} DC", addr, name);
-                let sl = SlaveClient::new(client, addr);
+                // let slave_config = SlaveRef::new(client, slave.configured_address, ());
 
                 // TODO: Pass in as config
                 let cycle_time = Duration::from_millis(2).as_nanos() as u32;
 
                 // Disable sync signals
-                sl.write(RegisterAddress::DcSyncActive, 0x00u8, "disable sync")
+                slave_config
+                    .write(RegisterAddress::DcSyncActive, 0x00u8, "disable sync")
                     .await?;
 
-                let local_time: u32 = sl.read(RegisterAddress::DcSystemTime, "local time").await?;
+                let local_time: u32 = slave_config
+                    .read(RegisterAddress::DcSystemTime, "local time")
+                    .await?;
 
                 // TODO: Pass in as config
                 // let startup_delay = Duration::from_millis(100).as_nanos() as u32;
@@ -146,22 +145,25 @@ impl<'a> SlaveGroupRef<'a> {
                 // TODO: Pass in as config
                 let start_time = local_time + cycle_time + startup_delay;
 
-                sl.write(
-                    RegisterAddress::DcSyncStartTime,
-                    start_time,
-                    "sync start time",
-                )
-                .await?;
+                slave_config
+                    .write(
+                        RegisterAddress::DcSyncStartTime,
+                        start_time,
+                        "sync start time",
+                    )
+                    .await?;
 
-                sl.write(
-                    RegisterAddress::DcSync0CycleTime,
-                    cycle_time,
-                    "sync cycle time",
-                )
-                .await?;
+                slave_config
+                    .write(
+                        RegisterAddress::DcSync0CycleTime,
+                        cycle_time,
+                        "sync cycle time",
+                    )
+                    .await?;
 
                 // Enable cyclic operation (0th bit) and sync0 signal (1st bit)
-                sl.write(RegisterAddress::DcSyncActive, 0b11u8, "enable sync0")
+                slave_config
+                    .write(RegisterAddress::DcSyncActive, 0b11u8, "enable sync0")
                     .await?;
             }
 
@@ -170,7 +172,7 @@ impl<'a> SlaveGroupRef<'a> {
 
             // We have both inputs and outputs at this stage, so can correctly calculate the group
             // WKC.
-            *inner.group_working_counter += slave.config.io.working_counter_sum();
+            *inner.group_working_counter += slave_config.working_counter_sum();
         }
 
         log::debug!("Slave FMMUs configured for group. Able to move to SAFE-OP");
