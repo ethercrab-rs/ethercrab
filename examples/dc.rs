@@ -3,7 +3,7 @@
 use env_logger::Env;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, RegisterAddress, SlaveGroup,
-    SubIndex, Timeouts,
+    Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -48,39 +48,25 @@ async fn main() -> Result<(), Error> {
                 log::info!("Found EL3004. Configuring...");
 
                 // Taken from TwinCAT
-                slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
+                slave.write_sdo(0x1c12, 0, 0u8).await?;
+                slave.write_sdo(0x1c13, 0, 0u8).await?;
 
-                slave
-                    .write_sdo(0x1c13, SubIndex::Index(1), 0x1a00u16)
-                    .await?;
-                slave
-                    .write_sdo(0x1c13, SubIndex::Index(2), 0x1a02u16)
-                    .await?;
-                slave
-                    .write_sdo(0x1c13, SubIndex::Index(3), 0x1a04u16)
-                    .await?;
-                slave
-                    .write_sdo(0x1c13, SubIndex::Index(4), 0x1a06u16)
-                    .await?;
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 4u8).await?;
+                slave.write_sdo(0x1c13, 1, 0x1a00u16).await?;
+                slave.write_sdo(0x1c13, 2, 0x1a02u16).await?;
+                slave.write_sdo(0x1c13, 3, 0x1a04u16).await?;
+                slave.write_sdo(0x1c13, 4, 0x1a06u16).await?;
+                slave.write_sdo(0x1c13, 0, 4u8).await?;
             } else if slave.name() == "LAN9252-EVB-HBI" {
-                log::info!("Found LAN9252 in {:?} state", slave.state().await.ok());
+                log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
 
-                let sync_type = slave.read_sdo::<u16>(0x1c32, SubIndex::Index(1)).await?;
-                let cycle_time = slave.read_sdo::<u32>(0x1c32, SubIndex::Index(2)).await?;
-                let shift_time = slave
-                    .read_sdo::<u32>(0x1c32, SubIndex::Index(3))
-                    .await
-                    .unwrap_or(0);
+                let sync_type = slave.read_sdo::<u16>(0x1c32, 1).await?;
+                let cycle_time = slave.read_sdo::<u32>(0x1c32, 2).await?;
+                let shift_time = slave.read_sdo::<u32>(0x1c32, 3).await.unwrap_or(0);
                 log::info!("Outputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
 
-                let sync_type = slave.read_sdo::<u16>(0x1c33, SubIndex::Index(1)).await?;
-                let cycle_time = slave.read_sdo::<u32>(0x1c33, SubIndex::Index(2)).await?;
-                let shift_time = slave
-                    .read_sdo::<u32>(0x1c33, SubIndex::Index(3))
-                    .await
-                    .unwrap_or(0);
+                let sync_type = slave.read_sdo::<u16>(0x1c33, 1).await?;
+                let cycle_time = slave.read_sdo::<u32>(0x1c33, 2).await?;
+                let shift_time = slave.read_sdo::<u32>(0x1c33, 3).await.unwrap_or(0);
                 log::info!("Inputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
             }
 
