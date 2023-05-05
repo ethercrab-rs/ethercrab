@@ -26,6 +26,8 @@ An EtherCAT master written in Rust.
 
 - [#47] Slave `sdo_read` and `sdo_write` methods no longer require the use of `SubIndex`. For single
   accesses, a raw `u8` can be passed instead for cleaner configuration code.
+- **(breaking)** [#47] `SlaveGroup::slave` and `SlaveGroup::iter` (was `slaves`) now requires the
+  passing of a `Client` reference when called.
 - **(breaking)** [#47] `SlaveGroup::slaves` is renamed to `SlaveGroup::iter`
 - **(breaking)** [#47] Grouped slaves that were previously represented as `GroupSlave`s are now
   represented as `SlaveRef<'_, SlavePdi<'_>>` instead. `GroupSlave` is removed.
