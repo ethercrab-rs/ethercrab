@@ -3,9 +3,11 @@
 use crate::{error::VisibleStringError, LEN_MASK};
 use core::array::TryFromSliceError;
 
+/// trait for types that can be read from a PDU (Process Data Unit)
 pub trait PduRead: Sized {
-    const LEN: u16;
-
+	/// bit length of the data in PDU
+    const LEN: u16;	
+	/// error raised when unable to load the PDU data
     type Error: core::fmt::Debug;
 
     fn len() -> u16 {
@@ -15,6 +17,7 @@ pub trait PduRead: Sized {
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error>;
 }
 
+/// trait for types that can be read or written from/to a PDU (Process Data Unit)
 pub trait PduData: PduRead {
     fn as_slice(&self) -> &[u8];
 }

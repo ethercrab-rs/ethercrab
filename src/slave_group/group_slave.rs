@@ -31,6 +31,17 @@ impl<'a> GroupSlave<'a> {
             outputs,
         }
     }
+    
+    pub fn bind(&self, client: &'a Client<'a>) -> SlaveRef<'a> {
+		SlaveRef::new(
+			SlaveClient::new(client, self.configured_address),
+			self.slave,
+			)
+    }
+
+    pub fn name(&self) -> &str {
+        self.slave.name.as_str()
+    }
 
     /// Get a tuple of (I, O) for this slave in the Process Data Image (PDI).
     pub fn io(&self) -> (&[u8], &mut [u8]) {

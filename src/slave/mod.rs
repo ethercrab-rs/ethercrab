@@ -437,17 +437,9 @@ impl<'a> SlaveRef<'a> {
         H: CoeServiceRequest,
         <H as PackedStruct>::ByteArray: AsRef<[u8]>,
     {
-        let write_mailbox = self
-            .slave
-            .config
-            .mailbox
-            .write
+        let write_mailbox = self.slave.config.mailbox.write
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
-        let read_mailbox = self
-            .slave
-            .config
-            .mailbox
-            .read
+        let read_mailbox = self.slave.config.mailbox.read
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
 
         let counter = request.counter();
