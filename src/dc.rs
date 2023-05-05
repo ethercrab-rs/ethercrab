@@ -240,7 +240,7 @@ fn configure_slave_offsets(
 ///
 /// This method walks through the discovered list of devices and sets the system time offset and
 /// transmission delay of each device.
-pub async fn configure_dc<'slaves>(
+pub(crate) async fn configure_dc<'slaves>(
     client: &Client<'_>,
     slaves: &'slaves mut [Slave],
 ) -> Result<Option<&'slaves Slave>, Error> {
@@ -275,7 +275,7 @@ pub async fn configure_dc<'slaves>(
     Ok(first_dc_slave)
 }
 
-pub async fn run_dc_static_sync(
+pub(crate) async fn run_dc_static_sync(
     client: &Client<'_>,
     dc_reference_slave: &Slave,
     iterations: u32,

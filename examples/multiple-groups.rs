@@ -70,12 +70,10 @@ async fn main() -> Result<(), Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
-        .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
-            match slave.name.as_str() {
-                "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
-                "EL2828" => Ok(&groups.fast_outputs),
-                _ => Err(Error::UnknownSlave),
-            }
+        .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| match slave.name() {
+            "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
+            "EL2828" => Ok(&groups.fast_outputs),
+            _ => Err(Error::UnknownSlave),
         })
         .await
         .expect("Init");
@@ -102,8 +100,8 @@ async fn main() -> Result<(), Error> {
             .expect("EL2889 not present!");
 
         // Set initial output state
-        el2889.io().1[0] = 0x01;
-        el2889.io().1[1] = 0x80;
+        el2889.io_raw().1[0] = 0x01;
+        el2889.io_raw().1[1] = 0x80;
 
         loop {
             slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
@@ -112,7 +110,7 @@ async fn main() -> Result<(), Error> {
             if tick.elapsed() > slow_duration {
                 tick = Instant::now();
 
-                let (_i, o) = el2889.io();
+                let (_i, o) = el2889.io_raw();
 
                 // Make a nice pattern on EL2889 LEDs
                 o[0] = o[0].rotate_left(1);
@@ -131,8 +129,8 @@ async fn main() -> Result<(), Error> {
             fast_outputs.tx_rx(&client).await.expect("TX/RX");
 
             // Increment every output byte for every slave device by one
-            for slave in fast_outputs.slaves(&client) {
-                let (_i, o) = slave.io();
+            for slave in fast_outputs.iter(&client) {
+                let (_i, o) = slave.io_raw();
 
                 for byte in o.iter_mut() {
                     *byte = byte.wrapping_add(1);

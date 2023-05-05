@@ -87,8 +87,8 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Discovered {} slaves", group.len());
 
-    for slave in group.slaves(&client) {
-        let (i, o) = slave.io();
+    for slave in group.iter(&client) {
+        let (i, o) = slave.io_raw();
 
         log::info!(
             "-> Slave {} {} has {} input bytes, {} output bytes",
@@ -106,8 +106,8 @@ async fn main() -> Result<(), Error> {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Increment every output byte for every slave device by one
-        for slave in group.slaves(&client) {
-            let (_i, o) = slave.io();
+        for slave in group.iter(&client) {
+            let (_i, o) = slave.io_raw();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);

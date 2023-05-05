@@ -21,7 +21,7 @@ impl<'a, S> SlaveRef<'a, S> {
     ///
     /// Note that the string index is hard coded to `1` instead of reading the string index from the
     /// EEPROM `General` section.
-    pub async fn eeprom_device_name<const N: usize>(
+    pub(crate) async fn eeprom_device_name<const N: usize>(
         &self,
     ) -> Result<Option<heapless::String<N>>, Error> {
         // Uncomment to read longer, but correct, name string from EEPROM
@@ -38,7 +38,7 @@ impl<'a, S> SlaveRef<'a, S> {
         self.eeprom_find_string(name_idx).await
     }
 
-    pub async fn eeprom_mailbox_config(&self) -> Result<DefaultMailbox, Error> {
+    pub(crate) async fn eeprom_mailbox_config(&self) -> Result<DefaultMailbox, Error> {
         // Start reading standard mailbox config. Raw start address defined in ETG2010 Table 2.
         // Mailbox config is 10 bytes long.
         let mut reader = EepromSectionReader::start_at(0x0018, DefaultMailbox::STORAGE_SIZE as u16);
@@ -65,7 +65,7 @@ impl<'a, S> SlaveRef<'a, S> {
         SiiGeneral::parse(&buf)
     }
 
-    pub async fn eeprom_identity(&self) -> Result<SlaveIdentity, Error> {
+    pub(crate) async fn eeprom_identity(&self) -> Result<SlaveIdentity, Error> {
         let mut reader = EepromSectionReader::start_at(0x0008, SlaveIdentity::STORAGE_SIZE as u16);
 
         log::trace!("Get identity");
@@ -76,7 +76,9 @@ impl<'a, S> SlaveRef<'a, S> {
             .and_then(|buf| SlaveIdentity::parse(&buf))
     }
 
-    pub async fn eeprom_sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
+    pub(crate) async fn eeprom_sync_managers(
+        &self,
+    ) -> Result<heapless::Vec<SyncManager, 8>, Error> {
         let mut sync_managers = heapless::Vec::<_, 8>::new();
 
         log::trace!("Get sync managers");
@@ -99,7 +101,7 @@ impl<'a, S> SlaveRef<'a, S> {
         Ok(sync_managers)
     }
 
-    pub async fn eeprom_fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
+    pub(crate) async fn eeprom_fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
         let category = EepromSectionReader::new(self, CategoryType::Fmmu).await?;
 
         log::trace!("Get FMMUs");
@@ -121,7 +123,7 @@ impl<'a, S> SlaveRef<'a, S> {
         Ok(fmmus)
     }
 
-    pub async fn eeprom_fmmu_mappings(&self) -> Result<heapless::Vec<FmmuEx, 16>, Error> {
+    pub(crate) async fn eeprom_fmmu_mappings(&self) -> Result<heapless::Vec<FmmuEx, 16>, Error> {
         let mut mappings = heapless::Vec::<_, 16>::new();
 
         log::trace!("Get FMMU mappings");
@@ -194,12 +196,12 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     /// Transmit PDOs (from device's perspective) - inputs
-    pub async fn eeprom_master_read_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
+    pub(crate) async fn eeprom_master_read_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
         self.eeprom_pdos(CategoryType::TxPdo, TX_PDO_RANGE).await
     }
 
     /// Receive PDOs (from device's perspective) - outputs
-    pub async fn eeprom_master_write_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
+    pub(crate) async fn eeprom_master_write_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
         self.eeprom_pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
     }
 

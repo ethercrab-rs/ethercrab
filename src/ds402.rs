@@ -153,13 +153,13 @@ impl<'a> Ds402<'a> {
 
     /// Get the DS402 status word.
     pub fn status_word(&self) -> StatusWord {
-        let status = u16::from_le_bytes(self.slave.inputs()[0..=1].try_into().unwrap());
+        let status = u16::from_le_bytes(self.slave.inputs_raw()[0..=1].try_into().unwrap());
 
         StatusWord::from_bits_truncate(status)
     }
 
     fn set_control_word(&mut self, state: ControlWord) {
-        let (control, _rest) = self.slave.outputs().split_at_mut(2);
+        let (control, _rest) = self.slave.outputs_raw().split_at_mut(2);
 
         let state = state.bits().to_le_bytes();
 

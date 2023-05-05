@@ -117,8 +117,8 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Discovered {} slaves", group.len());
 
-    for slave in group.slaves(&client) {
-        let (i, o) = slave.io();
+    for slave in group.iter(&client) {
+        let (i, o) = slave.io_raw();
 
         log::info!(
             "-> Slave {} {} inputs: {} bytes, outputs: {} bytes",
@@ -172,7 +172,7 @@ async fn main() -> Result<(), Error> {
             //     .await?;
 
             let status = servo.status_word();
-            let (i, o) = servo.slave().io();
+            let (i, o) = servo.slave().io_raw();
 
             let (pos, vel) = {
                 let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
@@ -214,7 +214,7 @@ async fn main() -> Result<(), Error> {
         }
 
         let status = servo.status_word();
-        let (i, o) = servo.slave().io();
+        let (i, o) = servo.slave().io_raw();
 
         let (pos, vel) = {
             let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());

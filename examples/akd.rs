@@ -162,7 +162,7 @@ async fn main() -> Result<(), Error> {
 
         group.tx_rx(&client).await.expect("TX/RX");
 
-        let (i, o) = slave.io();
+        let (i, o) = slave.io_raw();
 
         let status = {
             let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
@@ -181,7 +181,7 @@ async fn main() -> Result<(), Error> {
             loop {
                 group.tx_rx(&client).await.expect("TX/RX");
 
-                let (i, _o) = slave.io();
+                let (i, _o) = slave.io_raw();
 
                 let status = {
                     let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
@@ -204,7 +204,7 @@ async fn main() -> Result<(), Error> {
     {
         log::info!("Putting drive in shutdown state");
 
-        let (_i, o) = slave.io();
+        let (_i, o) = slave.io_raw();
 
         let (_pos_cmd, control) = o.split_at_mut(4);
         let value = AkdControlWord::SHUTDOWN;
@@ -214,7 +214,7 @@ async fn main() -> Result<(), Error> {
         loop {
             group.tx_rx(&client).await.expect("TX/RX");
 
-            let (i, _o) = slave.io();
+            let (i, _o) = slave.io_raw();
 
             let status = {
                 let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
@@ -236,7 +236,7 @@ async fn main() -> Result<(), Error> {
     {
         log::info!("Switching drive on");
 
-        let (_i, o) = slave.io();
+        let (_i, o) = slave.io_raw();
 
         let (_pos_cmd, control) = o.split_at_mut(4);
         let reset = AkdControlWord::SWITCH_ON
@@ -248,7 +248,7 @@ async fn main() -> Result<(), Error> {
         loop {
             group.tx_rx(&client).await.expect("TX/RX");
 
-            let (i, o) = slave.io();
+            let (i, o) = slave.io_raw();
 
             let status = {
                 let status = u16::from_le_bytes(i[4..=5].try_into().unwrap());
@@ -281,7 +281,7 @@ async fn main() -> Result<(), Error> {
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
-        let (i, o) = slave.io();
+        let (i, o) = slave.io_raw();
 
         let (pos, status) = {
             let pos = u32::from_le_bytes(i[0..=3].try_into().unwrap());

@@ -141,7 +141,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     }
 
     /// Get an iterator over all slaves in this group.
-    pub fn slaves<'group, 'client>(
+    pub fn iter<'group, 'client>(
         &'group self,
         client: &'client Client<'client>,
     ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI> {

@@ -40,6 +40,9 @@ use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
 
+/// Basic slave data.
+///
+/// See [`SlaveRef`] for richer behaviour.
 #[derive(Debug, Clone, PartialEq)]
 // Gated by test feature so we can easily create test cases, but not expose a `Default`-ed `Slave`
 // to the user as this is an invalid state.
@@ -50,10 +53,10 @@ pub struct Slave {
 
     pub(crate) config: SlaveConfig,
 
-    pub identity: SlaveIdentity,
+    pub(crate) identity: SlaveIdentity,
 
     // NOTE: Default length in SOEM is 40 bytes
-    pub name: heapless::String<64>,
+    pub(crate) name: heapless::String<64>,
 
     pub(crate) flags: SupportFlags,
 
@@ -162,11 +165,22 @@ impl Slave {
         })
     }
 
+    /// Get the slave device's human readable name.
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    /// Get additional identifying details for the slave device.
+    pub fn identity(&self) -> SlaveIdentity {
+        self.identity
+    }
+
     pub(crate) fn io_segments(&self) -> &IoRanges {
         &self.config.io
     }
 }
 
+/// A slave device with additional metadata and methods.
 #[derive(Debug)]
 pub struct SlaveRef<'a, S> {
     client: &'a Client<'a>,
@@ -174,7 +188,6 @@ pub struct SlaveRef<'a, S> {
     state: S,
 }
 
-/// Items that only need a shared reference to the slave, mainly SDO functions.
 impl<'a, S> SlaveRef<'a, S>
 where
     S: Borrow<Slave>,
@@ -481,9 +494,8 @@ where
     }
 }
 
-/// Methods common to all states.
 impl<'a, S> SlaveRef<'a, S> {
-    pub fn new(client: &'a Client<'a>, configured_address: u16, state: S) -> Self {
+    pub(crate) fn new(client: &'a Client<'a>, configured_address: u16, state: S) -> Self {
         Self {
             client,
             configured_address,
@@ -495,10 +507,18 @@ impl<'a, S> SlaveRef<'a, S> {
         self.client.timeouts
     }
 
-    pub async fn state(&self) -> Result<SlaveState, Error> {
-        let (state, _code) = self.status().await?;
+    /// Get the EtherCAT state machine state of the slave.
+    pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
+        let status = self
+            .read::<AlControl>(RegisterAddress::AlStatus, "AL Status")
+            .await
+            .map(|ctl| ctl.state)?;
 
-        Ok(state)
+        let code = self
+            .read::<AlStatusCode>(RegisterAddress::AlStatusCode, "AL Status Code")
+            .await?;
+
+        Ok((status, code))
     }
 
     /// Read a register.
@@ -581,7 +601,7 @@ impl<'a, S> SlaveRef<'a, S> {
             .wkc(1, context)
     }
 
-    pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
+    pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         crate::timer_factory::timeout(self.client.timeouts.state_transition, async {
             loop {
                 let status = self
@@ -598,7 +618,10 @@ impl<'a, S> SlaveRef<'a, S> {
         .await
     }
 
-    pub async fn request_slave_state_nowait(&self, desired_state: SlaveState) -> Result<(), Error> {
+    pub(crate) async fn request_slave_state_nowait(
+        &self,
+        desired_state: SlaveState,
+    ) -> Result<(), Error> {
         debug!(
             "Set state {} for slave address {:#04x}",
             desired_state, self.configured_address
@@ -630,26 +653,13 @@ impl<'a, S> SlaveRef<'a, S> {
         Ok(())
     }
 
-    pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
+    pub(crate) async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         self.request_slave_state_nowait(desired_state).await?;
 
         self.wait_for_state(desired_state).await
     }
 
-    pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
-        let status = self
-            .read::<AlControl>(RegisterAddress::AlStatus, "AL Status")
-            .await
-            .map(|ctl| ctl.state)?;
-
-        let code = self
-            .read::<AlStatusCode>(RegisterAddress::AlStatusCode, "AL Status Code")
-            .await?;
-
-        Ok((status, code))
-    }
-
-    pub async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
+    pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
         self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
             .await?;
         self.write::<u16>(RegisterAddress::SiiConfig, mode as u16, "debug write 2")

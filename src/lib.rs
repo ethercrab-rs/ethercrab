@@ -193,6 +193,7 @@ pub mod std;
 use nom::IResult;
 use smoltcp::wire::{EthernetAddress, EthernetProtocol};
 
+pub use al_status_code::AlStatusCode;
 pub use client::Client;
 pub use client_config::ClientConfig;
 pub use coe::SubIndex;

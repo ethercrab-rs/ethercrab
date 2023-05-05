@@ -171,7 +171,7 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
         Ok(global_offset)
     }
 
-    pub async fn request_safe_op_nowait(&self) -> Result<(), Error> {
+    pub(crate) async fn request_safe_op_nowait(&self) -> Result<(), Error> {
         // Restore EEPROM mode
         self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
