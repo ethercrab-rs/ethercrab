@@ -320,11 +320,19 @@ where
         }
     }
 
-    pub async fn write_sdo<T>(&self, index: u16, sub_index: SubIndex, value: T) -> Result<(), Error>
+    /// Write a value to the given SDO index (address) and sub-index.
+    pub async fn write_sdo<T>(
+        &self,
+        index: u16,
+        sub_index: impl Into<SubIndex>,
+        value: T,
+    ) -> Result<(), Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
+        let sub_index = sub_index.into();
+
         let counter = self.client.mailbox_counter();
 
         if T::len() > 4 {
@@ -352,9 +360,11 @@ where
     async fn read_sdo_buf<'buf>(
         &self,
         index: u16,
-        sub_index: SubIndex,
+        sub_index: impl Into<SubIndex>,
         buf: &'buf mut [u8],
     ) -> Result<&'buf [u8], Error> {
+        let sub_index = sub_index.into();
+
         let request = coe::services::upload(self.client.mailbox_counter(), index, sub_index);
 
         log::trace!("CoE upload");
@@ -438,11 +448,14 @@ where
         }
     }
 
-    pub async fn read_sdo<T>(&self, index: u16, sub_index: SubIndex) -> Result<T, Error>
+    /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
+    pub async fn read_sdo<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
+        let sub_index = sub_index.into();
+
         // FIXME: Make this dynamic somehow
         let mut buf = [0u8; 32];
 
