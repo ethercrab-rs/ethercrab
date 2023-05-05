@@ -43,14 +43,10 @@ pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize> {
 
 // FIXME: Remove these unsafe impls if possible. There's some weird quirkiness when moving a group
 // into an async block going on...
-unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Sync
-    for SlaveGroup<MAX_SLAVES, MAX_PDI>
-{
-}
-unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Send
-    for SlaveGroup<MAX_SLAVES, MAX_PDI>
-{
-}
+unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> 
+   Sync for SlaveGroup<MAX_SLAVES, MAX_PDI> {}
+unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> 
+   Send for SlaveGroup<MAX_SLAVES, MAX_PDI> {}
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Default for SlaveGroup<MAX_SLAVES, MAX_PDI> {
     fn default() -> Self {
