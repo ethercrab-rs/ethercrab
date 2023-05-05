@@ -525,7 +525,7 @@ impl<'a, S> SlaveRef<'a, S> {
     ///
     /// Note that while this method is marked safe, alterations to slave config or behaviour can
     /// break interactions with EtherCrab.
-    pub async fn raw_read<T>(&self, register: RegisterAddress) -> Result<T, Error>
+    pub async fn read_raw<T>(&self, register: RegisterAddress) -> Result<T, Error>
     where
         T: PduRead,
         <T as PduRead>::Error: Debug,
@@ -537,7 +537,7 @@ impl<'a, S> SlaveRef<'a, S> {
     ///
     /// Note that while this method is marked safe, alterations to slave config or behaviour can
     /// break interactions with EtherCrab.
-    pub async fn raw_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
+    pub async fn write_raw<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,

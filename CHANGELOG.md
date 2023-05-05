@@ -21,7 +21,12 @@ An EtherCAT master written in Rust.
 
 ### Changed
 
-- **(breaking)** [#45]The grouping closure passed to `Client::init` now requires a
+- **(breaking)** [#TODO] `SlaveGroup::slaves` is renamed to `SlaveGroup::iter`
+- **(breaking)** [#TODO] Grouped slaves that were previously represented as `GroupSlave`s are now
+  represented as `SlaveRef<'_, SlavePdi<'_>>` instead. `GroupSlave` is removed.
+- **(breaking)** [#TODO] The `io()`, `inputs()` and `outputs()` methods on grouped slaves have been
+  renamed to `io_raw()`, `inputs_raw()` and `outputs_raw()` respecitively.
+- **(breaking)** [#45] The grouping closure passed to `Client::init` now requires a
   `&dyn SlaveGroupHandle` to be returned. This is a sealed trait only implemented for `SlaveGroup`s
   and allows some internal refactors by erasing the const generics from `SlaveGroup`.
 - **(breaking)** [#32] To mitigate some internal issues, `PduStorage` now requires `N` (the number
