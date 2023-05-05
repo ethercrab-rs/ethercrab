@@ -180,7 +180,7 @@ impl<'sto> Client<'sto> {
     /// # async {
     /// let groups = client
     ///     .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
-    ///         match slave.name.as_str() {
+    ///         match slave.name() {
     ///             "COUPLER" | "IO69420" => Ok(&groups.group_1),
     ///             "COOLSERVO" => Ok(&groups.group_2),
     ///             _ => Err(Error::UnknownSlave),
@@ -480,7 +480,7 @@ impl<'sto> Client<'sto> {
     pub async fn fprd<T>(
         &self,
         address: u16,
-        register: RegisterAddress,
+        register: impl Into<u16>,
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,

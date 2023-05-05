@@ -2,9 +2,9 @@ use crate::pdu_data::PduRead;
 use core::fmt;
 use num_enum::TryFromPrimitiveError;
 
-/// AL Status Code.
+/// AL (Application Layer) Status Code.
 ///
-/// Defined in ETG1000.6 Table 11
+/// Defined in ETG1000.6 Table 11.
 #[derive(Debug, Copy, Clone, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 #[repr(u16)]
 pub enum AlStatusCode {

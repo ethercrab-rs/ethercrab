@@ -8,6 +8,9 @@ An EtherCAT master written in Rust.
 
 ### Added
 
+- [#47] Add the ability to read/write registers/SDOs from grouped slave devices, with the methods
+  `SlaveRef::register_read`, `SlaveRef::register_write`, `SlaveRef::sdo_read` and
+  `SlaveRef::sdo_write`.
 - [#30] Added `Copy`, `Clone`, `PartialEq` and `Eq` implementations to `Error` and `PduError`.
 - [#1] Added `SlaveGroup::len` and `SlaveGroup::is_empty` methods.
 - [#29] Implement `Display` for `Error`, `PduError`, `MailboxError`, `EepromError`,
@@ -21,7 +24,18 @@ An EtherCAT master written in Rust.
 
 ### Changed
 
-- **(breaking)** [#45]The grouping closure passed to `Client::init` now requires a
+- [#47] Slave `sdo_read` and `sdo_write` methods no longer require the use of `SubIndex`. For single
+  accesses, a raw `u8` can be passed instead for cleaner configuration code.
+- **(breaking)** [#47] `SlaveGroup::slave` and `SlaveGroup::iter` (was `slaves`) now requires the
+  passing of a `Client` reference when called.
+- **(breaking)** [#47] `SlaveGroup::slaves` is renamed to `SlaveGroup::iter`
+- **(breaking)** [#47] Grouped slaves that were previously represented as `GroupSlave`s are now
+  represented as `SlaveRef<'_, SlavePdi<'_>>` instead. `GroupSlave` is removed.
+- **(breaking)** [#47] The `io()`, `inputs()` and `outputs()` methods on grouped slaves have been
+  renamed to `io_raw()`, `inputs_raw()` and `outputs_raw()` respecitively.
+- **(breaking)** [#47] The `Slave.name` and `Slave.identity` fields have been replaced with methods
+  of the same name.
+- **(breaking)** [#45] The grouping closure passed to `Client::init` now requires a
   `&dyn SlaveGroupHandle` to be returned. This is a sealed trait only implemented for `SlaveGroup`s
   and allows some internal refactors by erasing the const generics from `SlaveGroup`.
 - **(breaking)** [#32] To mitigate some internal issues, `PduStorage` now requires `N` (the number
@@ -106,5 +120,6 @@ An EtherCAT master written in Rust.
 [#32]: https://github.com/ethercrab-rs/ethercrab/pull/32
 [#33]: https://github.com/ethercrab-rs/ethercrab/pull/33
 [#45]: https://github.com/ethercrab-rs/ethercrab/pull/45
+[#47]: https://github.com/ethercrab-rs/ethercrab/pull/47
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
