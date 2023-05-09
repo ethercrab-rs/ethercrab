@@ -3,6 +3,7 @@ use crate::{
 	error::Error,
 	};
 use super::field::{Field, DType};
+use std::fmt;
 
 /// description of an SDO's subitem, not a SDO itself
 #[derive(Clone)]
@@ -26,6 +27,11 @@ impl<T: PduData + DType> SubItem<T> {
 		Ok(())
 	}
 }
+impl<T: PduData + DType> fmt::Debug for SubItem<T> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "SubItem {{index: {:x}, sub: {}, field: {:?}}}", self.index, self.sub, self.field)
+	}
+}
 
 /// description of SDO configuring a PDO
 /// the SDO is assumed to follow the cia402 specifications for PDO SDOs
@@ -34,6 +40,11 @@ pub struct ConfigurablePdo {
 	pub index: u16,
 	pub num: u8,
 }
+impl fmt::Debug for ConfigurablePdo {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "ConfigurablePdo {{index: {:x}, num: {}}}", self.index, self.num)
+	}
+}
 
 /// description of SDO configuring a SyncManager
 /// the SDO is assumed to follow the cia402 specifications for syncmanager SDOs
@@ -41,6 +52,11 @@ pub struct ConfigurablePdo {
 pub struct SyncManager {
 	pub index: u16,
 	pub num: u8,
+}
+impl fmt::Debug for SyncManager {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "ConfigurablePdo {{index: {:x}, num: {}}}", self.index, self.num)
+	}
 }
 
 
@@ -134,7 +150,7 @@ impl<'b> PdoMapping<'b> {
 			);
 		
 		let result = Field::new(self.mapping.offset.into(), 0, sdo.field.bitlen);
-		self.mapping.offset += (sdo.field.bitlen+1)/8;
+		self.mapping.offset += (sdo.field.bitlen+7)/8;  // round value to ceil
 		self.num += 1;
 		Ok(result)
 	}
