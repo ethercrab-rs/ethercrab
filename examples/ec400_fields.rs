@@ -273,8 +273,7 @@ async fn main() -> Result<(), Error> {
 					let error = vars.error.get(i);
 					let pos = vars.current.get(i);
 
-					log::debug!("Position: {pos}, error: {error:x}, fault: {:x}", status);
-					log::debug!("{:?}", status);
+					log::debug!("Position: {pos}, error: {error:x}, status: {status:x}");
 					if pos > initial+800_000_000 {break}
 					
 					vars.target.set(o, pos+velocity);
@@ -294,7 +293,7 @@ async fn main() -> Result<(), Error> {
 					let error = vars.error.get(i);
 					let pos = vars.current.get(i);
 
-					log::debug!("Position: {pos}, error: {error:x}, fault: {:x}", status);
+					log::debug!("Position: {pos}, error: {error:x}, status: {status:x}");
 					if pos < initial-100 {break}
 					
 					vars.target.set(o, pos-velocity);
