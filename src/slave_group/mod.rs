@@ -1,35 +1,49 @@
 mod configurator;
-mod container;
-mod group_slave;
-mod slave_storage;
 
-use self::slave_storage::SlaveStorage;
 use crate::{
     error::{Error, Item},
-    slave::{IoRanges, SlaveRef},
+    slave::{pdi::SlavePdi, IoRanges, Slave, SlaveRef},
     Client,
 };
-use core::{cell::UnsafeCell, future::Future, pin::Pin};
+use core::{cell::UnsafeCell, future::Future, pin::Pin, sync::atomic::AtomicUsize};
 
 pub use configurator::SlaveGroupRef;
-pub use container::SlaveGroupContainer;
-pub use group_slave::GroupSlave;
 
 // TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
 // `Box`ing here, and make this work without an allocator. See also
 // <https://users.rust-lang.org/t/store-async-closure-on-struct-in-no-std/82929>
 type HookFuture<'any> = Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'any>>;
 
-type HookFn = Box<dyn for<'any> Fn(&'any SlaveRef) -> HookFuture<'any>>;
+type HookFn = Box<dyn for<'any> Fn(&'any SlaveRef<'any, &'any mut Slave>) -> HookFuture<'any>>;
+
+static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
+
+/// A group's unique ID.
+#[doc(hidden)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GroupId(usize);
+
+impl From<GroupId> for usize {
+    fn from(value: GroupId) -> Self {
+        value.0
+    }
+}
 
 /// A group of one or more EtherCAT slaves.
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
 /// slave PDI sections.
 pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize> {
-    slaves: SlaveStorage<MAX_SLAVES>,
-    preop_safeop_hook: Option<HookFn>,
+    id: GroupId,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
+    preop_safeop_hook: Option<HookFn>,
+    inner: UnsafeCell<GroupInner<MAX_SLAVES>>,
+}
+
+#[derive(Default)]
+struct GroupInner<const MAX_SLAVES: usize> {
+    slaves: heapless::Vec<Slave, MAX_SLAVES>,
+
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.
     read_pdi_len: usize,
     /// The total length (I and O) of the PDI for this group.
@@ -48,16 +62,48 @@ unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize>
 unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> 
    Send for SlaveGroup<MAX_SLAVES, MAX_PDI> {}
 
+/// A trait implemented only by [`SlaveGroup`] so multiple groups with different const params can be
+/// stored in a hashmap, `Vec`, etc.
+#[doc(hidden)]
+#[sealed::sealed]
+pub trait SlaveGroupHandle {
+    /// Get the group's ID.
+    fn id(&self) -> GroupId;
+
+    /// Add a slave device to this group.
+    unsafe fn push(&self, slave: Slave) -> Result<(), Error>;
+
+    /// Get a reference to the group with const generic params erased.
+    fn as_ref(&self) -> SlaveGroupRef<'_>;
+}
+
+#[sealed::sealed]
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupHandle
+    for SlaveGroup<MAX_SLAVES, MAX_PDI>
+{
+    fn id(&self) -> GroupId {
+        self.id
+    }
+
+    unsafe fn push(&self, slave: Slave) -> Result<(), Error> {
+        (&mut *self.inner.get())
+            .slaves
+            .push(slave)
+            .map_err(|_| Error::Capacity(crate::error::Item::Slave))
+    }
+
+    fn as_ref(&self) -> SlaveGroupRef<'_> {
+        SlaveGroupRef::new(self)
+    }
+}
+
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Default for SlaveGroup<MAX_SLAVES, MAX_PDI> {
     fn default() -> Self {
         Self {
-            slaves: Default::default(),
-            preop_safeop_hook: Default::default(),
+            id: GroupId(GROUP_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)),
             pdi: UnsafeCell::new([0u8; MAX_PDI]),
-            read_pdi_len: Default::default(),
-            pdi_len: Default::default(),
-            start_address: 0,
-            group_working_counter: 0,
+            preop_safeop_hook: Default::default(),
+            inner: UnsafeCell::new(GroupInner::default()),
         }
     }
 }
@@ -76,27 +122,39 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         }
     }
 
+    fn inner(&self) -> &GroupInner<MAX_SLAVES> {
+        unsafe { &*self.inner.get() }
+    }
+
     /// Get the number of slave devices in this group.
     pub fn len(&self) -> usize {
-        self.slaves.len()
+        self.inner().slaves.len()
     }
 
     /// Check whether this slave group is empty or not.
     pub fn is_empty(&self) -> bool {
-        self.slaves.is_empty()
+        self.inner().slaves.is_empty()
     }
 
     /// Get an iterator over all slaves in this group.
-    pub fn slaves(&self) -> GroupSlaveIterator<'_, MAX_SLAVES, MAX_PDI> {
+    pub fn iter<'group, 'client>(
+        &'group self,
+        client: &'client Client<'client>,
+    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI> {
         GroupSlaveIterator {
             group: self,
             idx: 0,
+            client,
         }
     }
 
     /// Retrieve a reference to a slave in this group by index.
-    pub fn slave(&self, index: usize) -> Result<GroupSlave, Error> {
-        let slave = self.slaves.get(index).ok_or(Error::NotFound {
+    pub fn slave<'client>(
+        &self,
+        client: &'client Client<'client>,
+        index: usize,
+    ) -> Result<SlaveRef<'client, SlavePdi<'_>>, Error> {
+        let slave = self.inner().slaves.get(index).ok_or(Error::NotFound {
             item: Item::Slave,
             index: Some(index),
         })?;
@@ -120,7 +178,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         log::trace!(
             "--> Group PDI: {:?} ({} byte subset of {} max)",
             i_data,
-            self.pdi_len,
+            self.inner().pdi_len,
             MAX_PDI
         );
 
@@ -138,19 +196,23 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             EMPTY_PDI_SLICE
         };
 
-        Ok(GroupSlave::new(slave, inputs, outputs))
+        Ok(SlaveRef::new(
+            client,
+            slave.configured_address,
+            SlavePdi::new(slave, inputs, outputs),
+        ))
     }
 
     fn pdi_mut(&self) -> &mut [u8] {
         let all_buf = unsafe { &mut *self.pdi.get() };
 
-        &mut all_buf[0..self.pdi_len]
+        &mut all_buf[0..self.inner().pdi_len]
     }
 
     fn pdi(&self) -> &[u8] {
         let all_buf = unsafe { &*self.pdi.get() };
 
-        &all_buf[0..self.pdi_len]
+        &all_buf[0..self.inner().pdi_len]
     }
 
     /// Drive the slave group's inputs and outputs.
@@ -160,13 +222,17 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<(), Error> {
         log::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
-            self.start_address,
+            self.inner().start_address,
             self.pdi_mut().len(),
-            self.read_pdi_len
+            self.inner().read_pdi_len
         );
 
         let (_res, _wkc) = client
-            .lrw_buf(self.start_address, self.pdi_mut(), self.read_pdi_len)
+            .lrw_buf(
+                self.inner().start_address,
+                self.pdi_mut(),
+                self.inner().read_pdi_len,
+            )
             .await?;
 
         Ok(())
@@ -182,34 +248,23 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         //     Ok(())
         // }
     }
-
-    /// Get a reference to the slave group, with const generic parameters erased.
-    // TODO: Typestate so we can only do this during init
-    pub fn as_mut<'group>(&'group mut self) -> SlaveGroupRef<'group> {
-        SlaveGroupRef {
-            slaves: self.slaves.as_ref(),
-            max_pdi_len: MAX_PDI,
-            preop_safeop_hook: self.preop_safeop_hook.as_ref(),
-            read_pdi_len: &mut self.read_pdi_len,
-            pdi_len: &mut self.pdi_len,
-            start_address: &mut self.start_address,
-            group_working_counter: &mut self.group_working_counter,
-        }
-    }
 }
 
 /// An iterator over all slaves in a group.
 ///
-/// Created by calling [`SlaveGroup::slaves`](crate::slave_group::SlaveGroup::slaves).
-pub struct GroupSlaveIterator<'a, const MAX_SLAVES: usize, const MAX_PDI: usize> {
-    group: &'a SlaveGroup<MAX_SLAVES, MAX_PDI>,
+/// Created by calling [`SlaveGroup::iter`](crate::slave_group::SlaveGroup::iter).
+pub struct GroupSlaveIterator<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize> {
+    group: &'group SlaveGroup<MAX_SLAVES, MAX_PDI>,
     idx: usize,
+    client: &'client Client<'client>,
 }
 
-impl<'a, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
-    for GroupSlaveIterator<'a, MAX_SLAVES, MAX_PDI>
+impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
+    for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI>
+where
+    'client: 'group,
 {
-    type Item = GroupSlave<'a>;
+    type Item = SlaveRef<'group, SlavePdi<'group>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx >= self.group.len() {
@@ -217,12 +272,36 @@ impl<'a, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
         }
 
         // Squelch errors. If we're failing at this point, something is _very_ wrong.
-        let slave = self.group.slave(self.idx).map_err(|e| {
+        let slave = self.group.slave(self.client, self.idx).map_err(|e| {
             log::error!("Failed to get slave at index {} from group with {} slaves: {e:?}. This is very wrong. Please open an issue.", self.idx, self.group.len());
         }).ok()?;
 
         self.idx += 1;
 
         Some(slave)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn group_unique_id_defaults() {
+        let g1 = SlaveGroup::<16, 16>::default();
+        let g2 = SlaveGroup::<16, 16>::default();
+        let g3 = SlaveGroup::<16, 16>::default();
+
+        assert_ne!(g1.id, g2.id);
+        assert_ne!(g2.id, g3.id);
+        assert_ne!(g1.id, g3.id);
+    }
+
+    #[test]
+    fn group_unique_id_same_fn() {
+        let g1 = SlaveGroup::<16, 16>::new(|_| Box::pin(async { Ok(()) }));
+        let g2 = SlaveGroup::<16, 16>::new(|_| Box::pin(async { Ok(()) }));
+
+        assert_ne!(g1.id, g2.id);
     }
 }

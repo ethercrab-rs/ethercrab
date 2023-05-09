@@ -1,119 +1,48 @@
-pub mod configurator;
+pub(crate) mod configuration;
+mod eeprom;
+pub mod pdi;
 pub mod ports;
-pub mod slave_client;
+mod types;
 
-use self::slave_client::SlaveClient;
+use self::types::{SlaveConfig, SlaveIdentity};
 use crate::{
-    all_consumed,
+    al_control::AlControl,
+    al_status_code::AlStatusCode,
     client::Client,
+    coe::SubIndex,
     coe::{
         self,
         abort_code::AbortCode,
         services::{CoeServiceRequest, CoeServiceResponse},
-        SubIndex,
     },
     command::Command,
     dl_status::DlStatus,
-    eeprom::types::{FromEeprom, MailboxProtocols, SiiOwner},
+    eeprom::types::SiiOwner,
     error::{Error, MailboxError, PduError},
     mailbox::MailboxType,
-    pdi::PdiSegment,
     pdu_data::{PduData, PduRead},
-    pdu_loop::RxFrameDataBuf,
-    register::{RegisterAddress, SupportFlags},
+    pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
+    register::RegisterAddress,
+    register::SupportFlags,
     slave::ports::{Port, Ports},
     slave_state::SlaveState,
     sync_manager_channel::SyncManagerChannel,
+    Timeouts,
 };
 use core::{
     any::type_name,
-    fmt::{self, Debug, Write},
+    borrow::Borrow,
+    fmt::{Debug, Write},
 };
-use nom::{bytes::complete::take, number::complete::le_u32, IResult};
+use nom::{bytes::complete::take, number::complete::le_u32};
 use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
-#[derive(Default, Copy, Clone, PartialEq)]
-pub struct SlaveIdentity {
-    pub vendor_id: u32,
-    pub product_id: u32,
-    pub revision: u32,
-    pub serial: u32,
-}
+pub use self::pdi::SlavePdi;
+pub use self::types::IoRanges;
 
-impl Debug for SlaveIdentity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SlaveIdentity")
-            .field("vendor_id", &format_args!("{:#010x}", self.vendor_id))
-            .field("product_id", &format_args!("{:#010x}", self.product_id))
-            .field("revision", &self.revision)
-            .field("serial", &self.serial)
-            .finish()
-    }
-}
-
-impl FromEeprom for SlaveIdentity {
-    const STORAGE_SIZE: usize = 16;
-
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, vendor_id) = le_u32(i)?;
-        let (i, product_id) = le_u32(i)?;
-        let (i, revision) = le_u32(i)?;
-        let (i, serial) = le_u32(i)?;
-
-        all_consumed(i)?;
-
-        Ok((
-            i,
-            Self {
-                vendor_id,
-                product_id,
-                revision,
-                serial,
-            },
-        ))
-    }
-}
-
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct SlaveConfig {
-    pub io: IoRanges,
-    pub mailbox: MailboxConfig,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct MailboxConfig {
-    read: Option<Mailbox>,
-    write: Option<Mailbox>,
-    supported_protocols: MailboxProtocols,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct Mailbox {
-    address: u16,
-    len: u16,
-    sync_manager: u8,
-}
-
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct IoRanges {
-    pub input: PdiSegment,
-    pub output: PdiSegment,
-}
-
-impl IoRanges {
-    /// Expected working counter value for this slave.
-    ///
-    /// The working counter is calculated as follows:
-    ///
-    /// - If the slave has input data, increment by 1
-    /// - If the slave has output data, increment by 2
-    pub fn working_counter_sum(&self) -> u16 {
-        let l = self.input.len().min(1) + (self.output.len().min(1) * 2);
-
-        l as u16
-    }
-}
-
+/// Basic slave data.
+///
+/// See [`SlaveRef`] for richer behaviour.
 #[derive(Debug, Clone, PartialEq)]
 // Gated by test feature so we can easily create test cases, but not expose a `Default`-ed `Slave`
 // to the user as this is an invalid state.
@@ -124,10 +53,10 @@ pub struct Slave {
 
     pub(crate) config: SlaveConfig,
 
-    pub identity: SlaveIdentity,
+    pub(crate) identity: SlaveIdentity,
 
     // NOTE: Default length in SOEM is 40 bytes
-    pub name: heapless::String<64>,
+    pub(crate) name: heapless::String<64>,
 
     pub(crate) flags: SupportFlags,
 
@@ -161,18 +90,20 @@ impl Slave {
         index: usize,
         configured_address: u16,
     ) -> Result<Self, Error> {
-        let slave_ref = SlaveClient::new(client, configured_address);
+        // let slave_ref = SlaveClient::new(client, configured_address);
+
+        // let mut this =;
+
+        let slave_ref = SlaveRef::new(client, configured_address, ());
 
         slave_ref.wait_for_state(SlaveState::Init).await?;
 
         // Make sure master has access to slave EEPROM
         slave_ref.set_eeprom_mode(SiiOwner::Master).await?;
 
-        let eep = slave_ref.eeprom();
+        let identity = slave_ref.eeprom_identity().await?;
 
-        let identity = eep.identity().await?;
-
-        let name = eep.device_name().await?.unwrap_or_else(|| {
+        let name = slave_ref.eeprom_device_name().await?.unwrap_or_else(|| {
             let mut s = heapless::String::new();
 
             write!(
@@ -222,16 +153,26 @@ impl Slave {
 
         Ok(Self {
             configured_address,
-            identity,
-            name,
             config: SlaveConfig::default(),
-            flags,
             index,
             parent_index: None,
-            ports,
             propagation_delay: 0,
             dc_receive_time: 0,
+            identity,
+            name,
+            flags,
+            ports,
         })
+    }
+
+    /// Get the slave device's human readable name.
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    /// Get additional identifying details for the slave device.
+    pub fn identity(&self) -> SlaveIdentity {
+        self.identity
     }
 
     pub(crate) fn io_segments(&self) -> &IoRanges {
@@ -239,37 +180,181 @@ impl Slave {
     }
 }
 
+/// A slave device with additional metadata and methods.
 #[derive(Debug)]
-pub struct SlaveRef<'a> {
-    client: SlaveClient<'a>,
-    slave: &'a Slave,
+pub struct SlaveRef<'a, S> {
+    client: &'a Client<'a>,
+    configured_address: u16,
+    state: S,
 }
 
-impl<'a> SlaveRef<'a> {
-    pub fn new(client: SlaveClient<'a>, slave: &'a Slave) -> Self {
-        Self { client, slave }
-    }
-
+impl<'a, S> SlaveRef<'a, S>
+where
+    S: Borrow<Slave>,
+{
+    /// Get the human readable name of the slave device.
     pub fn name(&self) -> &str {
-        self.slave.name.as_str()
+        self.state.borrow().name.as_str()
     }
 
-    pub async fn state(&self) -> Result<SlaveState, Error> {
-        let (state, _code) = self.client.status().await?;
-
-        Ok(state)
+    /// Get the configured station address of the slave device.
+    pub fn configured_address(&self) -> u16 {
+        self.configured_address
     }
 
-    pub async fn write_sdo<T>(&self, index: u16, sub_index: SubIndex, value: T) -> Result<(), Error>
+    /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
+    /// and return as a slice.
+    async fn send_coe_service<H>(
+        &self,
+        request: H,
+    ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
+    where
+        H: CoeServiceRequest,
+        <H as PackedStruct>::ByteArray: AsRef<[u8]>,
+    {
+        let write_mailbox = self
+            .state
+            .borrow()
+            .config
+            .mailbox
+            .write
+            .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
+        let read_mailbox = self
+            .state
+            .borrow()
+            .config
+            .mailbox
+            .read
+            .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
+
+        let counter = request.counter();
+
+        // TODO: Abstract this into a method that returns a slice
+        self.client
+            .pdu_loop
+            .pdu_tx_readwrite_len(
+                Command::Fpwr {
+                    address: self.configured_address,
+                    register: write_mailbox.address,
+                },
+                request.pack().unwrap().as_ref(),
+                write_mailbox.len,
+            )
+            .await?
+            .wkc(1, "SDO upload request")?;
+
+        // Wait for slave send mailbox to be ready
+        crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
+            let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
+
+            loop {
+                let sm = self
+                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                    .await?;
+
+                if sm.status.mailbox_full {
+                    break Ok(());
+                }
+
+                self.client.timeouts.loop_tick().await;
+            }
+        })
+        .await
+        .map_err(|e| {
+            log::error!("Mailbox read ready error: {e:?}");
+
+            e
+        })?;
+
+        // Receive data from slave send mailbox
+        // TODO: Abstract this into a method that returns a slice
+        let mut response = self
+            .client
+            .pdu_loop
+            .pdu_tx_readonly(
+                Command::Fprd {
+                    address: self.configured_address,
+                    register: read_mailbox.address,
+                },
+                read_mailbox.len,
+            )
+            .await?
+            .wkc(1, "SDO read mailbox")?;
+
+        // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
+
+        let headers_len = H::Response::packed_bits() / 8;
+
+        let (headers, data) = response.split_at(headers_len);
+
+        let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
+            log::error!("Failed to unpack mailbox response headers: {e}");
+
+            e
+        })?;
+
+        if headers.is_aborted() {
+            let code = data[0..4]
+                .try_into()
+                .map(|arr| AbortCode::from(u32::from_le_bytes(arr)))
+                .map_err(|_| {
+                    log::error!("Not enough data to decode abort code u32");
+
+                    Error::Internal
+                })?;
+
+            Err(Error::Mailbox(MailboxError::Aborted {
+                code,
+                address: headers.address(),
+                sub_index: headers.sub_index(),
+            }))
+        }
+        // Validate that the mailbox response is to the request we just sent
+        // TODO: Determine if we need to check the counter. I don't think SOEM does, it might just
+        // be used by the slave?
+        else if headers.mailbox_type() != MailboxType::Coe
+        /* || headers.counter() != counter */
+        {
+            log::error!(
+                "Invalid SDO response. Type: {:?} (expected {:?}), counter {} (expected {})",
+                headers.mailbox_type(),
+                MailboxType::Coe,
+                headers.counter(),
+                counter
+            );
+
+            Err(Error::Mailbox(MailboxError::SdoResponseInvalid {
+                address: headers.address(),
+                sub_index: headers.sub_index(),
+            }))
+        } else {
+            response.trim_front(headers_len);
+            Ok((headers, response))
+        }
+    }
+
+    /// Write a value to the given SDO index (address) and sub-index.
+    ///
+    /// Note that this method currently only supports expedited SDO downloads (4 bytes maximum).
+    pub async fn sdo_write<T>(
+        &self,
+        index: u16,
+        sub_index: impl Into<SubIndex>,
+        value: T,
+    ) -> Result<(), Error>
     where
         T: PduData,
         <T as PduRead>::Error: Debug,
     {
+        let sub_index = sub_index.into();
+
         let counter = self.client.mailbox_counter();
 
         if T::len() > 4 {
+            log::error!("Only 4 byte SDO writes or smaller are supported currently.");
+
             // TODO: Normal SDO download. Only expedited requests for now
-            panic!("Data too long");
+            return Err(Error::Internal);
         }
 
         let mut data = [0u8; 4];
@@ -289,61 +374,14 @@ impl<'a> SlaveRef<'a> {
         Ok(())
     }
 
-    pub async fn read_sdo<T>(&self, index: u16, sub_index: SubIndex) -> Result<T, Error>
-    where
-        T: PduData,
-        <T as PduRead>::Error: Debug,
-    {
-        // FIXME: Make this dynamic somehow
-        let mut buf = [0u8; 32];
-
-        self.read_sdo_buf(index, sub_index, &mut buf)
-            .await
-            .and_then(|data| {
-                T::try_from_slice(data).map_err(|_| {
-                    log::error!(
-                        "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
-                        type_name::<T>(),
-                        T::len(),
-                        data,
-                        data.len()
-                    );
-
-                    Error::Pdu(PduError::Decode)
-                })
-            })
-    }
-
-    /// Read a register.
-    ///
-    /// Note that while this method is marked safe, alterations to slave config or behaviour can
-    /// break interactions with EtherCrab.
-    pub async fn raw_read<T>(&self, register: RegisterAddress) -> Result<T, Error>
-    where
-        T: PduRead,
-        <T as PduRead>::Error: Debug,
-    {
-        self.client.read(register, "raw read").await
-    }
-
-    /// Write a register.
-    ///
-    /// Note that while this method is marked safe, alterations to slave config or behaviour can
-    /// break interactions with EtherCrab.
-    pub async fn raw_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
-    where
-        T: PduData,
-        <T as PduRead>::Error: Debug,
-    {
-        self.client.write(register, value, "raw write").await
-    }
-
     async fn read_sdo_buf<'buf>(
         &self,
         index: u16,
-        sub_index: SubIndex,
+        sub_index: impl Into<SubIndex>,
         buf: &'buf mut [u8],
     ) -> Result<&'buf [u8], Error> {
+        let sub_index = sub_index.into();
+
         let request = coe::services::upload(self.client.mailbox_counter(), index, sub_index);
 
         log::trace!("CoE upload");
@@ -427,127 +465,212 @@ impl<'a> SlaveRef<'a> {
         }
     }
 
-    /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
-    /// and return as a slice.
-    async fn send_coe_service<H>(
-        &self,
-        request: H,
-    ) -> Result<(H::Response, RxFrameDataBuf<'a>), Error>
+    /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
+    ///
+    /// Note that currently this method only supports reads of up to 32 bytes.
+    pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
     where
-        H: CoeServiceRequest,
-        <H as PackedStruct>::ByteArray: AsRef<[u8]>,
+        T: PduData,
+        <T as PduRead>::Error: Debug,
     {
-        let write_mailbox = self.slave.config.mailbox.write
-            .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
-        let read_mailbox = self.slave.config.mailbox.read
-            .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
+        let sub_index = sub_index.into();
 
-        let counter = request.counter();
+        // FIXME: Make this dynamic somehow
+        let mut buf = [0u8; 32];
 
-        // TODO: Abstract this into a method that returns a slice
-        self.client
-            .client
-            .pdu_loop
-            .pdu_tx_readwrite_len(
-                Command::Fpwr {
-                    address: self.slave.configured_address,
-                    register: write_mailbox.address,
-                },
-                request.pack().unwrap().as_ref(),
-                write_mailbox.len,
-            )
+        self.read_sdo_buf(index, sub_index, &mut buf)
+            .await
+            .and_then(|data| {
+                T::try_from_slice(data).map_err(|_| {
+                    log::error!(
+                        "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
+                        type_name::<T>(),
+                        T::len(),
+                        data,
+                        data.len()
+                    );
+
+                    Error::Pdu(PduError::Decode)
+                })
+            })
+    }
+
+    pub(crate) fn working_counter_sum(&self) -> u16 {
+        self.state.borrow().config.io.working_counter_sum()
+    }
+}
+
+impl<'a, S> SlaveRef<'a, S> {
+    pub(crate) fn new(client: &'a Client<'a>, configured_address: u16, state: S) -> Self {
+        Self {
+            client,
+            configured_address,
+            state,
+        }
+    }
+
+    pub(crate) fn timeouts(&self) -> Timeouts {
+        self.client.timeouts
+    }
+
+    /// Get the EtherCAT state machine state of the slave.
+    pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
+        let status = self
+            .read::<AlControl>(RegisterAddress::AlStatus, "AL Status")
+            .await
+            .map(|ctl| ctl.state)?;
+
+        let code = self
+            .read::<AlStatusCode>(RegisterAddress::AlStatusCode, "AL Status Code")
+            .await?;
+
+        Ok((status, code))
+    }
+
+    /// Read a register.
+    ///
+    /// Note that while this method is marked safe, raw alterations to slave config or behaviour can
+    /// break higher level interactions with EtherCrab.
+    pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
+    where
+        T: PduRead,
+        <T as PduRead>::Error: Debug,
+    {
+        self.read_ignore_wkc(register).await?.wkc(1, "raw read")
+    }
+
+    /// Write a register.
+    ///
+    /// Note that while this method is marked safe, raw alterations to slave config or behaviour can
+    /// break higher level interactions with EtherCrab.
+    pub async fn register_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
+    where
+        T: PduData,
+        <T as PduRead>::Error: Debug,
+    {
+        self.write_ignore_wkc(register, value)
             .await?
-            .wkc(1, "SDO upload request")?;
+            .wkc(1, "raw write")
+    }
 
-        // Wait for slave send mailbox to be ready
-        crate::timer_factory::timeout(self.client.timeouts().mailbox_echo, async {
-            let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
+    pub(crate) async fn read_ignore_wkc<T>(
+        &self,
+        register: impl Into<u16>,
+    ) -> Result<PduResponse<T>, Error>
+    where
+        T: PduRead,
+        <T as PduRead>::Error: Debug,
+    {
+        self.client.fprd(self.configured_address, register).await
+    }
 
+    /// A wrapper around an FPWR service to this slave's configured address.
+    pub(crate) async fn write_ignore_wkc<T>(
+        &self,
+        register: impl Into<u16>,
+        value: T,
+    ) -> Result<PduResponse<T>, Error>
+    where
+        T: PduData,
+        <T as PduRead>::Error: Debug,
+    {
+        self.client
+            .fpwr(self.configured_address, register, value)
+            .await
+    }
+
+    pub(crate) async fn read<T>(
+        &self,
+        register: RegisterAddress,
+        context: &'static str,
+    ) -> Result<T, Error>
+    where
+        T: PduRead,
+        <T as PduRead>::Error: Debug,
+    {
+        self.read_ignore_wkc(register).await?.wkc(1, context)
+    }
+
+    /// A wrapper around an FPWR service to this slave's configured address.
+    pub(crate) async fn write<T>(
+        &self,
+        register: impl Into<u16>,
+        value: T,
+        context: &'static str,
+    ) -> Result<T, Error>
+    where
+        T: PduData,
+        <T as PduRead>::Error: Debug,
+    {
+        self.write_ignore_wkc(register, value)
+            .await?
+            .wkc(1, context)
+    }
+
+    pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
+        crate::timer_factory::timeout(self.client.timeouts.state_transition, async {
             loop {
-                let sm = self
-                    .client
-                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                let status = self
+                    .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
                     .await?;
 
-                if sm.status.mailbox_full {
+                if status.state == desired_state {
                     break Ok(());
                 }
 
-                self.client.timeouts().loop_tick().await;
+                self.client.timeouts.loop_tick().await;
             }
         })
         .await
-        .map_err(|e| {
-            log::error!("Mailbox read ready error: {e:?}");
+    }
 
-            e
-        })?;
+    pub(crate) async fn request_slave_state_nowait(
+        &self,
+        desired_state: SlaveState,
+    ) -> Result<(), Error> {
+        debug!(
+            "Set state {} for slave address {:#04x}",
+            desired_state, self.configured_address
+        );
 
-        // Receive data from slave send mailbox
-        // TODO: Abstract this into a method that returns a slice
-        let mut response = self
-            .client
-            .client
-            .pdu_loop
-            .pdu_tx_readonly(
-                Command::Fprd {
-                    address: self.slave.configured_address,
-                    register: read_mailbox.address,
-                },
-                read_mailbox.len,
+        // Send state request
+        let response = self
+            .write(
+                RegisterAddress::AlControl,
+                AlControl::new(desired_state).pack().unwrap(),
+                "AL control",
             )
-            .await?
-            .wkc(1, "SDO read mailbox")?;
+            .await
+            .and_then(|raw: [u8; 2]| AlControl::unpack(&raw).map_err(|_| Error::StateTransition))?;
 
-        // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
+        if response.error {
+            let error: AlStatusCode = self.read(RegisterAddress::AlStatus, "AL status").await?;
 
-        let headers_len = H::Response::packed_bits() / 8;
-
-        let (headers, data) = response.split_at(headers_len);
-
-        let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
-            log::error!("Failed to unpack mailbox response headers: {e}");
-
-            e
-        })?;
-
-        if headers.is_aborted() {
-            let code = data[0..4]
-                .try_into()
-                .map(|arr| AbortCode::from(u32::from_le_bytes(arr)))
-                .map_err(|_| {
-                    log::error!("Not enough data to decode abort code u32");
-
-                    Error::Internal
-                })?;
-
-            Err(Error::Mailbox(MailboxError::Aborted {
-                code,
-                address: headers.address(),
-                sub_index: headers.sub_index(),
-            }))
-        }
-        // Validate that the mailbox response is to the request we just sent
-        // TODO: Determine if we need to check the counter. I don't think SOEM does, it might just
-        // be used by the slave?
-        else if headers.mailbox_type() != MailboxType::Coe
-        /* || headers.counter() != counter */
-        {
             log::error!(
-                "Invalid SDO response. Type: {:?} (expected {:?}), counter {} (expected {})",
-                headers.mailbox_type(),
-                MailboxType::Coe,
-                headers.counter(),
-                counter
+                "Error occurred transitioning slave {:#06x} to {:?}: {}",
+                self.configured_address,
+                desired_state,
+                error,
             );
 
-            Err(Error::Mailbox(MailboxError::SdoResponseInvalid {
-                address: headers.address(),
-                sub_index: headers.sub_index(),
-            }))
-        } else {
-            response.trim_front(headers_len);
-            Ok((headers, response))
+            return Err(Error::StateTransition);
         }
+
+        Ok(())
+    }
+
+    pub(crate) async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
+        self.request_slave_state_nowait(desired_state).await?;
+
+        self.wait_for_state(desired_state).await
+    }
+
+    pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
+        self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
+            .await?;
+        self.write::<u16>(RegisterAddress::SiiConfig, mode as u16, "debug write 2")
+            .await?;
+
+        Ok(())
     }
 }

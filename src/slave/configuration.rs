@@ -1,39 +1,25 @@
-//! Slave configuration reading from EEPROM, and SDOs if the slave device supports CANOpen over
-//! EtherCAT (CoE).
-
-use super::{slave_client::SlaveClient, Slave, SlaveRef};
+use super::{Slave, SlaveRef};
 use crate::{
     coe::SubIndex,
     eeprom::types::{
-        FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable, SyncManagerType,
+        FmmuEx, FmmuUsage, MailboxProtocols, Pdo, SiiOwner, SyncManager, SyncManagerEnable,
+        SyncManagerType,
     },
     error::{Error, Item},
     fmmu::Fmmu,
-    pdi::{PdiOffset, PdiSegment},
-    pdu_data::{PduData, PduRead},
+    pdi::PdiOffset,
+    pdi::PdiSegment,
     register::RegisterAddress,
-    slave::{Mailbox, MailboxConfig},
+    slave::types::{Mailbox, MailboxConfig},
     slave_state::SlaveState,
-    sync_manager_channel::{self, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
-    Client,
+    sync_manager_channel::SyncManagerChannel,
+    sync_manager_channel::{self, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
-use core::fmt::Debug;
 use num_enum::FromPrimitive;
 use packed_struct::PackedStruct;
 
-pub struct SlaveConfigurator<'a> {
-    client: SlaveClient<'a>,
-    slave: &'a mut Slave,
-}
-
-impl<'a> SlaveConfigurator<'a> {
-    pub fn new(client: &'a Client<'a>, slave: &'a mut Slave) -> Self {
-        Self {
-            client: SlaveClient::new(client, slave.configured_address),
-            slave,
-        }
-    }
-
+/// Configuation from EEPROM methods.
+impl<'a> SlaveRef<'a, &'a mut Slave> {
     /// First stage configuration (INIT -> PRE-OP).
     ///
     /// Continue configuration by calling [`configure_fmmus`](SlaveConfigurator::configure_fmmus)
@@ -41,20 +27,20 @@ impl<'a> SlaveConfigurator<'a> {
         // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
         // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
         // to master mode here, now that the transition is complete.
-        self.client.set_eeprom_mode(SiiOwner::Master).await?;
+        self.set_eeprom_mode(SiiOwner::Master).await?;
 
-        let sync_managers = self.client.eeprom().sync_managers().await?;
+        let sync_managers = self.eeprom_sync_managers().await?;
 
         // Mailboxes must be configured in INIT state
         self.configure_mailbox_sms(&sync_managers).await?;
 
         // Some slaves must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
-        self.client.set_eeprom_mode(SiiOwner::Pdi).await?;
+        self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
-        self.client.request_slave_state(SlaveState::PreOp).await?;
+        self.request_slave_state(SlaveState::PreOp).await?;
 
-        self.client.set_eeprom_mode(SiiOwner::Master).await?;
+        self.set_eeprom_mode(SiiOwner::Master).await?;
 
         Ok(())
     }
@@ -68,16 +54,16 @@ impl<'a> SlaveConfigurator<'a> {
         group_start_address: u32,
         direction: PdoDirection,
     ) -> Result<PdiOffset, Error> {
-        let sync_managers = self.client.eeprom().sync_managers().await?;
-        let fmmu_usage = self.client.eeprom().fmmus().await?;
-        let fmmu_sm_mappings = self.client.eeprom().fmmu_mappings().await?;
+        let sync_managers = self.eeprom_sync_managers().await?;
+        let fmmu_usage = self.eeprom_fmmus().await?;
+        let fmmu_sm_mappings = self.eeprom_fmmu_mappings().await?;
 
-        let (state, _status_code) = self.client.status().await?;
+        let (state, _status_code) = self.status().await?;
 
         if state != SlaveState::PreOp {
             log::error!(
                 "Slave {:#06x} is in invalid state {}. Expected {}",
-                self.slave.configured_address,
+                self.configured_address,
                 state,
                 SlaveState::PreOp
             );
@@ -85,18 +71,18 @@ impl<'a> SlaveConfigurator<'a> {
             return Err(Error::InvalidState {
                 expected: SlaveState::PreOp,
                 actual: state,
-                configured_address: self.slave.configured_address,
+                configured_address: self.configured_address,
             });
         }
 
         let has_coe = self
-            .slave
+            .state
             .config
             .mailbox
             .supported_protocols
             .contains(MailboxProtocols::COE)
             && self
-                .slave
+                .state
                 .config
                 .mailbox
                 .read
@@ -105,12 +91,12 @@ impl<'a> SlaveConfigurator<'a> {
 
         log::debug!(
             "Slave {:#06x} has CoE: {has_coe:?}",
-            self.slave.configured_address
+            self.configured_address
         );
 
         match direction {
             PdoDirection::MasterRead => {
-                let pdos = self.client.eeprom().master_read_pdos().await?;
+                let pdos = self.eeprom_master_read_pdos().await?;
 
                 log::trace!("Slave inputs PDOs {:#?}", pdos);
 
@@ -134,14 +120,14 @@ impl<'a> SlaveConfigurator<'a> {
                     .await?
                 };
 
-                self.slave.config.io.input = PdiSegment {
+                self.state.config.io.input = PdiSegment {
                     bytes: (input_range.bytes.start - group_start_address as usize)
                         ..(input_range.bytes.end - group_start_address as usize),
                     ..input_range
                 };
             }
             PdoDirection::MasterWrite => {
-                let pdos = self.client.eeprom().master_write_pdos().await?;
+                let pdos = self.eeprom_master_write_pdos().await?;
 
                 log::trace!("Slave outputs PDOs {:#?}", pdos);
 
@@ -165,7 +151,7 @@ impl<'a> SlaveConfigurator<'a> {
                     .await?
                 };
 
-                self.slave.config.io.output = PdiSegment {
+                self.state.config.io.output = PdiSegment {
                     bytes: (output_range.bytes.start - group_start_address as usize)
                         ..(output_range.bytes.end - group_start_address as usize),
                     ..output_range
@@ -175,23 +161,21 @@ impl<'a> SlaveConfigurator<'a> {
 
         log::debug!(
             "Slave {:#06x} PDI inputs: {:?} ({} bytes), outputs: {:?} ({} bytes)",
-            self.slave.configured_address,
-            self.slave.config.io.input,
-            self.slave.config.io.input.len(),
-            self.slave.config.io.output,
-            self.slave.config.io.output.len(),
+            self.configured_address,
+            self.state.config.io.input,
+            self.state.config.io.input.len(),
+            self.state.config.io.output,
+            self.state.config.io.output.len(),
         );
 
         Ok(global_offset)
     }
 
-    pub async fn request_safe_op_nowait(&self) -> Result<(), Error> {
+    pub(crate) async fn request_safe_op_nowait(&self) -> Result<(), Error> {
         // Restore EEPROM mode
-        self.client.set_eeprom_mode(SiiOwner::Pdi).await?;
+        self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
-        self.client
-            .request_slave_state_nowait(SlaveState::SafeOp)
-            .await?;
+        self.request_slave_state_nowait(SlaveState::SafeOp).await?;
 
         Ok(())
     }
@@ -214,17 +198,16 @@ impl<'a> SlaveConfigurator<'a> {
             },
         };
 
-        self.client
-            .write(
-                RegisterAddress::sync_manager(sync_manager_index),
-                sm_config.pack().unwrap(),
-                "SM config",
-            )
-            .await?;
+        self.write(
+            RegisterAddress::sync_manager(sync_manager_index),
+            sm_config.pack().unwrap(),
+            "SM config",
+        )
+        .await?;
 
         log::debug!(
             "Slave {:#06x} SM{sync_manager_index}: {}",
-            self.slave.configured_address,
+            self.configured_address,
             sm_config
         );
         log::trace!("{:#?}", sm_config);
@@ -235,18 +218,18 @@ impl<'a> SlaveConfigurator<'a> {
     /// Configure SM0 and SM1 for mailbox communication.
     async fn configure_mailbox_sms(&mut self, sync_managers: &[SyncManager]) -> Result<(), Error> {
         // Read default mailbox configuration from slave information area
-        let mailbox_config = self.client.eeprom().mailbox_config().await?;
+        let mailbox_config = self.eeprom_mailbox_config().await?;
 
         log::trace!(
             "Slave {:#06x} Mailbox configuration: {:#?}",
-            self.slave.configured_address,
+            self.configured_address,
             mailbox_config
         );
 
         if !mailbox_config.has_mailbox() {
             log::trace!(
                 "Slave {:#06x} has no valid mailbox configuration",
-                self.slave.configured_address
+                self.configured_address
             );
 
             return Ok(());
@@ -292,7 +275,7 @@ impl<'a> SlaveConfigurator<'a> {
             }
         }
 
-        self.slave.config.mailbox = MailboxConfig {
+        self.state.config.mailbox = MailboxConfig {
             read: read_mailbox,
             write: write_mailbox,
             supported_protocols: mailbox_config.supported_protocols,
@@ -313,7 +296,7 @@ impl<'a> SlaveConfigurator<'a> {
 
         // ETG1000.6 Table 67 – CoE Communication Area
         let num_sms = self
-            .read_sdo::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
+            .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
             .await?;
 
         log::trace!("Found {num_sms} SMs from CoE");
@@ -329,7 +312,7 @@ impl<'a> SlaveConfigurator<'a> {
         // NOTE: This is a 1-based SDO sub-index
         for sm_mapping_sub_index in sm_range {
             let sm_type = self
-                .read_sdo::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(sm_mapping_sub_index))
+                .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(sm_mapping_sub_index))
                 .await
                 .map(SyncManagerType::from_primitive)?;
 
@@ -350,20 +333,20 @@ impl<'a> SlaveConfigurator<'a> {
             }
 
             // Total number of PDO assignments for this sync manager
-            let num_sm_assignments = self.read_sdo::<u8>(sm_address, SubIndex::Index(0)).await?;
+            let num_sm_assignments = self.sdo_read::<u8>(sm_address, SubIndex::Index(0)).await?;
 
             log::trace!("SDO sync manager {sync_manager_index} (sub index #{sm_mapping_sub_index}) {sm_address:#06x} {sm_type:?}, sub indices: {num_sm_assignments}");
 
             let mut sm_bit_len = 0u16;
 
             for i in 1..=num_sm_assignments {
-                let pdo = self.read_sdo::<u16>(sm_address, SubIndex::Index(i)).await?;
-                let num_mappings = self.read_sdo::<u8>(pdo, SubIndex::Index(0)).await?;
+                let pdo = self.sdo_read::<u16>(sm_address, SubIndex::Index(i)).await?;
+                let num_mappings = self.sdo_read::<u8>(pdo, SubIndex::Index(0)).await?;
 
                 log::trace!("--> #{i} data: {pdo:#06x} ({num_mappings} mappings):");
 
                 for i in 1..=num_mappings {
-                    let mapping = self.read_sdo::<u32>(pdo, SubIndex::Index(i)).await?;
+                    let mapping = self.sdo_read::<u32>(pdo, SubIndex::Index(i)).await?;
 
                     // Yes, big-endian. Makes life easier when mapping from debug prints to actual
                     // data fields.
@@ -428,7 +411,6 @@ impl<'a> SlaveConfigurator<'a> {
     ) -> Result<(), Error> {
         // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
         let mut fmmu_config = self
-            .client
             .read::<[u8; 16]>(RegisterAddress::fmmu(fmmu_index as u8), "read FMMU config")
             .await
             .and_then(|raw| Fmmu::unpack(&raw).map_err(|_| Error::Internal))?;
@@ -455,16 +437,15 @@ impl<'a> SlaveConfigurator<'a> {
             }
         };
 
-        self.client
-            .write(
-                RegisterAddress::fmmu(fmmu_index as u8),
-                fmmu_config.pack().unwrap(),
-                "PDI FMMU",
-            )
-            .await?;
+        self.write(
+            RegisterAddress::fmmu(fmmu_index as u8),
+            fmmu_config.pack().unwrap(),
+            "PDI FMMU",
+        )
+        .await?;
         log::debug!(
             "Slave {:#06x} FMMU{fmmu_index}: {}",
-            self.slave.configured_address,
+            self.configured_address,
             fmmu_config
         );
         log::trace!("{:#?}", fmmu_config);
@@ -476,8 +457,8 @@ impl<'a> SlaveConfigurator<'a> {
     async fn configure_pdos_eeprom(
         &self,
         sync_managers: &[SyncManager],
-        pdos: &[crate::eeprom::types::Pdo],
-        fmmu_sm_mappings: &[crate::eeprom::types::FmmuEx],
+        pdos: &[Pdo],
+        fmmu_sm_mappings: &[FmmuEx],
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         offset: &mut PdiOffset,
@@ -545,24 +526,9 @@ impl<'a> SlaveConfigurator<'a> {
             bytes: start_offset.up_to(*offset),
         })
     }
-
-    pub(crate) fn as_ref(&self) -> SlaveRef<'_> {
-        SlaveRef::new(
-            SlaveClient::new(self.client.client, self.slave.configured_address),
-            self.slave,
-        )
-    }
-
-    pub async fn read_sdo<T>(&self, index: u16, access: SubIndex) -> Result<T, Error>
-    where
-        T: PduData,
-        <T as PduRead>::Error: Debug,
-    {
-        self.as_ref().read_sdo(index, access).await
-    }
 }
 
-pub(crate) enum PdoDirection {
+pub enum PdoDirection {
     MasterRead,
     MasterWrite,
 }

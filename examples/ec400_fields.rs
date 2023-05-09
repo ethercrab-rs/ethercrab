@@ -210,7 +210,7 @@ async fn main() -> Result<(), Error> {
 			};
 
 			let group = client
-				.init::<16, _>(groups, |groups, _slave| Ok(groups.as_mut()))
+				.init::<MAX_SLAVES, _>(groups, |group, _slave| Ok(group))
 				.await.expect("Init");
 			client
 				.request_slave_state(SlaveState::Op)
@@ -221,13 +221,13 @@ async fn main() -> Result<(), Error> {
 
 			log::info!("Slaves moved to OP state");
 			log::info!("Group has {} slaves", group.len());
-			for slave in group.slaves() {
-				let (i, o) = slave.io();
+			for slave in group.iter(&client) {
+				let (i, o) = slave.io_raw();
 
 				log::info!(
 					"-> Slave {} {} inputs: {} bytes, outputs: {} bytes",
-					slave.configured_address,
-					slave.name,
+					slave.configured_address(),
+					slave.name(),
 					i.len(),
 					o.len(),
 				);
@@ -237,7 +237,7 @@ async fn main() -> Result<(), Error> {
 			group.tx_rx(&client).await.expect("TX/RX");
 
 			let cycle_time = {
-				let slave = group.slave(0).unwrap().bind(&client);
+				let slave = group.slave(&client, 0).unwrap();
 
 				let base = f32::from(profile.period.digits.get(&slave).await?);
 				let exponent = i32::from(profile.period.exponent.get(&slave).await?);
@@ -250,12 +250,12 @@ async fn main() -> Result<(), Error> {
 			let mut cyclic_interval = tokio::time::interval(cycle_time);
 			cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-			let slave = group.slave(0).expect("No servo!");
+			let slave = group.slave(&client, 0).expect("No servo!");
 			let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
 			
 			let initial = {
 				group.tx_rx(&client).await.expect("TX/RX");
-				let (i, _o) = servo.slave().io();
+				let i = servo.slave().inputs_raw();
 				vars.current.get(i)
 				};
 			let velocity = 3_000_000;
@@ -267,7 +267,7 @@ async fn main() -> Result<(), Error> {
 				group.tx_rx(&client).await.expect("TX/RX");
 				
 				if servo.tick() {
-					let (i, o) = servo.slave().io();
+					let (i, o) = servo.slave().io_raw();
 
 					let status = vars.status.get(i);
 					let error = vars.error.get(i);
@@ -288,7 +288,7 @@ async fn main() -> Result<(), Error> {
 				group.tx_rx(&client).await.expect("TX/RX");
 				
 				if servo.tick() {
-					let (i, o) = servo.slave().io();
+					let (i, o) = servo.slave().io_raw();
 
 					let status = vars.status.get(i);
 					let error = vars.error.get(i);
