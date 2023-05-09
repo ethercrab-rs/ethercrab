@@ -4,7 +4,7 @@ use crate::{
     error::Error,
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
-    slave::{ports::Topology, slave_client::SlaveClient, Slave},
+    slave::{ports::Topology, Slave, SlaveRef},
     Client,
 };
 
@@ -21,7 +21,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
     // Read receive times for all slaves and store on slave structs
     for slave in slaves {
-        let sl = SlaveClient::new(client, slave.configured_address);
+        let sl = SlaveRef::new(client, slave.configured_address, ());
 
         // NOTE: Defined as a u64, not i64, in the spec
         // TODO: Remember why this is i64 here. SOEM uses i64 I think, and I seem to remember things
@@ -51,7 +51,7 @@ async fn write_dc_parameters(
     dc_receive_time: i64,
     now_nanos: i64,
 ) -> Result<(), Error> {
-    let sl = SlaveClient::new(client, slave.configured_address);
+    let sl = SlaveRef::new(client, slave.configured_address, ());
 
     sl.write_ignore_wkc::<i64>(
         RegisterAddress::DcSystemTimeOffset,
@@ -240,7 +240,7 @@ fn configure_slave_offsets(
 ///
 /// This method walks through the discovered list of devices and sets the system time offset and
 /// transmission delay of each device.
-pub async fn configure_dc<'slaves>(
+pub(crate) async fn configure_dc<'slaves>(
     client: &Client<'_>,
     slaves: &'slaves mut [Slave],
 ) -> Result<Option<&'slaves Slave>, Error> {
@@ -275,7 +275,7 @@ pub async fn configure_dc<'slaves>(
     Ok(first_dc_slave)
 }
 
-pub async fn run_dc_static_sync(
+pub(crate) async fn run_dc_static_sync(
     client: &Client<'_>,
     dc_reference_slave: &Slave,
     iterations: u32,
@@ -307,10 +307,7 @@ mod tests {
     use super::*;
     use crate::{
         register::SupportFlags,
-        slave::{
-            ports::{tests::make_ports, Port, Ports},
-            SlaveConfig, SlaveIdentity,
-        },
+        slave::ports::{tests::make_ports, Port, Ports},
     };
 
     fn ports_passthrough() -> Ports {
@@ -331,14 +328,13 @@ mod tests {
         let slave_defaults = Slave {
             configured_address: 0x0000,
             ports: Ports::default(),
-            config: SlaveConfig::default(),
-            identity: SlaveIdentity::default(),
             name: "Default".into(),
             flags: SupportFlags::default(),
             dc_receive_time: 0,
             index: 0,
             parent_index: None,
             propagation_delay: 0,
+            ..Default::default()
         };
 
         let parents = [
@@ -390,14 +386,13 @@ mod tests {
         let slave_defaults = Slave {
             configured_address: 0x1000,
             ports: Ports::default(),
-            config: SlaveConfig::default(),
-            identity: SlaveIdentity::default(),
             name: "Default".into(),
             flags: SupportFlags::default(),
             dc_receive_time: 0,
             index: 0,
             parent_index: None,
             propagation_delay: 0,
+            ..Default::default()
         };
 
         let parents = [];
@@ -450,14 +445,13 @@ mod tests {
         let mut slave = Slave {
             configured_address: 0x1000,
             ports,
-            config: SlaveConfig::default(),
-            identity: SlaveIdentity::default(),
             name: "Default".into(),
             flags: SupportFlags::default(),
             dc_receive_time: 0,
             index: 0,
             parent_index: None,
             propagation_delay: 0,
+            ..Default::default()
         };
 
         let mut parents = [];

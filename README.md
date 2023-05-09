@@ -35,15 +35,14 @@ $env:RUST_LOG="debug" ; cargo run --example ek1100 --release -- '\Device\NPF_{FF
 ```
 
 ```rust
-
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SubIndex, Timeouts,
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
 
-/// Maximum number of slaves that can be stored.
+/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = 1100;
@@ -60,7 +59,7 @@ async fn main() -> Result<(), Error> {
 
     let interface = std::env::args()
         .nth(1)
-        .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+        .expect("Provide network interface as first argument.");
 
     log::info!("Starting EK1100 demo...");
     log::info!("Ensure an EK1100 is the first slave, with any number of modules connected after");
@@ -87,22 +86,22 @@ async fn main() -> Result<(), Error> {
             if slave.name() == "EL3004" {
                 log::info!("Found EL3004. Configuring...");
 
-                slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
+                slave.sdo_write(0x1c12, 0, 0u8).await?;
+                slave.sdo_write(0x1c13, 0, 0u8).await?;
 
                 slave
-                    .write_sdo(0x1c13, SubIndex::Index(1), 0x1a00u16)
+                    .sdo_write(0x1c13, 1, 0x1a00u16)
                     .await?;
                 slave
-                    .write_sdo(0x1c13, SubIndex::Index(2), 0x1a02u16)
+                    .sdo_write(0x1c13, 2, 0x1a02u16)
                     .await?;
                 slave
-                    .write_sdo(0x1c13, SubIndex::Index(3), 0x1a04u16)
+                    .sdo_write(0x1c13, 3, 0x1a04u16)
                     .await?;
                 slave
-                    .write_sdo(0x1c13, SubIndex::Index(4), 0x1a06u16)
+                    .sdo_write(0x1c13, 4, 0x1a06u16)
                     .await?;
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 4u8).await?;
+                slave.sdo_write(0x1c13, 0, 4u8).await?;
             }
 
             Ok(())
@@ -110,20 +109,20 @@ async fn main() -> Result<(), Error> {
     });
 
     let group = client
-        // Initialise up to 16 slave devices
-        .init::<16, _>(group, |groups, _slave| Ok(groups.as_mut()))
+        // Initialise a single group
+        .init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
         .await
         .expect("Init");
 
     log::info!("Discovered {} slaves", group.len());
 
-    for slave in group.slaves() {
-        let (i, o) = slave.io();
+    for slave in group.iter(&client) {
+        let (i, o) = slave.io_raw();
 
         log::info!(
             "-> Slave {} {} has {} input bytes, {} output bytes",
-            slave.configured_address,
-            slave.name,
+            slave.configured_address(),
+            slave.name(),
             i.len(),
             o.len(),
         );
@@ -136,8 +135,8 @@ async fn main() -> Result<(), Error> {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Increment every output byte for every slave device by one
-        for slave in group.slaves() {
-            let (_i, o) = slave.io();
+        for slave in group.iter(&client) {
+            let (_i, o) = slave.io_raw();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);
@@ -150,37 +149,25 @@ async fn main() -> Result<(), Error> {
 
 ```
 
-## Current goals
+## Current and future features
 
-- [x] Become a member of the
-      [EtherCAT Technologies Group (ETG)](https://www.ethercat.org/default.htm) and get access to
-      the EtherCAT specification.
-- [x] Explore basic master architecture to support current design goals
-- [x] Autoconfigure slaves from their EEPROM data
-  - [x] Also support configuration using CoE data
-- [x] A first pass at a safe `async` API
-  - [ ] Tested in no_std environments with either [RTIC](https://rtic.rs) (once async support is
-        released) or [Embassy](https://embassy.dev/)
-- [x] Usable in multi-threaded Linux systems with e.g. `tokio` or `std::thread` and `block_on`.
-- [x] Configuration and cyclic communication with multiple EtherCAT slaves.
-- [ ] Basic support for [CiA402](https://www.can-cia.org/can-knowledge/canopen/cia402/) torque,
-      position and velocity control of common servo drives in a high-level way.
-
-Current test hardware is an EK1100 + modules and two LAN9252 dev boards.
-
-## Future goals
-
-These may change at any time.
-
-- [-] ~~A blocking API which spins on internal futures for best compatibility, possibly using
-  [casette](https://lib.rs/crates/cassette) or [nb-executor](https://lib.rs/crates/nb-executor).~~
+- [x] `async` API
+- [x] Usable in `no_std` contexts as long as an allocator is available
+- [x] Autoconfigure slaves from their EEPROM (SII) data during startup
+  - [x] Supports configuration using CoE data
+- [x] Safely usable in multi-threaded Linux systems with e.g. `tokio` or `std::thread` and
+      `block_on`.
+- [x] Support for SDO read/writes to configure slave devices
+- [ ] Distributed clocks
+  - [x] Detection of delays between slave devices in topology
+  - [x] Static drift compensation on startup
+  - [ ] Cyclic synchronisation during OP
+- [x] Basic support for [CiA402](https://www.can-cia.org/can-knowledge/canopen/cia402/)/DS402 drives
+  - [ ] A higher level DS402 API for torque, position and velocity control of common servo drives in
+        a more abstract way.
 - [ ] Integration with LinuxCNC as a HAL component using
       [the Rust `linuxcnc-hal`](https://github.com/jamwaffles/linuxcnc-hal-rs).
-- [ ] A multiplatform configuration/debugging/management GUI
-- [ ] Loading slave configurations from ESI XML files
-
-  Current test hardware consists of a Kollmorgen AKD servo drive and three Leadshine EL7 servo
-  drives
+- [ ] Load slave configurations from ESI XML files
 
 ## Performance
 

@@ -7,7 +7,7 @@ use ethercrab::{
     ds402::{Ds402, Ds402Sm},
     error::Error,
     std::tx_rx_task,
-    Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, SubIndex, Timeouts,
+    Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, Timeouts,
 };
 use std::{
     sync::{
@@ -35,7 +35,7 @@ async fn main() -> Result<(), Error> {
 
     let interface = std::env::args()
         .nth(1)
-       .expect("Provide interface as first argument. Pass an unrecognised name to list available interfaces.");
+        .expect("Provide network interface as first argument.");
 
     log::info!("Starting EC400 demo...");
     log::info!("Ensure an EC400 servo drive is the first and only slave");
@@ -67,45 +67,35 @@ async fn main() -> Result<(), Error> {
         Box::pin(async {
             if slave.name() == "ELP-EC400S" {
                 // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
-                slave.write_sdo(0x1600, SubIndex::Index(0), 0u8).await?;
+                slave.sdo_write(0x1600, 0, 0u8).await?;
                 // Control word, u16
                 // NOTE: The lower word specifies the field length
-                slave
-                    .write_sdo(0x1600, SubIndex::Index(1), 0x6040_0010u32)
-                    .await?;
+                slave.sdo_write(0x1600, 1, 0x6040_0010u32).await?;
                 // Target velocity, i32
-                slave
-                    .write_sdo(0x1600, SubIndex::Index(2), 0x60ff_0020u32)
-                    .await?;
-                slave.write_sdo(0x1600, SubIndex::Index(0), 2u8).await?;
+                slave.sdo_write(0x1600, 2, 0x60ff_0020u32).await?;
+                slave.sdo_write(0x1600, 0, 2u8).await?;
 
-                slave.write_sdo(0x1a00, SubIndex::Index(0), 0u8).await?;
+                slave.sdo_write(0x1a00, 0, 0u8).await?;
                 // Status word, u16
-                slave
-                    .write_sdo(0x1a00, SubIndex::Index(1), 0x6041_0010u32)
-                    .await?;
+                slave.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
                 // Actual position, i32
-                slave
-                    .write_sdo(0x1a00, SubIndex::Index(2), 0x6064_0020u32)
-                    .await?;
+                slave.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
                 // Actual velocity, i32
-                slave
-                    .write_sdo(0x1a00, SubIndex::Index(3), 0x606c_0020u32)
-                    .await?;
-                slave.write_sdo(0x1a00, SubIndex::Index(0), 0x03u8).await?;
+                slave.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
+                slave.sdo_write(0x1a00, 0, 0x03u8).await?;
 
-                slave.write_sdo(0x1c12, SubIndex::Index(0), 0u8).await?;
-                slave.write_sdo(0x1c12, SubIndex::Index(1), 0x1600).await?;
-                slave.write_sdo(0x1c12, SubIndex::Index(0), 1u8).await?;
+                slave.sdo_write(0x1c12, 0, 0u8).await?;
+                slave.sdo_write(0x1c12, 1, 0x1600).await?;
+                slave.sdo_write(0x1c12, 0, 1u8).await?;
 
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 0u8).await?;
-                slave.write_sdo(0x1c13, SubIndex::Index(1), 0x1a00).await?;
-                slave.write_sdo(0x1c13, SubIndex::Index(0), 1u8).await?;
+                slave.sdo_write(0x1c13, 0, 0u8).await?;
+                slave.sdo_write(0x1c13, 1, 0x1a00).await?;
+                slave.sdo_write(0x1c13, 0, 1u8).await?;
 
                 // Opmode - Cyclic Synchronous Position
-                // slave.write_sdo(0x6060, SubIndex::Index(0), 0x08).await?;
+                // slave.write_sdo(0x6060, 0, 0x08).await?;
                 // Opmode - Cyclic Synchronous Velocity
-                slave.write_sdo(0x6060, SubIndex::Index(0), 0x09u8).await?;
+                slave.sdo_write(0x6060, 0, 0x09u8).await?;
             }
 
             Ok(())
@@ -113,7 +103,8 @@ async fn main() -> Result<(), Error> {
     }));
 
     let group = client
-        .init::<16, _>(groups, |groups, _slave| Ok(groups.as_mut()))
+        // Initialise a single group
+        .init::<MAX_SLAVES, _>(groups, |group, _slave| Ok(group))
         .await
         .expect("Init");
 
@@ -126,13 +117,13 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Discovered {} slaves", group.len());
 
-    for slave in group.slaves() {
-        let (i, o) = slave.io();
+    for slave in group.iter(&client) {
+        let (i, o) = slave.io_raw();
 
         log::info!(
             "-> Slave {} {} inputs: {} bytes, outputs: {} bytes",
-            slave.configured_address,
-            slave.name,
+            slave.configured_address(),
+            slave.name(),
             i.len(),
             o.len(),
         );
@@ -143,14 +134,10 @@ async fn main() -> Result<(), Error> {
 
     // Read cycle time from servo drive
     let cycle_time = {
-        let slave = group.slave(0).unwrap();
+        let slave = group.slave(&client, 0).unwrap();
 
-        let base = slave
-            .read_sdo::<u8>(&client, 0x60c2, SubIndex::Index(1))
-            .await?;
-        let x10 = slave
-            .read_sdo::<i8>(&client, 0x60c2, SubIndex::Index(2))
-            .await?;
+        let base = slave.sdo_read::<u8>(0x60c2, 1).await?;
+        let x10 = slave.sdo_read::<i8>(0x60c2, 2).await?;
 
         let base = f32::from(base);
         let x10 = 10.0f32.powi(i32::from(x10));
@@ -165,7 +152,7 @@ async fn main() -> Result<(), Error> {
     let mut cyclic_interval = tokio::time::interval(cycle_time);
     cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let slave = group.slave(0).expect("No servo!");
+    let slave = group.slave(&client, 0).expect("No servo!");
     let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
 
     let mut velocity: i32 = 0;
@@ -181,11 +168,11 @@ async fn main() -> Result<(), Error> {
             //     .sm
             //     .context()
             //     .slave
-            //     .write_sdo(&client, 0x6060, SubIndex::Index(0), 0x08u8)
+            //     .write_sdo(&client, 0x6060, 0, 0x08u8)
             //     .await?;
 
             let status = servo.status_word();
-            let (i, o) = servo.slave().io();
+            let (i, o) = servo.slave().io_raw();
 
             let (pos, vel) = {
                 let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
@@ -227,7 +214,7 @@ async fn main() -> Result<(), Error> {
         }
 
         let status = servo.status_word();
-        let (i, o) = servo.slave().io();
+        let (i, o) = servo.slave().io_raw();
 
         let (pos, vel) = {
             let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());

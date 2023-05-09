@@ -1,6 +1,9 @@
 //! DS402 state machine.
 
-use crate::{error::Error as EthercrabError, GroupSlave};
+use crate::{
+    error::Error as EthercrabError,
+    slave::{pdi::SlavePdi, SlaveRef},
+};
 use core::fmt;
 
 smlang::statemachine! {
@@ -129,12 +132,12 @@ impl Clone for States {
 #[derive(Debug)]
 pub struct Ds402<'a> {
     /// The EtherCat slave.
-    pub slave: GroupSlave<'a>,
+    pub slave: SlaveRef<'a, SlavePdi<'a>>,
 }
 
 impl<'a> Ds402<'a> {
     /// Create a new DS402 state machine.
-    pub fn new(slave: GroupSlave<'a>) -> Result<Self, EthercrabError> {
+    pub fn new(slave: SlaveRef<'a, SlavePdi<'a>>) -> Result<Self, EthercrabError> {
         Ok(Self { slave })
     }
 
@@ -150,13 +153,13 @@ impl<'a> Ds402<'a> {
 
     /// Get the DS402 status word.
     pub fn status_word(&self) -> StatusWord {
-        let status = u16::from_le_bytes(self.slave.inputs()[0..=1].try_into().unwrap());
+        let status = u16::from_le_bytes(self.slave.inputs_raw()[0..=1].try_into().unwrap());
 
         StatusWord::from_bits_truncate(status)
     }
 
     fn set_control_word(&mut self, state: ControlWord) {
-        let (control, _rest) = self.slave.outputs().split_at_mut(2);
+        let (control, _rest) = self.slave.outputs_raw().split_at_mut(2);
 
         let state = state.bits().to_le_bytes();
 
@@ -186,7 +189,7 @@ impl<'a> Ds402Sm<'a> {
     }
 
     /// Get a reference to the underlying EtherCAT slave device.
-    pub fn slave(&self) -> &GroupSlave {
+    pub fn slave(&self) -> &SlaveRef<'a, SlavePdi<'a>> {
         &self.sm.context().slave
     }
 

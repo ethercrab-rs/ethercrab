@@ -140,3 +140,9 @@ impl SubIndex {
         }
     }
 }
+
+impl From<u8> for SubIndex {
+    fn from(value: u8) -> Self {
+        Self::Index(value)
+    }
+}
