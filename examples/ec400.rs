@@ -25,7 +25,7 @@ const MAX_PDU_DATA: usize = 1100;
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
 const MAX_FRAMES: usize = 16;
 /// Maximum total PDI length.
-const PDI_LEN: usize = 64;
+const PDI_LEN: usize = 128;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
@@ -65,7 +65,7 @@ async fn main() -> Result<(), Error> {
 
     let groups = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(Box::new(|slave| {
         Box::pin(async {
-            if slave.name() == "ELP-EC400S" {
+//             if slave.name() == "ELP-EC400S" {
                 // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
                 slave.sdo_write(0x1600, 0, 0u8).await?;
                 // Control word, u16
@@ -82,21 +82,21 @@ async fn main() -> Result<(), Error> {
                 slave.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
                 // Actual velocity, i32
                 slave.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
-                slave.sdo_write(0x1a00, 0, 0x03u8).await?;
+                slave.sdo_write(0x1a00, 0, 3u8).await?;
 
                 slave.sdo_write(0x1c12, 0, 0u8).await?;
-                slave.sdo_write(0x1c12, 1, 0x1600).await?;
+                slave.sdo_write(0x1c12, 1, 0x1600_u16).await?;
                 slave.sdo_write(0x1c12, 0, 1u8).await?;
 
                 slave.sdo_write(0x1c13, 0, 0u8).await?;
-                slave.sdo_write(0x1c13, 1, 0x1a00).await?;
+                slave.sdo_write(0x1c13, 1, 0x1a00_u16).await?;
                 slave.sdo_write(0x1c13, 0, 1u8).await?;
 
                 // Opmode - Cyclic Synchronous Position
                 // slave.write_sdo(0x6060, 0, 0x08).await?;
                 // Opmode - Cyclic Synchronous Velocity
                 slave.sdo_write(0x6060, 0, 0x09u8).await?;
-            }
+//             }
 
             Ok(())
         })
