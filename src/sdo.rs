@@ -1,3 +1,5 @@
+//! Convenient structures to read/write the slave's dictionnary objects (SDO) and configure mappings.
+
 use crate::{
 	Slave, SlaveRef, SubIndex,
 	error::Error,

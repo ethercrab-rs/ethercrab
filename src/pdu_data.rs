@@ -20,7 +20,7 @@ pub trait PduData: Sized {
     fn pack(&self) -> Self::ByteArray;
     fn unpack(src: &[u8]) -> PackingResult<Self>;
 }
-/// trait marking a [PackedStruct] is a [PduData]
+/// trait marking a [packed_struct::PackedStruct] is a [PduData]
 pub trait PduStruct: packed::PackedStruct {}
 impl<T: PduStruct> PduData for T {
 	const ID: TypeId = TypeId::CUSTOM;
@@ -39,9 +39,9 @@ impl<T: PduStruct> PduData for T {
 // }
 // impl<T: ByteArray> ByteArrayFrom for T {}
 
-/** dtype identifiers associated to dtypes allowing to dynamically check the type of a [DType] implementor
+/** dtype identifiers associated to dtypes allowing to dynamically check the type of a [PduData] implementor
 	
-	It is only convering the common useful types and not all the possible implementors of [DType]
+	It is only convering the common useful types and not all the possible implementors of [PduData]
 */
 #[derive(Copy, Clone, Debug)]
 pub enum TypeId {
