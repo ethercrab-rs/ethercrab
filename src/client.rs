@@ -5,7 +5,7 @@ use crate::{
     dc,
     error::{Error, Item, PduError},
     pdi::PdiOffset,
-    pdu_data::{PduData, PduRead},
+    pdu_data::{PduData, ByteArray},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
@@ -19,7 +19,6 @@ use core::{
     sync::atomic::{AtomicU16, AtomicU8, Ordering},
 };
 use heapless::FnvIndexMap;
-use packed_struct::PackedStruct;
 
 /// A medium-level interface over PDUs (e.g. `BRD`, `LRW`, etc) and other EtherCAT master related
 /// infrastructure.
@@ -93,7 +92,7 @@ impl<'sto> Client<'sto> {
         // Reset slaves to init
         self.bwr(
             RegisterAddress::AlControl,
-            AlControl::reset().pack().unwrap(),
+            AlControl::reset(),
         )
         .await?;
 
@@ -284,7 +283,7 @@ impl<'sto> Client<'sto> {
 
         self.bwr(
             RegisterAddress::AlControl,
-            AlControl::new(desired_state).pack().unwrap(),
+            AlControl::new(desired_state),
         )
         .await?
         .wkc(num_slaves, "set all slaves state")?;
@@ -335,7 +334,7 @@ impl<'sto> Client<'sto> {
 
     async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, Error>
     where
-        T: PduRead,
+        T: PduData,
     {
         timeout(
             self.timeouts.pdu,
@@ -355,7 +354,7 @@ impl<'sto> Client<'sto> {
             let (data, working_counter) = response.into_data();
             let data = &*data;
 
-            let res = T::try_from_slice(data).map_err(|e| {
+            let res = T::unpack(data).map_err(|e| {
                 log::error!(
                     "PDU data decode: {:?}, T: {} data {:?}",
                     e,
@@ -376,7 +375,7 @@ impl<'sto> Client<'sto> {
     {
         timeout(
             self.timeouts.pdu,
-            self.pdu_loop.pdu_tx_readwrite(command, value.as_slice()),
+            self.pdu_loop.pdu_tx_readwrite(command, value.pack().unwrap().as_bytes_slice()),
         )
         .await
         .map_err(|e| {
@@ -392,7 +391,7 @@ impl<'sto> Client<'sto> {
             let (data, working_counter) = response.into_data();
             let data = &*data;
 
-            let res = T::try_from_slice(data).map_err(|e| {
+            let res = T::unpack(data).map_err(|e| {
                 log::error!(
                     "PDU data decode: {:?}, T: {} data {:?}",
                     e,
@@ -410,7 +409,7 @@ impl<'sto> Client<'sto> {
     /// Send a `BRD` (Broadcast Read).
     pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, Error>
     where
-        T: PduRead,
+        T: PduData,
     {
         self.read_service(Command::Brd {
             // Address is always zero when sent from master
@@ -447,7 +446,7 @@ impl<'sto> Client<'sto> {
         register: RegisterAddress,
     ) -> Result<PduResponse<T>, Error>
     where
-        T: PduRead,
+        T: PduData,
     {
         self.read_service(Command::Aprd {
             address: 0u16.wrapping_sub(address),
@@ -483,7 +482,7 @@ impl<'sto> Client<'sto> {
         register: impl Into<u16>,
     ) -> Result<PduResponse<T>, Error>
     where
-        T: PduRead,
+        T: PduData,
     {
         self.read_service(Command::Fprd {
             address,
@@ -522,7 +521,7 @@ impl<'sto> Client<'sto> {
         register: RegisterAddress,
     ) -> Result<PduResponse<T>, Error>
     where
-        T: PduRead,
+        T: PduData,
     {
         self.read_service(Command::Frmw {
             address,

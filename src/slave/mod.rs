@@ -20,7 +20,7 @@ use crate::{
     eeprom::types::SiiOwner,
     error::{Error, MailboxError, PduError},
     mailbox::MailboxType,
-    pdu_data::{PduData, PduRead},
+    pdu_data::*,
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     register::RegisterAddress,
     register::SupportFlags,
@@ -35,7 +35,7 @@ use core::{
     fmt::{Debug, Write},
 };
 use nom::{bytes::complete::take, number::complete::le_u32};
-use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
+use packed_struct::{PackedStructInfo, PackedStructSlice};
 
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
@@ -344,26 +344,23 @@ where
     ) -> Result<(), Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         let sub_index = sub_index.into();
 
         let counter = self.client.mailbox_counter();
 
-        if T::len() > 4 {
+        let pack_container = value.pack().unwrap();
+        let pack = pack_container.as_bytes_slice();
+        if pack.len() > 4 {
             log::error!("Only 4 byte SDO writes or smaller are supported currently.");
 
             // TODO: Normal SDO download. Only expedited requests for now
             return Err(Error::Internal);
         }
-
         let mut data = [0u8; 4];
+        data[..pack.len()].copy_from_slice(pack);
 
-        let len = usize::from(T::len());
-
-        data[0..len].copy_from_slice(value.as_slice());
-
-        let request = coe::services::download(counter, index, sub_index, data, len as u8);
+        let request = coe::services::download(counter, index, sub_index, data, pack.len() as u8);
 
         log::trace!("CoE download");
 
@@ -471,7 +468,6 @@ where
     pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         let sub_index = sub_index.into();
 
@@ -481,11 +477,10 @@ where
         self.read_sdo_buf(index, sub_index, &mut buf)
             .await
             .and_then(|data| {
-                T::try_from_slice(data).map_err(|_| {
+                T::unpack(data.try_into().unwrap()).map_err(|_| {
                     log::error!(
-                        "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
+                        "SDO expedited data decode T: {} data {:?} (len {})",
                         type_name::<T>(),
-                        T::len(),
                         data,
                         data.len()
                     );
@@ -533,8 +528,7 @@ impl<'a, S> SlaveRef<'a, S> {
     /// break higher level interactions with EtherCrab.
     pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
     where
-        T: PduRead,
-        <T as PduRead>::Error: Debug,
+        T: PduData,
     {
         self.read_ignore_wkc(register).await?.wkc(1, "raw read")
     }
@@ -546,7 +540,6 @@ impl<'a, S> SlaveRef<'a, S> {
     pub async fn register_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.write_ignore_wkc(register, value)
             .await?
@@ -558,8 +551,7 @@ impl<'a, S> SlaveRef<'a, S> {
         register: impl Into<u16>,
     ) -> Result<PduResponse<T>, Error>
     where
-        T: PduRead,
-        <T as PduRead>::Error: Debug,
+        T: PduData,
     {
         self.client.fprd(self.configured_address, register).await
     }
@@ -572,7 +564,6 @@ impl<'a, S> SlaveRef<'a, S> {
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.client
             .fpwr(self.configured_address, register, value)
@@ -585,8 +576,7 @@ impl<'a, S> SlaveRef<'a, S> {
         context: &'static str,
     ) -> Result<T, Error>
     where
-        T: PduRead,
-        <T as PduRead>::Error: Debug,
+        T: PduData,
     {
         self.read_ignore_wkc(register).await?.wkc(1, context)
     }
@@ -600,7 +590,6 @@ impl<'a, S> SlaveRef<'a, S> {
     ) -> Result<T, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.write_ignore_wkc(register, value)
             .await?

@@ -204,7 +204,7 @@ pub use slave::{Slave, SlavePdi, SlaveRef};
 pub use slave_group::{GroupId, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle};
 pub use slave_state::SlaveState;
 pub use timer_factory::Timeouts;
-pub use pdu_data::{PduData, PduRead};
+pub use pdu_data::{PduData, PduStruct};
 pub use convenience::{
 	field::{Field, DType},
 	sdo,

@@ -4,7 +4,7 @@ use crate::{
     all_consumed,
     base_data_types::PrimitiveDataType,
     error::{EepromError, Error},
-    pdu_data::PduRead,
+    pdu_data::*,
     sync_manager_channel::{self},
 };
 use core::fmt;
@@ -86,21 +86,9 @@ impl SiiControl {
             ..Default::default()
         }
     }
-
-    pub fn as_array(&self) -> [u8; 2] {
-        self.pack().unwrap()
-    }
 }
 
-impl PduRead for SiiControl {
-    const LEN: u16 = u16::LEN;
-
-    type Error = PackingError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
-    }
-}
+impl PduStruct for SiiControl {}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
 pub enum SiiAccess {

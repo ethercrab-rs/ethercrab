@@ -1,4 +1,4 @@
-use crate::pdu_data::PduRead;
+use crate::pdu_data::PduStruct;
 use core::fmt;
 use packed_struct::prelude::*;
 
@@ -62,15 +62,7 @@ impl fmt::Display for SyncManagerChannel {
     }
 }
 
-impl PduRead for SyncManagerChannel {
-    const LEN: u16 = 8;
-
-    type Error = PackingError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
-    }
-}
+impl PduStruct for SyncManagerChannel {}
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]

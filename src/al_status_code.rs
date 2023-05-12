@@ -1,6 +1,7 @@
-use crate::pdu_data::PduRead;
+use crate::pdu_data::*;
 use core::fmt;
 use num_enum::TryFromPrimitiveError;
+use crate::pdu_data::*;
 
 /// AL (Application Layer) Status Code.
 ///
@@ -118,16 +119,16 @@ pub enum AlStatusCode {
     // NOTE: Codes 0x8000 - 0xffff are vendor specific.
 }
 
-impl PduRead for AlStatusCode {
-    const LEN: u16 = u16::LEN;
-
-    type Error = TryFromPrimitiveError<Self>;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let data = u16::from_le_bytes(slice.try_into().unwrap());
-
-        Self::try_from(data)
-    }
+impl PduData for AlStatusCode {
+	const id: TypeId = TypeId::U16;
+	type ByteArray = [u8; 2];
+    fn pack(&self) -> PackingResult<Self::ByteArray>  {
+		Ok( (*self as u16).to_le_bytes() )
+	}
+    fn unpack(src: &Self::ByteArray) -> PackingResult<Self>  {
+		Self::try_from( u16::from_le_bytes(src.clone()) )
+			.map_err(|e|  PackingError::BitsError)
+	}
 }
 
 impl fmt::Display for AlStatusCode {

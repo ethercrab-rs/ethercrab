@@ -1,5 +1,5 @@
-use crate::pdu_data::{PduData, PduRead};
-use packed_struct::{prelude::*, PackingError};
+use crate::pdu_data::*;
+use packed_struct::prelude::*;
 
 /// Register address abstraction.
 ///
@@ -184,25 +184,8 @@ pub struct PortDescriptors {
     port_3: PortType,
 }
 
-impl PduRead for PortDescriptors {
-    const LEN: u16 = 1;
+impl PduStruct for PortDescriptors {}
 
-    type Error = PackingError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let arr = slice[0..1]
-            .try_into()
-            .map_err(|_| PackingError::BufferTooSmall)?;
-
-        Self::unpack(arr)
-    }
-}
-
-impl PduData for PortDescriptors {
-    fn as_slice(&self) -> &[u8] {
-        todo!()
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PrimitiveEnum_u8)]
 #[repr(u8)]
@@ -232,7 +215,7 @@ pub struct SupportFlags {
 impl PackedStruct for SupportFlags {
     type ByteArray = [u8; 2];
 
-    fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
+    fn pack(&self) -> PackingResult<Self::ByteArray> {
         let result = (self.fmmu_supports_bit_ops as u16)
             & (self.reserved_register_support as u16) << 1
             & (self.dc_supported as u16) << 2
@@ -249,7 +232,7 @@ impl PackedStruct for SupportFlags {
         Ok(result.to_le_bytes())
     }
 
-    fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
+    fn unpack(src: &Self::ByteArray) -> PackingResult<Self> {
         let raw = u16::from_le_bytes(*src);
 
         Ok(Self {
@@ -269,12 +252,4 @@ impl PackedStruct for SupportFlags {
     }
 }
 
-impl PduRead for SupportFlags {
-    const LEN: u16 = 2;
-
-    type Error = PackingError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
-    }
-}
+impl PduStruct for SupportFlags {}

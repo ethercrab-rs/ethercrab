@@ -91,7 +91,7 @@ impl EepromSectionReader {
             slave
                 .write(
                     RegisterAddress::SiiControl,
-                    status.error_reset().as_array(),
+                    status.error_reset().pack().unwrap(),
                     "Reset errors",
                 )
                 .await?;
@@ -103,7 +103,7 @@ impl EepromSectionReader {
         slave
             .write(
                 RegisterAddress::SiiControl,
-                SiiRequest::read(eeprom_address).as_array(),
+                SiiRequest::read(eeprom_address).pack().unwrap(),
                 "SII read setup",
             )
             .await?;

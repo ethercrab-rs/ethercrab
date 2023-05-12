@@ -1,5 +1,5 @@
-use crate::pdu_data::PduRead;
-use packed_struct::{PackedStruct, PackedStructSlice, PackingError};
+use crate::pdu_data::*;
+use packed_struct::PackedStruct;
 
 #[derive(Debug, Copy, Clone)]
 pub struct DlStatus {
@@ -34,10 +34,11 @@ pub struct DlStatus {
     pub signal_port3: bool,
 }
 
+impl PduStruct for DlStatus {}
 impl PackedStruct for DlStatus {
     type ByteArray = [u8; 2];
 
-    fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
+    fn pack(&self) -> PackingResult<Self::ByteArray> {
         let result = self.pdi_operational as u16
             & (self.watchdog_ok as u16) << 1
             & (self.extended_link_detection as u16) << 2
@@ -58,7 +59,7 @@ impl PackedStruct for DlStatus {
         Ok(result.to_le_bytes())
     }
 
-    fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
+    fn unpack(src: &Self::ByteArray) -> PackingResult<Self> {
         let raw = u16::from_le_bytes(*src);
 
         Ok(Self {
@@ -79,15 +80,5 @@ impl PackedStruct for DlStatus {
             loopback_port3: (raw >> 14 & 1) == 1,
             signal_port3: (raw >> 15 & 1) == 1,
         })
-    }
-}
-
-impl PduRead for DlStatus {
-    const LEN: u16 = 2;
-
-    type Error = PackingError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
     }
 }
