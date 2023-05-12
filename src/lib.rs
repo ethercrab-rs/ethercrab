@@ -183,7 +183,7 @@ mod slave_state;
 mod sync_manager_channel;
 mod timer_factory;
 mod vendors;
-pub mod convenience;
+pub mod sdo;
 
 #[doc(hidden)]
 pub mod internals;
@@ -205,7 +205,6 @@ pub use slave_group::{GroupId, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle}
 pub use slave_state::SlaveState;
 pub use timer_factory::Timeouts;
 pub use pdu_data::{PduData, PduStruct, Field, BitField, TypeId};
-pub use convenience::sdo;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE_RAW: u16 = 0x88a4;

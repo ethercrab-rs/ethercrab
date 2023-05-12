@@ -114,8 +114,7 @@ pub struct Field<T: PduData> {
 	/// byte length of the object
 	pub len: usize,
 }
-impl<T, const N: usize> Field<T> 
-where T: PduData<ByteArray=[u8; N]>
+impl<T: PduData> Field<T>
 {
 	/// build a Field from its content
 	pub fn new(byte: usize, len: usize) -> Self {
@@ -135,7 +134,7 @@ where T: PduData<ByteArray=[u8; N]>
 }
 impl<T: PduData> fmt::Debug for Field<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Field{{0x{:x}, {}}}", self.byte, self.len)
+		write!(f, "Field{{{}, {}}}", self.byte, self.len)
 	}
 }
 /** 
@@ -157,9 +156,9 @@ impl<T: PduData> BitField<T> {
 		Self{extracted: PhantomData, bit, len}
 	}
 	/// extract the value pointed by the field in the given byte array
-	pub fn get(&self, data: &[u8]) -> T       {todo!()}
+	pub fn get(&self, _data: &[u8]) -> T       {todo!()}
 	/// dump the given value to the place pointed by the field in the byte array
-	pub fn set(&self, data: &mut [u8], value: T)   {todo!()}
+	pub fn set(&self, _data: &mut [u8], _value: T)   {todo!()}
 }
 impl<T: PduData> fmt::Debug for BitField<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -167,72 +166,3 @@ impl<T: PduData> fmt::Debug for BitField<T> {
 	}
 }
 
-
-
-/*
-impl<const N: usize> PduData for [u8; N] {
-    fn as_slice(&self) -> &[u8] {
-        self
-    }
-}
-
-impl PduRead for () {
-    const LEN: u16 = 0;
-
-    type Error = TryFromSliceError;
-
-    fn try_from_slice(_slice: &[u8]) -> Result<Self, Self::Error> {
-        Ok(())
-    }
-}
-
-impl PduData for () {
-    fn as_slice(&self) -> &[u8] {
-        &[]
-    }
-}
-
-impl<const N: usize, T> PduRead for [T; N]
-where
-    T: PduRead,
-{
-    const LEN: u16 = T::LEN * N as u16;
-
-    type Error = ();
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let chunks = slice.chunks_exact(usize::from(T::LEN));
-
-        let mut res = heapless::Vec::<T, N>::new();
-
-        for chunk in chunks {
-            res.push(T::try_from_slice(chunk).map_err(|_| ())?)
-                .map_err(|_| ())?;
-        }
-
-        res.into_array().map_err(|_| ())
-    }
-}
-
-impl<const N: usize> PduRead for heapless::String<N> {
-    const LEN: u16 = N as u16;
-
-    type Error = VisibleStringError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let mut out = heapless::String::new();
-
-        out.push_str(core::str::from_utf8(slice).map_err(VisibleStringError::Decode)?)
-            .map_err(|_| VisibleStringError::TooLong)?;
-
-        Ok(out)
-    }
-}
-
-/// A "Visible String" representation. Characters are specified to be within the ASCII range.
-impl<const N: usize> PduData for heapless::String<N> {
-    fn as_slice(&self) -> &[u8] {
-        self.as_bytes()
-    }
-}
-*/

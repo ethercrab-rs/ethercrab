@@ -8,8 +8,8 @@ use crate::{
     pdu_data::PduStruct,
     Client,
 };
-
 use packed_struct::prelude::*;
+
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PackedStruct)]
 #[packed_struct(endian="lsb")]
@@ -17,6 +17,8 @@ struct DCTimes {
 	pub p: [u32; 3],
 }
 impl PduStruct for DCTimes {}
+
+
 
 /// Send a broadcast to all slaves to latch in DC receive time, then store it on the slave structs.
 async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(), Error> {
@@ -40,16 +42,6 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
             .read_ignore_wkc::<i64>(RegisterAddress::DcReceiveTime)
             .await?;
 
-//         let [time_p0, time_p1, time_p2, time_p3] = sl
-//             .read::<[u32; 4]>(RegisterAddress::DcTimePort0, "Port receive times")
-//             .await?;
-// 
-//         slave.dc_receive_time = dc_receive_time;
-//         slave.ports.0[0].dc_receive_time = time_p0;
-//         slave.ports.0[1].dc_receive_time = time_p1;
-//         slave.ports.0[2].dc_receive_time = time_p2;
-//         slave.ports.0[3].dc_receive_time = time_p3;
-        
         let times = sl
 			.read::<DCTimes>(RegisterAddress::DcTimePort0, "Port receive times")
 			.await?;

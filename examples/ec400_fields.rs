@@ -111,23 +111,23 @@ async fn main() -> Result<(), Error> {
 		},
 		async {
 			let profile = Arc::new(Profile {
-				mode: SubItem::<u8> {index: 0x6060, sub: 0, field: Field::new(0, 0, 8)},
+				mode: SubItem::<u8> {index: 0x6060, sub: 0, field: Field::new(0, 1)},
 				current: ProfileCurrent {
-					status: SubItem::<u16> {index: 0x6041, sub: 0, field: Field::new(0, 0, 16)},
-					error: SubItem::<u16> {index: 0x603f, sub: 0, field: Field::new(0, 0, 16)},
-					position: SubItem::<i32> {index: 0x6064, sub: 0, field: Field::new(0, 0, 32)},
-					velocity: SubItem::<i32> {index: 0x606c, sub: 0, field: Field::new(0, 0, 32)},
-					force: SubItem::<i16> {index: 0x6077, sub: 0, field: Field::new(0, 0, 16)},
+					status: SubItem::<u16> {index: 0x6041, sub: 0, field: Field::new(0, 2)},
+					error: SubItem::<u16> {index: 0x603f, sub: 0, field: Field::new(0, 2)},
+					position: SubItem::<i32> {index: 0x6064, sub: 0, field: Field::new(0, 4)},
+					velocity: SubItem::<i32> {index: 0x606c, sub: 0, field: Field::new(0, 4)},
+					force: SubItem::<i16> {index: 0x6077, sub: 0, field: Field::new(0, 2)},
 					},
 				target: ProfileTarget {
-					control: SubItem::<u16> {index: 0x6040, sub: 0, field: Field::new(0, 0, 16)},
-					position: SubItem::<i32> {index: 0x607a, sub: 0, field: Field::new(0, 0, 32)},
-					velocity: SubItem::<i32> {index: 0x60ff, sub: 0, field: Field::new(0, 0, 32)},
-					force: SubItem::<i16> {index: 0x6071, sub: 0, field: Field::new(0, 0, 32)},
+					control: SubItem::<u16> {index: 0x6040, sub: 0, field: Field::new(0, 2)},
+					position: SubItem::<i32> {index: 0x607a, sub: 0, field: Field::new(0, 4)},
+					velocity: SubItem::<i32> {index: 0x60ff, sub: 0, field: Field::new(0, 4)},
+					force: SubItem::<i16> {index: 0x6071, sub: 0, field: Field::new(0, 4)},
 					},
 				period: ProfilePeriod {
-					digits: SubItem::<u8> {index: 0x60c2, sub: 1, field: Field::new(2, 0, 8)},
-					exponent: SubItem::<i8> {index: 0x60c2, sub: 2, field: Field::new(3, 0, 8)},
+					digits: SubItem::<u8> {index: 0x60c2, sub: 1, field: Field::new(2, 1)},
+					exponent: SubItem::<i8> {index: 0x60c2, sub: 2, field: Field::new(3, 1)},
 					},
 				pdo: [
 					ConfigurablePdo {index: 0x1600, num: 3},
@@ -136,8 +136,8 @@ async fn main() -> Result<(), Error> {
 				rx: SyncManager {index: 0x1c12, num: 3},
 				tx: SyncManager {index: 0x1c13, num: 3},
 				gear: ProfileGear {
-					motor: SubItem {index: 0x6091, sub: 1, field: Field::new(2, 0, 32)},
-					shaft: SubItem {index: 0x6091, sub: 2, field: Field::new(6, 0, 32)},
+					motor: SubItem {index: 0x6091, sub: 1, field: Field::new(2, 4)},
+					shaft: SubItem {index: 0x6091, sub: 2, field: Field::new(6, 4)},
 					},
 				});
 			

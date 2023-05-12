@@ -1,13 +1,13 @@
 use crate::{
-	Slave, SlaveRef, SubIndex, PduData,
+	Slave, SlaveRef, SubIndex,
 	error::Error,
+	pdu_data::{Field, PduData},
 	};
-use super::field::{Field, DType};
-use std::{fmt, borrow::Borrow};
+use core::{fmt, borrow::Borrow};
 
 /// description of an SDO's subitem, not a SDO itself
 #[derive(Clone)]
-pub struct SubItem<T: PduData + DType> {
+pub struct SubItem<T: PduData> {
 	/// index of the item in the slave's dictionnary of objects
 	pub index: u16,
 	/// subindex in the item
@@ -16,18 +16,18 @@ pub struct SubItem<T: PduData + DType> {
 	/// TODO: see if this is really usefull/mendatory
 	pub field: Field<T>,
 }
-impl<T: PduData + DType> SubItem<T> {
+impl<T: PduData> SubItem<T> {
 	/// retreive the current subitem value from the given slave
 	pub async fn get<'a, S: Borrow<Slave>>(&self, slave: &SlaveRef<'a, S>) -> Result<T, Error>  {
-		slave.sdo_read(self.index, SubIndex::Index(self.sub)).await
+		slave.sdo_read(self.index, self.sub).await
 	}
 	/// set the subitem value on the given slave
 	pub async fn set<'a, S: Borrow<Slave>>(&self, slave: &SlaveRef<'a, S>, value: T) -> Result<(), Error>   {
-		slave.sdo_write(self.index, SubIndex::Index(self.sub), value).await?;
+		slave.sdo_write(self.index, self.sub, value).await?;
 		Ok(())
 	}
 }
-impl<T: PduData + DType> fmt::Debug for SubItem<T> {
+impl<T: PduData> fmt::Debug for SubItem<T> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "SubItem {{index: {:x}, sub: {}, field: {:?}}}", self.index, self.sub, self.field)
 	}
@@ -124,40 +124,38 @@ impl<'b, S: Borrow<Slave>> PdoMapping<'b, S> {
 		Ok(new)
 	}
 	/// set the given sdo item to be transmitted
-	pub async fn push<T: PduData + DType>(&mut self, sdo: &SubItem<T>) -> Result<Field<T>, Error> {
+	pub async fn push<T: PduData>(&mut self, sdo: &SubItem<T>) -> Result<Field<T>, Error> {
 		assert!(self.num < self.pdo.num, "maximum number of pdo entries reached");
-		log::debug!("  push {:x} {}: {:x}", self.pdo.index, self.num+1, ((sdo.index as u32) << 16) | ((sdo.sub as u32) << 4) | ((sdo.field.bitlen as u32) & 0xff));
 		
 		self.mapping.slave.sdo_write::<u32>(
 			self.pdo.index, 
 			SubIndex::Index(self.num+1), 
-			((sdo.index as u32) << 16) | ((sdo.sub as u32) << 8) | ((sdo.field.bitlen as u32) & 0xff),
+			((sdo.index as u32) << 16) | ((sdo.sub as u32) << 8) | (((sdo.field.len * 8) as u32) & 0xff),
 			).await?;
-		let result = Field::new(self.mapping.offset.into(), 0, sdo.field.bitlen);
-		self.mapping.offset += (sdo.field.bitlen+1)/8;
+		let result = Field::new(self.mapping.offset.into(), sdo.field.len);
+		self.mapping.offset += sdo.field.len;
 		self.num += 1;
 		Ok(result)
 	}
-	pub async fn count<T: PduData + DType>(&mut self, sdo: &SubItem<T>) -> Result<Field<T>, Error> {
+	pub async fn count<T: PduData>(&mut self, sdo: &SubItem<T>) -> Result<Field<T>, Error> {
 		assert!(self.num < self.pdo.num, "maximum number of pdo entries reached");
 		assert_eq!(
 			self.mapping.slave.sdo_read::<u32>(
 				self.pdo.index, 
 				SubIndex::Index(self.num+1),
 				).await?, 
-			((sdo.index as u32) << 16) | ((sdo.sub as u32) << 8) | ((sdo.field.bitlen as u32) & 0xff),
+			((sdo.index as u32) << 16) | ((sdo.sub as u32) << 8) | (((sdo.field.len * 8) as u32) & 0xff),
 			"wrong sdo present in pdo entry",
 			);
 		
-		let result = Field::new(self.mapping.offset.into(), 0, sdo.field.bitlen);
-		self.mapping.offset += (sdo.field.bitlen+7)/8;  // round value to ceil
+		let result = Field::new(self.mapping.offset.into(), sdo.field.len);
+		self.mapping.offset += sdo.field.len;  // round value to ceil
 		self.num += 1;
 		Ok(result)
 	}
 	/// finalize the pdo configuration
 	/// must be called or the pdo will contain nothing
 	pub async fn finish(&mut self) -> Result<(), Error> {
-		log::debug!("  finish {:x} {}: {:x}", self.pdo.index, 0, self.num);
 		self.mapping.slave.sdo_write(self.pdo.index, SubIndex::Index(0), self.num).await?;
 		Ok(())
 	}
