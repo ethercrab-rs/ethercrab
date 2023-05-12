@@ -14,20 +14,20 @@ pub use packed_struct::{PackingResult, PackingError, types::bits::ByteArray};
 		this is currently redudnant with [PduData] and should be merged properly
 */
 pub trait PduData: Sized {
-	const id: TypeId;
+	const ID: TypeId;
     type ByteArray: ByteArray;
 
-    fn pack(&self) -> PackingResult<Self::ByteArray>;
-    fn unpack(src: &Self::ByteArray) -> PackingResult<Self>;
+    fn pack(&self) -> Self::ByteArray;
+    fn unpack(src: &[u8]) -> PackingResult<Self>;
 }
 /// trait marking a [PackedStruct] is a [PduData]
 pub trait PduStruct: packed::PackedStruct {}
 impl<T: PduStruct> PduData for T {
-	const id: TypeId = TypeId::CUSTOM;
+	const ID: TypeId = TypeId::CUSTOM;
 	type ByteArray = <T as packed::PackedStruct>::ByteArray;
 	
-	fn pack(&self) -> PackingResult<Self::ByteArray>    {packed::PackedStruct::pack(self)}
-	fn unpack(src: &Self::ByteArray) -> PackingResult<Self>  {packed::PackedStruct::unpack(src)}
+	fn pack(&self) -> Self::ByteArray    {packed::PackedStruct::pack(self).unwrap()}
+	fn unpack(src: &[u8]) -> PackingResult<Self>  {packed::PackedStructSlice::unpack_from_slice(src)}
 }
 
 // trait ByteArrayFrom: ByteArray {
@@ -53,23 +53,36 @@ pub enum TypeId {
 }
 
 impl<const N: usize> PduData for [u8; N] {
-	const id: TypeId = TypeId::CUSTOM;
+	const ID: TypeId = TypeId::CUSTOM;
 	type ByteArray = Self;
 	
-	fn pack(&self) -> PackingResult<Self::ByteArray>    {Ok(*self)}
-	fn unpack(src: &Self::ByteArray) -> PackingResult<Self>  {Ok(*src)}
+	fn pack(&self) -> Self::ByteArray    {*self}
+	fn unpack(src: &[u8]) -> PackingResult<Self>  {
+		Ok(Self::try_from(src)
+			.map_err(|_| PackingError::BufferSizeMismatch{
+				expected: N, 
+				actual: src.len(),
+				})?
+			.clone())
+	}
 }
 
 macro_rules! impl_pdudata {
 	($t: ty, $id: ident) => { impl PduData for $t {
-			const id: TypeId = TypeId::$id;
+			const ID: TypeId = TypeId::$id;
 			type ByteArray = [u8; core::mem::size_of::<$t>()];
 			
-			fn pack(&self) -> PackingResult<Self::ByteArray> {
-				Ok(self.to_le_bytes())
+			fn pack(&self) -> Self::ByteArray {
+				self.to_le_bytes()
 			}
-			fn unpack(src: &Self::ByteArray) -> PackingResult<Self> {
-				Ok(Self::from_le_bytes(src.clone()))
+			fn unpack(src: &[u8]) -> PackingResult<Self> {
+				Ok(Self::from_le_bytes(src
+					.try_into()
+					.map_err(|_|  PackingError::BufferSizeMismatch{
+								expected: core::mem::size_of::<$t>(),
+								actual: src.len(),
+								})?
+					))
 			}
 		}};
 	($t: ty) => { impl_pdudata_float(t, TypeId::CUSTOM) };
@@ -110,17 +123,13 @@ where T: PduData<ByteArray=[u8; N]>
 	}
 	/// extract the value pointed by the field in the given byte array
 	pub fn get(&self, data: &[u8]) -> T       {
-		T::unpack(&data[self.byte..][..self.len]
-					.try_into()
-					.expect("wrong data length"))
+		T::unpack(&data[self.byte..][..self.len])
 				.expect("cannot unpack from data")
 	}
 	/// dump the given value to the place pointed by the field in the byte array
 	pub fn set(&self, data: &mut [u8], value: T)   {
 		data[self.byte..][..self.len].copy_from_slice(
-			value.pack()
-				.expect("cannot pack data")
-				.as_bytes_slice()
+			value.pack().as_bytes_slice()
 			);
 	}
 }

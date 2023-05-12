@@ -338,7 +338,7 @@ impl<'sto> Client<'sto> {
     {
         timeout(
             self.timeouts.pdu,
-            self.pdu_loop.pdu_tx_readonly(command, T::len()),
+            self.pdu_loop.pdu_tx_readonly(command, T::ByteArray::len().try_into().unwrap()),
         )
         .await
         .map_err(|e| {
@@ -375,7 +375,7 @@ impl<'sto> Client<'sto> {
     {
         timeout(
             self.timeouts.pdu,
-            self.pdu_loop.pdu_tx_readwrite(command, value.pack().unwrap().as_bytes_slice()),
+            self.pdu_loop.pdu_tx_readwrite(command, value.pack().as_bytes_slice()),
         )
         .await
         .map_err(|e| {

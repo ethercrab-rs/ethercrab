@@ -1,7 +1,6 @@
 use crate::pdu_data::*;
 use core::fmt;
-use num_enum::TryFromPrimitiveError;
-use crate::pdu_data::*;
+use packed_struct::PackedStruct;
 
 /// AL (Application Layer) Status Code.
 ///
@@ -119,15 +118,15 @@ pub enum AlStatusCode {
     // NOTE: Codes 0x8000 - 0xffff are vendor specific.
 }
 
-impl PduData for AlStatusCode {
-	const id: TypeId = TypeId::U16;
+impl PduStruct for AlStatusCode {}
+impl PackedStruct for AlStatusCode {
 	type ByteArray = [u8; 2];
     fn pack(&self) -> PackingResult<Self::ByteArray>  {
 		Ok( (*self as u16).to_le_bytes() )
 	}
     fn unpack(src: &Self::ByteArray) -> PackingResult<Self>  {
 		Self::try_from( u16::from_le_bytes(src.clone()) )
-			.map_err(|e|  PackingError::BitsError)
+			.map_err(|_|  PackingError::BitsError)
 	}
 }
 

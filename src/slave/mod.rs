@@ -210,7 +210,6 @@ where
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
         H: CoeServiceRequest,
-        <H as PackedStruct>::ByteArray: AsRef<[u8]>,
     {
         let write_mailbox = self
             .state
@@ -237,7 +236,7 @@ where
                     address: self.configured_address,
                     register: write_mailbox.address,
                 },
-                request.pack().unwrap().as_ref(),
+                request.pack().unwrap().as_bytes_slice(),
                 write_mailbox.len,
             )
             .await?
@@ -349,7 +348,7 @@ where
 
         let counter = self.client.mailbox_counter();
 
-        let pack_container = value.pack().unwrap();
+        let pack_container = value.pack();
         let pack = pack_container.as_bytes_slice();
         if pack.len() > 4 {
             log::error!("Only 4 byte SDO writes or smaller are supported currently.");
@@ -477,7 +476,7 @@ where
         self.read_sdo_buf(index, sub_index, &mut buf)
             .await
             .and_then(|data| {
-                T::unpack(data.try_into().unwrap()).map_err(|_| {
+                T::unpack(data).map_err(|_| {
                     log::error!(
                         "SDO expedited data decode T: {} data {:?} (len {})",
                         type_name::<T>(),
@@ -626,7 +625,7 @@ impl<'a, S> SlaveRef<'a, S> {
         let response = self
             .write(
                 RegisterAddress::AlControl,
-                AlControl::new(desired_state).pack().unwrap(),
+                AlControl::new(desired_state).pack(),
                 "AL control",
             )
             .await

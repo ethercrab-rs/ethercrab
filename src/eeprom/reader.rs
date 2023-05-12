@@ -3,6 +3,7 @@ use crate::{
     error::{EepromError, Error},
     register::RegisterAddress,
     slave::SlaveRef,
+    pdu_data::PduData,
 };
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
@@ -91,7 +92,7 @@ impl EepromSectionReader {
             slave
                 .write(
                     RegisterAddress::SiiControl,
-                    status.error_reset().pack().unwrap(),
+                    status.error_reset().pack(),
                     "Reset errors",
                 )
                 .await?;
@@ -103,7 +104,7 @@ impl EepromSectionReader {
         slave
             .write(
                 RegisterAddress::SiiControl,
-                SiiRequest::read(eeprom_address).pack().unwrap(),
+                SiiRequest::read(eeprom_address).as_array(),
                 "SII read setup",
             )
             .await?;
