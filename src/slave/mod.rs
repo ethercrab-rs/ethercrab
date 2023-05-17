@@ -478,8 +478,9 @@ where
             .and_then(|data| {
                 T::unpack(data).map_err(|_| {
                     log::error!(
-                        "SDO expedited data decode T: {} data {:?} (len {})",
+                        "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
                         type_name::<T>(),
+                        T::ByteArray::len(),
                         data,
                         data.len()
                     );
