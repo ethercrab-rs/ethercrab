@@ -10,8 +10,17 @@ pub use packed_struct::{PackingResult, PackingError, types::bits::ByteArray};
 /**
 	trait for data types than can be packed/unpacked to/from a PDU
 	
-	Note:
-		this is currently redudnant with [PduData] and should be merged properly
+	This trait is very close to [packed_struct::PackedStruct], but is distinct because struct implementing `PackedStruct` might not be meant for exchange in an ethercat PDU. However it can be easily declared as such when `Packed` is already implemented, by implementing [PduStruct] as well.
+	
+	The good practice for using `Packed` in combination with `PduData` is following this example:
+	
+		#[derive(PackedStruct)]
+		struct MyStruct { ... }
+		impl PduStruct for MyStruct {}
+		
+		// now PduData is now implemented using `Packed`
+		
+	It is also fine to implement [PduData] the regular way
 */
 pub trait PduData: Sized {
 	const ID: TypeId;
@@ -21,6 +30,7 @@ pub trait PduData: Sized {
     fn unpack(src: &[u8]) -> PackingResult<Self>;
 }
 /// trait marking a [packed_struct::PackedStruct] is a [PduData]
+// TODO: see if this trait could be derived
 pub trait PduStruct: packed::PackedStruct {}
 impl<T: PduStruct> PduData for T {
 	const ID: TypeId = TypeId::CUSTOM;
@@ -30,21 +40,13 @@ impl<T: PduStruct> PduData for T {
 	fn unpack(src: &[u8]) -> PackingResult<Self>  {packed::PackedStructSlice::unpack_from_slice(src)}
 }
 
-// trait ByteArrayFrom: ByteArray {
-// 	fn from_slice(src: &[u8]) -> Self {
-// 		let new = Self::new(0);
-// 		new.as_bytes_slice_mut().copy_from_slice(src);
-// 		new
-// 	}
-// }
-// impl<T: ByteArray> ByteArrayFrom for T {}
-
 /** dtype identifiers associated to dtypes allowing to dynamically check the type of a [PduData] implementor
 	
 	It is only convering the common useful types and not all the possible implementors of [PduData]
 */
 #[derive(Copy, Clone, Debug)]
 pub enum TypeId {
+	/// default value of the enum, used in case the matching [PduData] does not fit in any of these integers
 	CUSTOM,
 	BOOL,
 	I8, I16, I32, I64,
