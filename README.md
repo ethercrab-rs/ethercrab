@@ -169,21 +169,6 @@ async fn main() -> Result<(), Error> {
       [the Rust `linuxcnc-hal`](https://github.com/jamwaffles/linuxcnc-hal-rs).
 - [ ] Load slave configurations from ESI XML files
 
-## Performance
-
-This table shows runs of `just linux-bench loopback`. If you would like to benchmark a specific
-hardware configuration, please run the same command on your machine and open a PR with the results
-added to this table.
-
-As usual, take any benchmark results with a huge pinch of salt, however the benchmark uses the PDU
-TX/RX loop, a network interface in the form of `lo`, and sends a `LWR` EtherCAT packet with an 8
-byte payload which should hopefully give a somewhat representative sample of best case performance.
-
-| PC                    | Case  | Frames/sec | Speed         | Notes                                           |
-| --------------------- | ----- | ---------- | ------------- | ----------------------------------------------- |
-| i9-12900, kernel 5.19 | `LWR` | 236000     | 8.06 MiB/sec  | 8 byte payload, `rt-multi-thread` Tokio runtime |
-| i9-12900, kernel 5.19 | `LWR` | 702000     | 23.69 MiB/sec | 8 byte payload, single thread Tokio runtime     |
-
 ### Profiling
 
 To profile an example:
