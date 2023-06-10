@@ -1,13 +1,5 @@
 //! An EtherCAT master written in pure Rust.
 //!
-//! This crate is in its very early stages, however it has been used to control Beckhoff EK1100
-//! modules, Kollmorgen and LeadShine EC400 servo drives under Windows and Linux. Examples and
-//! documentation is sparse, but will be improved in future releases.
-//!
-//! Please note that this crate currently requires nightly Rust.
-//!
-//! Breaking changes may be made at any time.
-//!
 //! # MSRV
 //!
 //! The current MSRV for EtherCrab is 1.68.
