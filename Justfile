@@ -24,3 +24,9 @@ linux-bench *args:
      sudo echo
      fd . --type executable ./target/release/deps -x sudo setcap cap_net_raw=pe
      cargo bench --features bench-hacks {{args}}
+
+generate-readme:
+     cargo readme > README.md
+
+check-readme: (generate-readme)
+     git diff --quiet --exit-code README.md

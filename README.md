@@ -7,15 +7,11 @@
 
 An EtherCAT master written in pure Rust.
 
-## Community
-
-[We're on Matrix!](https://matrix.to/#/#ethercrab:matrix.org)
-
 ## MSRV
 
 The current MSRV for EtherCrab is 1.68.
 
-## Example
+## Examples
 
 This example increments the output bytes of all detected slaves every tick. It is tested on an
 EK1100 with output modules but may work on other basic slave devices.
@@ -146,8 +142,11 @@ async fn main() -> Result<(), Error> {
         tick_interval.tick().await;
     }
 }
-
 ```
+
+## Community
+
+[We're on Matrix!](https://matrix.to/#/#ethercrab:matrix.org)
 
 ## Current and future features
 
@@ -168,21 +167,6 @@ async fn main() -> Result<(), Error> {
 - [ ] Integration with LinuxCNC as a HAL component using
       [the Rust `linuxcnc-hal`](https://github.com/jamwaffles/linuxcnc-hal-rs).
 - [ ] Load slave configurations from ESI XML files
-
-## Performance
-
-This table shows runs of `just linux-bench loopback`. If you would like to benchmark a specific
-hardware configuration, please run the same command on your machine and open a PR with the results
-added to this table.
-
-As usual, take any benchmark results with a huge pinch of salt, however the benchmark uses the PDU
-TX/RX loop, a network interface in the form of `lo`, and sends a `LWR` EtherCAT packet with an 8
-byte payload which should hopefully give a somewhat representative sample of best case performance.
-
-| PC                    | Case  | Frames/sec | Speed         | Notes                                           |
-| --------------------- | ----- | ---------- | ------------- | ----------------------------------------------- |
-| i9-12900, kernel 5.19 | `LWR` | 236000     | 8.06 MiB/sec  | 8 byte payload, `rt-multi-thread` Tokio runtime |
-| i9-12900, kernel 5.19 | `LWR` | 702000     | 23.69 MiB/sec | 8 byte payload, single thread Tokio runtime     |
 
 ### Profiling
 
