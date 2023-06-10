@@ -1,7 +1,7 @@
 target_steps: &target_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.68.0
+    - image: cimg/rust:1.69.0
   steps:
     - checkout
     - restore_cache:
@@ -10,12 +10,19 @@ target_steps: &target_steps
     # For docs gen
     - run: rustup target add x86_64-unknown-linux-gnu || true
     - run: |
-        if ! type "cargo-deadlinks" > /dev/null; then
-          cargo install cargo-deadlinks --target x86_64-unknown-linux-gnu
-        fi
+        binaries=( "cargo-deadlinks", "cargo-readme", "just" )
+
+        for binary in "${arrayName[@]}"
+        do:
+          if ! type "$binary" > /dev/null; then
+            echo "$binary is not installed. Installing..."
+            cargo install "$binary" --target x86_64-unknown-linux-gnu
+          fi
+        done
 
     - run: rustup target add $TARGET || true
     - run: cargo fmt --all -- --check
+    - run: just check-readme
     - run: cargo test --target $TARGET
     - run: cargo bench --no-run --target $TARGET
     - run: cargo build --target $TARGET --examples --release
@@ -31,7 +38,7 @@ target_steps: &target_steps
 miri_steps: &miri_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.68.0
+    - image: cimg/rust:1.69.0
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
@@ -54,7 +61,7 @@ miri_steps: &miri_steps
 target_steps_no_test: &target_steps_no_test
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.68.0
+    - image: cimg/rust:1.69.0
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
@@ -75,7 +82,7 @@ macos_steps: &macos_steps
   resource_class: large
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.68.0
+    - image: cimg/rust:1.69.0
   steps:
     - checkout
     - restore_cache:
@@ -110,7 +117,7 @@ jobs:
     resource_class: large
     docker:
       # NOTE: Exact version is overridden in `rust-toolchain.toml`
-      - image: cimg/rust:1.68.0
+      - image: cimg/rust:1.69.0
     steps:
       - checkout
       - restore_cache:

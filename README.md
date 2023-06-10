@@ -7,15 +7,11 @@
 
 An EtherCAT master written in pure Rust.
 
-## Community
-
-[We're on Matrix!](https://matrix.to/#/#ethercrab:matrix.org)
-
 ## MSRV
 
 The current MSRV for EtherCrab is 1.68.
 
-## Example
+## Examples
 
 This example increments the output bytes of all detected slaves every tick. It is tested on an
 EK1100 with output modules but may work on other basic slave devices.
@@ -146,8 +142,11 @@ async fn main() -> Result<(), Error> {
         tick_interval.tick().await;
     }
 }
-
 ```
+
+## Community
+
+[We're on Matrix!](https://matrix.to/#/#ethercrab:matrix.org)
 
 ## Current and future features
 
