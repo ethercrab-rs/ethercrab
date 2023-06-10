@@ -10,13 +10,16 @@ target_steps: &target_steps
     # For docs gen
     - run: rustup target add x86_64-unknown-linux-gnu || true
     - run: |
-        binaries=( "cargo-deadlinks", "cargo-readme", "just" )
+        binaries=( "cargo-deadlinks" "cargo-readme" "just" )
 
-        for binary in "${arrayName[@]}"
-        do:
+        for binary in "${binaries[@]}"
+        do
+          echo "Checking for $binary"
           if ! type "$binary" > /dev/null; then
-            echo "$binary is not installed. Installing..."
+            echo "--> $binary is not installed. Installing..."
             cargo install "$binary" --target x86_64-unknown-linux-gnu
+          else
+            echo "--> $binary already installed"
           fi
         done
 
