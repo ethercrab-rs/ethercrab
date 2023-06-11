@@ -43,83 +43,80 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
-        Box::pin(async {
-            // --- Reads ---
-
-            // // Name
-            // dbg!(slave
-            //     .read_sdo::<heapless::String<64>>(0x1008, SdoAccess::Index(0))
-            //     .await
-            //     .unwrap());
-
-            // // Software version. For AKD, this should equal "M_01-20-00-003"
-            // dbg!(slave
-            //     .read_sdo::<heapless::String<64>>(0x100a, SdoAccess::Index(0))
-            //     .await
-            //     .unwrap());
-
-            // --- Writes ---
-
-            let profile = match slave.sdo_read::<u32>(0x1000, 0).await {
-                Err(Error::Mailbox(MailboxError::NoMailbox)) => Ok(None),
-                Ok(device_type) => Ok(Some(device_type & 0xffff)),
-                Err(e) => Err(e),
-            }?;
-
-            // CiA 402/DS402 device
-            if profile == Some(402) {
-                log::info!("Slave {} supports DS402", slave.name());
-            }
-
-            // AKD config
-            if slave.name() == "AKD" {
-                slave.sdo_write(0x1c12, 0, 0u8).await?;
-                // 0x1702 = fixed velocity mapping
-                slave.sdo_write(0x1c12, 1, 0x1702u16).await?;
-                slave.sdo_write(0x1c12, 0, 0x01u8).await?;
-
-                // Must set both read AND write SDOs for AKD otherwise it times out going into OP
-                slave.sdo_write(0x1c13, 0, 0u8).await?;
-                slave.sdo_write(0x1c13, 1, 0x1B01u16).await?;
-                slave.sdo_write(0x1c13, 0, 0x01u8).await?;
-
-                // Opmode - Cyclic Synchronous Position
-                // slave.write_sdo(0x6060, 0, 0x08).await?;
-                // Opmode - Cyclic Synchronous Velocity
-                slave.sdo_write(0x6060, 0, 0x09u8).await?;
-
-                {
-                    // Shows up as default value of 2^20, but I'm using a 2^32 counts/rev encoder.
-                    let encoder_increments = slave.sdo_read::<u32>(0x608f, 1).await?;
-                    let num_revs = slave.sdo_read::<u32>(0x608f, 2).await?;
-
-                    let gear_ratio_motor = slave.sdo_read::<u32>(0x6091, 1).await?;
-                    let gear_ratio_final = slave.sdo_read::<u32>(0x6091, 2).await?;
-
-                    let feed = slave.sdo_read::<u32>(0x6092, 1).await?;
-                    let shaft_revolutions = slave.sdo_read::<u32>(0x6092, 2).await?;
-
-                    let counts_per_rev = encoder_increments / num_revs;
-
-                    log::info!("Drive info");
-                    log::info!("--> Encoder increments     {}", encoder_increments);
-                    log::info!("--> Number of revolutions  {}", num_revs);
-                    log::info!("--> Gear ratio (motor)     {}", gear_ratio_motor);
-                    log::info!("--> Gear ratio (final)     {}", gear_ratio_final);
-                    log::info!("--> Feed                   {}", feed);
-                    log::info!("--> Shaft revolutions      {}", shaft_revolutions);
-                    log::info!("--> Counts per rev         {}", counts_per_rev);
-                }
-            }
-
-            Ok(())
-        })
-    });
-
     let group = client
-        // Initialise a single group
-        .init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
+        .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|slave| {
+            Box::pin(async {
+                // --- Reads ---
+
+                // // Name
+                // dbg!(slave
+                //     .read_sdo::<heapless::String<64>>(0x1008, SdoAccess::Index(0))
+                //     .await
+                //     .unwrap());
+
+                // // Software version. For AKD, this should equal "M_01-20-00-003"
+                // dbg!(slave
+                //     .read_sdo::<heapless::String<64>>(0x100a, SdoAccess::Index(0))
+                //     .await
+                //     .unwrap());
+
+                // --- Writes ---
+
+                let profile = match slave.sdo_read::<u32>(0x1000, 0).await {
+                    Err(Error::Mailbox(MailboxError::NoMailbox)) => Ok(None),
+                    Ok(device_type) => Ok(Some(device_type & 0xffff)),
+                    Err(e) => Err(e),
+                }?;
+
+                // CiA 402/DS402 device
+                if profile == Some(402) {
+                    log::info!("Slave {} supports DS402", slave.name());
+                }
+
+                // AKD config
+                if slave.name() == "AKD" {
+                    slave.sdo_write(0x1c12, 0, 0u8).await?;
+                    // 0x1702 = fixed velocity mapping
+                    slave.sdo_write(0x1c12, 1, 0x1702u16).await?;
+                    slave.sdo_write(0x1c12, 0, 0x01u8).await?;
+
+                    // Must set both read AND write SDOs for AKD otherwise it times out going into OP
+                    slave.sdo_write(0x1c13, 0, 0u8).await?;
+                    slave.sdo_write(0x1c13, 1, 0x1B01u16).await?;
+                    slave.sdo_write(0x1c13, 0, 0x01u8).await?;
+
+                    // Opmode - Cyclic Synchronous Position
+                    // slave.write_sdo(0x6060, 0, 0x08).await?;
+                    // Opmode - Cyclic Synchronous Velocity
+                    slave.sdo_write(0x6060, 0, 0x09u8).await?;
+
+                    {
+                        // Shows up as default value of 2^20, but I'm using a 2^32 counts/rev encoder.
+                        let encoder_increments = slave.sdo_read::<u32>(0x608f, 1).await?;
+                        let num_revs = slave.sdo_read::<u32>(0x608f, 2).await?;
+
+                        let gear_ratio_motor = slave.sdo_read::<u32>(0x6091, 1).await?;
+                        let gear_ratio_final = slave.sdo_read::<u32>(0x6091, 2).await?;
+
+                        let feed = slave.sdo_read::<u32>(0x6092, 1).await?;
+                        let shaft_revolutions = slave.sdo_read::<u32>(0x6092, 2).await?;
+
+                        let counts_per_rev = encoder_increments / num_revs;
+
+                        log::info!("Drive info");
+                        log::info!("--> Encoder increments     {}", encoder_increments);
+                        log::info!("--> Number of revolutions  {}", num_revs);
+                        log::info!("--> Gear ratio (motor)     {}", gear_ratio_motor);
+                        log::info!("--> Gear ratio (final)     {}", gear_ratio_final);
+                        log::info!("--> Feed                   {}", feed);
+                        log::info!("--> Shaft revolutions      {}", shaft_revolutions);
+                        log::info!("--> Counts per rev         {}", counts_per_rev);
+                    }
+                }
+
+                Ok(())
+            })
+        }))
         .await
         .expect("Init");
 
