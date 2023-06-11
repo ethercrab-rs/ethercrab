@@ -17,6 +17,9 @@ An EtherCAT master written in Rust.
   `VisibleStringError` and `PduValidationError`
 - **(breaking)** [#31] Added a `ClientConfig` argument to `Client::new` to allow configuration of
   various EtherCrab behaviours.
+- [#55] Added `Client::init_single_group` to reduce boilerplate when only using a single group of
+  devices.
+- [#55] Removed MSRV commitment (was 1.68)
 
 ### Removed
 
@@ -121,5 +124,6 @@ An EtherCAT master written in Rust.
 [#33]: https://github.com/ethercrab-rs/ethercrab/pull/33
 [#45]: https://github.com/ethercrab-rs/ethercrab/pull/45
 [#47]: https://github.com/ethercrab-rs/ethercrab/pull/47
+[#55]: https://github.com/ethercrab-rs/ethercrab/pull/55
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

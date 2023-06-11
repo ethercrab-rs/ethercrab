@@ -63,48 +63,45 @@ async fn main() -> Result<(), Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
-        Box::pin(async {
-            if slave.name() == "ELP-EC400S" {
-                // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
-                slave.sdo_write(0x1600, 0, 0u8).await?;
-                // Control word, u16
-                // NOTE: The lower word specifies the field length
-                slave.sdo_write(0x1600, 1, 0x6040_0010u32).await?;
-                // Target velocity, i32
-                slave.sdo_write(0x1600, 2, 0x60ff_0020u32).await?;
-                slave.sdo_write(0x1600, 0, 2u8).await?;
-
-                slave.sdo_write(0x1a00, 0, 0u8).await?;
-                // Status word, u16
-                slave.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
-                // Actual position, i32
-                slave.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
-                // Actual velocity, i32
-                slave.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
-                slave.sdo_write(0x1a00, 0, 0x03u8).await?;
-
-                slave.sdo_write(0x1c12, 0, 0u8).await?;
-                slave.sdo_write(0x1c12, 1, 0x1600).await?;
-                slave.sdo_write(0x1c12, 0, 1u8).await?;
-
-                slave.sdo_write(0x1c13, 0, 0u8).await?;
-                slave.sdo_write(0x1c13, 1, 0x1a00).await?;
-                slave.sdo_write(0x1c13, 0, 1u8).await?;
-
-                // Opmode - Cyclic Synchronous Position
-                // slave.write_sdo(0x6060, 0, 0x08).await?;
-                // Opmode - Cyclic Synchronous Velocity
-                slave.sdo_write(0x6060, 0, 0x09u8).await?;
-            }
-
-            Ok(())
-        })
-    });
-
     let group = client
-        // Initialise a single group
-        .init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
+        .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|slave| {
+            Box::pin(async {
+                if slave.name() == "ELP-EC400S" {
+                    // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
+                    slave.sdo_write(0x1600, 0, 0u8).await?;
+                    // Control word, u16
+                    // NOTE: The lower word specifies the field length
+                    slave.sdo_write(0x1600, 1, 0x6040_0010u32).await?;
+                    // Target velocity, i32
+                    slave.sdo_write(0x1600, 2, 0x60ff_0020u32).await?;
+                    slave.sdo_write(0x1600, 0, 2u8).await?;
+
+                    slave.sdo_write(0x1a00, 0, 0u8).await?;
+                    // Status word, u16
+                    slave.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
+                    // Actual position, i32
+                    slave.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
+                    // Actual velocity, i32
+                    slave.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
+                    slave.sdo_write(0x1a00, 0, 0x03u8).await?;
+
+                    slave.sdo_write(0x1c12, 0, 0u8).await?;
+                    slave.sdo_write(0x1c12, 1, 0x1600).await?;
+                    slave.sdo_write(0x1c12, 0, 1u8).await?;
+
+                    slave.sdo_write(0x1c13, 0, 0u8).await?;
+                    slave.sdo_write(0x1c13, 1, 0x1a00).await?;
+                    slave.sdo_write(0x1c13, 0, 1u8).await?;
+
+                    // Opmode - Cyclic Synchronous Position
+                    // slave.write_sdo(0x6060, 0, 0x08).await?;
+                    // Opmode - Cyclic Synchronous Velocity
+                    slave.sdo_write(0x6060, 0, 0x09u8).await?;
+                }
+
+                Ok(())
+            })
+        }))
         .await
         .expect("Init");
 
