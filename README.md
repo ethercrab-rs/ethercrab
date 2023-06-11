@@ -7,10 +7,6 @@
 
 An EtherCAT master written in pure Rust.
 
-## MSRV
-
-The current MSRV for EtherCrab is 1.68.
-
 ## Examples
 
 This example increments the output bytes of all detected slaves every tick. It is tested on an

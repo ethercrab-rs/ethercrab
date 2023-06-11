@@ -12,7 +12,7 @@ use crate::{
     slave_group::SlaveGroupHandle,
     slave_state::SlaveState,
     timer_factory::timeout,
-    ClientConfig, Timeouts, BASE_SLAVE_ADDR,
+    ClientConfig, SlaveGroup, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
     any::type_name,
@@ -147,6 +147,9 @@ impl<'sto> Client<'sto> {
     ///
     /// `MAX_SLAVES` must be a power of 2 greater than 1.
     ///
+    /// Note that the sum of the PDI data length for all [`SlaveGroup`]s must not exceed the value
+    /// of `MAX_PDU_DATA`.
+    ///
     /// # Examples
     ///
     /// ## Multiple groups
@@ -268,6 +271,90 @@ impl<'sto> Client<'sto> {
         self.wait_for_state(SlaveState::SafeOp).await?;
 
         Ok(groups)
+    }
+
+    /// A convenience method to allow the quicker creation of a single group containing all
+    /// discovered slave devices.
+    ///
+    /// For multiple groups, see [`Client::init`].
+    ///
+    /// # Examples
+    ///
+    /// ## Create a single slave group with no `PREOP -> SAFEOP` hook.
+    ///
+    /// ```rust,no_run
+    /// use ethercrab::{
+    ///     error::Error, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    /// };
+    ///
+    /// const MAX_SLAVES: usize = 2;
+    /// const MAX_PDU_DATA: usize = 1100;
+    /// const MAX_FRAMES: usize = 16;
+    /// const MAX_PDI: usize = 8;
+    ///
+    /// static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+    ///
+    /// let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+    ///
+    /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    ///
+    /// # async {
+    /// let groups = client
+    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>(SlaveGroup::default())
+    ///     .await
+    ///     .expect("Init");
+    /// # };
+    /// ```
+    ///
+    /// ## Create a single slave group with `PREOP -> SAFEOP` hook
+    ///
+    /// ```rust,no_run
+    /// use ethercrab::{
+    ///     error::Error, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    /// };
+    ///
+    /// const MAX_SLAVES: usize = 2;
+    /// const MAX_PDU_DATA: usize = 1100;
+    /// const MAX_FRAMES: usize = 16;
+    /// const MAX_PDI: usize = 8;
+    ///
+    /// static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+    ///
+    /// let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+    ///
+    /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    ///
+    /// # async {
+    /// let groups = client
+    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>(SlaveGroup::new(|slave| {
+    ///         Box::pin(async {
+    ///             // Example: configure a specific slave device during PREOP -> SAFEOP transition
+    ///             if slave.name() == "EL3004" {
+    ///                 log::info!("Found EL3004. Configuring...");
+    ///
+    ///                 slave.sdo_write(0x1c12, 0, 0u8).await?;
+    ///                 slave.sdo_write(0x1c13, 0, 0u8).await?;
+    ///
+    ///                 slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+    ///                 slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+    ///                 slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+    ///                 slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+    ///                 slave.sdo_write(0x1c13, 0, 4u8).await?;
+    ///             }
+    ///
+    ///             Ok(())
+    ///         })
+    ///     }))
+    ///     .await
+    ///     .expect("Init");
+    /// # };
+    /// ```
+    pub async fn init_single_group<const MAX_SLAVES: usize, const MAX_PDI: usize>(
+        &self,
+        group: SlaveGroup<MAX_SLAVES, MAX_PDI>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI>, Error> {
+        self.init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
+            .await
     }
 
     /// Get the number of discovered slaves in the EtherCAT network.

@@ -58,30 +58,27 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
-        Box::pin(async {
-            // Special case: if an EL3004 module is discovered, it needs some specific config during
-            // init to function properly
-            if slave.name() == "EL3004" {
-                log::info!("Found EL3004. Configuring...");
-
-                slave.sdo_write(0x1c12, 0, 0u8).await?;
-                slave.sdo_write(0x1c13, 0, 0u8).await?;
-
-                slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-                slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
-                slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
-                slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
-                slave.sdo_write(0x1c13, 0, 4u8).await?;
-            }
-
-            Ok(())
-        })
-    });
-
     let group = client
-        // Initialise a single group
-        .init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
+        .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|slave| {
+            Box::pin(async {
+                // Special case: if an EL3004 module is discovered, it needs some specific config during
+                // init to function properly
+                if slave.name() == "EL3004" {
+                    log::info!("Found EL3004. Configuring...");
+
+                    slave.sdo_write(0x1c12, 0, 0u8).await?;
+                    slave.sdo_write(0x1c13, 0, 0u8).await?;
+
+                    slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+                    slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+                    slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+                    slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+                    slave.sdo_write(0x1c13, 0, 4u8).await?;
+                }
+
+                Ok(())
+            })
+        }))
         .await
         .expect("Init");
 
