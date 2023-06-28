@@ -33,7 +33,7 @@ packed_struct = { version = "0.10.1", default-features = false }
 safe-transmute = { version = "0.11.2", default-features = false }
 sealed = "0.5.0"
 smlang = "0.6.0"
-smoltcp = { version = "0.9.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet", "phy-raw_socket" ] }
+smoltcp = { version = "0.9.1", default-features = false, features = [ "proto-ipv4", "socket-raw", "medium-ethernet" ] }
 spin = { version = "0.9.8", default-features = false, features = ["rwlock"] }
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
@@ -54,7 +54,7 @@ tokio = { version = "1.28.2", features = ["rt-multi-thread", "macros", "sync", "
 
 [features]
 default = ["std"]
-std = ["pnet_datalink", "async-io"]
+std = ["pnet_datalink", "async-io", "smoltcp/phy-raw_socket"]
 # Development only - DO NOT USE
 bench-hacks = []
 
