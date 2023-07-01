@@ -40,6 +40,17 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
 
         self.request_slave_state(SlaveState::PreOp).await?;
 
+        // Up to 16 sync managers as per ETG1000.4 Table 59
+        let mut sms_buf = [0u8; 16];
+
+        let sms = self
+            .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
+            .await?
+            .iter()
+            .map(|sm| SyncManagerType::from_primitive(*sm));
+
+        self.state.config.mailbox.coe_sync_manager_types = heapless::Vec::from_iter(sms);
+
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
         Ok(())
@@ -279,6 +290,7 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
             read: read_mailbox,
             write: write_mailbox,
             supported_protocols: mailbox_config.supported_protocols,
+            coe_sync_manager_types: heapless::Vec::new(),
         };
 
         Ok(())
@@ -294,29 +306,39 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
     ) -> Result<PdiSegment, Error> {
         let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
 
-        // ETG1000.6 Table 67 – CoE Communication Area
-        let num_sms = self
-            .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
-            .await?;
+        // NOTE: Commented out because this causes a timeout on various slave devices. See
+        // <https://github.com/ethercrab-rs/ethercrab/issues/49>. The complete access below doesn't
+        // exhibit the same issue.
+        // // ETG1000.6 Table 67 – CoE Communication Area
+        // let num_sms = self
+        //     .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
+        //     .await?;
 
-        log::trace!("Found {num_sms} SMs from CoE");
+        // Up to 16 sync managers as per ETG1000.4 Table 59
+        let mut sms_buf = [0u8; 16];
+
+        // let sms = self
+        //     .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
+        //     .await?;
+
+        let sms = [1, 2, 3, 4];
+
+        let sms_it = sms.iter().map(|sm| SyncManagerType::from_primitive(*sm));
+
+        log::trace!("Found SMs from CoE: {:?}", sms);
 
         let start_offset = *gobal_offset;
-
-        // We must ignore the first two SM indices (SM0, SM1, sub-index 1 and 2, start at sub-index
-        // 3) as these are used for mailbox communication.
-        let sm_range = 3..=num_sms;
-
         let mut total_bit_len = 0;
 
-        // NOTE: This is a 1-based SDO sub-index
-        for sm_mapping_sub_index in sm_range {
-            let sm_type = self
-                .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(sm_mapping_sub_index))
-                .await
-                .map(SyncManagerType::from_primitive)?;
-
-            let sync_manager_index = sm_mapping_sub_index - 1;
+        for (sync_manager_index, sm_type) in self
+            .state
+            .config
+            .mailbox
+            .coe_sync_manager_types
+            .iter()
+            .enumerate()
+        {
+            let sync_manager_index = sync_manager_index as u8;
 
             let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
 
@@ -328,14 +350,14 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
                         index: Some(usize::from(sync_manager_index)),
                     })?;
 
-            if sm_type != desired_sm_type {
+            if *sm_type != desired_sm_type {
                 continue;
             }
 
             // Total number of PDO assignments for this sync manager
             let num_sm_assignments = self.sdo_read::<u8>(sm_address, SubIndex::Index(0)).await?;
 
-            log::trace!("SDO sync manager {sync_manager_index} (sub index #{sm_mapping_sub_index}) {sm_address:#06x} {sm_type:?}, sub indices: {num_sm_assignments}");
+            log::trace!("SDO sync manager {sync_manager_index}  {sm_address:#06x} {sm_type:?}, sub indices: {num_sm_assignments}");
 
             let mut sm_bit_len = 0u16;
 
@@ -394,6 +416,96 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
 
             total_bit_len += sm_bit_len;
         }
+
+        // // We must ignore the first two SM indices (SM0, SM1, sub-index 1 and 2, start at sub-index
+        // // 3) as these are used for mailbox communication.
+        // let sm_range = 3..=num_sms;
+
+        // // NOTE: This is a 1-based SDO sub-index
+        // for sm_mapping_sub_index in sm_range {
+        //     let sm_type = self
+        //         .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(sm_mapping_sub_index))
+        //         .await
+        //         .map(SyncManagerType::from_primitive)?;
+
+        //     let sync_manager_index = sm_mapping_sub_index - 1;
+
+        //     let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
+
+        //     let sync_manager =
+        //         sync_managers
+        //             .get(usize::from(sync_manager_index))
+        //             .ok_or(Error::NotFound {
+        //                 item: Item::SyncManager,
+        //                 index: Some(usize::from(sync_manager_index)),
+        //             })?;
+
+        //     if sm_type != desired_sm_type {
+        //         continue;
+        //     }
+
+        //     // Total number of PDO assignments for this sync manager
+        //     let num_sm_assignments = self.sdo_read::<u8>(sm_address, SubIndex::Index(0)).await?;
+
+        //     log::trace!("SDO sync manager {sync_manager_index} (sub index #{sm_mapping_sub_index}) {sm_address:#06x} {sm_type:?}, sub indices: {num_sm_assignments}");
+
+        //     let mut sm_bit_len = 0u16;
+
+        //     for i in 1..=num_sm_assignments {
+        //         let pdo = self.sdo_read::<u16>(sm_address, SubIndex::Index(i)).await?;
+        //         let num_mappings = self.sdo_read::<u8>(pdo, SubIndex::Index(0)).await?;
+
+        //         log::trace!("--> #{i} data: {pdo:#06x} ({num_mappings} mappings):");
+
+        //         for i in 1..=num_mappings {
+        //             let mapping = self.sdo_read::<u32>(pdo, SubIndex::Index(i)).await?;
+
+        //             // Yes, big-endian. Makes life easier when mapping from debug prints to actual
+        //             // data fields.
+        //             let parts = mapping.to_be_bytes();
+
+        //             let index = u16::from_be_bytes(parts[0..=1].try_into().unwrap());
+        //             let sub_index = parts[2];
+        //             let mapping_bit_len = parts[3];
+
+        //             log::trace!(
+        //                 "----> index {index:#06x}, sub index {sub_index}, bit length {mapping_bit_len}"
+        //             );
+
+        //             sm_bit_len += u16::from(mapping_bit_len);
+        //         }
+        //     }
+
+        //     log::trace!(
+        //         "----= total SM bit length {sm_bit_len} ({} bytes)",
+        //         (sm_bit_len + 7) / 8
+        //     );
+
+        //     let sm_config = self
+        //         .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
+        //         .await?;
+
+        //     if sm_bit_len > 0 {
+        //         let fmmu_index = fmmu_usage
+        //             .iter()
+        //             .position(|usage| *usage == desired_fmmu_type)
+        //             .ok_or(Error::NotFound {
+        //                 item: Item::Fmmu,
+        //                 index: None,
+        //             })?;
+
+        //         self.write_fmmu_config(
+        //             sm_bit_len,
+        //             fmmu_index,
+        //             gobal_offset,
+        //             desired_sm_type,
+        //             &sm_config,
+        //         )
+        //         .await?;
+        //     }
+
+        //     total_bit_len += sm_bit_len;
+        // }
 
         Ok(PdiSegment {
             bit_len: total_bit_len.into(),

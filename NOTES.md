@@ -444,3 +444,11 @@ This requires that slaves can be put into different states as groups, not all at
 this is fine as EtherCrab does this already.
 
 `SlaveGroup<SafeOp>` and `SlaveGroup<Op>`.
+
+# Remote packet capture on Linux
+
+Allow root login with `PermitRootLogin yes` in `/etc/ssh/sshd_config` (then restart sshd service).
+
+```bash
+ssh root@ethercrab tcpdump -U -s0 -i enp2s0 -w - | sudo wireshark -k -i -
+```
