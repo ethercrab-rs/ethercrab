@@ -228,24 +228,18 @@ where
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
 
         let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
+        let mailbox_write_sm = RegisterAddress::sync_manager(write_mailbox.sync_manager);
 
         let counter = request.counter();
 
         // Ensure slave OUT (master IN) mailbox is empty
         {
-            // Read status register and check full flag
-            let status: u16 = self
-                .client
-                .fprd(self.configured_address, 0x080du16)
-                .await?
-                .wkc(1, "read mailbox clear")?;
-
-            let mailbox_full = status & 0x08;
-
-            log::debug!("OUT mailbox full: {:?}", mailbox_full);
+            let sm = self
+                .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                .await?;
 
             // If flag is set, read entire mailbox to clear it
-            if mailbox_full > 0 {
+            if sm.status.mailbox_full {
                 self.client
                     .pdu_loop
                     .pdu_tx_readonly(
@@ -259,20 +253,14 @@ where
             }
         }
 
-        // Wait for slave send mailbox to be available to receive data from master
+        // Wait for slave IN mailbox to be available to receive data from master
         crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
             loop {
-                let status: u8 = self
-                    .client
-                    .fprd(self.configured_address, 0x0805u16)
-                    .await?
-                    .wkc(1, "write mailbox clear")?;
+                let sm = self
+                    .read::<SyncManagerChannel>(mailbox_write_sm, "Master write mailbox")
+                    .await?;
 
-                let mailbox_full = status & 0x08;
-
-                log::debug!("IN mailbox full: {:?}", mailbox_full);
-
-                if mailbox_full == 0 {
+                if !sm.status.mailbox_full {
                     break Ok(());
                 }
 
@@ -289,42 +277,29 @@ where
             e
         })?;
 
-        // Send data to slave device
+        // Send data to slave IN mailbox
         self.client
             .pdu_loop
             .pdu_tx_readwrite_len(
                 Command::Fpwr {
                     address: self.configured_address,
-                    // register: write_mailbox.address,
-                    register: 0x1000,
+                    register: write_mailbox.address,
                 },
                 request.pack().unwrap().as_ref(),
                 // Need to write entire mailbox to latch it
-                // write_mailbox.len,
-                64,
+                write_mailbox.len,
             )
             .await?
             .wkc(1, "SDO upload request")?;
 
-        // Wait for slave reply mailbox to be ready
+        // Wait for slave OUT mailbox to be ready
         crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
             loop {
-                let status: u16 = self
-                    .client
-                    .fprd(self.configured_address, 0x080du16)
-                    .await?
-                    .wkc(1, "write mailbox clear")?;
+                let sm = self
+                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master reply read mailbox")
+                    .await?;
 
-                let mailbox_full = status & 0x08;
-
-                log::debug!(
-                    "IN mailbox full: {:?} (all {:04x} {:016b})",
-                    mailbox_full,
-                    status,
-                    status
-                );
-
-                if mailbox_full > 0 {
+                if sm.status.mailbox_full {
                     break Ok(());
                 }
 
@@ -341,7 +316,7 @@ where
             e
         })?;
 
-        // Receive response data from slave send mailbox
+        // Read acknowledgement from slave OUT mailbox
         let mut response = self
             .client
             .pdu_loop
