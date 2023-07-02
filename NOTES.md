@@ -379,3 +379,68 @@ impl SlaveGroup {
     }
 }
 ```
+
+# Group configuration without `Box dyn`
+
+Forget hotplug and dynamic reconfig for now so we don't have to store a closure in each group. This
+can be added back in when stable has the right features to make it not-box. Errors will either mean
+looping back to the top of the program or just panicking I'm afraid...
+
+- Still box future but works with new design
+  <https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=ee24e35922409fdcf9bac6c490c2e373>
+- No more box, but it's only `FnOnce` so doesn't work in a loop like EtherCrab needs
+  <https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=8d28e2ae86c98bfeedc03d23d4790a4f>
+- It works! We can even have `FnMut` if we want
+  <https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=cb13fe888d80b2ab6daa0f91bfd92120>
+
+Perhaps we can refactor the groups using typestates like e.g.
+
+```rust
+let groups = client.assign_slaves(Groups::default(), |g, s| { ... }).await?;
+
+// Groups are in PreOp at this point
+let Groups { fast, slow } = client.init(...);
+
+// These could move into their respective tasks/threads if they don't use outside data, or make sure
+// outside data is `Sync` or whatever.
+let fast: SlaveGroup<Op> = fast.start_op(|slave| { ... }).await?;
+let slow: SlaveGroup<Op> = slow.start_op(|slave| { ... }).await?;
+
+impl SlaveGroup<PreOp> {
+    // Individual phases can be opened up in the future, like `into_safe_op`, `into_op`, etc
+
+    /// Put the group all the way to PreOp -> SafeOp -> Op
+    pub async fn into_op(self, hook: F) -> Result<SlaveGroup<Op>>, ()> {
+        // Do group stuff in PreOp
+
+        // Call hook
+
+        // Do more group stuff or whatever
+
+        // Put group into SafeOp
+
+        // Internal methods which we could make pub in the future
+        let g = Self { ..., _state: GroupState::SafeOp }
+
+        // Put group into Op, wait for state
+
+        // All good
+        Ok(Self { ..., _state: GroupState::Op })
+    }
+}
+
+impl SlaveGroup<Op> {
+    async fn tx_rx(&self) -> Result<(), Error> {
+        // ...
+    }
+
+    // Future stuff. Neat!
+    // Maybe INIT instead of PREOP?
+    pub async fn shutdown(self) -> Result<SlaveGroup<PreOp>>, Error>
+}
+```
+
+This requires that slaves can be put into different states as groups, not all at once, but I think
+this is fine as EtherCrab does this already.
+
+`SlaveGroup<SafeOp>` and `SlaveGroup<Op>`.
