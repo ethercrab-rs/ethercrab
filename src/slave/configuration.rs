@@ -306,26 +306,14 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
     ) -> Result<PdiSegment, Error> {
         let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
 
-        // NOTE: Commented out because this causes a timeout on various slave devices. See
-        // <https://github.com/ethercrab-rs/ethercrab/issues/49>. The complete access below doesn't
-        // exhibit the same issue.
+        // NOTE: Commented out because this causes a timeout on various slave devices, possibly due
+        // to querying 0x1c00 after we enter PRE-OP but I'm unsure. See
+        // <https://github.com/ethercrab-rs/ethercrab/issues/49>. Complete access also causes the
+        // same issue.
         // // ETG1000.6 Table 67 – CoE Communication Area
         // let num_sms = self
         //     .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
         //     .await?;
-
-        // Up to 16 sync managers as per ETG1000.4 Table 59
-        let mut sms_buf = [0u8; 16];
-
-        // let sms = self
-        //     .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
-        //     .await?;
-
-        let sms = [1, 2, 3, 4];
-
-        let sms_it = sms.iter().map(|sm| SyncManagerType::from_primitive(*sm));
-
-        log::trace!("Found SMs from CoE: {:?}", sms);
 
         let start_offset = *gobal_offset;
         let mut total_bit_len = 0;
