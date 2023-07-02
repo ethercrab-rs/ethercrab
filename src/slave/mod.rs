@@ -209,7 +209,7 @@ where
         request: H,
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
-        H: CoeServiceRequest + Debug,
+        H: CoeServiceRequest,
         <H as PackedStruct>::ByteArray: AsRef<[u8]>,
     {
         let write_mailbox = self
