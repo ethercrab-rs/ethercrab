@@ -53,7 +53,7 @@ miri_steps: &miri_steps
     - run: |
         export MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation"
 
-        cargo +nightly-2023-07-03 miri test --target $TARGET --release
+        cargo +nightly-2023-07-03 miri test --target $TARGET
 
     - save_cache:
         key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
