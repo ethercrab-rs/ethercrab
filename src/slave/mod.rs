@@ -476,9 +476,11 @@ where
             if complete_size <= u32::from(data_length) {
                 let (_rest, data) = take(data_length)(data)?;
 
+                let buf = &mut buf[0..usize::from(data_length)];
+
                 buf.copy_from_slice(data);
 
-                Ok(&buf[0..usize::from(data_length)])
+                Ok(buf)
             }
             // If it's a segmented upload, we must make subsequent requests to load all segment data
             // from the read mailbox.
