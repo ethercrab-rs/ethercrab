@@ -125,4 +125,20 @@ impl<'sto> SendableFrame<'sto> {
 
         Ok(())
     }
+
+    pub fn send_blocking<'buf>(
+        self,
+        packet_buf: &'buf mut [u8],
+        send: impl FnOnce(&'buf [u8]) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        let bytes = self.write_ethernet_packet(packet_buf)?;
+
+        send(bytes)?;
+
+        // FIXME: Release frame on failure
+
+        self.mark_sent();
+
+        Ok(())
+    }
 }
