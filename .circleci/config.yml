@@ -61,7 +61,7 @@ miri_steps: &miri_steps
           - ./target
           - /home/circleci/.cargo/registry
 
-target_steps_no_test: &target_steps_no_test
+target_steps_no_std: &target_steps_no_std
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
     - image: cimg/rust:1.69.0
@@ -149,12 +149,11 @@ jobs:
       - TARGET: "aarch64-apple-darwin"
     <<: *macos_steps
 
-  # TODO: Re-enable when we can remove `Box` from the slave group preop hook fn
-  # target-thumbv7m-none-eabi:
-  #   resource_class: large
-  #   environment:
-  #     - TARGET: "thumbv7m-none-eabi"
-  #   <<: *target_steps_no_test
+  target-thumbv7m-none-eabi:
+    resource_class: large
+    environment:
+      - TARGET: "thumbv7m-none-eabi"
+    <<: *target_steps_no_std
 
 build_jobs: &build_jobs
   jobs:
@@ -163,7 +162,7 @@ build_jobs: &build_jobs
     - windows-cross
     - macos-cross
     - macos-arm-cross
-    # - target-thumbv7m-none-eabi
+    - target-thumbv7m-none-eabi
 
 workflows:
   version: 2
