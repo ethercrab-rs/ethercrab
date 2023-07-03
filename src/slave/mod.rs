@@ -218,14 +218,22 @@ where
             .config
             .mailbox
             .write
-            .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
+            .ok_or(Error::Mailbox(MailboxError::NoMailbox))
+            .map_err(|e| {
+                log::error!("No write (slave IN) mailbox found but one is required");
+                e
+            })?;
         let read_mailbox = self
             .state
             .borrow()
             .config
             .mailbox
             .read
-            .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
+            .ok_or(Error::Mailbox(MailboxError::NoMailbox))
+            .map_err(|e| {
+                log::error!("No read (slave OUT) mailbox found but one is required");
+                e
+            })?;
 
         let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
         let mailbox_write_sm = RegisterAddress::sync_manager(write_mailbox.sync_manager);
@@ -298,6 +306,8 @@ where
                 let sm = self
                     .read::<SyncManagerChannel>(mailbox_read_sm, "Master reply read mailbox")
                     .await?;
+
+                dbg!(&sm.status);
 
                 if sm.status.mailbox_full {
                     break Ok(());

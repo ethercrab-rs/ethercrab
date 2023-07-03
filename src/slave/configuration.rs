@@ -40,16 +40,18 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
 
         self.request_slave_state(SlaveState::PreOp).await?;
 
-        // Up to 16 sync managers as per ETG1000.4 Table 59
-        let mut sms_buf = [0u8; 16];
+        if self.state.config.mailbox.has_coe {
+            // Up to 16 sync managers as per ETG1000.4 Table 59
+            let mut sms_buf = [0u8; 16];
 
-        let sms = self
-            .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
-            .await?
-            .iter()
-            .map(|sm| SyncManagerType::from_primitive(*sm));
+            let sms = self
+                .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
+                .await?
+                .iter()
+                .map(|sm| SyncManagerType::from_primitive(*sm));
 
-        self.state.config.mailbox.coe_sync_manager_types = heapless::Vec::from_iter(sms);
+            self.state.config.mailbox.coe_sync_manager_types = heapless::Vec::from_iter(sms);
+        }
 
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
@@ -86,19 +88,7 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
             });
         }
 
-        let has_coe = self
-            .state
-            .config
-            .mailbox
-            .supported_protocols
-            .contains(MailboxProtocols::COE)
-            && self
-                .state
-                .config
-                .mailbox
-                .read
-                .map(|mbox| mbox.len > 0)
-                .unwrap_or(false);
+        let has_coe = self.state.config.mailbox.has_coe;
 
         log::debug!(
             "Slave {:#06x} has CoE: {has_coe:?}",
@@ -291,6 +281,10 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
             write: write_mailbox,
             supported_protocols: mailbox_config.supported_protocols,
             coe_sync_manager_types: heapless::Vec::new(),
+            has_coe: mailbox_config
+                .supported_protocols
+                .contains(MailboxProtocols::COE)
+                && read_mailbox.map(|mbox| mbox.len > 0).unwrap_or(false),
         };
 
         Ok(())
@@ -304,6 +298,10 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
         direction: PdoDirection,
         gobal_offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
+        if !self.state.config.mailbox.has_coe {
+            log::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
+        }
+
         let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
 
         // NOTE: Commented out because this causes a timeout on various slave devices, possibly due
