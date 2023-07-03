@@ -20,6 +20,7 @@ An EtherCAT master written in Rust.
 - [#55] Added `Client::init_single_group` to reduce boilerplate when only using a single group of
   devices.
 - [#55] Removed MSRV commitment (was 1.68)
+- [#59] Added `SendableFrame::send_blocking` method.
 
 ### Removed
 
@@ -125,5 +126,6 @@ An EtherCAT master written in Rust.
 [#45]: https://github.com/ethercrab-rs/ethercrab/pull/45
 [#47]: https://github.com/ethercrab-rs/ethercrab/pull/47
 [#55]: https://github.com/ethercrab-rs/ethercrab/pull/55
+[#59]: https://github.com/ethercrab-rs/ethercrab/pull/59
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

@@ -40,11 +40,16 @@ impl<'sto> PduTx<'sto> {
         None
     }
 
+    /// Get a handle to the storage waker.
+    ///
+    /// Internal use only - please don't rely on this method existing forever. It's only
+    /// public/doc-hidden for use in test harnesses.
     #[cfg_attr(
         any(target_os = "windows", target_os = "macos", not(feature = "std")),
         allow(unused)
     )]
-    pub(crate) fn lock_waker<'lock>(&self) -> RwLockWriteGuard<'lock, Option<Waker>>
+    #[doc(hidden)]
+    pub fn lock_waker<'lock>(&self) -> RwLockWriteGuard<'lock, Option<Waker>>
     where
         'sto: 'lock,
     {
