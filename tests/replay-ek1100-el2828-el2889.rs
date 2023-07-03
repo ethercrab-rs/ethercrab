@@ -22,6 +22,7 @@ struct Groups {
 }
 
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
