@@ -307,8 +307,6 @@ where
                     .read::<SyncManagerChannel>(mailbox_read_sm, "Master reply read mailbox")
                     .await?;
 
-                dbg!(&sm.status);
-
                 if sm.status.mailbox_full {
                     break Ok(());
                 }
