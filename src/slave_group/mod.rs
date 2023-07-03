@@ -7,6 +7,9 @@ use crate::{
 };
 use core::{cell::UnsafeCell, future::Future, pin::Pin, sync::atomic::AtomicUsize};
 
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+
 pub use configurator::SlaveGroupRef;
 
 // TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
