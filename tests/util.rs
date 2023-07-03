@@ -1,4 +1,4 @@
-//! Replay comms between EK1100, EL2828, EL2889.
+//! Utilities to replay Wireshark captures as part of regression/integration tests.
 
 use ethercrab::{error::Error, std::tx_rx_task, PduRx, PduTx};
 use pcap_file::pcapng::{Block, PcapNgReader};
