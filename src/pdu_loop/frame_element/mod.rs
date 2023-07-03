@@ -1,5 +1,6 @@
 use crate::{command::Command, error::PduError, pdu_loop::pdu_flags::PduFlags};
 use core::{
+    fmt::Debug,
     marker::PhantomData,
     ptr::{addr_of, addr_of_mut, NonNull},
     sync::atomic::Ordering,
@@ -158,10 +159,20 @@ impl<const N: usize> FrameElement<N> {
 }
 
 /// Frame data common to all typestates.
-#[derive(Debug)]
 pub struct FrameBox<'sto> {
     pub frame: NonNull<FrameElement<0>>,
     pub _lifetime: PhantomData<&'sto mut FrameElement<0>>,
+}
+
+impl<'sto> Debug for FrameBox<'sto> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let (frame, data) = unsafe { self.frame_and_buf() };
+
+        f.debug_struct("FrameBox")
+            .field("frame", frame)
+            .field("data_hex", &format_args!("{:02x?}", data))
+            .finish()
+    }
 }
 
 impl<'sto> FrameBox<'sto> {
