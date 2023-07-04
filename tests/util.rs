@@ -51,7 +51,7 @@ impl<'a> DummyTxRxFut<'a> {
 
                     EthernetFrame::new_checked(buf2).expect("Failed to parse block")
                 }
-                Block::InterfaceDescription(_) => continue,
+                Block::InterfaceDescription(_) | Block::InterfaceStatistics(_) => continue,
                 other => panic!(
                     "Frame {} is not correct type: {:?}",
                     self.packet_number, other
@@ -69,7 +69,7 @@ impl<'a> DummyTxRxFut<'a> {
             return raw;
         }
 
-        unreachable!();
+        unreachable!("only had {} blocks", self.packet_number);
     }
 
     fn next_line_is_send(&mut self) -> EthernetFrame<Vec<u8>> {

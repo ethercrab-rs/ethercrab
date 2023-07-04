@@ -218,18 +218,74 @@ where
             .config
             .mailbox
             .write
-            .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
+            .ok_or(Error::Mailbox(MailboxError::NoMailbox))
+            .map_err(|e| {
+                log::error!("No write (slave IN) mailbox found but one is required");
+                e
+            })?;
         let read_mailbox = self
             .state
             .borrow()
             .config
             .mailbox
             .read
-            .ok_or(Error::Mailbox(MailboxError::NoMailbox))?;
+            .ok_or(Error::Mailbox(MailboxError::NoMailbox))
+            .map_err(|e| {
+                log::error!("No read (slave OUT) mailbox found but one is required");
+                e
+            })?;
+
+        let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
+        let mailbox_write_sm = RegisterAddress::sync_manager(write_mailbox.sync_manager);
 
         let counter = request.counter();
 
-        // TODO: Abstract this into a method that returns a slice
+        // Ensure slave OUT (master IN) mailbox is empty
+        {
+            let sm = self
+                .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                .await?;
+
+            // If flag is set, read entire mailbox to clear it
+            if sm.status.mailbox_full {
+                self.client
+                    .pdu_loop
+                    .pdu_tx_readonly(
+                        Command::Fprd {
+                            address: self.configured_address,
+                            register: read_mailbox.address,
+                        },
+                        read_mailbox.len,
+                    )
+                    .await?;
+            }
+        }
+
+        // Wait for slave IN mailbox to be available to receive data from master
+        crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
+            loop {
+                let sm = self
+                    .read::<SyncManagerChannel>(mailbox_write_sm, "Master write mailbox")
+                    .await?;
+
+                if !sm.status.mailbox_full {
+                    break Ok(());
+                }
+
+                self.client.timeouts.loop_tick().await;
+            }
+        })
+        .await
+        .map_err(|e| {
+            log::error!(
+                "Mailbox IN ready error for slave {:#06x}: {e:?}",
+                self.configured_address
+            );
+
+            e
+        })?;
+
+        // Send data to slave IN mailbox
         self.client
             .pdu_loop
             .pdu_tx_readwrite_len(
@@ -238,18 +294,17 @@ where
                     register: write_mailbox.address,
                 },
                 request.pack().unwrap().as_ref(),
+                // Need to write entire mailbox to latch it
                 write_mailbox.len,
             )
             .await?
             .wkc(1, "SDO upload request")?;
 
-        // Wait for slave send mailbox to be ready
+        // Wait for slave OUT mailbox to be ready
         crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
-            let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
-
             loop {
                 let sm = self
-                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master reply read mailbox")
                     .await?;
 
                 if sm.status.mailbox_full {
@@ -261,13 +316,15 @@ where
         })
         .await
         .map_err(|e| {
-            log::error!("Mailbox read ready error: {e:?}");
+            log::error!(
+                "Response mailbox IN error for slave {:#06x}: {e:?}",
+                self.configured_address
+            );
 
             e
         })?;
 
-        // Receive data from slave send mailbox
-        // TODO: Abstract this into a method that returns a slice
+        // Read acknowledgement from slave OUT mailbox
         let mut response = self
             .client
             .pdu_loop
@@ -279,7 +336,7 @@ where
                 read_mailbox.len,
             )
             .await?
-            .wkc(1, "SDO read mailbox")?;
+            .wkc(1, "read OUT mailbox after write")?;
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
 
@@ -384,7 +441,7 @@ where
 
         let request = coe::services::upload(self.client.mailbox_counter(), index, sub_index);
 
-        log::trace!("CoE upload");
+        log::trace!("CoE upload {:#06x} {:?}", index, sub_index);
 
         let (headers, response) = self.send_coe_service(request).await?;
         let data: &[u8] = &response;
@@ -419,9 +476,11 @@ where
             if complete_size <= u32::from(data_length) {
                 let (_rest, data) = take(data_length)(data)?;
 
+                let buf = &mut buf[0..usize::from(data_length)];
+
                 buf.copy_from_slice(data);
 
-                Ok(&buf[0..usize::from(data_length)])
+                Ok(buf)
             }
             // If it's a segmented upload, we must make subsequent requests to load all segment data
             // from the read mailbox.
@@ -581,14 +640,14 @@ impl<'a, S> SlaveRef<'a, S> {
 
     pub(crate) async fn read<T>(
         &self,
-        register: RegisterAddress,
+        register: impl Into<u16>,
         context: &'static str,
     ) -> Result<T, Error>
     where
         T: PduRead,
         <T as PduRead>::Error: Debug,
     {
-        self.read_ignore_wkc(register).await?.wkc(1, context)
+        self.read_ignore_wkc(register.into()).await?.wkc(1, context)
     }
 
     /// A wrapper around an FPWR service to this slave's configured address.

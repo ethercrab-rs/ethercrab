@@ -118,7 +118,7 @@ async fn main() -> Result<(), Error> {
         let (i, o) = slave.io_raw();
 
         log::info!(
-            "-> Slave {} {} inputs: {} bytes, outputs: {} bytes",
+            "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
             slave.configured_address(),
             slave.name(),
             i.len(),

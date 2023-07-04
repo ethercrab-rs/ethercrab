@@ -1,6 +1,6 @@
 use crate::{
     all_consumed,
-    eeprom::types::{FromEeprom, MailboxProtocols},
+    eeprom::types::{FromEeprom, MailboxProtocols, SyncManagerType},
     pdi::PdiSegment,
 };
 use core::fmt::{self, Debug};
@@ -54,11 +54,13 @@ pub struct SlaveConfig {
     pub mailbox: MailboxConfig,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct MailboxConfig {
     pub(in crate::slave) read: Option<Mailbox>,
     pub(in crate::slave) write: Option<Mailbox>,
     pub(in crate::slave) supported_protocols: MailboxProtocols,
+    pub(in crate::slave) coe_sync_manager_types: heapless::Vec<SyncManagerType, 16>,
+    pub(in crate::slave) has_coe: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
