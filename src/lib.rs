@@ -105,7 +105,7 @@
 //!         let (i, o) = slave.io_raw();
 //!
 //!         log::info!(
-//!             "-> Slave {} {} has {} input bytes, {} output bytes",
+//!             "-> Slave {:#06x} {} has {} input bytes, {} output bytes",
 //!             slave.configured_address(),
 //!             slave.name(),
 //!             i.len(),

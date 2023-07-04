@@ -40,6 +40,19 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
 
         self.request_slave_state(SlaveState::PreOp).await?;
 
+        if self.state.config.mailbox.has_coe {
+            // Up to 16 sync managers as per ETG1000.4 Table 59
+            let mut sms_buf = [0u8; 16];
+
+            let sms = self
+                .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
+                .await?
+                .iter()
+                .map(|sm| SyncManagerType::from_primitive(*sm));
+
+            self.state.config.mailbox.coe_sync_manager_types = heapless::Vec::from_iter(sms);
+        }
+
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
         Ok(())
@@ -75,19 +88,7 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
             });
         }
 
-        let has_coe = self
-            .state
-            .config
-            .mailbox
-            .supported_protocols
-            .contains(MailboxProtocols::COE)
-            && self
-                .state
-                .config
-                .mailbox
-                .read
-                .map(|mbox| mbox.len > 0)
-                .unwrap_or(false);
+        let has_coe = self.state.config.mailbox.has_coe;
 
         log::debug!(
             "Slave {:#06x} has CoE: {has_coe:?}",
@@ -279,6 +280,11 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
             read: read_mailbox,
             write: write_mailbox,
             supported_protocols: mailbox_config.supported_protocols,
+            coe_sync_manager_types: heapless::Vec::new(),
+            has_coe: mailbox_config
+                .supported_protocols
+                .contains(MailboxProtocols::COE)
+                && read_mailbox.map(|mbox| mbox.len > 0).unwrap_or(false),
         };
 
         Ok(())
@@ -292,31 +298,33 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
         direction: PdoDirection,
         gobal_offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
+        if !self.state.config.mailbox.has_coe {
+            log::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
+        }
+
         let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
 
-        // ETG1000.6 Table 67 – CoE Communication Area
-        let num_sms = self
-            .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
-            .await?;
-
-        log::trace!("Found {num_sms} SMs from CoE");
+        // NOTE: Commented out because this causes a timeout on various slave devices, possibly due
+        // to querying 0x1c00 after we enter PRE-OP but I'm unsure. See
+        // <https://github.com/ethercrab-rs/ethercrab/issues/49>. Complete access also causes the
+        // same issue.
+        // // ETG1000.6 Table 67 – CoE Communication Area
+        // let num_sms = self
+        //     .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
+        //     .await?;
 
         let start_offset = *gobal_offset;
-
-        // We must ignore the first two SM indices (SM0, SM1, sub-index 1 and 2, start at sub-index
-        // 3) as these are used for mailbox communication.
-        let sm_range = 3..=num_sms;
-
         let mut total_bit_len = 0;
 
-        // NOTE: This is a 1-based SDO sub-index
-        for sm_mapping_sub_index in sm_range {
-            let sm_type = self
-                .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(sm_mapping_sub_index))
-                .await
-                .map(SyncManagerType::from_primitive)?;
-
-            let sync_manager_index = sm_mapping_sub_index - 1;
+        for (sync_manager_index, sm_type) in self
+            .state
+            .config
+            .mailbox
+            .coe_sync_manager_types
+            .iter()
+            .enumerate()
+        {
+            let sync_manager_index = sync_manager_index as u8;
 
             let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
 
@@ -328,14 +336,14 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
                         index: Some(usize::from(sync_manager_index)),
                     })?;
 
-            if sm_type != desired_sm_type {
+            if *sm_type != desired_sm_type {
                 continue;
             }
 
             // Total number of PDO assignments for this sync manager
             let num_sm_assignments = self.sdo_read::<u8>(sm_address, SubIndex::Index(0)).await?;
 
-            log::trace!("SDO sync manager {sync_manager_index} (sub index #{sm_mapping_sub_index}) {sm_address:#06x} {sm_type:?}, sub indices: {num_sm_assignments}");
+            log::trace!("SDO sync manager {sync_manager_index}  {sm_address:#06x} {sm_type:?}, sub indices: {num_sm_assignments}");
 
             let mut sm_bit_len = 0u16;
 

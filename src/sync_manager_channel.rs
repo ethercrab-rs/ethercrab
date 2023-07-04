@@ -162,6 +162,44 @@ mod tests {
     use super::*;
 
     #[test]
+    fn issue_49_decode_timeout_response() {
+        let raw = [0x00u8, 0x1c, 0x00, 0x01, 0x22, 0x00, 0x01, 0x00];
+
+        let parsed = SyncManagerChannel::unpack_from_slice(&raw).unwrap();
+
+        assert_eq!(
+            parsed,
+            SyncManagerChannel {
+                physical_start_address: 0x1c00,
+                length_bytes: 0x0100,
+                control: Control {
+                    operation_mode: OperationMode::Mailbox,
+                    direction: Direction::MasterRead,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                status: Status {
+                    has_write_event: false,
+                    has_read_event: false,
+                    mailbox_full: false,
+                    buffer_state: BufferState::Read,
+                    read_buffer_open: false,
+                    write_buffer_open: false
+                },
+                enable: Enable {
+                    enable: true,
+                    repeat: false,
+                    dc_event0w_busw: false,
+                    dc_event0wlocw: false,
+                    channel_pdi_disabled: false,
+                    repeat_ack: false
+                }
+            }
+        )
+    }
+
+    #[test]
     fn default_is_zero() {
         assert_eq!(SyncManagerChannel::default().pack().unwrap(), [0u8; 8]);
     }

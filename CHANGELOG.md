@@ -98,6 +98,7 @@ An EtherCAT master written in Rust.
   before the fork.
 - [#6] Internal bugfixes to topology discovery code.
 - [#2] Fixed multiple group PDI mapping calculation during initialisation.
+- [#57] Fixed a buffer size calculation crash when reading SDOs.
 
 ## [0.1.0] - 2023-01-02
 
