@@ -45,6 +45,9 @@ libc = "0.2.146"
 rustix = { version = "0.37.19", default-features = false, features = ["process"] }
 thread-priority = "0.13.1"
 
+[target.'cfg(miri)'.dependencies]
+tokio = { version = "1.28.2", features = ["rt", "macros", "time"] }
+
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports", "async_tokio"] }
 ctrlc = "3.4.0"

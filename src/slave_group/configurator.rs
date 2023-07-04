@@ -22,6 +22,13 @@ struct GroupInnerRef<'a> {
     group_working_counter: &'a mut u16,
 }
 
+// TODO: Prove if this is safe. All this stuff is internal to the crate and short lived so I think
+// we might be ok... lol probably not :(.
+//
+// This is in response to <https://github.com/ethercrab-rs/ethercrab/issues/56#issuecomment-1618904531>
+unsafe impl<'a> Sync for SlaveGroupRef<'a> {}
+unsafe impl<'a> Send for SlaveGroupRef<'a> {}
+
 /// A reference to a [`SlaveGroup`](crate::SlaveGroup) returned by the closure passed to
 /// [`Client::init`](crate::Client::init).
 pub struct SlaveGroupRef<'a> {
@@ -38,7 +45,7 @@ impl<'a> SlaveGroupRef<'a> {
             max_pdi_len: MAX_PDI,
             preop_safeop_hook: &group.preop_safeop_hook,
             inner: {
-                let inner = unsafe { &mut *group.inner.get() };
+                let inner = unsafe { group.inner.get().as_mut().unwrap() };
 
                 UnsafeCell::new(GroupInnerRef {
                     slaves: &mut inner.slaves,
@@ -58,7 +65,8 @@ impl<'a> SlaveGroupRef<'a> {
         mut global_offset: PdiOffset,
         client: &'sto Client<'sto>,
     ) -> Result<PdiOffset, Error> {
-        let inner = unsafe { &mut *self.inner.get() };
+        // SAFETY: Unwrap: this pointer cannot be null at this point in the code.
+        let inner = unsafe { self.inner.get().as_mut().unwrap() };
 
         log::debug!(
             "Going to configure group with {} slave(s), starting PDI offset {:#08x}",
