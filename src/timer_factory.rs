@@ -10,9 +10,14 @@ pub async fn timer(duration: Duration) {
     .await;
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", not(miri)))]
 pub async fn timer(duration: Duration) {
     async_io::Timer::after(duration).await;
+}
+
+#[cfg(all(feature = "std", miri))]
+pub async fn timer(duration: Duration) {
+    tokio::time::sleep(duration).await;
 }
 
 pub async fn timeout<O, F>(timeout: Duration, future: F) -> Result<O, Error>
