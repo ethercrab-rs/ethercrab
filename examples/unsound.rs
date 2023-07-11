@@ -74,8 +74,8 @@ async fn main() -> Result<(), Error> {
         .expect("Init");
 
     let Groups {
-        slow_outputs,
-        fast_outputs,
+        mut slow_outputs,
+        mut fast_outputs,
     } = groups;
 
     let client_slow = client.clone();
@@ -99,11 +99,16 @@ async fn main() -> Result<(), Error> {
             .slave(&client_slow, 1)
             .expect("EL2889 not present!");
 
+        // FIXME: This shouldn't be possible
+        let mut el2889_bad = slow_outputs
+            .slave(&client_slow, 1)
+            .expect("EL2889 not present!");
+
         let stuff = el2889.io_raw();
 
         // Set initial output state
-        el2889.io_raw().1[0] = 0x01;
-        el2889.io_raw().1[1] = 0x80;
+        el2889_bad.io_raw().1[0] = 0x01;
+        el2889_bad.io_raw().1[1] = 0x80;
 
         stuff.1[0] = 0xff;
 
@@ -134,6 +139,10 @@ async fn main() -> Result<(), Error> {
 
             // Increment every output byte for every slave device by one
             for mut slave in fast_outputs.iter(&client) {
+                fast_outputs.iter(&client).for_each(|_| {
+                    // FIXME: This is bad!
+                });
+
                 let (_i, o) = slave.io_raw();
 
                 for byte in o.iter_mut() {
