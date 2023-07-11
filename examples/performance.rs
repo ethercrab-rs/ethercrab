@@ -113,6 +113,11 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         fast_outputs,
     } = groups;
 
+    client
+        .request_slave_state(ethercrab::SlaveState::Op)
+        .await
+        .expect("OP");
+
     let client_slow = client.clone();
 
     let slow_task = tokio::spawn(async move {
