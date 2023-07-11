@@ -143,12 +143,18 @@ async fn main() -> Result<(), Error> {
                     // FIXME: This is bad!
                 });
 
+                // FIXME: This is also bad
+                let sl = fast_outputs.slave(&client, 0).unwrap();
+
                 let (_i, o) = slave.io_raw();
 
                 for byte in o.iter_mut() {
                     *byte = byte.wrapping_add(1);
                 }
             }
+
+            // This is ok because we're outside the iterator
+            let sl = fast_outputs.slave(&client, 0).unwrap();
 
             fast_cycle_time.tick().await;
         }
