@@ -3,7 +3,7 @@
 mod util;
 
 use env_logger::Env;
-use ethercrab::{error::Error, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts};
+use ethercrab::{error::Error, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, Timeouts};
 use std::time::Duration;
 use tokio::time::MissedTickBehavior;
 
@@ -55,6 +55,11 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
         slow_outputs,
         fast_outputs,
     } = groups;
+
+    client
+        .request_slave_state(SlaveState::Op)
+        .await
+        .expect("OP");
 
     let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(10));
     slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
