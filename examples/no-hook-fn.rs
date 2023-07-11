@@ -3,7 +3,8 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState,
+    Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -44,6 +45,11 @@ async fn main() -> Result<(), Error> {
         .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::default())
         .await
         .expect("Init");
+
+    client
+        .request_slave_state(SlaveState::Op)
+        .await
+        .expect("OP");
 
     let mut cycle_time = tokio::time::interval(Duration::from_millis(5));
     cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);

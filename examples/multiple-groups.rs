@@ -8,7 +8,8 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState,
+    Timeouts,
 };
 use std::{
     sync::Arc,
@@ -84,6 +85,11 @@ async fn main() -> Result<(), Error> {
     } = groups;
 
     let client_slow = client.clone();
+
+    client
+        .request_slave_state(SlaveState::Op)
+        .await
+        .expect("OP");
 
     let slow_task = tokio::spawn(async move {
         let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(3));

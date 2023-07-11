@@ -3,7 +3,7 @@
 use env_logger::Env;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, RegisterAddress, SlaveGroup,
-    Timeouts,
+    SlaveState, Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -95,7 +95,11 @@ async fn main() -> Result<(), Error> {
         );
     }
 
-    // NOTE: This is currently hardcoded as 2ms inside the DC sync config, so keep them the same.
+    client
+        .request_slave_state(SlaveState::Op)
+        .await
+        .expect("OP");
+
     let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
     tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 

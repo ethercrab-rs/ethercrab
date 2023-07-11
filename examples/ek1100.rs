@@ -16,7 +16,8 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState,
+    Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -83,6 +84,11 @@ async fn main() -> Result<(), Error> {
         .expect("Init");
 
     log::info!("Discovered {} slaves", group.len());
+
+    client
+        .request_slave_state(SlaveState::Op)
+        .await
+        .expect("OP");
 
     for slave in group.iter(&client) {
         let (i, o) = slave.io_raw();
