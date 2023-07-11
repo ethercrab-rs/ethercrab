@@ -4,7 +4,7 @@ Uses Wireshark captures of known-good runs as replays to test for regressions ag
 
 ## Capturing replays
 
-Captures should be run in debug mode to make sure everything has time to breath. If this is not
+Captures should be run in debug mode to make sure everything has time to breathe. If this is not
 done, the replays can fail in weird and confusing ways.
 
 On remote machine from project root e.g.
@@ -16,6 +16,5 @@ ssh ethercrab 'sudo tcpdump -U -i enp2s0 -w -' | wireshark -f 'ecat' -i - -w ./t
 Then run the test using real interface e.g.:
 
 ```bash
-cargo build --test
-sudo INTERFACE=enp2s0 /home/james/Repositories/ethercrab/target/debug/deps/replay_ek1100_el2828_el2889-5cd69ca6114e6ce1
+INTERFACE=enp2s0 just linux-test replay
 ```
