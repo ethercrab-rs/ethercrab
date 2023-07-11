@@ -9,15 +9,23 @@ linux-example-release example *args:
      ./target/release/examples/{{example}} {{args}}
 
 linux-test *args:
-     #!/usr/bin/env sh
+     #!/usr/bin/env bash
 
      set -e
 
-     OUT=$(cargo test --no-run 2>&1 | tee /dev/tty | tail -n1)
-     BIN=$(echo $OUT | awk -F '[\\(\\)]' '{print $2}')
-     sudo setcap cap_net_raw=pe $BIN
-     echo "$BIN {{args}}"
-     $BIN {{args}}
+     OUT=$(cargo test --no-run 2>&1 | tee /dev/tty | grep -oE '\(target/.+\)' | sed 's/[)(]//g')
+     # BINS=$(echo $OUT)
+
+     mapfile -t BINS < <( echo "$OUT" )
+
+     for BIN in "${BINS[@]}"
+     do
+          echo "  Setcap for test binary $BIN"
+          sudo setcap cap_net_raw=pe $BIN
+     done
+
+     # We've now setcap'd everything so we should be able to run this again without perm issues
+     cargo test {{args}}
 
 linux-bench *args:
      cargo bench --features bench-hacks --no-run {{args}}
