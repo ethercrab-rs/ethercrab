@@ -90,15 +90,15 @@ async fn main() -> Result<(), Error> {
         .await
         .expect("OP");
 
-    for slave in group.iter(&client) {
-        let (i, o) = slave.io_raw();
+    for mut slave in group.iter(&client) {
+        let o_len = slave.outputs_raw().len();
 
         log::info!(
             "-> Slave {:#06x} {} has {} input bytes, {} output bytes",
             slave.configured_address(),
             slave.name(),
-            i.len(),
-            o.len(),
+            slave.inputs_raw().len(),
+            o_len,
         );
     }
 
@@ -109,7 +109,7 @@ async fn main() -> Result<(), Error> {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Increment every output byte for every slave device by one
-        for slave in group.iter(&client) {
+        for mut slave in group.iter(&client) {
             let (_i, o) = slave.io_raw();
 
             for byte in o.iter_mut() {

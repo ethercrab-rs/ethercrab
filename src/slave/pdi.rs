@@ -9,7 +9,7 @@ pub struct SlavePdi<'group> {
     inputs: &'group [u8],
 
     /// Made mutable when accessed.
-    outputs: &'group [u8],
+    outputs: &'group mut [u8],
 }
 
 impl<'group> Borrow<Slave> for SlavePdi<'group> {
@@ -19,7 +19,11 @@ impl<'group> Borrow<Slave> for SlavePdi<'group> {
 }
 
 impl<'group> SlavePdi<'group> {
-    pub(crate) fn new(slave: &'group Slave, inputs: &'group [u8], outputs: &'group [u8]) -> Self {
+    pub(crate) fn new(
+        slave: &'group Slave,
+        inputs: &'group [u8],
+        outputs: &'group mut [u8],
+    ) -> Self {
         Self {
             slave,
             inputs,
@@ -31,8 +35,19 @@ impl<'group> SlavePdi<'group> {
 /// Methods used when a slave device is part of a group and part of the PDI has been mapped to it.
 impl<'a, 'group> SlaveRef<'a, SlavePdi<'group>> {
     /// Get a tuple of (I, O) for this slave in the Process Data Image (PDI).
-    pub fn io_raw(&self) -> (&[u8], &mut [u8]) {
-        (self.inputs_raw(), self.outputs_raw())
+    pub fn io_raw(&mut self) -> (&[u8], &mut [u8]) {
+        (
+            self.state.inputs,
+            self.state.outputs,
+            // // SAFETY: `self.state.inputs` and `self.state.outputs` can never overlap for valid
+            // // inputs, so we can borrow immutably _and_ mutably at the same time here.
+            // unsafe {
+            //     core::slice::from_raw_parts_mut(
+            //         self.state.outputs.as_ptr() as *mut u8,
+            //         self.state.outputs.len(),
+            //     )
+            // },
+        )
     }
 
     /// Get just the inputs for this slave in the Process Data Image (PDI).
@@ -41,7 +56,7 @@ impl<'a, 'group> SlaveRef<'a, SlavePdi<'group>> {
     }
 
     /// Get just the outputs for this slave in the Process Data Image (PDI).
-    pub fn outputs_raw(&self) -> &mut [u8] {
+    pub fn outputs_raw(&mut self) -> &mut [u8] {
         unsafe {
             core::slice::from_raw_parts_mut(
                 self.state.outputs.as_ptr() as *mut u8,

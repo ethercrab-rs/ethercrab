@@ -58,7 +58,7 @@ async fn main() -> Result<(), Error> {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Increment every output byte for every slave device by one
-        for slave in group.iter(&client) {
+        for mut slave in group.iter(&client) {
             let (_i, o) = slave.io_raw();
 
             for byte in o.iter_mut() {

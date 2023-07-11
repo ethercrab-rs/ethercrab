@@ -114,15 +114,15 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Discovered {} slaves", group.len());
 
-    for slave in group.iter(&client) {
-        let (i, o) = slave.io_raw();
+    for mut slave in group.iter(&client) {
+        let o_len = slave.outputs_raw().len();
 
         log::info!(
             "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
             slave.configured_address(),
             slave.name(),
-            i.len(),
-            o.len(),
+            slave.inputs_raw().len(),
+            o_len,
         );
     }
 
@@ -149,8 +149,8 @@ async fn main() -> Result<(), Error> {
     let mut cyclic_interval = tokio::time::interval(cycle_time);
     cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let slave = group.slave(&client, 0).expect("No servo!");
-    let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
+    let mut slave = group.slave(&client, 0).expect("No servo!");
+    let mut servo = Ds402Sm::new(Ds402::new(&mut slave).expect("Failed to gather DS402"));
 
     let mut velocity: i32 = 0;
 

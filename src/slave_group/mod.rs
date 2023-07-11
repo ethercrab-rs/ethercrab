@@ -5,7 +5,7 @@ use crate::{
     slave::{pdi::SlavePdi, IoRanges, Slave, SlaveRef},
     Client,
 };
-use core::{cell::UnsafeCell, future::Future, pin::Pin, sync::atomic::AtomicUsize};
+use core::{cell::UnsafeCell, future::Future, pin::Pin, slice, sync::atomic::AtomicUsize};
 
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
@@ -198,9 +198,10 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         };
 
         let outputs = if !output_range.is_empty() {
-            &o_data[output_range.bytes.clone()]
+            &mut o_data[output_range.bytes.clone()]
         } else {
-            EMPTY_PDI_SLICE
+            // SAFETY: Slice is empty so can never be mutated
+            unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr() as *mut _, 0) }
         };
 
         Ok(SlaveRef::new(

@@ -1,10 +1,4 @@
-//! Demonstrate sorting slaves into multiple slave groups.
-//!
-//! This demo is designed to be used with the following slave devices:
-//!
-//! - EK1100
-//! - EL2889 (2 bytes of outputs)
-//! - EL2828 (1 byte of outputs)
+//! DELETEME: This is just to check some unsound fixes
 
 use env_logger::Env;
 use ethercrab::{
@@ -105,9 +99,13 @@ async fn main() -> Result<(), Error> {
             .slave(&client_slow, 1)
             .expect("EL2889 not present!");
 
+        let stuff = el2889.io_raw();
+
         // Set initial output state
         el2889.io_raw().1[0] = 0x01;
         el2889.io_raw().1[1] = 0x80;
+
+        stuff.1[0] = 0xff;
 
         loop {
             slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
