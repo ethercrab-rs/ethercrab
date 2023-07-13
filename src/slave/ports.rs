@@ -1,4 +1,4 @@
-use core::fmt::Debug;
+use core::fmt::{self, Debug};
 
 /// Flags showing which ports are active or not on the slave.
 #[derive(Default, Debug, PartialEq, Eq, Copy, Clone)]
@@ -36,6 +36,24 @@ pub enum Topology {
 
 #[derive(Default, Copy, Clone, Debug, PartialEq)]
 pub struct Ports(pub [Port; 4]);
+
+impl fmt::Display for Ports {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ports [ ")?;
+
+        for p in self.0 {
+            if p.active {
+                f.write_str("open ")?;
+            } else {
+                f.write_str("closed ")?;
+            }
+        }
+
+        f.write_str("]")?;
+
+        Ok(())
+    }
+}
 
 impl Ports {
     fn open_ports(&self) -> u8 {
