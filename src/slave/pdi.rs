@@ -9,8 +9,7 @@ pub struct SlavePdi<'group> {
 
     inputs: &'group [u8],
 
-    /// Made mutable when accessed.
-    outputs: &'group [u8],
+    outputs: &'group mut [u8],
 }
 
 impl<'group> Borrow<Slave> for SlavePdi<'group> {
@@ -61,11 +60,6 @@ impl<'a, 'group> SlaveRef<'a, SlavePdi<'group>> {
 
     /// Get just the outputs for this slave in the Process Data Image (PDI).
     pub fn outputs_raw(&mut self) -> &mut [u8] {
-        unsafe {
-            core::slice::from_raw_parts_mut(
-                self.state.outputs.as_ptr() as *mut u8,
-                self.state.outputs.len(),
-            )
-        }
+        self.state.outputs
     }
 }
