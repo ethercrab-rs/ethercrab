@@ -100,7 +100,7 @@ async fn main() -> Result<(), Error> {
         })
     });
 
-    let group = client
+    let mut group = client
         // Initialise a single group
         .init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
         .await
