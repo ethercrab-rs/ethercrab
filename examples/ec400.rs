@@ -114,15 +114,15 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Discovered {} slaves", group.len());
 
-    for mut slave in group.iter(&client) {
-        let o_len = slave.outputs_raw().len();
+    for slave in group.iter(&client) {
+        let (i, o) = slave.io_raw();
 
         log::info!(
             "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
             slave.configured_address(),
             slave.name(),
-            slave.inputs_raw().len(),
-            o_len,
+            i.len(),
+            o.len()
         );
     }
 
