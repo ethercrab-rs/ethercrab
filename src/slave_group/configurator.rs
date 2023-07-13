@@ -1,3 +1,5 @@
+use atomic_refcell::AtomicRefCell;
+
 use super::HookFn;
 use crate::{
     error::Error,
@@ -10,7 +12,7 @@ use core::{cell::UnsafeCell, time::Duration};
 
 #[derive(Debug)]
 struct GroupInnerRef<'a> {
-    slaves: &'a mut [Slave],
+    slaves: &'a mut [AtomicRefCell<Slave>],
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.
     read_pdi_len: &'a mut usize,
     /// The total length (I and O) of the PDI for this group.
@@ -79,6 +81,8 @@ impl<'a> SlaveGroupRef<'a> {
 
         // Configure master read PDI mappings in the first section of the PDI
         for slave in inner.slaves.iter_mut() {
+            let slave = slave.get_mut();
+
             let mut slave_config = SlaveRef::new(client, slave.configured_address, slave);
 
             // TODO: Split `SlaveGroupRef::configure_from_eeprom` so we can put all slaves into
@@ -113,6 +117,8 @@ impl<'a> SlaveGroupRef<'a> {
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
         for (_i, slave) in inner.slaves.iter_mut().enumerate() {
+            let slave = slave.get_mut();
+
             let addr = slave.configured_address;
             let name = slave.name.clone();
 

@@ -129,7 +129,7 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Discovered {} slaves", group.len());
 
-    let mut slave = group.slave(&client, 0).expect("first slave not found");
+    let slave = group.slave(&client, 0).expect("first slave not found");
 
     // Run twice to prime PDI
     group.tx_rx(&client).await.expect("TX/RX");

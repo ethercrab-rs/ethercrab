@@ -132,12 +132,12 @@ impl Clone for States {
 #[derive(Debug)]
 pub struct Ds402<'a> {
     /// The EtherCat slave.
-    pub slave: &'a mut SlaveRef<'a, SlavePdi<'a>>,
+    pub slave: SlaveRef<'a, SlavePdi<'a>>,
 }
 
 impl<'a> Ds402<'a> {
     /// Create a new DS402 state machine.
-    pub fn new(slave: &'a mut SlaveRef<'a, SlavePdi<'a>>) -> Result<Self, EthercrabError> {
+    pub fn new(slave: SlaveRef<'a, SlavePdi<'a>>) -> Result<Self, EthercrabError> {
         Ok(Self { slave })
     }
 
@@ -189,8 +189,8 @@ impl<'a> Ds402Sm<'a> {
     }
 
     /// Get a reference to the underlying EtherCAT slave device.
-    pub fn slave(&mut self) -> &mut SlaveRef<'a, SlavePdi<'a>> {
-        self.sm.context_mut().slave
+    pub fn slave(&self) -> &SlaveRef<'a, SlavePdi<'a>> {
+        &self.sm.context().slave
     }
 
     /// Get the DS402 status word.

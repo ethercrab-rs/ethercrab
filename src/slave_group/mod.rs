@@ -10,6 +10,7 @@ use core::{cell::UnsafeCell, future::Future, pin::Pin, slice, sync::atomic::Atom
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
+use atomic_refcell::AtomicRefCell;
 pub use configurator::SlaveGroupRef;
 
 // TODO: When the right async-trait stuff is stabilised, it should be possible to remove the
@@ -45,7 +46,7 @@ pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize> {
 
 #[derive(Default)]
 struct GroupInner<const MAX_SLAVES: usize> {
-    slaves: heapless::Vec<Slave, MAX_SLAVES>,
+    slaves: heapless::Vec<AtomicRefCell<Slave>, MAX_SLAVES>,
 
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.
     read_pdi_len: usize,
@@ -95,7 +96,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupHandle
     unsafe fn push(&self, slave: Slave) -> Result<(), Error> {
         (&mut *self.inner.get())
             .slaves
-            .push(slave)
+            .push(AtomicRefCell::new(slave))
             .map_err(|_| Error::Capacity(crate::error::Item::Slave))
     }
 
@@ -156,15 +157,29 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     }
 
     /// Retrieve a reference to a slave in this group by index.
+    ///
+    /// Each slave may not be individually borrowed more than once, but multiple slaves can be
+    /// borrowed at the same time. If the slave at the given index is already borrowed, this method
+    /// will return an [`Error::Borrow`].
     pub fn slave<'client>(
         &self,
         client: &'client Client<'client>,
         index: usize,
     ) -> Result<SlaveRef<'client, SlavePdi<'_>>, Error> {
-        let slave = self.inner().slaves.get(index).ok_or(Error::NotFound {
-            item: Item::Slave,
-            index: Some(index),
-        })?;
+        let slave = self
+            .inner()
+            .slaves
+            .get(index)
+            .ok_or(Error::NotFound {
+                item: Item::Slave,
+                index: Some(index),
+            })?
+            .try_borrow_mut()
+            .map_err(|e| {
+                log::error!("Slave index {}: {}", index, e);
+
+                Error::Borrow
+            })?;
 
         let IoRanges {
             input: input_range,
@@ -207,6 +222,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         Ok(SlaveRef::new(
             client,
             slave.configured_address,
+            // SAFETY: A given slave contained in a `SlavePdi` MUST only be borrowed once (currently
+            // enforced by `AtomicRefCell`). If it is borrowed more than once, immutable APIs in
+            // `SlaveRef<SlavePdi>` will be unsound.
             SlavePdi::new(slave, inputs, outputs),
         ))
     }

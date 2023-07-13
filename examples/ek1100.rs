@@ -59,7 +59,7 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let group = client
+    let mut group = client
         .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|slave| {
             Box::pin(async {
                 // Special case: if an EL3004 module is discovered, it needs some specific config during
@@ -109,7 +109,7 @@ async fn main() -> Result<(), Error> {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Increment every output byte for every slave device by one
-        for mut slave in group.iter(&client) {
+        for slave in group.iter(&client) {
             let (_i, o) = slave.io_raw();
 
             for byte in o.iter_mut() {

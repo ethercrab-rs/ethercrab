@@ -81,7 +81,7 @@ async fn main() -> Result<(), Error> {
 
     let Groups {
         slow_outputs,
-        fast_outputs,
+        mut fast_outputs,
     } = groups;
 
     let client_slow = client.clone();
@@ -101,7 +101,7 @@ async fn main() -> Result<(), Error> {
         let mut tick = Instant::now();
 
         // EK1100 is first slave, EL2889 is second
-        let mut el2889 = slow_outputs
+        let el2889 = slow_outputs
             .slave(&client_slow, 1)
             .expect("EL2889 not present!");
 
@@ -135,7 +135,7 @@ async fn main() -> Result<(), Error> {
             fast_outputs.tx_rx(&client).await.expect("TX/RX");
 
             // Increment every output byte for every slave device by one
-            for mut slave in fast_outputs.iter(&client) {
+            for slave in fast_outputs.iter(&client) {
                 let (_i, o) = slave.io_raw();
 
                 for byte in o.iter_mut() {

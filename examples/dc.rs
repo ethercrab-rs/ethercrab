@@ -41,7 +41,7 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let group = client
+    let mut group = client
         .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|slave| {
             Box::pin(async {
                 // Special configuration is required for some slave devices
@@ -103,9 +103,6 @@ async fn main() -> Result<(), Error> {
     let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
     tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let group = Arc::new(group);
-    let group2 = group.clone();
-
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
@@ -114,7 +111,7 @@ async fn main() -> Result<(), Error> {
             .frmw::<u64>(0x1000, RegisterAddress::DcSystemTime)
             .await?;
 
-        for mut slave in group2.iter(&client) {
+        for slave in group.iter(&client) {
             let (_i, o) = slave.io_raw();
 
             for byte in o.iter_mut() {

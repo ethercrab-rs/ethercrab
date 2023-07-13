@@ -63,7 +63,7 @@ async fn main() -> Result<(), Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let group = client
+    let mut group = client
         .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|slave| {
             Box::pin(async {
                 if slave.name() == "ELP-EC400S" {
@@ -149,8 +149,8 @@ async fn main() -> Result<(), Error> {
     let mut cyclic_interval = tokio::time::interval(cycle_time);
     cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let mut slave = group.slave(&client, 0).expect("No servo!");
-    let mut servo = Ds402Sm::new(Ds402::new(&mut slave).expect("Failed to gather DS402"));
+    let slave = group.slave(&client, 0).expect("No servo!");
+    let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
 
     let mut velocity: i32 = 0;
 

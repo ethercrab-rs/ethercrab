@@ -74,7 +74,7 @@ async fn main() -> Result<(), Error> {
         .expect("Init");
 
     let Groups {
-        mut slow_outputs,
+        slow_outputs,
         mut fast_outputs,
     } = groups;
 
@@ -85,7 +85,7 @@ async fn main() -> Result<(), Error> {
         .await
         .expect("OP");
 
-    let slow_task = tokio::spawn(async move {
+    let slow_task: tokio::task::JoinHandle<Result<_, Error>> = tokio::spawn(async move {
         let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(3));
         slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -95,22 +95,14 @@ async fn main() -> Result<(), Error> {
         let mut tick = Instant::now();
 
         // EK1100 is first slave, EL2889 is second
-        let mut el2889 = slow_outputs
-            .slave(&client_slow, 1)
-            .expect("EL2889 not present!");
+        let el2889 = slow_outputs.slave(&client_slow, 1)?;
 
         // FIXME: This shouldn't be possible
-        let mut el2889_bad = slow_outputs
-            .slave(&client_slow, 1)
-            .expect("EL2889 not present!");
-
-        let stuff = el2889.io_raw();
+        let el2889_bad = slow_outputs.slave(&client_slow, 1)?;
 
         // Set initial output state
-        el2889_bad.io_raw().1[0] = 0x01;
-        el2889_bad.io_raw().1[1] = 0x80;
-
-        stuff.1[0] = 0xff;
+        el2889.io_raw().1[0] = 0x01;
+        el2889.io_raw().1[1] = 0x80;
 
         loop {
             slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
@@ -128,9 +120,12 @@ async fn main() -> Result<(), Error> {
 
             slow_cycle_time.tick().await;
         }
+
+        #[allow(unreachable_code)]
+        Ok(())
     });
 
-    let fast_task = tokio::spawn(async move {
+    let fast_task: tokio::task::JoinHandle<Result<_, Error>> = tokio::spawn(async move {
         let mut fast_cycle_time = tokio::time::interval(Duration::from_millis(5));
         fast_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -138,13 +133,13 @@ async fn main() -> Result<(), Error> {
             fast_outputs.tx_rx(&client).await.expect("TX/RX");
 
             // Increment every output byte for every slave device by one
-            for mut slave in fast_outputs.iter(&client) {
-                fast_outputs.iter(&client).for_each(|_| {
-                    // FIXME: This is bad!
-                });
+            for slave in fast_outputs.iter(&client) {
+                // fast_outputs.iter(&client).for_each(|_| {
+                //     // FIXME: This is bad!
+                // });
 
-                // FIXME: This is also bad
-                let sl = fast_outputs.slave(&client, 0).unwrap();
+                // // FIXME: This is also bad
+                // let sl = fast_outputs.slave(&client, 0).unwrap();
 
                 let (_i, o) = slave.io_raw();
 
@@ -154,13 +149,16 @@ async fn main() -> Result<(), Error> {
             }
 
             // This is ok because we're outside the iterator
-            let sl = fast_outputs.slave(&client, 0).unwrap();
+            let _sl = fast_outputs.slave(&client, 0)?;
 
             fast_cycle_time.tick().await;
         }
+
+        #[allow(unreachable_code)]
+        Ok(())
     });
 
-    let (slow, fast) = tokio::join!(slow_task, fast_task);
+    let (slow, fast) = tokio::try_join!(slow_task, fast_task).unwrap();
 
     slow.expect("slow task failed");
     fast.expect("fast task failed");
