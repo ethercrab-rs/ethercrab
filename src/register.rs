@@ -1,4 +1,5 @@
 use crate::pdu_data::{PduData, PduRead};
+use core::fmt;
 use packed_struct::{prelude::*, PackingError};
 
 /// Register address abstraction.
@@ -227,6 +228,31 @@ pub struct SupportFlags {
     pub lrw_supported: bool,
     pub brw_aprw_fprw_supported: bool,
     pub special_fmmu: bool,
+}
+
+impl fmt::Display for SupportFlags {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Just print DC for now
+        f.write_str("DC: ")?;
+
+        if self.dc_supported {
+            f.write_str("yes")?;
+
+            if self.has_64bit_dc {
+                f.write_str(" (64 bit)")?;
+            } else {
+                f.write_str(" (32 bit)")?;
+            }
+        } else {
+            f.write_str("no")?;
+        }
+
+        if self.enhanced_dc_sync {
+            f.write_str(", enhanced sync")?;
+        }
+
+        Ok(())
+    }
 }
 
 impl PackedStruct for SupportFlags {

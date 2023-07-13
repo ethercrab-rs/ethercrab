@@ -14,6 +14,15 @@ pub struct SlaveIdentity {
     pub serial: u32,
 }
 
+impl fmt::Display for SlaveIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "vendor: {:#010x}, product {:#010x}, rev {}, serial {}",
+            self.vendor_id, self.product_id, self.revision, self.serial
+        ))
+    }
+}
+
 impl Debug for SlaveIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlaveIdentity")

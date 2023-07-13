@@ -149,7 +149,14 @@ impl Slave {
                 ])
             })?;
 
-        log::debug!("Slave {:#06x} name {}", configured_address, name);
+        log::debug!(
+            "Slave {:#06x} name {} {}, {}, {}",
+            configured_address,
+            name,
+            identity,
+            flags,
+            ports
+        );
 
         Ok(Self {
             configured_address,
