@@ -63,7 +63,7 @@ async fn main() -> Result<(), Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let group = client
+    let mut group = client
         .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|slave| {
             Box::pin(async {
                 if slave.name() == "ELP-EC400S" {
@@ -122,7 +122,7 @@ async fn main() -> Result<(), Error> {
             slave.configured_address(),
             slave.name(),
             i.len(),
-            o.len(),
+            o.len()
         );
     }
 

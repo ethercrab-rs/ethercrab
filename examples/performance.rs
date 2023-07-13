@@ -110,7 +110,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
     let Groups {
         slow_outputs,
-        fast_outputs,
+        mut fast_outputs,
     } = groups;
 
     client

@@ -39,7 +39,7 @@ async fn main() -> Result<(), Error> {
 
     let client = Arc::new(client);
 
-    let group = client
+    let mut group = client
         // `SlaveGroup::new()` can be used instead of `SlaveGroup::default()` if a PREOP -> SAFEOP
         // hook function is required.
         .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::default())
