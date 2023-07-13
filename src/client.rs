@@ -239,33 +239,34 @@ impl<'sto> Client<'sto> {
             dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations).await?;
         }
 
-        // A unique list of groups so we can iterate over them and assign consecutive PDIs to each
-        // one.
-        let mut group_map = FnvIndexMap::<_, _, MAX_SLAVES>::new();
+        // This block is to reduce the lifetime of the groups map references
+        {
+            // A unique list of groups so we can iterate over them and assign consecutive PDIs to each
+            // one.
+            let mut group_map = FnvIndexMap::<_, _, MAX_SLAVES>::new();
 
-        while let Some(slave) = slaves.pop_front() {
-            let group = group_filter(&groups, &slave)?;
+            while let Some(slave) = slaves.pop_front() {
+                let group = group_filter(&groups, &slave)?;
 
-            // SAFETY: This mutates the internal slave list, so a reference to `group` may not be
-            // held over this line.
-            unsafe { group.push(slave)? };
+                // SAFETY: This mutates the internal slave list, so a reference to `group` may not be
+                // held over this line.
+                unsafe { group.push(slave)? };
 
-            group_map
-                .insert(usize::from(group.id()), group.as_ref())
-                .map_err(|_| Error::Capacity(Item::Group))?;
+                group_map
+                    .insert(usize::from(group.id()), group.as_ref())
+                    .map_err(|_| Error::Capacity(Item::Group))?;
+            }
+
+            let mut offset = PdiOffset::default();
+
+            for (id, group) in group_map.iter_mut() {
+                offset = group.configure_from_eeprom(offset, self).await?;
+
+                log::debug!("After group ID {id} offset: {:?}", offset);
+            }
+
+            log::debug!("Total PDI {} bytes", offset.start_address);
         }
-
-        let mut offset = PdiOffset::default();
-
-        for (id, group) in group_map.into_iter() {
-            // SAFETY: This internally mutates the group. No other references may be held accross
-            // this line.
-            offset = unsafe { group.configure_from_eeprom(offset, self).await? };
-
-            log::debug!("After group ID {id} offset: {:?}", offset);
-        }
-
-        log::debug!("Total PDI {} bytes", offset.start_address);
 
         // Wait for all slaves to reach SAFE-OP
         self.wait_for_state(SlaveState::SafeOp).await?;

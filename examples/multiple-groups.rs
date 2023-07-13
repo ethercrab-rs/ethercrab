@@ -81,7 +81,7 @@ async fn main() -> Result<(), Error> {
 
     let Groups {
         slow_outputs,
-        fast_outputs,
+        mut fast_outputs,
     } = groups;
 
     let client_slow = client.clone();

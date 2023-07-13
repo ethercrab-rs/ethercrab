@@ -1,3 +1,5 @@
+use atomic_refcell::AtomicRefCell;
+
 use super::HookFn;
 use crate::{
     error::Error,
@@ -6,11 +8,11 @@ use crate::{
     slave::{configuration::PdoDirection, Slave, SlaveRef},
     Client, SlaveGroup,
 };
-use core::{cell::UnsafeCell, time::Duration};
+use core::time::Duration;
 
 #[derive(Debug)]
 struct GroupInnerRef<'a> {
-    slaves: &'a mut [Slave],
+    slaves: &'a mut [AtomicRefCell<Slave>],
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.
     read_pdi_len: &'a mut usize,
     /// The total length (I and O) of the PDI for this group.
@@ -34,7 +36,7 @@ unsafe impl<'a> Send for SlaveGroupRef<'a> {}
 pub struct SlaveGroupRef<'a> {
     max_pdi_len: usize,
     preop_safeop_hook: &'a Option<HookFn>,
-    inner: UnsafeCell<GroupInnerRef<'a>>,
+    inner: GroupInnerRef<'a>,
 }
 
 impl<'a> SlaveGroupRef<'a> {
@@ -47,26 +49,25 @@ impl<'a> SlaveGroupRef<'a> {
             inner: {
                 let inner = unsafe { group.inner.get().as_mut().unwrap() };
 
-                UnsafeCell::new(GroupInnerRef {
+                GroupInnerRef {
                     slaves: &mut inner.slaves,
                     read_pdi_len: &mut inner.read_pdi_len,
                     pdi_len: &mut inner.pdi_len,
                     start_address: &mut inner.start_address,
                     group_working_counter: &mut inner.group_working_counter,
-                })
+                }
             },
         }
     }
 
-    pub(crate) async unsafe fn configure_from_eeprom<'sto>(
-        &self,
+    pub(crate) async fn configure_from_eeprom<'sto>(
+        &mut self,
         // We need to start this group's PDI after that of the previous group. That offset is passed
         // in via `start_offset`.
         mut global_offset: PdiOffset,
         client: &'sto Client<'sto>,
     ) -> Result<PdiOffset, Error> {
-        // SAFETY: Unwrap: this pointer cannot be null at this point in the code.
-        let inner = unsafe { self.inner.get().as_mut().unwrap() };
+        let inner = &mut self.inner;
 
         log::debug!(
             "Going to configure group with {} slave(s), starting PDI offset {:#08x}",
@@ -79,6 +80,8 @@ impl<'a> SlaveGroupRef<'a> {
 
         // Configure master read PDI mappings in the first section of the PDI
         for slave in inner.slaves.iter_mut() {
+            let slave = slave.get_mut();
+
             let mut slave_config = SlaveRef::new(client, slave.configured_address, slave);
 
             // TODO: Split `SlaveGroupRef::configure_from_eeprom` so we can put all slaves into
@@ -113,6 +116,8 @@ impl<'a> SlaveGroupRef<'a> {
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
         for (_i, slave) in inner.slaves.iter_mut().enumerate() {
+            let slave = slave.get_mut();
+
             let addr = slave.configured_address;
             let name = slave.name.clone();
 

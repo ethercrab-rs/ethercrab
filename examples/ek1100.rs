@@ -59,7 +59,7 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let group = client
+    let mut group = client
         .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|slave| {
             Box::pin(async {
                 // Special case: if an EL3004 module is discovered, it needs some specific config during
@@ -94,11 +94,11 @@ async fn main() -> Result<(), Error> {
         let (i, o) = slave.io_raw();
 
         log::info!(
-            "-> Slave {:#06x} {} has {} input bytes, {} output bytes",
+            "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
             slave.configured_address(),
             slave.name(),
             i.len(),
-            o.len(),
+            o.len()
         );
     }
 

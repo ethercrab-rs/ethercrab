@@ -53,7 +53,7 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
 
     let Groups {
         slow_outputs,
-        fast_outputs,
+        mut fast_outputs,
     } = groups;
 
     client
