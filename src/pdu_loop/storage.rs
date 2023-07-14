@@ -72,6 +72,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     ///
     /// Returns a TX and RX driver, and a handle to the PDU loop. This method will return an error
     /// if called more than once.
+    #[allow(clippy::result_unit_err)]
     pub fn try_split(&self) -> Result<(PduTx<'_>, PduRx<'_>, PduLoop<'_>), ()> {
         self.is_split
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
@@ -92,7 +93,6 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
         // `MaybeUninit::zeroed` in `PduStorage::new()`.
         unsafe { (*self.frames.get()).as_mut_ptr().write_bytes(0u8, 1) };
 
-        
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             num_frames: N,
