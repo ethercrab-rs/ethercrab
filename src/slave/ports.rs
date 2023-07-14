@@ -68,7 +68,8 @@ impl Ports {
             .min_by_key(|port| port.dc_receive_time)
     }
 
-    fn last_port(&self) -> Option<Port> {
+    /// Get the last open port.
+    pub fn last_port(&self) -> Option<Port> {
         self.0
             .into_iter()
             .filter(|port| port.active)

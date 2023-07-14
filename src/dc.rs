@@ -49,21 +49,23 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 /// Write DC system time offset and propagation delay to the slave memory.
 async fn write_dc_parameters(
     client: &Client<'_>,
-    slave: &mut Slave,
+    slave: &Slave,
     dc_receive_time: i64,
     now_nanos: i64,
 ) -> Result<(), Error> {
     let sl = SlaveRef::new(client, slave.configured_address, ());
 
-    sl.write_ignore_wkc::<i64>(
+    sl.write::<i64>(
         RegisterAddress::DcSystemTimeOffset,
         -dc_receive_time + now_nanos,
+        "DC system time offset",
     )
     .await?;
 
-    sl.write_ignore_wkc::<u32>(
+    sl.write::<u32>(
         RegisterAddress::DcSystemTimeTransmissionDelay,
         slave.propagation_delay,
+        "DC transmission delay",
     )
     .await?;
 
@@ -149,7 +151,7 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
 /// reach it when sent from the master.
 fn configure_slave_offsets(
     slave: &mut Slave,
-    parents: &mut [Slave],
+    parents: &[Slave],
     delay_accum: &mut u32,
 ) -> Result<i64, Error> {
     slave.parent_index = find_slave_parent(parents, slave)?;
@@ -167,34 +169,39 @@ fn configure_slave_offsets(
 
     // Convenient variable names
     let dc_receive_time = slave.dc_receive_time;
-    let time_p0 = slave.ports.0[0].dc_receive_time;
-    let time_p1 = slave.ports.0[1].dc_receive_time;
-    let time_p2 = slave.ports.0[2].dc_receive_time;
-    let time_p3 = slave.ports.0[3].dc_receive_time;
 
-    // Time deltas between port receive times
-    let d01 = time_p1.saturating_sub(time_p0);
-    let d12 = time_p2.saturating_sub(time_p1);
-    let d32 = time_p3.saturating_sub(time_p2);
+    // Just for debug
+    {
+        let time_p0 = slave.ports.0[0].dc_receive_time;
+        let time_p1 = slave.ports.0[1].dc_receive_time;
+        let time_p2 = slave.ports.0[2].dc_receive_time;
+        let time_p3 = slave.ports.0[3].dc_receive_time;
 
-    let loop_propagation_time = slave.ports.propagation_time();
-    let child_delay = slave.ports.child_delay().unwrap_or(0);
+        // Time deltas between port receive times
+        let d01 = time_p1.saturating_sub(time_p0);
+        let d12 = time_p2.saturating_sub(time_p1);
+        let d32 = time_p3.saturating_sub(time_p2);
 
-    log::debug!("--> Times {time_p0} ({d01}) {time_p1} ({d12}) {time_p2} ({d32}) {time_p3}");
-    log::debug!("--> Propagation time {loop_propagation_time:?} ns, child delay {child_delay} ns");
+        let loop_propagation_time = slave.ports.propagation_time();
+        let child_delay = slave.ports.child_delay().unwrap_or(0);
+
+        log::debug!("--> Times {time_p0} ({d01}) {time_p1} ({d12}) {time_p2} ({d32}) {time_p3}");
+        log::debug!(
+            "--> Loop propagation time {loop_propagation_time:?} ns, child delay {child_delay} ns"
+        );
+    }
 
     if let Some(parent_idx) = slave.parent_index {
         let parent = parents
-            .iter_mut()
+            .iter()
             .find(|parent| parent.index == parent_idx)
             .expect("Parent");
 
-        let assigned_port_idx = parent
+        let parent_port = parent
             .ports
-            .assign_next_downstream_port(slave.index)
-            .expect("No free ports. Logic error.");
+            .last_port()
+            .expect("No open ports on parent. Logic error.");
 
-        let parent_port = parent.ports.0[assigned_port_idx];
         let prev_parent_port = parent
             .ports
             .prev_open_port(&parent_port)
@@ -213,8 +220,8 @@ fn configure_slave_offsets(
 
         *delay_accum += delay;
 
-        // If parent has children but we're not one of them, add the children's delay to
-        // this slave's offset.
+        // If parent has children but we're not one of them, add the children's delay to this
+        // slave's offset.
         if let Some(child_delay) = parent
             .ports
             .child_delay()
@@ -268,9 +275,30 @@ pub(crate) async fn configure_dc<'slaves>(
         let (parents, rest) = slaves.split_at_mut(i);
         let slave = rest.first_mut().ok_or(Error::Internal)?;
 
-        let dc_receive_time = configure_slave_offsets(slave, parents, &mut delay_accum)?;
+        // If this slave has a parent, find it, then assign the parent's next open port to this
+        // slave, estabilishing the relationship between them by index.
+        if let Some(parent_idx) = slave.parent_index {
+            let parent = parents
+                .iter_mut()
+                .find(|parent| parent.index == parent_idx)
+                .expect("Parent");
 
-        write_dc_parameters(client, slave, dc_receive_time, now_nanos).await?;
+            parent
+                .ports
+                .assign_next_downstream_port(slave.index)
+                .expect("No free ports on parent. Logic error.");
+        }
+
+        if slave.flags.dc_supported {
+            let dc_receive_time = configure_slave_offsets(slave, parents, &mut delay_accum)?;
+
+            write_dc_parameters(client, slave, dc_receive_time, now_nanos).await?;
+        } else {
+            log::trace!(
+                "Skipping DC config for slave {:#06x}: DC not supported",
+                slave.configured_address
+            );
+        }
     }
 
     let first_dc_slave = slaves.iter().find(|slave| slave.flags.dc_supported);
