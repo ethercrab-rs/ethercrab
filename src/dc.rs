@@ -154,17 +154,6 @@ fn configure_slave_offsets(
 ) -> Result<i64, Error> {
     slave.parent_index = find_slave_parent(parents, slave)?;
 
-    log::debug!(
-        "Slave {:#06x} {} {}",
-        slave.configured_address,
-        slave.name,
-        if slave.flags.dc_supported {
-            "has DC"
-        } else {
-            "no DC"
-        }
-    );
-
     // Convenient variable names
     let dc_receive_time = slave.dc_receive_time;
 
@@ -273,6 +262,17 @@ pub(crate) async fn configure_dc<'slaves>(
         let (parents, rest) = slaves.split_at_mut(i);
         let slave = rest.first_mut().ok_or(Error::Internal)?;
 
+        log::debug!(
+            "Slave {:#06x} {} {}",
+            slave.configured_address,
+            slave.name,
+            if slave.flags.dc_supported {
+                "has DC"
+            } else {
+                "no DC"
+            }
+        );
+
         // If this slave has a parent, find it, then assign the parent's next open port to this
         // slave, estabilishing the relationship between them by index.
         if let Some(parent_idx) = slave.parent_index {
@@ -293,7 +293,7 @@ pub(crate) async fn configure_dc<'slaves>(
             write_dc_parameters(client, slave, dc_receive_time, now_nanos).await?;
         } else {
             log::trace!(
-                "Skipping DC config for slave {:#06x}: DC not supported",
+                "--> Skipping DC config for slave {:#06x}: DC not supported",
                 slave.configured_address
             );
         }
