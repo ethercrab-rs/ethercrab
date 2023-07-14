@@ -10,14 +10,16 @@ use crate::{
 
 /// Send a broadcast to all slaves to latch in DC receive time, then store it on the slave structs.
 async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(), Error> {
-    let num_slaves = slaves.len();
+    let num_slaves_with_dc: usize = slaves
+        .iter()
+        .filter(|slave| slave.flags.dc_supported)
+        .count();
 
     // Latch receive times into all ports of all slaves.
     client
         .bwr(RegisterAddress::DcTimePort0, 0u32)
-        .await
-        .expect("Broadcast time")
-        .wkc(num_slaves as u16, "Broadcast time")?;
+        .await?
+        .wkc(num_slaves_with_dc as u16, "Broadcast time")?;
 
     // Read receive times for all slaves and store on slave structs
     for slave in slaves {
