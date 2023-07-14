@@ -55,17 +55,15 @@ async fn write_dc_parameters(
 ) -> Result<(), Error> {
     let sl = SlaveRef::new(client, slave.configured_address, ());
 
-    sl.write::<i64>(
+    sl.write_ignore_wkc::<i64>(
         RegisterAddress::DcSystemTimeOffset,
         -dc_receive_time + now_nanos,
-        "DC system time offset",
     )
     .await?;
 
-    sl.write::<u32>(
+    sl.write_ignore_wkc::<u32>(
         RegisterAddress::DcSystemTimeTransmissionDelay,
         slave.propagation_delay,
-        "DC transmission delay",
     )
     .await?;
 
