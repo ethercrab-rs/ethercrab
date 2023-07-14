@@ -30,3 +30,11 @@ Then run the test using real interface e.g.:
 ```bash
 INTERFACE=enp2s0 just linux-test replay
 ```
+
+### Filtering captured replays
+
+Use `tshark` to filter out only EtherCAT packets from provided dumps:
+
+```bash
+tshark -r EL1014.pcapng -Y 'ecat' -w issue-63-el1014.pcapng
+```
