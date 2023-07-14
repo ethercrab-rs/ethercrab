@@ -298,7 +298,7 @@ pub mod tests {
 
         let start_port = &ports.0[2];
 
-        let start_port = ports.prev_open_port(&start_port);
+        let start_port = ports.prev_open_port(start_port);
 
         assert_eq!(
             start_port,

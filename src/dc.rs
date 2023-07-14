@@ -373,7 +373,7 @@ mod tests {
             ports: ports_eol(),
             name: "LAN9252".into(),
             index: 4,
-            ..slave_defaults.clone()
+            ..slave_defaults
         };
 
         let parent_index = find_slave_parent(&parents, &me);
@@ -402,7 +402,7 @@ mod tests {
             ports: ports_eol(),
             name: "EK1100".into(),
             index: 4,
-            ..slave_defaults.clone()
+            ..slave_defaults
         };
 
         let parent_index = find_slave_parent(&parents, &me);

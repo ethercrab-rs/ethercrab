@@ -295,7 +295,7 @@ async fn main() -> Result<(), Error> {
 
         pos_cmd.copy_from_slice(&velocity.to_le_bytes());
 
-        if velocity < 100_000_0 {
+        if velocity < 1_000_000 {
             velocity += 200;
         }
 

@@ -94,7 +94,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupHandle
     }
 
     unsafe fn push(&self, slave: Slave) -> Result<(), Error> {
-        (&mut *self.inner.get())
+        (*self.inner.get())
             .slaves
             .push(AtomicRefCell::new(slave))
             .map_err(|_| Error::Capacity(crate::error::Item::Slave))

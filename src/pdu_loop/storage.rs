@@ -90,17 +90,17 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     fn as_ref(&self) -> PduStorageRef {
         // MSRV: Remove when `const_maybe_uninit_zeroed` is stabilised. Rely on
         // `MaybeUninit::zeroed` in `PduStorage::new()`.
-        unsafe { (&mut *self.frames.get()).as_mut_ptr().write_bytes(0u8, 1) };
+        unsafe { (*self.frames.get()).as_mut_ptr().write_bytes(0u8, 1) };
 
-        let storage = PduStorageRef {
+        
+        PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             num_frames: N,
             frame_data_len: DATA,
             idx: &self.idx,
             tx_waker: &self.tx_waker,
             _lifetime: PhantomData,
-        };
-        storage
+        }
     }
 }
 
