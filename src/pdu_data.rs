@@ -31,7 +31,7 @@ macro_rules! impl_pdudata {
         }
 
         impl PduData for $ty {
-            fn as_slice<'a>(&'a self) -> &'a [u8] {
+            fn as_slice(&self) -> &[u8] {
                 safe_transmute::to_bytes::transmute_one_to_bytes(self)
             }
         }

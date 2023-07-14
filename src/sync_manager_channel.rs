@@ -265,7 +265,7 @@ mod tests {
 
         let parsed = Status::unpack_from_slice(&raw).unwrap();
 
-        assert_eq!(parsed.mailbox_full, true)
+        assert!(parsed.mailbox_full)
     }
 
     #[test]

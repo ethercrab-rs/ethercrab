@@ -108,9 +108,13 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
 
     let mut parents_it = parents.iter().rev();
 
-    while let Some(parent) = parents_it.next() {
-        // If the previous parent in the chain is a leaf node in the tree, we need to
-        // continue iterating to find the common parent, i.e. the split point
+    if let Some(parent) = parents_it.next() {
+        // If the previous parent in the chain is a leaf node in the tree, we need to continue
+        // iterating to find the common parent, i.e. the split point.
+        //
+        // Using the doc example above, say we're at #5, the previous device is #4 which is a
+        // `LineEnd`. This means we traverse backwards until we find a `Fork` (the EK1100) and use
+        // that as the parent.
         if parent.ports.topology() == Topology::LineEnd {
             let split_point = parents_it
                 .find(|slave| slave.ports.topology() == Topology::Fork)
@@ -123,18 +127,20 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
                     Error::Topology
                 })?;
 
-            return Ok(Some(split_point.index));
-        } else {
-            return Ok(Some(parent.index));
+            Ok(Some(split_point.index))
         }
+        // Otherwise the parent is just the previous node in the tree
+        else {
+            Ok(Some(parent.index))
+        }
+    } else {
+        log::error!(
+            "Did not find parent for slave {:#06x}",
+            slave.configured_address
+        );
+
+        Err(Error::Topology)
     }
-
-    log::error!(
-        "Did not find parent for slave {:#06x}",
-        slave.configured_address
-    );
-
-    Err(Error::Topology)
 }
 
 /// Calculate and assign a slave device's propagation delay, i.e. the time it takes for a packet to
@@ -310,14 +316,17 @@ mod tests {
         slave::ports::{tests::make_ports, Port, Ports},
     };
 
+    // A slave device in the middle of the chain
     fn ports_passthrough() -> Ports {
         make_ports(true, true, false, false)
     }
 
+    // EK1100 for example, with in/out ports and a bunch of slaves connected to it
     fn ports_fork() -> Ports {
         make_ports(true, true, true, false)
     }
 
+    // Last slave in the network
     fn ports_eol() -> Ports {
         make_ports(true, false, false, false)
     }
@@ -373,12 +382,88 @@ mod tests {
             ports: ports_eol(),
             name: "LAN9252".into(),
             index: 4,
-            ..slave_defaults.clone()
+            ..slave_defaults
         };
 
         let parent_index = find_slave_parent(&parents, &me);
 
         assert_eq!(parent_index.unwrap(), Some(1));
+    }
+
+    // Two forks in the tree
+    #[test]
+    fn two_ek1100() {
+        let slave_defaults = Slave {
+            configured_address: 0x0000,
+            ports: Ports::default(),
+            name: "Default".into(),
+            flags: SupportFlags::default(),
+            dc_receive_time: 0,
+            index: 0,
+            parent_index: None,
+            propagation_delay: 0,
+            ..Default::default()
+        };
+
+        let parents = [
+            Slave {
+                configured_address: 0x1100,
+                ports: ports_fork(),
+                name: "EK1100".into(),
+                index: 1,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x2004,
+                ports: ports_passthrough(),
+                name: "EL2004".into(),
+                index: 2,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x3004,
+                ports: ports_eol(),
+                name: "EL3004".into(),
+                index: 3,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x1100,
+                ports: ports_fork(),
+                name: "EK1100_2".into(),
+                index: 4,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x2004,
+                ports: ports_passthrough(),
+                name: "EL2828".into(),
+                index: 5,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x3004,
+                ports: ports_eol(),
+                name: "EL2889".into(),
+                index: 6,
+                ..slave_defaults.clone()
+            },
+        ];
+
+        let ek1100_2_parents = &parents[0..3];
+        let ek1100_2 = &parents[3];
+
+        let el2828_parents = &parents[0..4];
+        let el2828 = &parents[4];
+
+        assert_eq!(
+            find_slave_parent(&ek1100_2_parents, &ek1100_2).unwrap(),
+            Some(1)
+        );
+        assert_eq!(
+            find_slave_parent(&el2828_parents, &el2828).unwrap(),
+            Some(ek1100_2.index)
+        );
     }
 
     #[test]
@@ -402,7 +487,7 @@ mod tests {
             ports: ports_eol(),
             name: "EK1100".into(),
             index: 4,
-            ..slave_defaults.clone()
+            ..slave_defaults
         };
 
         let parent_index = find_slave_parent(&parents, &me);
