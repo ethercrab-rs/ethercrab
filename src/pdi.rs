@@ -19,6 +19,7 @@ impl PdiOffset {
         self.increment_inner(0, inc_bytes)
     }
 
+    /// Common code shared between byte and bit aligned public methods.
     fn increment_inner(self, inc_bits: u16, mut inc_bytes: u16) -> Self {
         // Bit count overflows a byte, so move into the next byte's bits by incrementing the byte
         // index one more.
@@ -39,7 +40,7 @@ impl PdiOffset {
     /// Compute end bit 0-7 in the final byte of the mapped PDI section.
     // Kept around in case we support bit-packed PDIs.
     #[allow(unused)]
-    pub fn end_bit(self, bits: u16) -> u8 {
+    fn end_bit(self, bits: u16) -> u8 {
         // SAFETY: The modulos here and in `increment` mean that all value can comfortably fit in a
         // u8, so all the `as` and non-checked `+` here are fine.
 
@@ -131,6 +132,30 @@ mod tests {
             },
             "second increment"
         );
+    }
+
+    #[test]
+    fn fuzz_pdi_segment() {
+        heckcheck::check(|(start_address, incr_bits): (u32, u16)| {
+            let offset = PdiOffset {
+                start_address,
+                start_bit: 0,
+            };
+
+            let new = offset.increment_byte_aligned(incr_bits);
+
+            let incr_bits = u32::from(incr_bits);
+            let incr_bytes = (incr_bits + 7) / 8;
+
+            assert_eq!(
+                new.start_address,
+                offset.start_address + incr_bytes,
+                "incorrect increment"
+            );
+            assert_eq!(new.start_bit, 0, "not byte aligned");
+
+            Ok(())
+        });
     }
 
     // Maybe one day we support packed PDIs. DO NOT DELETE as part of cleanup.
