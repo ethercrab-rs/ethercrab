@@ -1,6 +1,7 @@
 use packed_struct::prelude::*;
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[repr(u8)]
 pub enum Priority {
     #[default]
@@ -11,6 +12,7 @@ pub enum Priority {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[repr(u8)]
 pub enum MailboxType {
     /// error (ERR)
@@ -30,6 +32,9 @@ pub enum MailboxType {
     VendorSpecific = 0x0f,
 }
 
+/// Mailbox header.
+///
+/// Defined in ETG1000.6 under either `TMBXHEADER` or `MbxHeader` e.g. Table 29 - CoE Elements.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "6", bit_numbering = "msb0", endian = "lsb")]
 pub struct MailboxHeader {
@@ -43,6 +48,8 @@ pub struct MailboxHeader {
     pub priority: Priority,
     #[packed_field(bits = "44..=47", ty = "enum")]
     pub mailbox_type: MailboxType,
+    /// Mailbox counter from 1 to 7 inclusive. Wraps around to 1 when count exceeds 7. 0 is
+    /// reserved.
     #[packed_field(bits = "41..=43")]
     pub counter: u8,
     // _reserved1: u8
@@ -51,6 +58,21 @@ pub struct MailboxHeader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arbitrary::{Arbitrary, Unstructured};
+
+    // Manual impl because `counter` field is a special case
+    impl<'a> Arbitrary<'a> for MailboxHeader {
+        fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+            Ok(Self {
+                length: Arbitrary::arbitrary(u)?,
+                address: Arbitrary::arbitrary(u)?,
+                priority: Arbitrary::arbitrary(u)?,
+                mailbox_type: Arbitrary::arbitrary(u)?,
+                // 0..=6 shifted up by 1 so we get the valid range 1..=7
+                counter: u.choose_index(7)? as u8 + 1,
+            })
+        }
+    }
 
     // Keep this around so we can write test data to files for debugging
     // #[allow(unused)]
@@ -100,6 +122,19 @@ mod tests {
     //     save.write(&packet);
     //     drop(save);
     // }
+
+    #[test]
+    fn mailbox_header_fuzz() {
+        heckcheck::check(|status: MailboxHeader| {
+            let packed = status.pack().expect("Pack");
+
+            let unpacked = MailboxHeader::unpack_from_slice(&packed).expect("Unpack");
+
+            pretty_assertions::assert_eq!(status, unpacked);
+
+            Ok(())
+        });
+    }
 
     #[test]
     fn encode_header() {
