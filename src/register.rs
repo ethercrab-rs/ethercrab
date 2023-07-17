@@ -215,6 +215,7 @@ pub enum PortType {
 }
 
 #[derive(Default, Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(arbitrary::Arbitrary))]
 pub struct SupportFlags {
     pub fmmu_supports_bit_ops: bool,
     pub reserved_register_support: bool,
@@ -260,17 +261,17 @@ impl PackedStruct for SupportFlags {
 
     fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
         let result = (self.fmmu_supports_bit_ops as u16)
-            & (self.reserved_register_support as u16) << 1
-            & (self.dc_supported as u16) << 2
-            & (self.has_64bit_dc as u16) << 3
-            & (self.low_jitter as u16) << 4
-            & (self.ebus_enhanced_link_detection as u16) << 5
-            & (self.mii_enhanced_link_detection as u16) << 6
-            & (self.separate_fcs_error_handling as u16) << 7
-            & (self.enhanced_dc_sync as u16) << 8
-            & (self.lrw_supported as u16) << 9
-            & (self.brw_aprw_fprw_supported as u16) << 10
-            & (self.special_fmmu as u16) << 11;
+            | (self.reserved_register_support as u16) << 1
+            | (self.dc_supported as u16) << 2
+            | (self.has_64bit_dc as u16) << 3
+            | (self.low_jitter as u16) << 4
+            | (self.ebus_enhanced_link_detection as u16) << 5
+            | (self.mii_enhanced_link_detection as u16) << 6
+            | (self.separate_fcs_error_handling as u16) << 7
+            | (self.enhanced_dc_sync as u16) << 8
+            | (self.lrw_supported as u16) << 9
+            | (self.brw_aprw_fprw_supported as u16) << 10
+            | (self.special_fmmu as u16) << 11;
 
         Ok(result.to_le_bytes())
     }
@@ -302,5 +303,23 @@ impl PduRead for SupportFlags {
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         Self::unpack_from_slice(slice)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn support_flags_fuzz() {
+        heckcheck::check(|status: SupportFlags| {
+            let packed = status.pack().expect("Pack");
+
+            let unpacked = SupportFlags::unpack_from_slice(&packed).expect("Unpack");
+
+            pretty_assertions::assert_eq!(status, unpacked);
+
+            Ok(())
+        });
     }
 }
