@@ -311,6 +311,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn support_flags_fuzz() {
         heckcheck::check(|status: SupportFlags| {
             let packed = status.pack().expect("Pack");

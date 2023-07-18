@@ -154,6 +154,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn coe_header_fuzz() {
         heckcheck::check(|status: CoeHeader| {
             let packed = status.pack().expect("Pack");

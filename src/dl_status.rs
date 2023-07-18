@@ -98,6 +98,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn dl_status_fuzz() {
         heckcheck::check(|status: DlStatus| {
             let packed = status.pack().expect("Pack");

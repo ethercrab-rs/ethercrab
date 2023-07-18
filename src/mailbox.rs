@@ -124,6 +124,7 @@ mod tests {
     // }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn mailbox_header_fuzz() {
         heckcheck::check(|status: MailboxHeader| {
             let packed = status.pack().expect("Pack");

@@ -135,6 +135,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn fuzz_pdi_segment() {
         heckcheck::check(|(start_address, incr_bits): (u32, u16)| {
             let offset = PdiOffset {

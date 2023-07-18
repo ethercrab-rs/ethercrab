@@ -118,6 +118,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn fuzz_pdu_data_array() {
         heckcheck::check(|data: [u8; 8]| {
             let parsed = <[[u8; 2]; 4]>::try_from_slice(&data);
@@ -136,6 +137,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn fuzz_pdu_data_roundtrip() {
         heckcheck::check(|data: [u8; 8]| {
             // u8
