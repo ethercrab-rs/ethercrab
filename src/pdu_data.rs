@@ -112,3 +112,99 @@ impl<const N: usize> PduData for heapless::String<N> {
         self.as_bytes()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn fuzz_pdu_data_array() {
+        heckcheck::check(|data: [u8; 8]| {
+            let parsed = <[[u8; 2]; 4]>::try_from_slice(&data);
+
+            let expected = [
+                [data[0], data[1]],
+                [data[2], data[3]],
+                [data[4], data[5]],
+                [data[6], data[7]],
+            ];
+
+            assert_eq!(parsed, Ok(expected));
+
+            Ok(())
+        });
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn fuzz_pdu_data_roundtrip() {
+        heckcheck::check(|data: [u8; 8]| {
+            // u8
+            {
+                let data = data[0];
+                let sl = data.as_slice();
+                let decoded = u8::try_from_slice(sl).expect("u8 from slice");
+                assert_eq!(decoded, data);
+            }
+
+            // u16
+            {
+                let data = u16::from_le_bytes(data[0..2].try_into().unwrap());
+                let sl = data.as_slice();
+                let decoded = u16::try_from_slice(sl).expect("u16 from slice");
+                assert_eq!(decoded, data);
+            }
+
+            // u32
+            {
+                let data = u32::from_le_bytes(data[0..4].try_into().unwrap());
+                let sl = data.as_slice();
+                let decoded = u32::try_from_slice(sl).expect("u32 from slice");
+                assert_eq!(decoded, data);
+            }
+
+            // u64
+            {
+                let data = u64::from_le_bytes(data[0..8].try_into().unwrap());
+                let sl = data.as_slice();
+                let decoded = u64::try_from_slice(sl).expect("u64 from slice");
+                assert_eq!(decoded, data);
+            }
+
+            // i8
+            {
+                let data = data[0] as i8;
+                let sl = data.as_slice();
+                let decoded = i8::try_from_slice(sl).expect("i8 from slice");
+                assert_eq!(decoded, data);
+            }
+
+            // i16
+            {
+                let data = i16::from_le_bytes(data[0..2].try_into().unwrap());
+                let sl = data.as_slice();
+                let decoded = i16::try_from_slice(sl).expect("i16 from slice");
+                assert_eq!(decoded, data);
+            }
+
+            // i32
+            {
+                let data = i32::from_le_bytes(data[0..4].try_into().unwrap());
+                let sl = data.as_slice();
+                let decoded = i32::try_from_slice(sl).expect("i32 from slice");
+                assert_eq!(decoded, data);
+            }
+
+            // i64
+            {
+                let data = i64::from_le_bytes(data[0..8].try_into().unwrap());
+                let sl = data.as_slice();
+                let decoded = i64::try_from_slice(sl).expect("i64 from slice");
+                assert_eq!(decoded, data);
+            }
+
+            Ok(())
+        });
+    }
+}
