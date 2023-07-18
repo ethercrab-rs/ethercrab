@@ -5,6 +5,7 @@ use packed_struct::{prelude::*, PackingResult};
 
 /// Defined in ETG1000.6 5.6.1
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(test, derive(arbitrary::Arbitrary))]
 pub struct CoeHeader {
     pub service: CoeService,
 }
@@ -38,6 +39,7 @@ impl PackedStruct for CoeHeader {
 
 /// Defined in ETG1000.6 Table 29 – CoE elements
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[repr(u8)]
 pub enum CoeService {
     /// Emergency
@@ -144,5 +146,24 @@ impl SubIndex {
 impl From<u8> for SubIndex {
     fn from(value: u8) -> Self {
         Self::Index(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn coe_header_fuzz() {
+        heckcheck::check(|status: CoeHeader| {
+            let packed = status.pack().expect("Pack");
+
+            let unpacked = CoeHeader::unpack_from_slice(&packed).expect("Unpack");
+
+            pretty_assertions::assert_eq!(status, unpacked);
+
+            Ok(())
+        });
     }
 }
