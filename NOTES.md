@@ -452,3 +452,19 @@ Allow root login with `PermitRootLogin yes` in `/etc/ssh/sshd_config` (then rest
 ```bash
 ssh root@ethercrab tcpdump -U -s0 -i enp2s0 -w - | sudo wireshark -k -i -
 ```
+
+# Jitter measurements
+
+All run with `--release` on `Linux 5.15.0-1032-realtime #35-Ubuntu SMP PREEMPT_RT`, i3-7100T.
+
+```bash
+just linux-example-release jitter enp2s0
+```
+
+| Test case                                                      | standard deviation (ns) | mean (ns) | comments                                          |
+| -------------------------------------------------------------- | ----------------------- | --------- | ------------------------------------------------- |
+| 5ms `tokio` timer                                              | 361909                  | 4998604   |                                                   |
+| 5ms `tokio-timerfd`                                            | 4264\*                  | 4997493   | std. dev. jumped from 2646 to 4508ns during test  |
+| 5ms `tokio-timerfd` + pinned tx/rx thread                      | 14315\*                 | 4997157   | std. dev. jumped from 2945 to 15280ns during test |
+| 5ms `tokio-timerfd` + pinned tx/rx thread + pinned loop thread | 117284                  | 4997443   | std. dev. jumps around a lot but max is huge      |
+| 5ms `smol::Timer`                                              | 5391                    | 4997841   | std. dev. jumped to 11558ns during test           |
