@@ -93,7 +93,9 @@ fn main() -> Result<(), Error> {
             );
         }
 
-        let mut smol_timer = smol::Timer::interval(Duration::from_millis(1));
+        let period = Duration::from_millis(1);
+
+        let mut smol_timer = smol::Timer::interval(period);
 
         let (tx, rx) = smol::channel::bounded(5);
 
@@ -124,10 +126,11 @@ fn main() -> Result<(), Error> {
                     now = Instant::now();
 
                     println!(
-                        "99.9th percentile: {} ns, mean:  {} ns, std dev: {} ns",
+                        "99.9th percentile: {} ns, mean:  {} ns, std dev: {} ns ({:3.2} %)",
                         histo.value_at_quantile(0.999),
                         histo.mean().round(),
                         histo.stdev().round(),
+                        histo.stdev().round() / period.as_nanos() as f64 * 100.0,
                     );
                 }
             }
