@@ -467,4 +467,5 @@ just linux-example-release jitter enp2s0
 | 5ms `tokio-timerfd`                                            | 4264\*                  | 4997493   | std. dev. jumped from 2646 to 4508ns during test  |
 | 5ms `tokio-timerfd` + pinned tx/rx thread                      | 14315\*                 | 4997157   | std. dev. jumped from 2945 to 15280ns during test |
 | 5ms `tokio-timerfd` + pinned tx/rx thread + pinned loop thread | 117284                  | 4997443   | std. dev. jumps around a lot but max is huge      |
-| 5ms `smol::Timer`                                              | 5391                    | 4997841   | std. dev. jumped to 11558ns during test           |
+| 5ms `smol::Timer`                                              | 5391\*                  | 4997841   | std. dev. jumped to 11558ns during test           |
+| 1ms `smol::Timer`                                              | 21218\*                 | 997581    | Highest std. dev. I saw was 21k ns                |

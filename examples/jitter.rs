@@ -1,4 +1,4 @@
-//! Jitter measurement.
+//! Jitter measurement. Results recorded in `NOTES.md`.
 
 use env_logger::Env;
 use ethercrab::{
@@ -10,7 +10,6 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::time::MissedTickBehavior;
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -94,10 +93,7 @@ fn main() -> Result<(), Error> {
             );
         }
 
-        // let mut timerfd =
-        //     tokio_timerfd::Interval::new_interval(Duration::from_millis(5)).expect("Interval");
-
-        let mut smol_timer = smol::Timer::interval(Duration::from_millis(5));
+        let mut smol_timer = smol::Timer::interval(Duration::from_millis(1));
 
         let (tx, rx) = smol::channel::bounded(5);
 
