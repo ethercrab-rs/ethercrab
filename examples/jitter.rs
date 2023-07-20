@@ -144,8 +144,7 @@ fn main() -> Result<(), Error> {
                     max_sd = max_sd.max(sd);
 
                     println!(
-                        "99.9th percentile: {} ns, mean:  {} ns, std dev: {} ns ({:3.2} % / {:3.2} % max)",
-                        histo.value_at_quantile(0.999),
+                        "mean:  {} ns, std dev: {} ns ({:3.2} % / {:3.2} % max)",
                         histo.mean().round(),
                         histo.stdev().round(),
                         sd,
