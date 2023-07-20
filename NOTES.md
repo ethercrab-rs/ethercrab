@@ -470,3 +470,18 @@ just linux-example-release jitter enp2s0
 | 5ms `smol::Timer`                                              | 5391\*                  | 4997841   | std. dev. jumped to 11558ns during test           |
 | 1ms `smol::Timer`                                              | 21218\*                 | 997581    | Highest std. dev. I saw was 21k ns                |
 | 1ms `smol::Timer`, another run                                 | 19224\*                 | 997483    | Just under 2% jitter at 1ms                       |
+
+## Results from oscilloscope
+
+This is running the "1ms `smol::Timer`, another run" case from above, measuring output 1 of an
+EL2004 hooked up to an EK1100.
+
+| Measurement                  | Value         |
+| ---------------------------- | ------------- |
+| Mean (software)              | 997456ns      |
+| std. dev. (software)         | 72038ns (~7%) |
+| Period std. dev. (oscope)    | ~15us         |
+| Frequency std. dev. (oscope) | ~3.5Hz        |
+
+The display flickers occasionally showing some occasional glitches in the output stream which isn't
+great. I'm not sure where those might be coming from...
