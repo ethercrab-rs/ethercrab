@@ -495,6 +495,10 @@ jitter (34.72) (SW).
 
 `tokio-timerfd` makes things a little better at ~18-23% SW jitter or 11us SD jitter (oscope).
 
+Single threaded `tokio-timerfd` is a little better still at ~10% SW jitter or 4us oscope jitter.
+
+`smol` still seems better.
+
 ### First changeset
 
 - `tuned-adm profile latency-performance`
