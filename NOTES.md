@@ -590,6 +590,9 @@ After a few minutes of running it's a little worse with max 0.99% SW SD (10000ns
 
 Pretty darn good. To summarise, this is with:
 
+- i3-7100T / 8GB DDR4 (Dell Optiplex 3050 micro)
+- Realtek somethingsomething gigabit NIC
+- EK1100 + EL2004 slave device
 - `smol`
 - 4 total threads
   - ```

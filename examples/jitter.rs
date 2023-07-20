@@ -1,4 +1,5 @@
-//! Jitter measurement. Results recorded in `NOTES.md`.
+//! Jitter measurement. Results from my (@jamwaffles) experiments are recorded in `NOTES.md` for
+//! reference.
 
 use env_logger::Env;
 use ethercrab::{
@@ -9,10 +10,6 @@ use futures_lite::StreamExt;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
-};
-use thread_priority::{
-    set_thread_priority_and_policy, thread_native_id, RealtimeThreadSchedulePolicy, ThreadPriority,
-    ThreadPriorityOsValue, ThreadPriorityValue, ThreadSchedulePolicy,
 };
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
@@ -26,7 +23,18 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
+#[cfg(not(target_os = "linux"))]
+fn main() {
+    eprintln!("This example is only supported on Linux systems");
+}
+
+#[cfg(target_os = "linux")]
 fn main() -> Result<(), Error> {
+    use thread_priority::{
+        set_thread_priority_and_policy, thread_native_id, RealtimeThreadSchedulePolicy,
+        ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
+    };
+
     let thread_id = thread_native_id();
     assert!(set_thread_priority_and_policy(
         thread_id,
