@@ -574,6 +574,34 @@ F S   UID     PID    PPID CLS PRI ADDR SZ WCHAN  TTY        TIME CMD
 1 S  1000       -       - FF  139 -     - -      -          0:00 -
 ```
 
+##### Run 1
+
 Max 0.06% SW SD jitter (561ns). Oscope SD showing ~6ns SD jitter. Wow!
 
 After a few minutes of running it's a little worse with max 0.99% SW SD (10000ns) but still not bad.
+
+##### Run 2
+
+1800s duration (went to the shops lol)
+
+```
+1800 s: mean 0.998 ms, std dev 0.010 ms (0.99 % / 2.18 % max)
+```
+
+Pretty darn good. To summarise, this is with:
+
+- `smol`
+- 4 total threads
+  - ```
+    ❯ ps -m -l -c $(pidof jitter)
+    F S   UID     PID    PPID CLS PRI ADDR SZ WCHAN  TTY        TIME CMD
+    4 -  1000   23969   23904 -     - - 35340 -      pts/5      0:01 ./target/release/examples/jitter enp2s0
+    4 S  1000       -       - FF  139 -     - -      -          0:01 -
+    1 S  1000       -       - FF  139 -     - -      -          0:00 -
+    1 S  1000       -       - FF  139 -     - -      -          0:00 -
+    ```
+- `tuned-adm profile latency-performance`
+- Hyperthreading disabled with `echo off > /sys/devices/system/cpu/smt/control` (2 cores on
+  i3-7100T)
+- 1ms cycle time
+- Setting thread priority to 99 and `FIFO` policy.
