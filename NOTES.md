@@ -490,6 +490,11 @@ great. I'm not sure where those might be coming from...
 
 A good looking guide at <https://rigtorp.se/low-latency-guide/>.
 
+`tokio` is awful, `smol` is much better for jitter. Tokio has 17us SD jitter (oscope) or 347246ns
+jitter (34.72) (SW).
+
+`tokio-timerfd` makes things a little better at ~18-23% SW jitter or 11us SD jitter (oscope).
+
 ### First changeset
 
 - `tuned-adm profile latency-performance`
