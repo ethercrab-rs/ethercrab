@@ -144,10 +144,10 @@ fn main() -> Result<(), Error> {
                     max_sd = max_sd.max(sd);
 
                     println!(
-                        "{} s: mean {} ns, std dev {} ns ({:3.2} % / {:3.2} % max)",
-                        now.elapsed().as_secs(),
-                        histo.mean().round(),
-                        histo.stdev().round(),
+                        "{} s: mean {:.3} ms, std dev {:.3} ms ({:3.2} % / {:3.2} % max)",
+                        start.elapsed().as_secs(),
+                        histo.mean() / 1000.0 / 1000.0,
+                        histo.stdev() / 1000.0 / 1000.0,
                         sd,
                         max_sd
                     );
