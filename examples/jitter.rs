@@ -122,6 +122,8 @@ fn main() -> Result<(), Error> {
 
             println!("Warming up...");
 
+            let mut max_sd = 0.0f64;
+
             while let Ok(record) = rx.recv().await {
                 histo.record(record).expect("record");
 
@@ -137,12 +139,17 @@ fn main() -> Result<(), Error> {
                 if now.elapsed() > Duration::from_secs(1) && start.elapsed() > clear_at {
                     now = Instant::now();
 
+                    let sd = histo.stdev().round() / period.as_nanos() as f64 * 100.0;
+
+                    max_sd = max_sd.max(sd);
+
                     println!(
-                        "99.9th percentile: {} ns, mean:  {} ns, std dev: {} ns ({:3.2} %)",
+                        "99.9th percentile: {} ns, mean:  {} ns, std dev: {} ns ({:3.2} % / {:3.2} % max)",
                         histo.value_at_quantile(0.999),
                         histo.mean().round(),
                         histo.stdev().round(),
-                        histo.stdev().round() / period.as_nanos() as f64 * 100.0,
+                        sd,
+                        max_sd
                     );
                 }
             }

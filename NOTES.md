@@ -535,7 +535,23 @@ Saw a 28264ns (2.8%) SW jump, pushed oscope SD up to 700ns.
 
 ### Second changeset
 
-As above, but setting thread priority:
+Setting thread priority in code.
+
+#### Without thread prio:
+
+```
+❯ ps -m -l -c $(pidof jitter)
+F S   UID     PID    PPID CLS PRI ADDR SZ WCHAN  TTY        TIME CMD
+4 -  1000   25164   25158 -     - - 35337 -      pts/5      0:01 ./target/release/examples/jitter enp2s0
+4 S  1000       -       - TS   19 -     - -      -          0:00 -
+1 S  1000       -       - TS   19 -     - -      -          0:00 -
+1 S  1000       -       - TS   19 -     - -      -          0:00 -
+```
+
+Started at ~5% SW jitter, shrank down to <1% after about 2 mins of runtime. Oscope shows 6ns SD BUT
+jumped up to 1us from one enormous glitch. SW SD went to 1.21%.
+
+#### With this thread prio code:
 
 ```rust
 let thread_id = thread_native_id();
@@ -558,4 +574,6 @@ F S   UID     PID    PPID CLS PRI ADDR SZ WCHAN  TTY        TIME CMD
 1 S  1000       -       - FF  139 -     - -      -          0:00 -
 ```
 
-but seems to make jitter worse????
+Max 0.06% SW SD jitter (561ns). Oscope SD showing ~6ns SD jitter. Wow!
+
+After a few minutes of running it's a little worse with max 0.99% SW SD (10000ns) but still not bad.
