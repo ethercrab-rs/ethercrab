@@ -485,3 +485,35 @@ EL2004 hooked up to an EK1100.
 
 The display flickers occasionally showing some occasional glitches in the output stream which isn't
 great. I'm not sure where those might be coming from...
+
+## Kernel/OS/hardware tuning
+
+A good looking guide at <https://rigtorp.se/low-latency-guide/>.
+
+### First changeset
+
+- `tuned-adm profile latency-performance`
+- Disable hyperthreading at runtime with `echo off > /sys/devices/system/cpu/smt/control`
+
+#### Run 1
+
+Promising results. 4500ns SD (software), saw a jump up to 16360ns. Seems happy at 15000ns (1.54%)
+SD.
+
+Oscope shows 600ns SD (but is shrinking all the time).
+
+I think there was one hiccup at the beginning of the test which skewed the results.
+
+#### Run 2
+
+650ns SW SD, 20ns oscope SD, but reducing continuously.
+
+Saw a jump up to 1156 SW SD not long after startup again, but reducing all the time during run.
+
+Saw a 5676ns (SW) jump, pushed oscope SD up to ~300ns.
+
+Saw a 9265ns (SW) jump, pushed oscope SD up to ~350ns.
+
+Saw a 19565ns (2%) SW jump, pushed oscope SD up to 772ns.
+
+Saw a 28264ns (2.8%) SW jump, pushed oscope SD up to 700ns.
