@@ -499,6 +499,12 @@ Single threaded `tokio-timerfd` is a little better still at ~10% SW jitter or 4u
 
 `smol` still seems better.
 
+List threads, priority and policy with
+
+```bash
+ps -m -l -c $(pidof jitter)
+```
+
 ### First changeset
 
 - `tuned-adm profile latency-performance`
@@ -526,3 +532,30 @@ Saw a 9265ns (SW) jump, pushed oscope SD up to ~350ns.
 Saw a 19565ns (2%) SW jump, pushed oscope SD up to 772ns.
 
 Saw a 28264ns (2.8%) SW jump, pushed oscope SD up to 700ns.
+
+### Second changeset
+
+As above, but setting thread priority:
+
+```rust
+let thread_id = thread_native_id();
+assert!(set_thread_priority_and_policy(
+    thread_id,
+    ThreadPriority::Crossplatform(ThreadPriorityValue::try_from(99u8).unwrap()),
+    ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo)
+)
+.is_ok());
+```
+
+This gives:
+
+```
+❯ ps -m -l -c $(pidof jitter)
+F S   UID     PID    PPID CLS PRI ADDR SZ WCHAN  TTY        TIME CMD
+4 -  1000   23969   23904 -     - - 35340 -      pts/5      0:01 ./target/release/examples/jitter enp2s0
+4 S  1000       -       - FF  139 -     - -      -          0:01 -
+1 S  1000       -       - FF  139 -     - -      -          0:00 -
+1 S  1000       -       - FF  139 -     - -      -          0:00 -
+```
+
+but seems to make jitter worse????
