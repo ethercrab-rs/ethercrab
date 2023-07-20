@@ -27,13 +27,13 @@ const PDI_LEN: usize = 64;
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
 fn main() -> Result<(), Error> {
-    // let thread_id = thread_native_id();
-    // assert!(set_thread_priority_and_policy(
-    //     thread_id,
-    //     ThreadPriority::Crossplatform(ThreadPriorityValue::try_from(99u8).unwrap()),
-    //     ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo)
-    // )
-    // .is_ok());
+    let thread_id = thread_native_id();
+    assert!(set_thread_priority_and_policy(
+        thread_id,
+        ThreadPriority::Crossplatform(ThreadPriorityValue::try_from(99u8).unwrap()),
+        ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo)
+    )
+    .is_ok());
 
     smol::block_on(async {
         env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
