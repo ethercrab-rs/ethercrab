@@ -35,13 +35,15 @@ fn main() -> Result<(), Error> {
         ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
     };
 
+    // These values (99/FIFO) require a realtime kernel. Tested with PREEMPT_RT but others may work
+    // too.
     let thread_id = thread_native_id();
-    assert!(set_thread_priority_and_policy(
+    set_thread_priority_and_policy(
         thread_id,
         ThreadPriority::Crossplatform(ThreadPriorityValue::try_from(99u8).unwrap()),
-        ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo)
+        ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo),
     )
-    .is_ok());
+    .expect("could not set thread priority. Are the PREEMPT_RT patches in use?");
 
     smol::block_on(async {
         env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
