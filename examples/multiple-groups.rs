@@ -2,7 +2,7 @@
 //!
 //! This demo is designed to be used with the following slave devices:
 //!
-//! - EK1100
+//! - EK1100 (or EK1501 if using fibre)
 //! - EL2889 (2 bytes of outputs)
 //! - EL2828 (1 byte of outputs)
 
@@ -28,10 +28,12 @@ static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
 #[derive(Default)]
 struct Groups {
-    /// EL2889 and EK1100. 2 items, 2 bytes of PDI for 16 output bits.
+    /// EL2889 and EK1100/EK1501. For EK1100, 2 items, 2 bytes of PDI for 16 output bits. The EK1501
+    /// has 2 bytes of its own PDI so we'll use an upper bound of 4.
     ///
-    /// We'll keep the EK1100 in here as it has no PDI but still needs to live somewhere.
-    slow_outputs: SlaveGroup<2, 2>,
+    /// We'll keep the EK1100/EK1501 in here as it has no useful PDI but still needs to live
+    /// somewhere.
+    slow_outputs: SlaveGroup<2, 4>,
     /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
     fast_outputs: SlaveGroup<1, 1>,
 }
@@ -46,7 +48,7 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Starting multiple groups demo...");
     log::info!(
-        "Ensure an EK1100 is the first slave device, with an EL2828 and EL2889 following it"
+        "Ensure an EK1100 or EK1501 is the first slave device, with an EL2828 and EL2889 following it"
     );
     log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
@@ -72,7 +74,7 @@ async fn main() -> Result<(), Error> {
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
         .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| match slave.name() {
-            "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
+            "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
             "EL2828" => Ok(&groups.fast_outputs),
             _ => Err(Error::UnknownSlave),
         })
