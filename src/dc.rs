@@ -22,7 +22,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
         .wkc(num_slaves_with_dc as u16, "Broadcast time")?;
 
     // Read receive times for all slaves and store on slave structs
-    for slave in slaves {
+    for slave in slaves.iter_mut().filter(|slave| slave.flags.dc_supported) {
         let sl = SlaveRef::new(client, slave.configured_address, ());
 
         // NOTE: Defined as a u64, not i64, in the spec
@@ -34,7 +34,16 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
             .read::<[u32; 4]>(RegisterAddress::DcTimePort0, "Port receive times")
-            .await?;
+            .await
+            .map_err(|e| {
+                log::error!(
+                    "Failed to read DC times for slave {:#06x}: {}",
+                    slave.configured_address,
+                    e
+                );
+
+                e
+            })?;
 
         slave.dc_receive_time = dc_receive_time;
         slave.ports.0[0].dc_receive_time = time_p0;
