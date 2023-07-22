@@ -1,4 +1,4 @@
-//! Demonstrate setting outputs using a Beckhoff EK1100 and modules.
+//! Demonstrate setting outputs using a Beckhoff EK1100/EK1501 and modules.
 //!
 //! Run with e.g.
 //!
@@ -41,8 +41,10 @@ async fn main() -> Result<(), Error> {
         .nth(1)
         .expect("Provide network interface as first argument.");
 
-    log::info!("Starting EK1100 demo...");
-    log::info!("Ensure an EK1100 is the first slave, with any number of modules connected after");
+    log::info!("Starting EK1100/EK1501 demo...");
+    log::info!(
+        "Ensure an EK1100 or EK1501 is the first slave, with any number of modules connected after"
+    );
     log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
