@@ -13,7 +13,8 @@ use crate::{
     Client, SlaveState,
 };
 use core::{
-    cell::UnsafeCell, future::Future, marker::PhantomData, slice, sync::atomic::AtomicUsize,
+    cell::UnsafeCell, future::Future, marker::PhantomData, ops::Deref, slice,
+    sync::atomic::AtomicUsize,
 };
 
 use atomic_refcell::{AtomicRef, AtomicRefCell};
@@ -68,17 +69,33 @@ struct GroupInner<const MAX_SLAVES: usize> {
 }
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, Init> {
-    /// Transition slaves in this group from PRE-OP to SAFE-OP.
-    pub async fn into_safe_op<F, O>(
-        mut self,
-        client: &Client<'_>,
+    /// Configure slave devices (e.g. read/write SDOs) during the PRE-OP phase.
+    pub async fn configure<'client, 'group, F, O>(
+        &'group mut self,
+        client: &'client Client<'client>,
         mut preop_safeop_hook: F,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error>
+        // ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error>
+    ) -> Result<(), Error>
     where
-        F: FnMut(SlaveRef<'_, &Slave>) -> O,
+        F: FnMut(SlaveRef<'client, AtomicRef<'group, Slave>>) -> O,
         O: Future<Output = Result<(), Error>>,
+        'client: 'group,
     {
-        let mut inner = self.inner.into_inner();
+        // let GroupInner {
+        //     slaves,
+        //     mut pdi_start,
+        // } = self.inner.into_inner();
+
+        // let Self {
+        //     id,
+        //     pdi,
+        //     mut read_pdi_len,
+        //     mut pdi_len,
+        //     _state,
+        //     ..
+        // } = self;
+
+        let inner = self.inner.get_mut();
 
         let mut pdi_position = inner.pdi_start;
 
@@ -91,16 +108,17 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         // Slaves must be in PRE-OP at this point.
 
         // Configure master read PDI mappings in the first section of the PDI
-        for slave in inner.slaves.iter_mut() {
-            let configured_address = slave.get_mut().configured_address;
+        for slave in inner.slaves.iter() {
+            let configured_address = slave.borrow().configured_address;
 
-            let fut =
-                (preop_safeop_hook)(SlaveRef::new(client, configured_address, slave.get_mut()));
+            let ass = SlaveRef::new(client, configured_address, slave.borrow());
+
+            let fut = (preop_safeop_hook)(ass);
 
             fut.await?;
 
             // We're in PRE-OP at this point
-            pdi_position = SlaveRef::new(client, configured_address, slave.get_mut())
+            pdi_position = SlaveRef::new(client, configured_address, slave.borrow_mut())
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
@@ -116,13 +134,13 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
-        for (_i, slave) in inner.slaves.iter_mut().enumerate() {
-            let slave = slave.get_mut();
+        for (_i, slave) in inner.slaves.iter().enumerate() {
+            let sl = slave.borrow();
 
-            let addr = slave.configured_address;
-            let _name = slave.name.clone();
+            let addr = sl.configured_address;
+            let _name = sl.name.clone();
 
-            let mut slave_config = SlaveRef::new(client, addr, slave);
+            let mut slave_config = SlaveRef::new(client, addr, slave.borrow_mut());
 
             // Still in PRE-OP
             pdi_position = slave_config
@@ -185,45 +203,61 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 
         log::debug!("Slave FMMUs configured for group. Able to move to SAFE-OP");
 
-        let pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
+        self.pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
 
         log::debug!(
             "Group PDI length: start {:#010x}, {} total bytes ({} input bytes)",
             inner.pdi_start.start_address,
-            pdi_len,
+            self.pdi_len,
             self.read_pdi_len
         );
 
-        if pdi_len > MAX_PDI {
+        if self.pdi_len > MAX_PDI {
             return Err(Error::PdiTooLong {
                 max_length: MAX_PDI,
-                desired_length: pdi_len,
+                desired_length: self.pdi_len,
             });
         }
 
-        self.pdi_len = pdi_len;
+        // Ok(SlaveGroup {
+        //     id,
+        //     pdi,
+        //     read_pdi_len,
+        //     pdi_len,
+        //     inner: UnsafeCell::new(GroupInner { slaves, pdi_start }),
+        //     _state: PhantomData,
+        // })
+        Ok(())
+    }
+
+    ///
+    pub async fn into_safe_op(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
+        let inner = self.inner.into_inner();
 
         // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
         // SAFE-OP
-        for (_i, slave) in inner.slaves.iter_mut().enumerate() {
-            let slave = slave.get_mut();
+        for (_i, slave) in inner.slaves.iter().enumerate() {
+            let configured_address = slave.borrow().configured_address;
 
-            SlaveRef::new(client, slave.configured_address, slave)
+            SlaveRef::new(client, configured_address, slave.borrow())
                 .request_safe_op_nowait()
                 .await?;
         }
 
-        // Wait for everything to go into PRE-OP
+        // Wait for everything to go into SAFE-OP
         timeout(client.timeouts.state_transition, async {
             loop {
                 let mut all_transitioned = true;
 
-                for (_i, slave) in inner.slaves.iter_mut().enumerate() {
-                    let slave = slave.get_mut();
+                for (_i, slave) in inner.slaves.iter().enumerate() {
+                    let configured_address = slave.borrow().configured_address;
 
                     // TODO: Add a way to queue up a bunch of PDUs and send all at once
                     let (slave_state, _al_status_code) =
-                        SlaveRef::new(client, slave.configured_address, slave)
+                        SlaveRef::new(client, configured_address, slave.borrow())
                             .status()
                             .await?;
 

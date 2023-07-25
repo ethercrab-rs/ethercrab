@@ -15,9 +15,23 @@ use crate::{
     sync_manager_channel::SyncManagerChannel,
     sync_manager_channel::{self, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
-use core::ops::DerefMut;
+use core::ops::{Deref, DerefMut};
 use num_enum::FromPrimitive;
 use packed_struct::PackedStruct;
+
+impl<'a, S> SlaveRef<'a, S>
+where
+    S: Deref<Target = Slave>,
+{
+    pub(crate) async fn request_safe_op_nowait(&self) -> Result<(), Error> {
+        // Restore EEPROM mode
+        self.set_eeprom_mode(SiiOwner::Pdi).await?;
+
+        self.request_slave_state_nowait(SlaveState::SafeOp).await?;
+
+        Ok(())
+    }
+}
 
 /// Configuation from EEPROM methods.
 impl<'a, S> SlaveRef<'a, S>
@@ -174,15 +188,6 @@ where
         );
 
         Ok(global_offset)
-    }
-
-    pub(crate) async fn request_safe_op_nowait(&self) -> Result<(), Error> {
-        // Restore EEPROM mode
-        self.set_eeprom_mode(SiiOwner::Pdi).await?;
-
-        self.request_slave_state_nowait(SlaveState::SafeOp).await?;
-
-        Ok(())
     }
 
     async fn write_sm_config(

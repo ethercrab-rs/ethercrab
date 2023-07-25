@@ -60,9 +60,9 @@ async fn main() -> Result<(), Error> {
         );
     }
 
-    let group = group
-        .into_safe_op(&client, |slave| {
-            async {
+    group
+        .configure(&client, |slave| {
+            async move {
                 // Special configuration is required for some slave devices
                 if slave.name() == "EL3004" {
                     log::info!("Found EL3004. Configuring...");
@@ -97,6 +97,11 @@ async fn main() -> Result<(), Error> {
                 Ok(())
             }
         })
+        .await
+        .expect("Configure");
+
+    let group = group
+        .into_safe_op(&client)
         .await
         .expect("PRE-OP -> SAFE-OP");
 
