@@ -1,21 +1,14 @@
-use atomic_refcell::AtomicRefCell;
-
 use crate::{
     error::Error,
     pdi::PdiOffset,
-    register::RegisterAddress,
-    slave::{configuration::PdoDirection, Slave, SlaveRef},
+    slave::{Slave, SlaveRef},
     Client, SlaveGroup,
 };
-use core::time::Duration;
+use atomic_refcell::AtomicRefCell;
 
 #[derive(Debug)]
 struct GroupInnerRef<'a> {
     slaves: &'a mut [AtomicRefCell<Slave>],
-    /// The number of bytes at the beginning of the PDI reserved for slave inputs.
-    read_pdi_len: &'a mut usize,
-    /// The total length (I and O) of the PDI for this group.
-    pdi_len: &'a mut usize,
     pdi_start: &'a mut PdiOffset,
 }
 
@@ -44,8 +37,6 @@ impl<'a> SlaveGroupRef<'a> {
 
                 GroupInnerRef {
                     slaves: &mut inner.slaves,
-                    read_pdi_len: &mut inner.read_pdi_len,
-                    pdi_len: &mut inner.pdi_len,
                     pdi_start: &mut inner.pdi_start,
                 }
             },

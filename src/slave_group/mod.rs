@@ -49,8 +49,18 @@ pub struct SafeOp;
 pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, S> {
     id: GroupId,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
+    /// The number of bytes at the beginning of the PDI reserved for slave inputs.
+    read_pdi_len: usize,
+    /// The total length (I and O) of the PDI for this group.
+    pdi_len: usize,
     inner: UnsafeCell<GroupInner<MAX_SLAVES>>,
     _state: PhantomData<S>,
+}
+
+#[derive(Default)]
+struct GroupInner<const MAX_SLAVES: usize> {
+    slaves: heapless::Vec<AtomicRefCell<Slave>, MAX_SLAVES>,
+    pdi_start: PdiOffset,
 }
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, Init> {
@@ -98,7 +108,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
                 .await?;
         }
 
-        inner.read_pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
+        self.read_pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
 
         log::debug!("Slave mailboxes configured and init hooks called");
 
@@ -180,7 +190,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             "Group PDI length: start {:#010x}, {} total bytes ({} input bytes)",
             inner.pdi_start.start_address,
             pdi_len,
-            inner.read_pdi_len
+            self.read_pdi_len
         );
 
         if pdi_len > MAX_PDI {
@@ -190,7 +200,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             });
         }
 
-        inner.pdi_len = pdi_len;
+        self.pdi_len = pdi_len;
 
         // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
         // SAFE-OP
@@ -233,21 +243,12 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         Ok(SlaveGroup {
             id: self.id,
             pdi: self.pdi,
+            read_pdi_len: self.read_pdi_len,
+            pdi_len: self.pdi_len,
             inner: self.inner,
             _state: PhantomData,
         })
     }
-}
-
-#[derive(Default)]
-struct GroupInner<const MAX_SLAVES: usize> {
-    slaves: heapless::Vec<AtomicRefCell<Slave>, MAX_SLAVES>,
-
-    /// The number of bytes at the beginning of the PDI reserved for slave inputs.
-    read_pdi_len: usize,
-    /// The total length (I and O) of the PDI for this group.
-    pdi_len: usize,
-    pdi_start: PdiOffset,
 }
 
 // FIXME: Remove these unsafe impls if possible. There's some weird quirkiness when moving a group
@@ -304,6 +305,8 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Default
         Self {
             id: GroupId(GROUP_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)),
             pdi: UnsafeCell::new([0u8; MAX_PDI]),
+            read_pdi_len: Default::default(),
+            pdi_len: Default::default(),
             inner: UnsafeCell::new(GroupInner::default()),
             _state: PhantomData,
         }
@@ -391,7 +394,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
         log::trace!(
             "--> Group PDI: {:?} ({} byte subset of {} max)",
             i_data,
-            self.inner().pdi_len,
+            self.pdi_len,
             MAX_PDI
         );
 
@@ -423,13 +426,13 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
     fn pdi_mut(&self) -> &mut [u8] {
         let all_buf = unsafe { &mut *self.pdi.get() };
 
-        &mut all_buf[0..self.inner().pdi_len]
+        &mut all_buf[0..self.pdi_len]
     }
 
     fn pdi(&self) -> &[u8] {
         let all_buf = unsafe { &*self.pdi.get() };
 
-        &all_buf[0..self.inner().pdi_len]
+        &all_buf[0..self.pdi_len]
     }
 
     /// Drive the slave group's inputs and outputs.
@@ -441,14 +444,14 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
             self.pdi_mut().len(),
-            self.inner().read_pdi_len
+            self.read_pdi_len
         );
 
         let (_res, _wkc) = client
             .lrw_buf(
                 self.inner().pdi_start.start_address,
                 self.pdi_mut(),
-                self.inner().read_pdi_len,
+                self.read_pdi_len,
             )
             .await?;
 
