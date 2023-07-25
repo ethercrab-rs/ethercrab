@@ -204,54 +204,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
         self.configure_fmmus(client).await?;
 
-        let mut inner = self.inner.into_inner();
-
         // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
         // SAFE-OP
-        for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
-            SlaveRef::new(client, slave.configured_address, slave)
-                .request_safe_op_nowait()
-                .await?;
-        }
-
-        log::debug!("Waiting for group SAFE-OP");
-
-        // Wait for everything to go into SAFE-OP
-        timeout(client.timeouts.state_transition, async {
-            loop {
-                let mut all_transitioned = true;
-
-                for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
-                    let addr = slave.configured_address;
-
-                    // TODO: Add a way to queue up a bunch of PDUs and send all at once
-                    let (slave_state, _al_status_code) =
-                        SlaveRef::new(client, slave.configured_address, slave)
-                            .status()
-                            .await?;
-
-                    if slave_state != SlaveState::SafeOp {
-                        all_transitioned = false;
-                    }
-                }
-
-                if all_transitioned {
-                    break Ok(());
-                }
-
-                client.timeouts.loop_tick().await;
-            }
-        })
-        .await?;
-
-        Ok(SlaveGroup {
-            id: self.id,
-            pdi: self.pdi,
-            read_pdi_len: self.read_pdi_len,
-            pdi_len: self.pdi_len,
-            inner: UnsafeCell::new(inner),
-            _state: PhantomData,
-        })
+        self.transition_to(client, SlaveState::SafeOp).await
     }
 }
 
@@ -261,18 +216,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         self,
         client: &Client<'_>,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
-        // TODO: Put slaves into OP, wait for them
-
-        todo!()
-
-        // Ok(SlaveGroup {
-        //     id: self.id,
-        //     pdi: self.pdi,
-        //     read_pdi_len: self.read_pdi_len,
-        //     pdi_len: self.pdi_len,
-        //     inner: self.inner,
-        //     _state: PhantomData,
-        // })
+        self.transition_to(client, SlaveState::Op).await
     }
 }
 
@@ -331,6 +275,74 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
         let all_buf = unsafe { &*self.pdi.get() };
 
         &all_buf[0..self.pdi_len]
+    }
+
+    /// Wait for all slaves in this group to transition to the given state.
+    async fn wait_for_state(
+        &self,
+        client: &Client<'_>,
+        desired_state: SlaveState,
+    ) -> Result<(), Error> {
+        timeout(client.timeouts.state_transition, async {
+            loop {
+                let mut all_transitioned = true;
+
+                for slave in self.inner().slaves.iter().map(|slave| slave.borrow()) {
+                    // TODO: Add a way to queue up a bunch of PDUs and send all at once
+                    let (slave_state, _al_status_code) =
+                        SlaveRef::new(client, slave.configured_address, slave)
+                            .status()
+                            .await?;
+
+                    if slave_state != desired_state {
+                        all_transitioned = false;
+                    }
+                }
+
+                if all_transitioned {
+                    break Ok(());
+                }
+
+                client.timeouts.loop_tick().await;
+            }
+        })
+        .await
+    }
+
+    /// Transition to a new state.
+    async fn transition_to<TO>(
+        mut self,
+        client: &Client<'_>,
+        desired_state: SlaveState,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, TO>, Error> {
+        // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
+        // SAFE-OP
+        for slave in self
+            .inner
+            .get_mut()
+            .slaves
+            .iter_mut()
+            .map(|slave| slave.get_mut())
+        {
+            SlaveRef::new(client, slave.configured_address, slave)
+                .request_slave_state_nowait(desired_state)
+                .await?;
+        }
+
+        log::debug!("Waiting for group state {}", desired_state);
+
+        self.wait_for_state(client, desired_state).await?;
+
+        log::debug!("--> Group reached state {}", desired_state);
+
+        Ok(SlaveGroup {
+            id: self.id,
+            pdi: self.pdi,
+            read_pdi_len: self.read_pdi_len,
+            pdi_len: self.pdi_len,
+            inner: UnsafeCell::new(self.inner.into_inner()),
+            _state: PhantomData,
+        })
     }
 }
 
