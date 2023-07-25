@@ -172,9 +172,9 @@ impl<'sto> Client<'sto> {
     /// #[derive(Default)]
     /// struct Groups {
     ///     /// 2 slave devices, totalling 1 byte of PDI.
-    ///     group_1: SlaveGroup<2, 1, slave_group::Init>,
+    ///     group_1: SlaveGroup<2, 1>,
     ///     /// 1 slave device, totalling 4 bytes of PDI
-    ///     group_2: SlaveGroup<1, 4, slave_group::Init>,
+    ///     group_2: SlaveGroup<1, 4>,
     /// }
     ///
     /// let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
@@ -183,7 +183,7 @@ impl<'sto> Client<'sto> {
     ///
     /// # async {
     /// let groups = client
-    ///     .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
+    ///     .init::<MAX_SLAVES, _>(|groups: &Groups, slave| {
     ///         match slave.name() {
     ///             "COUPLER" | "IO69420" => Ok(&groups.group_1),
     ///             "COOLSERVO" => Ok(&groups.group_2),
@@ -306,14 +306,14 @@ impl<'sto> Client<'sto> {
     /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
     ///
     /// # async {
-    /// let groups = client
-    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>(SlaveGroup::default())
+    /// let group = client
+    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>()
     ///     .await
     ///     .expect("Init");
     /// # };
     /// ```
     ///
-    /// ## Create a single slave group with `PREOP -> SAFEOP` hook
+    /// ## Create a single slave group with `PREOP -> SAFEOP` configuration of SDOs
     ///
     /// ```rust,no_run
     /// use ethercrab::{
@@ -332,28 +332,26 @@ impl<'sto> Client<'sto> {
     /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
     ///
     /// # async {
-    /// let groups = client
-    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>(SlaveGroup::new(|slave| {
-    ///         Box::pin(async {
-    ///             // Example: configure a specific slave device during PREOP -> SAFEOP transition
-    ///             if slave.name() == "EL3004" {
-    ///                 log::info!("Found EL3004. Configuring...");
-    ///
-    ///                 slave.sdo_write(0x1c12, 0, 0u8).await?;
-    ///                 slave.sdo_write(0x1c13, 0, 0u8).await?;
-    ///
-    ///                 slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-    ///                 slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
-    ///                 slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
-    ///                 slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
-    ///                 slave.sdo_write(0x1c13, 0, 4u8).await?;
-    ///             }
-    ///
-    ///             Ok(())
-    ///         })
-    ///     }))
+    /// let mut group = client
+    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>()
     ///     .await
     ///     .expect("Init");
+    ///
+    /// for slave in group.iter(&client) {
+    ///     if slave.name() == "EL3004" {
+    ///         log::info!("Found EL3004. Configuring...");
+    ///
+    ///         slave.sdo_write(0x1c12, 0, 0u8).await?;
+    ///         slave.sdo_write(0x1c13, 0, 0u8).await?;
+    ///
+    ///         slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+    ///         slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+    ///         slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+    ///         slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+    ///         slave.sdo_write(0x1c13, 0, 4u8).await?;
+    ///     }
+    /// }
+    /// # Ok::<(), ethercrab::error::Error>(())
     /// # };
     /// ```
     pub async fn init_single_group<const MAX_SLAVES: usize, const MAX_PDI: usize>(
