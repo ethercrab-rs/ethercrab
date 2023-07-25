@@ -353,7 +353,7 @@ impl<'sto> Client<'sto> {
     /// ```
     pub async fn init_single_group<const MAX_SLAVES: usize, const MAX_PDI: usize>(
         &self,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, slave_group::Init>, Error> {
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, slave_group::PreOp>, Error> {
         self.init::<MAX_SLAVES, _>(SlaveGroup::default(), |group, _slave| Ok(group))
             .await
     }

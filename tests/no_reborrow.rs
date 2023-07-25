@@ -15,8 +15,8 @@ const MAX_FRAMES: usize = 128;
 
 #[derive(Default)]
 struct Groups {
-    slow_outputs: SlaveGroup<2, 2, slave_group::Init>,
-    fast_outputs: SlaveGroup<1, 1, slave_group::Init>,
+    slow_outputs: SlaveGroup<2, 2, slave_group::PreOp>,
+    fast_outputs: SlaveGroup<1, 1, slave_group::PreOp>,
 }
 
 #[tokio::test]

@@ -37,7 +37,7 @@ impl From<GroupId> for usize {
 ///
 /// This corresponds to the EtherCAT states INIT and PRE-OP.
 #[derive(Copy, Clone, Debug)]
-pub struct Init;
+pub struct PreOp;
 
 /// A typestate for [`SlaveGroup`] representing a group that is in SAFE-OP.
 #[derive(Copy, Clone, Debug)]
@@ -68,7 +68,7 @@ struct GroupInner<const MAX_SLAVES: usize> {
     pdi_start: PdiOffset,
 }
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, Init> {
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp> {
     /// Create a new slave group.
     pub fn new() -> Self {
         Self::default()
@@ -510,9 +510,9 @@ mod tests {
 
     #[test]
     fn group_unique_id_defaults() {
-        let g1 = SlaveGroup::<16, 16, Init>::default();
-        let g2 = SlaveGroup::<16, 16, Init>::default();
-        let g3 = SlaveGroup::<16, 16, Init>::default();
+        let g1 = SlaveGroup::<16, 16, PreOp>::default();
+        let g2 = SlaveGroup::<16, 16, PreOp>::default();
+        let g3 = SlaveGroup::<16, 16, PreOp>::default();
 
         assert_ne!(g1.id, g2.id);
         assert_ne!(g2.id, g3.id);
@@ -521,8 +521,8 @@ mod tests {
 
     #[test]
     fn group_unique_id_same_fn() {
-        let g1 = SlaveGroup::<16, 16, Init>::new();
-        let g2 = SlaveGroup::<16, 16, Init>::new();
+        let g1 = SlaveGroup::<16, 16, PreOp>::new();
+        let g2 = SlaveGroup::<16, 16, PreOp>::new();
 
         assert_ne!(g1.id, g2.id);
     }

@@ -33,9 +33,9 @@ struct Groups {
     ///
     /// We'll keep the EK1100/EK1501 in here as it has no useful PDI but still needs to live
     /// somewhere.
-    slow_outputs: SlaveGroup<2, 4, slave_group::Init>,
+    slow_outputs: SlaveGroup<2, 4, slave_group::PreOp>,
     /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-    fast_outputs: SlaveGroup<1, 1, slave_group::Init>,
+    fast_outputs: SlaveGroup<1, 1, slave_group::PreOp>,
 }
 
 #[tokio::main]
