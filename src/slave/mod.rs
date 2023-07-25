@@ -560,10 +560,6 @@ where
                 })
             })
     }
-
-    pub(crate) fn working_counter_sum(&self) -> u16 {
-        self.state.borrow().config.io.working_counter_sum()
-    }
 }
 
 impl<'a, S> SlaveRef<'a, S> {
