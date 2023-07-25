@@ -340,90 +340,90 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
         self.inner().slaves.is_empty()
     }
 
-    /// Get an iterator over all slaves in this group.
-    pub fn iter<'group, 'client>(
-        &'group mut self,
-        client: &'client Client<'client>,
-    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S> {
-        GroupSlaveIterator {
-            group: self,
-            idx: 0,
-            client,
-        }
-    }
+    // /// Get an iterator over all slaves in this group.
+    // pub fn iter<'group, 'client>(
+    //     &'group mut self,
+    //     client: &'client Client<'client>,
+    // ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S> {
+    //     GroupSlaveIterator {
+    //         group: self,
+    //         idx: 0,
+    //         client,
+    //     }
+    // }
 
-    /// Retrieve a reference to a slave in this group by index.
-    ///
-    /// Each slave may not be individually borrowed more than once, but multiple slaves can be
-    /// borrowed at the same time. If the slave at the given index is already borrowed, this method
-    /// will return an [`Error::Borrow`].
-    pub fn slave<'client>(
-        &self,
-        client: &'client Client<'client>,
-        index: usize,
-    ) -> Result<SlaveRef<'client, SlavePdi<'_>>, Error> {
-        let slave = self
-            .inner()
-            .slaves
-            .get(index)
-            .ok_or(Error::NotFound {
-                item: Item::Slave,
-                index: Some(index),
-            })?
-            .try_borrow_mut()
-            .map_err(|e| {
-                log::error!("Slave index {}: {}", index, e);
+    // /// Retrieve a reference to a slave in this group by index.
+    // ///
+    // /// Each slave may not be individually borrowed more than once, but multiple slaves can be
+    // /// borrowed at the same time. If the slave at the given index is already borrowed, this method
+    // /// will return an [`Error::Borrow`].
+    // pub fn slave<'client>(
+    //     &self,
+    //     client: &'client Client<'client>,
+    //     index: usize,
+    // ) -> Result<SlaveRef<'client, SlavePdi<'_>>, Error> {
+    //     let slave = self
+    //         .inner()
+    //         .slaves
+    //         .get(index)
+    //         .ok_or(Error::NotFound {
+    //             item: Item::Slave,
+    //             index: Some(index),
+    //         })?
+    //         .try_borrow_mut()
+    //         .map_err(|e| {
+    //             log::error!("Slave index {}: {}", index, e);
 
-                Error::Borrow
-            })?;
+    //             Error::Borrow
+    //         })?;
 
-        let IoRanges {
-            input: input_range,
-            output: output_range,
-        } = slave.io_segments();
+    //     let IoRanges {
+    //         input: input_range,
+    //         output: output_range,
+    //     } = slave.io_segments();
 
-        // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
-        let i_data = self.pdi();
-        let o_data = self.pdi_mut();
+    //     // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
+    //     let i_data = self.pdi();
+    //     let o_data = self.pdi_mut();
 
-        log::trace!(
-            "Get slave {:#06x} IO ranges I: {}, O: {}",
-            slave.configured_address,
-            input_range,
-            output_range
-        );
+    //     log::trace!(
+    //         "Get slave {:#06x} IO ranges I: {}, O: {}",
+    //         slave.configured_address,
+    //         input_range,
+    //         output_range
+    //     );
 
-        log::trace!(
-            "--> Group PDI: {:?} ({} byte subset of {} max)",
-            i_data,
-            self.pdi_len,
-            MAX_PDI
-        );
+    //     log::trace!(
+    //         "--> Group PDI: {:?} ({} byte subset of {} max)",
+    //         i_data,
+    //         self.pdi_len,
+    //         MAX_PDI
+    //     );
 
-        // NOTE: Using panicking `[]` indexing as the indices and arrays should all be correct by
-        // this point. If something isn't right, that's a bug.
-        let inputs = if !input_range.is_empty() {
-            &i_data[input_range.bytes.clone()]
-        } else {
-            EMPTY_PDI_SLICE
-        };
+    //     // NOTE: Using panicking `[]` indexing as the indices and arrays should all be correct by
+    //     // this point. If something isn't right, that's a bug.
+    //     let inputs = if !input_range.is_empty() {
+    //         &i_data[input_range.bytes.clone()]
+    //     } else {
+    //         EMPTY_PDI_SLICE
+    //     };
 
-        let outputs = if !output_range.is_empty() {
-            &mut o_data[output_range.bytes.clone()]
-        } else {
-            // SAFETY: Slice is empty so can never be mutated
-            unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr() as *mut _, 0) }
-        };
+    //     let outputs = if !output_range.is_empty() {
+    //         &mut o_data[output_range.bytes.clone()]
+    //     } else {
+    //         // SAFETY: Slice is empty so can never be mutated
+    //         unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr() as *mut _, 0) }
+    //     };
 
-        Ok(SlaveRef::new(
-            client,
-            slave.configured_address,
-            // SAFETY: A given slave contained in a `SlavePdi` MUST only be borrowed once (currently
-            // enforced by `AtomicRefCell`). If it is borrowed more than once, immutable APIs in
-            // `SlaveRef<SlavePdi>` will be unsound.
-            SlavePdi::new(slave, inputs, outputs),
-        ))
-    }
+    //     Ok(SlaveRef::new(
+    //         client,
+    //         slave.configured_address,
+    //         // SAFETY: A given slave contained in a `SlavePdi` MUST only be borrowed once (currently
+    //         // enforced by `AtomicRefCell`). If it is borrowed more than once, immutable APIs in
+    //         // `SlaveRef<SlavePdi>` will be unsound.
+    //         SlavePdi::new(slave, inputs, outputs),
+    //     ))
+    // }
 
     fn pdi_mut(&self) -> &mut [u8] {
         let all_buf = unsafe { &mut *self.pdi.get() };
@@ -472,11 +472,67 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
     }
 }
 
+#[doc(hidden)]
+pub trait SlaveGroupState {
+    type RefType<'group>;
+
+    fn slave<'client, 'group>(
+        &self,
+        client: &'client Client<'client>,
+        index: usize,
+    ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error>;
+
+    fn len(&self) -> usize;
+}
+
+trait HasPdi {}
+
+impl HasPdi for SafeOp {}
+impl HasPdi for Op {}
+
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupState
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp>
+{
+    type RefType<'group> = &'group Slave;
+
+    fn slave<'client, 'group>(
+        &self,
+        client: &'client Client<'client>,
+        index: usize,
+    ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error> {
+        todo!()
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+}
+
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroupState
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
+where
+    S: HasPdi,
+{
+    type RefType<'group> = SlavePdi<'group>;
+
+    fn slave<'client, 'group>(
+        &self,
+        client: &'client Client<'client>,
+        index: usize,
+    ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error> {
+        todo!()
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+}
+
 /// An iterator over all slaves in a group.
 ///
 /// Created by calling [`SlaveGroup::iter`](crate::slave_group::SlaveGroup::iter).
 pub struct GroupSlaveIterator<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S> {
-    group: &'group SlaveGroup<MAX_SLAVES, MAX_PDI, S>,
+    group: &'group S,
     idx: usize,
     client: &'client Client<'client>,
 }
@@ -485,8 +541,9 @@ impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S> Iterator
     for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S>
 where
     'client: 'group,
+    S: SlaveGroupState,
 {
-    type Item = SlaveRef<'group, SlavePdi<'group>>;
+    type Item = SlaveRef<'group, S::RefType<'group>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx >= self.group.len() {
