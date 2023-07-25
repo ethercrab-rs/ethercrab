@@ -214,12 +214,16 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
                 .await?;
         }
 
+        log::debug!("Waiting for group SAFE-OP");
+
         // Wait for everything to go into SAFE-OP
         timeout(client.timeouts.state_transition, async {
             loop {
                 let mut all_transitioned = true;
 
                 for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
+                    let addr = slave.configured_address;
+
                     // TODO: Add a way to queue up a bunch of PDUs and send all at once
                     let (slave_state, _al_status_code) =
                         SlaveRef::new(client, slave.configured_address, slave)

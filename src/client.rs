@@ -274,8 +274,8 @@ impl<'sto> Client<'sto> {
             log::debug!("Total PDI {} bytes", offset.start_address);
         }
 
-        // Wait for all slaves to reach SAFE-OP
-        self.wait_for_state(SlaveState::SafeOp).await?;
+        // Check that all slaves reached PRE-OP
+        self.wait_for_state(SlaveState::PreOp).await?;
 
         Ok(groups)
     }
