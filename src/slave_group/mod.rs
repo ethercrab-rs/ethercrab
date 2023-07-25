@@ -42,6 +42,10 @@ pub struct Init;
 #[derive(Copy, Clone, Debug)]
 pub struct SafeOp;
 
+/// A typestate for [`SlaveGroup`] representing a group that is in OP.
+#[derive(Copy, Clone, Debug)]
+pub struct Op;
+
 /// A group of one or more EtherCAT slaves.
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
@@ -65,17 +69,16 @@ struct GroupInner<const MAX_SLAVES: usize> {
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, Init> {
     /// Transition slaves in this group from PRE-OP to SAFE-OP.
-    pub async fn into_safe_op<'group, 'client, F, O>(
+    pub async fn into_safe_op<F, O>(
         mut self,
-        client: &'client Client<'client>,
+        client: &Client<'_>,
         mut preop_safeop_hook: F,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error>
     where
-        'client: 'group,
-        F: FnMut(SlaveRef<'group, AtomicRef<'_, Slave>>) -> O,
+        F: FnMut(SlaveRef<'_, &Slave>) -> O,
         O: Future<Output = Result<(), Error>>,
     {
-        let inner = self.inner.get_mut();
+        let mut inner = self.inner.into_inner();
 
         let mut pdi_position = inner.pdi_start;
 
@@ -89,12 +92,10 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 
         // Configure master read PDI mappings in the first section of the PDI
         for slave in inner.slaves.iter_mut() {
-            // let sl = slave.get_mut();
-
             let configured_address = slave.get_mut().configured_address;
 
             let fut =
-                (preop_safeop_hook)(SlaveRef::new(client, configured_address, slave.borrow()));
+                (preop_safeop_hook)(SlaveRef::new(client, configured_address, slave.get_mut()));
 
             fut.await?;
 
@@ -239,6 +240,22 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             }
         })
         .await?;
+
+        Ok(SlaveGroup {
+            id: self.id,
+            pdi: self.pdi,
+            read_pdi_len: self.read_pdi_len,
+            pdi_len: self.pdi_len,
+            inner: UnsafeCell::new(inner),
+            _state: PhantomData,
+        })
+    }
+}
+
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp> {
+    /// Transition all slave devices in the group from SAFE-OP to OP.
+    pub async fn into_op(self) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
+        // TODO: Put slaves into OP, wait for them
 
         Ok(SlaveGroup {
             id: self.id,

@@ -42,8 +42,27 @@ async fn main() -> Result<(), Error> {
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     let mut group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|slave| {
-            Box::pin(async {
+        .init_single_group::<MAX_SLAVES, PDI_LEN>()
+        .await
+        .expect("Init");
+
+    log::info!("Group has {} slaves", group.len());
+
+    for slave in group.iter(&client) {
+        let (i, o) = slave.io_raw();
+
+        log::info!(
+            "-> Slave {:#06x} {} has inputs: {}, outputs: {}",
+            slave.configured_address(),
+            slave.name(),
+            i.len(),
+            o.len()
+        );
+    }
+
+    let group = group
+        .into_safe_op(&client, |slave| {
+            async {
                 // Special configuration is required for some slave devices
                 if slave.name() == "EL3004" {
                     log::info!("Found EL3004. Configuring...");
@@ -76,29 +95,12 @@ async fn main() -> Result<(), Error> {
                 }
 
                 Ok(())
-            })
-        }))
+            }
+        })
         .await
-        .expect("Init");
+        .expect("PRE-OP -> SAFE-OP");
 
-    log::info!("Group has {} slaves", group.len());
-
-    for slave in group.iter(&client) {
-        let (i, o) = slave.io_raw();
-
-        log::info!(
-            "-> Slave {:#06x} {} has inputs: {}, outputs: {}",
-            slave.configured_address(),
-            slave.name(),
-            i.len(),
-            o.len()
-        );
-    }
-
-    client
-        .request_slave_state(SlaveState::Op)
-        .await
-        .expect("OP");
+    let mut group = group.into_op().await.expect("SAFE-OP -> OP");
 
     let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
     tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
