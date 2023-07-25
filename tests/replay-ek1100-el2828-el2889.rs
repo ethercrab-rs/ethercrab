@@ -5,7 +5,7 @@ mod util;
 use env_logger::Env;
 use ethercrab::{
     error::Error, slave_group, Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState,
-    SlaveState, Timeouts,
+    Timeouts,
 };
 use std::time::Duration;
 use tokio::time::MissedTickBehavior;
