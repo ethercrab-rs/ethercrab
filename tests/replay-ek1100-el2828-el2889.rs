@@ -3,7 +3,9 @@
 mod util;
 
 use env_logger::Env;
-use ethercrab::{error::Error, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, Timeouts};
+use ethercrab::{
+    error::Error, slave_group, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, Timeouts,
+};
 use std::time::Duration;
 use tokio::time::MissedTickBehavior;
 
@@ -16,9 +18,9 @@ struct Groups {
     /// EL2889 and EK1100. 2 items, 2 bytes of PDI for 16 output bits.
     ///
     /// We'll keep the EK1100 in here as it has no PDI but still needs to live somewhere.
-    slow_outputs: SlaveGroup<2, 2>,
+    slow_outputs: SlaveGroup<2, 2, slave_group::Init>,
     /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-    fast_outputs: SlaveGroup<1, 1>,
+    fast_outputs: SlaveGroup<1, 1, slave_group::Init>,
 }
 
 #[tokio::test]

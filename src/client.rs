@@ -9,7 +9,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
-    slave_group::SlaveGroupHandle,
+    slave_group::{self, SlaveGroupHandle},
     slave_state::SlaveState,
     timer_factory::timeout,
     ClientConfig, SlaveGroup, Timeouts, BASE_SLAVE_ADDR,
@@ -159,6 +159,7 @@ impl<'sto> Client<'sto> {
     /// ```rust,no_run
     /// use ethercrab::{
     ///     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    ///     slave_group
     /// };
     ///
     /// const MAX_SLAVES: usize = 2;
@@ -171,9 +172,9 @@ impl<'sto> Client<'sto> {
     /// #[derive(Default)]
     /// struct Groups {
     ///     /// 2 slave devices, totalling 1 byte of PDI.
-    ///     group_1: SlaveGroup<2, 1>,
+    ///     group_1: SlaveGroup<2, 1, slave_group::Init>,
     ///     /// 1 slave device, totalling 4 bytes of PDI
-    ///     group_2: SlaveGroup<1, 4>,
+    ///     group_2: SlaveGroup<1, 4, slave_group::Init>,
     /// }
     ///
     /// let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
@@ -352,8 +353,8 @@ impl<'sto> Client<'sto> {
     /// ```
     pub async fn init_single_group<const MAX_SLAVES: usize, const MAX_PDI: usize>(
         &self,
-        group: SlaveGroup<MAX_SLAVES, MAX_PDI>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI>, Error> {
+        group: SlaveGroup<MAX_SLAVES, MAX_PDI, slave_group::Init>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, slave_group::Init>, Error> {
         self.init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
             .await
     }

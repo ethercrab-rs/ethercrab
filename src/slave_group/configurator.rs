@@ -36,8 +36,8 @@ pub struct SlaveGroupRef<'a> {
 }
 
 impl<'a> SlaveGroupRef<'a> {
-    pub(in crate::slave_group) fn new<const MAX_SLAVES: usize, const MAX_PDI: usize>(
-        group: &'a SlaveGroup<MAX_SLAVES, MAX_PDI>,
+    pub(in crate::slave_group) fn new<const MAX_SLAVES: usize, const MAX_PDI: usize, S>(
+        group: &'a SlaveGroup<MAX_SLAVES, MAX_PDI, S>,
     ) -> Self {
         Self {
             max_pdi_len: MAX_PDI,

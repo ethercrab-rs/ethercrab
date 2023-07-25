@@ -13,7 +13,8 @@ fn main() {
 async fn main() -> Result<(), ethercrab::error::Error> {
     use env_logger::Env;
     use ethercrab::{
-        error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+        error::Error, slave_group, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
+        Timeouts,
     };
     use rustix::process::CpuSet;
     use smol::LocalExecutor;
@@ -42,9 +43,9 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         ///
         /// We'll keep the EK1100/EK1501 in here as it has no useful PDI but still needs to live
         /// somewhere.
-        slow_outputs: SlaveGroup<2, 4>,
+        slow_outputs: SlaveGroup<2, 4, slave_group::Init>,
         /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-        fast_outputs: SlaveGroup<1, 1>,
+        fast_outputs: SlaveGroup<1, 1, slave_group::Init>,
     }
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();

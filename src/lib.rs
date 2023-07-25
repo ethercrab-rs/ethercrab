@@ -23,6 +23,7 @@
 //! use env_logger::Env;
 //! use ethercrab::{
 //!     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+//!     slave_group
 //! };
 //! use std::{sync::Arc, time::Duration};
 //! use tokio::time::MissedTickBehavior;
@@ -64,7 +65,7 @@
 //!
 //!     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 //!
-//!     let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
+//!     let group = SlaveGroup::<MAX_SLAVES, PDI_LEN, slave_group::Init>::new(|slave| {
 //!         Box::pin(async {
 //!             // Special case: if an EL3004 module is discovered, it needs some specific config during
 //!             // init to function properly
@@ -168,7 +169,7 @@ mod pdu_data;
 mod pdu_loop;
 mod register;
 mod slave;
-mod slave_group;
+pub mod slave_group;
 mod slave_state;
 mod sync_manager_channel;
 mod timer_factory;

@@ -3,7 +3,9 @@
 
 mod util;
 
-use ethercrab::{error::Error, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, Timeouts};
+use ethercrab::{
+    error::Error, slave_group, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, Timeouts,
+};
 use std::time::Duration;
 use tokio::time::MissedTickBehavior;
 
@@ -13,8 +15,8 @@ const MAX_FRAMES: usize = 128;
 
 #[derive(Default)]
 struct Groups {
-    slow_outputs: SlaveGroup<2, 2>,
-    fast_outputs: SlaveGroup<1, 1>,
+    slow_outputs: SlaveGroup<2, 2, slave_group::Init>,
+    fast_outputs: SlaveGroup<1, 1, slave_group::Init>,
 }
 
 #[tokio::test]

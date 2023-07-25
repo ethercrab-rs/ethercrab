@@ -1,3 +1,8 @@
+//! A group of slave devices.
+//!
+//! Slaves can be divided into multiple groups to allow multiple tasks to run concurrently,
+//! potentially at different tick rates.
+
 mod configurator;
 
 use crate::{
@@ -5,7 +10,10 @@ use crate::{
     slave::{pdi::SlavePdi, IoRanges, Slave, SlaveRef},
     Client,
 };
-use core::{cell::UnsafeCell, future::Future, pin::Pin, slice, sync::atomic::AtomicUsize};
+use core::{
+    cell::UnsafeCell, future::Future, marker::PhantomData, pin::Pin, slice,
+    sync::atomic::AtomicUsize,
+};
 
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
@@ -33,15 +41,20 @@ impl From<GroupId> for usize {
     }
 }
 
+/// A typestate for [`SlaveGroup`] representing a group that is undergoing initialisation.
+#[derive(Copy, Clone, Debug)]
+pub struct Init;
+
 /// A group of one or more EtherCAT slaves.
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
 /// slave PDI sections.
-pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize> {
+pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, S> {
     id: GroupId,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
     preop_safeop_hook: Option<HookFn>,
     inner: UnsafeCell<GroupInner<MAX_SLAVES>>,
+    _state: PhantomData<S>,
 }
 
 #[derive(Default)]
@@ -57,12 +70,13 @@ struct GroupInner<const MAX_SLAVES: usize> {
 
 // FIXME: Remove these unsafe impls if possible. There's some weird quirkiness when moving a group
 // into an async block going on...
-unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Sync
-    for SlaveGroup<MAX_SLAVES, MAX_PDI>
+// TODO: Can we constrain the typestate here to just the one(s) that need to be?
+unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Sync
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
 {
 }
-unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Send
-    for SlaveGroup<MAX_SLAVES, MAX_PDI>
+unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Send
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
 {
 }
 
@@ -82,8 +96,8 @@ pub trait SlaveGroupHandle {
 }
 
 #[sealed::sealed]
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupHandle
-    for SlaveGroup<MAX_SLAVES, MAX_PDI>
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroupHandle
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
 {
     fn id(&self) -> GroupId {
         self.id
@@ -101,13 +115,16 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupHandle
     }
 }
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Default for SlaveGroup<MAX_SLAVES, MAX_PDI> {
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Default
+    for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
+{
     fn default() -> Self {
         Self {
             id: GroupId(GROUP_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)),
             pdi: UnsafeCell::new([0u8; MAX_PDI]),
             preop_safeop_hook: Default::default(),
             inner: UnsafeCell::new(GroupInner::default()),
+            _state: PhantomData,
         }
     }
 }
@@ -115,7 +132,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> Default for SlaveGroup<MAX_S
 /// Returned when a slave device's input or output PDI segment is empty.
 static EMPTY_PDI_SLICE: &[u8] = &[];
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI> {
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MAX_PDI, S> {
     /// Create a new slave group with a given PRE OP -> SAFE OP hook.
     ///
     /// The hook can be used to configure slaves using SDOs.
@@ -144,7 +161,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     pub fn iter<'group, 'client>(
         &'group mut self,
         client: &'client Client<'client>,
-    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI> {
+    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S> {
         GroupSlaveIterator {
             group: self,
             idx: 0,
@@ -275,14 +292,14 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 /// An iterator over all slaves in a group.
 ///
 /// Created by calling [`SlaveGroup::iter`](crate::slave_group::SlaveGroup::iter).
-pub struct GroupSlaveIterator<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize> {
-    group: &'group SlaveGroup<MAX_SLAVES, MAX_PDI>,
+pub struct GroupSlaveIterator<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S> {
+    group: &'group SlaveGroup<MAX_SLAVES, MAX_PDI, S>,
     idx: usize,
     client: &'client Client<'client>,
 }
 
-impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
-    for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI>
+impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S> Iterator
+    for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S>
 where
     'client: 'group,
 {
@@ -310,9 +327,9 @@ mod tests {
 
     #[test]
     fn group_unique_id_defaults() {
-        let g1 = SlaveGroup::<16, 16>::default();
-        let g2 = SlaveGroup::<16, 16>::default();
-        let g3 = SlaveGroup::<16, 16>::default();
+        let g1 = SlaveGroup::<16, 16, Init>::default();
+        let g2 = SlaveGroup::<16, 16, Init>::default();
+        let g3 = SlaveGroup::<16, 16, Init>::default();
 
         assert_ne!(g1.id, g2.id);
         assert_ne!(g2.id, g3.id);
@@ -321,8 +338,8 @@ mod tests {
 
     #[test]
     fn group_unique_id_same_fn() {
-        let g1 = SlaveGroup::<16, 16>::new(|_| Box::pin(async { Ok(()) }));
-        let g2 = SlaveGroup::<16, 16>::new(|_| Box::pin(async { Ok(()) }));
+        let g1 = SlaveGroup::<16, 16, Init>::new(|_| Box::pin(async { Ok(()) }));
+        let g2 = SlaveGroup::<16, 16, Init>::new(|_| Box::pin(async { Ok(()) }));
 
         assert_ne!(g1.id, g2.id);
     }
