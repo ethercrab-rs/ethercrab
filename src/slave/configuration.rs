@@ -15,11 +15,15 @@ use crate::{
     sync_manager_channel::SyncManagerChannel,
     sync_manager_channel::{self, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
+use core::ops::DerefMut;
 use num_enum::FromPrimitive;
 use packed_struct::PackedStruct;
 
 /// Configuation from EEPROM methods.
-impl<'a> SlaveRef<'a, &'a mut Slave> {
+impl<'a, S> SlaveRef<'a, S>
+where
+    S: DerefMut<Target = Slave>,
+{
     /// First stage configuration (INIT -> PRE-OP).
     ///
     /// Continue configuration by calling [`configure_fmmus`](SlaveConfigurator::configure_fmmus)
@@ -76,7 +80,7 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
         if state != SlaveState::PreOp {
             log::error!(
                 "Slave {:#06x} is in invalid state {}. Expected {}",
-                self.configured_address,
+                self.state.configured_address,
                 state,
                 SlaveState::PreOp
             );
@@ -84,7 +88,7 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
             return Err(Error::InvalidState {
                 expected: SlaveState::PreOp,
                 actual: state,
-                configured_address: self.configured_address,
+                configured_address: self.state.configured_address,
             });
         }
 
@@ -92,7 +96,7 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
 
         log::debug!(
             "Slave {:#06x} has CoE: {has_coe:?}",
-            self.configured_address
+            self.state.configured_address
         );
 
         match direction {
@@ -162,7 +166,7 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
 
         log::debug!(
             "Slave {:#06x} PDI inputs: {:?} ({} bytes), outputs: {:?} ({} bytes)",
-            self.configured_address,
+            self.state.configured_address,
             self.state.config.io.input,
             self.state.config.io.input.len(),
             self.state.config.io.output,
@@ -208,7 +212,7 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
 
         log::debug!(
             "Slave {:#06x} SM{sync_manager_index}: {}",
-            self.configured_address,
+            self.state.configured_address,
             sm_config
         );
         log::trace!("{:#?}", sm_config);
@@ -223,14 +227,14 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
 
         log::trace!(
             "Slave {:#06x} Mailbox configuration: {:#?}",
-            self.configured_address,
+            self.state.configured_address,
             mailbox_config
         );
 
         if !mailbox_config.has_mailbox() {
             log::trace!(
                 "Slave {:#06x} has no valid mailbox configuration",
-                self.configured_address
+                self.state.configured_address
             );
 
             return Ok(());
@@ -453,7 +457,7 @@ impl<'a> SlaveRef<'a, &'a mut Slave> {
         .await?;
         log::debug!(
             "Slave {:#06x} FMMU{fmmu_index}: {}",
-            self.configured_address,
+            self.state.configured_address,
             fmmu_config
         );
         log::trace!("{:#?}", fmmu_config);

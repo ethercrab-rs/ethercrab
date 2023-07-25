@@ -261,7 +261,7 @@ impl<'sto> Client<'sto> {
             let mut offset = PdiOffset::default();
 
             for (id, group) in group_map.iter_mut() {
-                offset = group.configure_from_eeprom(offset, self).await?;
+                offset = group.into_pre_op(offset, self).await?;
 
                 log::debug!("After group ID {id} offset: {:?}", offset);
             }
