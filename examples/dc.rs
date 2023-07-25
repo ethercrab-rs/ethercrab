@@ -47,20 +47,6 @@ async fn main() -> Result<(), Error> {
         .await
         .expect("Init");
 
-    log::info!("Group has {} slaves", group.len());
-
-    for slave in group.iter(&client) {
-        let (i, o) = slave.io_raw();
-
-        log::info!(
-            "-> Slave {:#06x} {} has inputs: {}, outputs: {}",
-            slave.configured_address(),
-            slave.name(),
-            i.len(),
-            o.len()
-        );
-    }
-
     for slave in group.iter(&client) {
         // Special configuration is required for some slave devices
         if slave.name() == "EL3004" {
@@ -94,6 +80,20 @@ async fn main() -> Result<(), Error> {
         .into_safe_op(&client)
         .await
         .expect("PRE-OP -> SAFE-OP");
+
+    log::info!("Group has {} slaves", group.len());
+
+    for slave in group.iter(&client) {
+        let (i, o) = slave.io_raw();
+
+        log::info!(
+            "-> Slave {:#06x} {} has inputs: {}, outputs: {}",
+            slave.configured_address(),
+            slave.name(),
+            i.len(),
+            o.len()
+        );
+    }
 
     let mut group = group.into_op().await.expect("SAFE-OP -> OP");
 

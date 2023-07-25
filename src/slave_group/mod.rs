@@ -17,7 +17,7 @@ use core::{
     sync::atomic::AtomicUsize,
 };
 
-use atomic_refcell::{AtomicRef, AtomicRefCell};
+use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 pub use configurator::SlaveGroupRef;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
@@ -188,6 +188,18 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         }
 
         Ok(())
+    }
+
+    /// Get an iterator over all slaves in this group.
+    pub fn iter<'group, 'client>(
+        &'group self,
+        client: &'client Client<'client>,
+    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, Self> {
+        GroupSlaveIterator {
+            group: self,
+            idx: 0,
+            client,
+        }
     }
 
     /// Transition the slave group from PRE-OP to SAFE-OP.
@@ -474,10 +486,12 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
 
 #[doc(hidden)]
 pub trait SlaveGroupState {
-    type RefType<'group>;
+    type RefType<'group>
+    where
+        Self: 'group;
 
     fn slave<'client, 'group>(
-        &self,
+        &'group self,
         client: &'client Client<'client>,
         index: usize,
     ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error>;
@@ -485,7 +499,8 @@ pub trait SlaveGroupState {
     fn len(&self) -> usize;
 }
 
-trait HasPdi {}
+#[doc(hidden)]
+pub trait HasPdi {}
 
 impl HasPdi for SafeOp {}
 impl HasPdi for Op {}
@@ -493,14 +508,29 @@ impl HasPdi for Op {}
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupState
     for SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp>
 {
-    type RefType<'group> = &'group Slave;
+    type RefType<'group> = AtomicRefMut<'group, Slave>;
 
     fn slave<'client, 'group>(
-        &self,
+        &'group self,
         client: &'client Client<'client>,
         index: usize,
     ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error> {
-        todo!()
+        let slave = self
+            .inner()
+            .slaves
+            .get(index)
+            .ok_or(Error::NotFound {
+                item: Item::Slave,
+                index: Some(index),
+            })?
+            .try_borrow_mut()
+            .map_err(|e| {
+                log::error!("Slave index {}: {}", index, e);
+
+                Error::Borrow
+            })?;
+
+        Ok(SlaveRef::new(client, slave.configured_address, slave))
     }
 
     fn len(&self) -> usize {
@@ -513,18 +543,95 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroupState
 where
     S: HasPdi,
 {
-    type RefType<'group> = SlavePdi<'group>;
+    type RefType<'group> = SlavePdi<'group> where S: 'group;
 
     fn slave<'client, 'group>(
-        &self,
+        &'group self,
         client: &'client Client<'client>,
         index: usize,
     ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error> {
-        todo!()
+        let slave = self
+            .inner()
+            .slaves
+            .get(index)
+            .ok_or(Error::NotFound {
+                item: Item::Slave,
+                index: Some(index),
+            })?
+            .try_borrow_mut()
+            .map_err(|e| {
+                log::error!("Slave index {}: {}", index, e);
+
+                Error::Borrow
+            })?;
+
+        let IoRanges {
+            input: input_range,
+            output: output_range,
+        } = slave.io_segments();
+
+        // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
+        let i_data = self.pdi();
+        let o_data = self.pdi_mut();
+
+        log::trace!(
+            "Get slave {:#06x} IO ranges I: {}, O: {}",
+            slave.configured_address,
+            input_range,
+            output_range
+        );
+
+        log::trace!(
+            "--> Group PDI: {:?} ({} byte subset of {} max)",
+            i_data,
+            self.pdi_len,
+            MAX_PDI
+        );
+
+        // NOTE: Using panicking `[]` indexing as the indices and arrays should all be correct by
+        // this point. If something isn't right, that's a bug.
+        let inputs = if !input_range.is_empty() {
+            &i_data[input_range.bytes.clone()]
+        } else {
+            EMPTY_PDI_SLICE
+        };
+
+        let outputs = if !output_range.is_empty() {
+            &mut o_data[output_range.bytes.clone()]
+        } else {
+            // SAFETY: Slice is empty so can never be mutated
+            unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr() as *mut _, 0) }
+        };
+
+        Ok(SlaveRef::new(
+            client,
+            slave.configured_address,
+            // SAFETY: A given slave contained in a `SlavePdi` MUST only be borrowed once (currently
+            // enforced by `AtomicRefCell`). If it is borrowed more than once, immutable APIs in
+            // `SlaveRef<SlavePdi>` will be unsound.
+            SlavePdi::new(slave, inputs, outputs),
+        ))
     }
 
     fn len(&self) -> usize {
         self.len()
+    }
+}
+
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MAX_PDI, S>
+where
+    S: HasPdi,
+{
+    /// Get an iterator over all slaves in this group.
+    pub fn iter<'group, 'client>(
+        &'group self,
+        client: &'client Client<'client>,
+    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, Self> {
+        GroupSlaveIterator {
+            group: self,
+            idx: 0,
+            client,
+        }
     }
 }
 
