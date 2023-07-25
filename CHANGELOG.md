@@ -24,10 +24,20 @@ An EtherCAT master written in Rust.
 
 ### Removed
 
+- **(breaking)** [#75] `Client::request_slave_state` is removed. Groups should be transitioned into
+  the various states individually using `into_op` or `into_safe_op`.
+- **(breaking)** [#75] `SlaveGroup::new` is removed. Slave groups can be created with
+  `SlaveGroup::default()` instead
 - **(breaking)** [#45] The `SlaveGroupContainer` trait is no longer needed and has been removed.
 
 ### Changed
 
+- **(breaking)** [#75] `Client::init` no longer takes a `groups` argument and now requires
+  `G: Default`.
+- **(breaking)** [#75] `SlaveGroup`s no longer configure using a closure - instead use
+  `SlaveGroup::iter` or `SlaveGroup::slave` to configure slave devices inline.
+- **(breaking)** [#75] `SlaveGroup`s now have a type state. Use `into_safe_op` and `into_op` to
+  transition from PRE-OP as provided by `Client::init` into run mode.
 - [#47] Slave `sdo_read` and `sdo_write` methods no longer require the use of `SubIndex`. For single
   accesses, a raw `u8` can be passed instead for cleaner configuration code.
 - **(breaking)** [#47] `SlaveGroup::slave` and `SlaveGroup::iter` (was `slaves`) now requires the
@@ -128,5 +138,6 @@ An EtherCAT master written in Rust.
 [#47]: https://github.com/ethercrab-rs/ethercrab/pull/47
 [#55]: https://github.com/ethercrab-rs/ethercrab/pull/55
 [#59]: https://github.com/ethercrab-rs/ethercrab/pull/59
+[#75]: https://github.com/ethercrab-rs/ethercrab/pull/75
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

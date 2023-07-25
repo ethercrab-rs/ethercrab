@@ -84,17 +84,3 @@ pub struct IoRanges {
     pub input: PdiSegment,
     pub output: PdiSegment,
 }
-
-impl IoRanges {
-    /// Expected working counter value for this slave.
-    ///
-    /// The working counter is calculated as follows:
-    ///
-    /// - If the slave has input data, increment by 1
-    /// - If the slave has output data, increment by 2
-    pub(crate) fn working_counter_sum(&self) -> u16 {
-        let l = self.input.len().min(1) + (self.output.len().min(1) * 2);
-
-        l as u16
-    }
-}

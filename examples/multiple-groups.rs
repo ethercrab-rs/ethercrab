@@ -8,7 +8,7 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState,
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState,
     Timeouts,
 };
 use std::{
@@ -73,7 +73,7 @@ async fn main() -> Result<(), Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
-        .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| match slave.name() {
+        .init::<MAX_SLAVES, _>(|groups: &Groups, slave| match slave.name() {
             "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
             "EL2828" => Ok(&groups.fast_outputs),
             _ => Err(Error::UnknownSlave),
@@ -83,17 +83,17 @@ async fn main() -> Result<(), Error> {
 
     let Groups {
         slow_outputs,
-        mut fast_outputs,
+        fast_outputs,
     } = groups;
 
     let client_slow = client.clone();
 
-    client
-        .request_slave_state(SlaveState::Op)
-        .await
-        .expect("OP");
-
     let slow_task = tokio::spawn(async move {
+        let slow_outputs = slow_outputs
+            .into_op(&client_slow)
+            .await
+            .expect("PRE-OP -> OP");
+
         let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(3));
         slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -130,6 +130,8 @@ async fn main() -> Result<(), Error> {
     });
 
     let fast_task = tokio::spawn(async move {
+        let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
+
         let mut fast_cycle_time = tokio::time::interval(Duration::from_millis(5));
         fast_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 

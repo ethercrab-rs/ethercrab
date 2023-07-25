@@ -1,6 +1,6 @@
 use super::{Slave, SlaveRef};
 use atomic_refcell::AtomicRefMut;
-use core::borrow::Borrow;
+use core::ops::Deref;
 
 /// Process Data Image (PDI) segments for a given slave device.
 #[derive(Debug)]
@@ -12,8 +12,10 @@ pub struct SlavePdi<'group> {
     outputs: &'group mut [u8],
 }
 
-impl<'group> Borrow<Slave> for SlavePdi<'group> {
-    fn borrow(&self) -> &Slave {
+impl<'group> Deref for SlavePdi<'group> {
+    type Target = Slave;
+
+    fn deref(&self) -> &Self::Target {
         &self.slave
     }
 }

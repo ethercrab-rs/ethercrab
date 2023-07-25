@@ -3,7 +3,10 @@
 
 mod util;
 
-use ethercrab::{error::Error, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState, Timeouts};
+use ethercrab::{
+    error::Error, slave_group, Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState,
+    Timeouts,
+};
 use std::time::Duration;
 use tokio::time::MissedTickBehavior;
 
@@ -13,8 +16,8 @@ const MAX_FRAMES: usize = 128;
 
 #[derive(Default)]
 struct Groups {
-    slow_outputs: SlaveGroup<2, 2>,
-    fast_outputs: SlaveGroup<1, 1>,
+    slow_outputs: SlaveGroup<2, 2, slave_group::PreOp>,
+    fast_outputs: SlaveGroup<1, 1, slave_group::PreOp>,
 }
 
 #[tokio::test]
@@ -37,7 +40,7 @@ async fn no_reborrow() -> Result<(), Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
-        .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| match slave.name() {
+        .init::<MAX_SLAVES, _>(|groups: &Groups, slave| match slave.name() {
             "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
             "EL2828" => Ok(&groups.fast_outputs),
             _ => Err(Error::UnknownSlave),
@@ -50,10 +53,8 @@ async fn no_reborrow() -> Result<(), Error> {
         fast_outputs,
     } = groups;
 
-    client
-        .request_slave_state(SlaveState::Op)
-        .await
-        .expect("OP");
+    let slow_outputs = slow_outputs.into_op(&client).await.expect("Slow into OP");
+    let fast_outputs = fast_outputs.into_op(&client).await.expect("Fast into OP");
 
     let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(10));
     slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);

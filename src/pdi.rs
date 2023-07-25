@@ -19,6 +19,10 @@ impl PdiOffset {
         self.increment_inner(0, inc_bytes)
     }
 
+    pub fn increment(self, bytes: u16) -> Self {
+        self.increment_inner(0, bytes)
+    }
+
     /// Common code shared between byte and bit aligned public methods.
     fn increment_inner(self, inc_bits: u16, mut inc_bytes: u16) -> Self {
         // Bit count overflows a byte, so move into the next byte's bits by incrementing the byte
