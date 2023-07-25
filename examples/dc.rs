@@ -41,6 +41,7 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
+    // The group will be in PRE-OP at this point
     let mut group = client
         .init_single_group::<MAX_SLAVES, PDI_LEN>()
         .await
@@ -60,51 +61,34 @@ async fn main() -> Result<(), Error> {
         );
     }
 
-    let mut external_something = 0u8;
+    for slave in group.iter(&client) {
+        // Special configuration is required for some slave devices
+        if slave.name() == "EL3004" {
+            log::info!("Found EL3004. Configuring...");
 
-    group
-        .configure(&client, |slave| {
-            async move {
-                external_something += 1;
+            // Taken from TwinCAT
+            slave.sdo_write(0x1c12, 0, 0u8).await?;
+            slave.sdo_write(0x1c13, 0, 0u8).await?;
 
-                // Special configuration is required for some slave devices
-                if slave.name() == "EL3004" {
-                    log::info!("Found EL3004. Configuring...");
+            slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+            slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+            slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+            slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+            slave.sdo_write(0x1c13, 0, 4u8).await?;
+        } else if slave.name() == "LAN9252-EVB-HBI" {
+            log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
 
-                    // Taken from TwinCAT
-                    slave.sdo_write(0x1c12, 0, 0u8).await?;
-                    slave.sdo_write(0x1c13, 0, 0u8).await?;
+            let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
+            let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
+            let shift_time = slave.sdo_read::<u32>(0x1c32, 3).await.unwrap_or(0);
+            log::info!("Outputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
 
-                    slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-                    slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
-                    slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
-                    slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
-                    slave.sdo_write(0x1c13, 0, 4u8).await?;
-                } else if slave.name() == "LAN9252-EVB-HBI" {
-                    log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
-
-                    let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
-                    let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
-                    let shift_time = slave.sdo_read::<u32>(0x1c32, 3).await.unwrap_or(0);
-                    log::info!(
-                        "Outputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns"
-                    );
-
-                    let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
-                    let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
-                    let shift_time = slave.sdo_read::<u32>(0x1c33, 3).await.unwrap_or(0);
-                    log::info!(
-                        "Inputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns"
-                    );
-                }
-
-                Ok(())
-            }
-        })
-        .await
-        .expect("Configure");
-
-    dbg!(external_something);
+            let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
+            let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
+            let shift_time = slave.sdo_read::<u32>(0x1c33, 3).await.unwrap_or(0);
+            log::info!("Inputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
+        }
+    }
 
     let group = group
         .into_safe_op(&client)

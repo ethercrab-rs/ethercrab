@@ -39,9 +39,7 @@ async fn init() {
     ));
 
     let _group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|_slave| {
-            Box::pin(async { Ok(()) })
-        }))
+        .init_single_group::<MAX_SLAVES, PDI_LEN>()
         .await
         .expect("Init");
 }

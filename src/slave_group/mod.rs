@@ -69,17 +69,22 @@ struct GroupInner<const MAX_SLAVES: usize> {
 }
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, Init> {
-    /// Configure slave devices (e.g. read/write SDOs) during the PRE-OP phase.
-    pub async fn configure<'client, 'group, F, O>(
-        &'group mut self,
-        client: &'client Client<'client>,
-        mut preop_safeop_hook: F,
+    /// Create a new slave group.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Configure read/write FMMUs and PDI for this group.
+    async fn configure_fmmus(
+        &mut self,
+        client: &Client<'_>,
+        // mut preop_safeop_hook: F,
         // ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error>
     ) -> Result<(), Error>
-    where
-        F: FnMut(SlaveRef<'client, AtomicRef<'group, Slave>>) -> O,
-        O: Future<Output = Result<(), Error>>,
-        'client: 'group,
+// where
+        // F: FnOnce(&'group Self) -> O,
+        // O: Future<Output = Result<(), Error>> + 'group,
+        // 'client: 'group,
     {
         // let GroupInner {
         //     slaves,
@@ -105,17 +110,18 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             inner.pdi_start.start_address
         );
 
-        // Slaves must be in PRE-OP at this point.
+        // // Slaves must be in PRE-OP at this point.
+        // (preop_safeop_hook)(self).await;
 
         // Configure master read PDI mappings in the first section of the PDI
         for slave in inner.slaves.iter() {
             let configured_address = slave.borrow().configured_address;
 
-            let ass = SlaveRef::new(client, configured_address, slave.borrow());
+            // let ass = SlaveRef::new(client, configured_address, slave.borrow());
 
-            let fut = (preop_safeop_hook)(ass);
+            // let fut = (preop_safeop_hook)(ass);
 
-            fut.await?;
+            // fut.await?;
 
             // We're in PRE-OP at this point
             pdi_position = SlaveRef::new(client, configured_address, slave.borrow_mut())
@@ -230,11 +236,13 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         Ok(())
     }
 
-    ///
+    /// Transition the slave group from PRE-OP to SAFE-OP.
     pub async fn into_safe_op(
-        self,
+        mut self,
         client: &Client<'_>,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
+        self.configure_fmmus(client).await?;
+
         let inner = self.inner.into_inner();
 
         // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
@@ -368,13 +376,6 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Default
 static EMPTY_PDI_SLICE: &[u8] = &[];
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MAX_PDI, S> {
-    /// Create a new slave group with a given PRE OP -> SAFE OP hook.
-    ///
-    /// The hook can be used to configure slaves using SDOs.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     fn inner(&self) -> &GroupInner<MAX_SLAVES> {
         unsafe { &*self.inner.get() }
     }
