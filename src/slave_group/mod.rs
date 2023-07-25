@@ -75,31 +75,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     }
 
     /// Configure read/write FMMUs and PDI for this group.
-    async fn configure_fmmus(
-        &mut self,
-        client: &Client<'_>,
-        // mut preop_safeop_hook: F,
-        // ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error>
-    ) -> Result<(), Error>
-// where
-        // F: FnOnce(&'group Self) -> O,
-        // O: Future<Output = Result<(), Error>> + 'group,
-        // 'client: 'group,
-    {
-        // let GroupInner {
-        //     slaves,
-        //     mut pdi_start,
-        // } = self.inner.into_inner();
-
-        // let Self {
-        //     id,
-        //     pdi,
-        //     mut read_pdi_len,
-        //     mut pdi_len,
-        //     _state,
-        //     ..
-        // } = self;
-
+    async fn configure_fmmus(&mut self, client: &Client<'_>) -> Result<(), Error> {
         let inner = self.inner.get_mut();
 
         let mut pdi_position = inner.pdi_start;
@@ -110,21 +86,10 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             inner.pdi_start.start_address
         );
 
-        // // Slaves must be in PRE-OP at this point.
-        // (preop_safeop_hook)(self).await;
-
         // Configure master read PDI mappings in the first section of the PDI
-        for slave in inner.slaves.iter() {
-            let configured_address = slave.borrow().configured_address;
-
-            // let ass = SlaveRef::new(client, configured_address, slave.borrow());
-
-            // let fut = (preop_safeop_hook)(ass);
-
-            // fut.await?;
-
+        for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
             // We're in PRE-OP at this point
-            pdi_position = SlaveRef::new(client, configured_address, slave.borrow_mut())
+            pdi_position = SlaveRef::new(client, slave.configured_address, slave)
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
@@ -140,13 +105,10 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
-        for (_i, slave) in inner.slaves.iter().enumerate() {
-            let sl = slave.borrow();
+        for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
+            let addr = slave.configured_address;
 
-            let addr = sl.configured_address;
-            let _name = sl.name.clone();
-
-            let mut slave_config = SlaveRef::new(client, addr, slave.borrow_mut());
+            let mut slave_config = SlaveRef::new(client, addr, slave);
 
             // Still in PRE-OP
             pdi_position = slave_config
@@ -225,14 +187,6 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             });
         }
 
-        // Ok(SlaveGroup {
-        //     id,
-        //     pdi,
-        //     read_pdi_len,
-        //     pdi_len,
-        //     inner: UnsafeCell::new(GroupInner { slaves, pdi_start }),
-        //     _state: PhantomData,
-        // })
         Ok(())
     }
 
@@ -243,14 +197,12 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
         self.configure_fmmus(client).await?;
 
-        let inner = self.inner.into_inner();
+        let mut inner = self.inner.into_inner();
 
         // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
         // SAFE-OP
-        for (_i, slave) in inner.slaves.iter().enumerate() {
-            let configured_address = slave.borrow().configured_address;
-
-            SlaveRef::new(client, configured_address, slave.borrow())
+        for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
+            SlaveRef::new(client, slave.configured_address, slave)
                 .request_safe_op_nowait()
                 .await?;
         }
@@ -260,12 +212,10 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             loop {
                 let mut all_transitioned = true;
 
-                for (_i, slave) in inner.slaves.iter().enumerate() {
-                    let configured_address = slave.borrow().configured_address;
-
+                for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
                     // TODO: Add a way to queue up a bunch of PDUs and send all at once
                     let (slave_state, _al_status_code) =
-                        SlaveRef::new(client, configured_address, slave.borrow())
+                        SlaveRef::new(client, slave.configured_address, slave)
                             .status()
                             .await?;
 
