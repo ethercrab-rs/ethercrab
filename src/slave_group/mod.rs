@@ -53,10 +53,6 @@ struct GroupInner<const MAX_SLAVES: usize> {
     /// The total length (I and O) of the PDI for this group.
     pdi_len: usize,
     start_address: u32,
-    /// Expected working counter when performing a read/write to all slaves in this group.
-    ///
-    /// This should be equivalent to `(slaves with inputs) + (2 * slaves with outputs)`.
-    group_working_counter: u16,
 }
 
 // FIXME: Remove these unsafe impls if possible. There's some weird quirkiness when moving a group

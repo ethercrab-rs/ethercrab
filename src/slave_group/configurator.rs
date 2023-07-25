@@ -18,10 +18,6 @@ struct GroupInnerRef<'a> {
     /// The total length (I and O) of the PDI for this group.
     pdi_len: &'a mut usize,
     start_address: &'a mut u32,
-    /// Expected working counter when performing a read/write to all slaves in this group.
-    ///
-    /// This should be equivalent to `(slaves with inputs) + (2 * slaves with outputs)`.
-    group_working_counter: &'a mut u16,
 }
 
 // TODO: Prove if this is safe. All this stuff is internal to the crate and short lived so I think
@@ -54,7 +50,6 @@ impl<'a> SlaveGroupRef<'a> {
                     read_pdi_len: &mut inner.read_pdi_len,
                     pdi_len: &mut inner.pdi_len,
                     start_address: &mut inner.start_address,
-                    group_working_counter: &mut inner.group_working_counter,
                 }
             },
         }
@@ -182,10 +177,6 @@ impl<'a> SlaveGroupRef<'a> {
 
             // We're done configuring FMMUs, etc, now we can request this slave go into SAFE-OP
             slave_config.request_safe_op_nowait().await?;
-
-            // We have both inputs and outputs at this stage, so can correctly calculate the group
-            // WKC.
-            *inner.group_working_counter += slave_config.working_counter_sum();
         }
 
         log::debug!("Slave FMMUs configured for group. Able to move to SAFE-OP");
