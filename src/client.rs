@@ -196,9 +196,14 @@ impl<'sto> Client<'sto> {
     /// ```
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
-        groups: G,
+
         mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn SlaveGroupHandle, Error>,
-    ) -> Result<G, Error> {
+    ) -> Result<G, Error>
+    where
+        G: Default,
+    {
+        let groups = G::default();
+
         self.reset_slaves().await?;
 
         // Each slave increments working counter, so we can use it as a total count of slaves
@@ -354,8 +359,7 @@ impl<'sto> Client<'sto> {
     pub async fn init_single_group<const MAX_SLAVES: usize, const MAX_PDI: usize>(
         &self,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, slave_group::PreOp>, Error> {
-        self.init::<MAX_SLAVES, _>(SlaveGroup::default(), |group, _slave| Ok(group))
-            .await
+        self.init::<MAX_SLAVES, _>(|group, _slave| Ok(group)).await
     }
 
     /// Get the number of discovered slaves in the EtherCAT network.
@@ -364,20 +368,6 @@ impl<'sto> Client<'sto> {
     /// method to get an accurate count.
     pub fn num_slaves(&self) -> usize {
         usize::from(self.num_slaves.load(Ordering::Relaxed))
-    }
-
-    /// Request the same state for all slaves.
-    pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        let num_slaves = self.num_slaves.load(Ordering::Relaxed);
-
-        self.bwr(
-            RegisterAddress::AlControl,
-            AlControl::new(desired_state).pack().unwrap(),
-        )
-        .await?
-        .wkc(num_slaves, "set all slaves state")?;
-
-        self.wait_for_state(desired_state).await
     }
 
     /// Wait for all slaves on the network to reach a given state.

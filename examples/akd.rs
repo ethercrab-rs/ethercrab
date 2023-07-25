@@ -4,7 +4,7 @@ use env_logger::Env;
 use ethercrab::{
     error::{Error, MailboxError},
     std::tx_rx_task,
-    Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState, SlaveState, Timeouts,
+    Client, ClientConfig, PduStorage, SlaveGroupState, Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -118,12 +118,7 @@ async fn main() -> Result<(), Error> {
         }
     }
 
-    let mut group = group
-        .into_safe_op(&client)
-        .await
-        .expect("PRE-OP -> SAFE-OP");
-
-    let mut group = group.into_op(&client).await.expect("PRE-OP -> SAFE-OP");
+    let group = group.into_op(&client).await.expect("PRE-OP -> OP");
 
     log::info!("Slaves moved to OP state");
 

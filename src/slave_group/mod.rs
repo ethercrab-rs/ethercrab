@@ -190,6 +190,18 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         GroupSlaveIterator::new(client, self)
     }
 
+    /// Transition the group from PRE-OP -> SAFE-OP -> OP.
+    ///
+    /// To transition individually from PRE-OP to SAFE-OP, then SAFE-OP to OP, see `into_safe_op`.
+    pub async fn into_op(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
+        let self_ = self.into_safe_op(client).await?;
+
+        self_.into_op(client).await
+    }
+
     /// Transition the slave group from PRE-OP to SAFE-OP.
     pub async fn into_safe_op(
         mut self,
@@ -252,14 +264,16 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
         // TODO: Put slaves into OP, wait for them
 
-        Ok(SlaveGroup {
-            id: self.id,
-            pdi: self.pdi,
-            read_pdi_len: self.read_pdi_len,
-            pdi_len: self.pdi_len,
-            inner: self.inner,
-            _state: PhantomData,
-        })
+        todo!()
+
+        // Ok(SlaveGroup {
+        //     id: self.id,
+        //     pdi: self.pdi,
+        //     read_pdi_len: self.read_pdi_len,
+        //     pdi_len: self.pdi_len,
+        //     inner: self.inner,
+        //     _state: PhantomData,
+        // })
     }
 }
 
