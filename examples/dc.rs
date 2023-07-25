@@ -60,9 +60,13 @@ async fn main() -> Result<(), Error> {
         );
     }
 
+    let mut external_something = 0u8;
+
     group
         .configure(&client, |slave| {
             async move {
+                external_something += 1;
+
                 // Special configuration is required for some slave devices
                 if slave.name() == "EL3004" {
                     log::info!("Found EL3004. Configuring...");
@@ -99,6 +103,8 @@ async fn main() -> Result<(), Error> {
         })
         .await
         .expect("Configure");
+
+    dbg!(external_something);
 
     let group = group
         .into_safe_op(&client)
