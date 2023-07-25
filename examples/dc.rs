@@ -2,8 +2,7 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, RegisterAddress, SlaveGroup,
-    SlaveState, Timeouts,
+    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, RegisterAddress, Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -76,7 +75,7 @@ async fn main() -> Result<(), Error> {
         }
     }
 
-    let group = group
+    let mut group = group
         .into_safe_op(&client)
         .await
         .expect("PRE-OP -> SAFE-OP");
@@ -95,7 +94,7 @@ async fn main() -> Result<(), Error> {
         );
     }
 
-    let mut group = group.into_op().await.expect("SAFE-OP -> OP");
+    let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
 
     let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
     tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);

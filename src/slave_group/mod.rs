@@ -4,6 +4,9 @@
 //! potentially at different tick rates.
 
 mod configurator;
+mod group_id;
+mod handle;
+mod iterator;
 
 use crate::{
     error::{Error, Item},
@@ -12,26 +15,15 @@ use crate::{
     timer_factory::timeout,
     Client, SlaveState,
 };
-use core::{
-    cell::UnsafeCell, future::Future, marker::PhantomData, ops::Deref, slice,
-    sync::atomic::AtomicUsize,
-};
+use atomic_refcell::{AtomicRefCell, AtomicRefMut};
+use core::{cell::UnsafeCell, marker::PhantomData, slice, sync::atomic::AtomicUsize};
 
-use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
+pub use self::group_id::GroupId;
+pub use self::handle::SlaveGroupHandle;
+pub use self::iterator::GroupSlaveIterator;
 pub use configurator::SlaveGroupRef;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
-
-/// A group's unique ID.
-#[doc(hidden)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub struct GroupId(usize);
-
-impl From<GroupId> for usize {
-    fn from(value: GroupId) -> Self {
-        value.0
-    }
-}
 
 /// A typestate for [`SlaveGroup`] representing a group that is undergoing initialisation.
 ///
@@ -47,6 +39,12 @@ pub struct SafeOp;
 #[derive(Copy, Clone, Debug)]
 pub struct Op;
 
+#[derive(Default)]
+struct GroupInner<const MAX_SLAVES: usize> {
+    slaves: heapless::Vec<AtomicRefCell<Slave>, MAX_SLAVES>,
+    pdi_start: PdiOffset,
+}
+
 /// A group of one or more EtherCAT slaves.
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
@@ -60,12 +58,6 @@ pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, S> {
     pdi_len: usize,
     inner: UnsafeCell<GroupInner<MAX_SLAVES>>,
     _state: PhantomData<S>,
-}
-
-#[derive(Default)]
-struct GroupInner<const MAX_SLAVES: usize> {
-    slaves: heapless::Vec<AtomicRefCell<Slave>, MAX_SLAVES>,
-    pdi_start: PdiOffset,
 }
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp> {
@@ -192,14 +184,10 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 
     /// Get an iterator over all slaves in this group.
     pub fn iter<'group, 'client>(
-        &'group self,
+        &'group mut self,
         client: &'client Client<'client>,
     ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, Self> {
-        GroupSlaveIterator {
-            group: self,
-            idx: 0,
-            client,
-        }
+        GroupSlaveIterator::new(client, self)
     }
 
     /// Transition the slave group from PRE-OP to SAFE-OP.
@@ -258,7 +246,10 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp> {
     /// Transition all slave devices in the group from SAFE-OP to OP.
-    pub async fn into_op(self) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
+    pub async fn into_op(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
         // TODO: Put slaves into OP, wait for them
 
         Ok(SlaveGroup {
@@ -282,41 +273,6 @@ unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Sync
 unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Send
     for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
 {
-}
-
-/// A trait implemented only by [`SlaveGroup`] so multiple groups with different const params can be
-/// stored in a hashmap, `Vec`, etc.
-#[doc(hidden)]
-#[sealed::sealed]
-pub trait SlaveGroupHandle {
-    /// Get the group's ID.
-    fn id(&self) -> GroupId;
-
-    /// Add a slave device to this group.
-    unsafe fn push(&self, slave: Slave) -> Result<(), Error>;
-
-    /// Get a reference to the group with const generic params erased.
-    fn as_ref(&self) -> SlaveGroupRef<'_>;
-}
-
-#[sealed::sealed]
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroupHandle
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
-{
-    fn id(&self) -> GroupId {
-        self.id
-    }
-
-    unsafe fn push(&self, slave: Slave) -> Result<(), Error> {
-        (*self.inner.get())
-            .slaves
-            .push(AtomicRefCell::new(slave))
-            .map_err(|_| Error::Capacity(crate::error::Item::Slave))
-    }
-
-    fn as_ref(&self) -> SlaveGroupRef<'_> {
-        SlaveGroupRef::new(self)
-    }
 }
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Default
@@ -352,91 +308,6 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
         self.inner().slaves.is_empty()
     }
 
-    // /// Get an iterator over all slaves in this group.
-    // pub fn iter<'group, 'client>(
-    //     &'group mut self,
-    //     client: &'client Client<'client>,
-    // ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S> {
-    //     GroupSlaveIterator {
-    //         group: self,
-    //         idx: 0,
-    //         client,
-    //     }
-    // }
-
-    // /// Retrieve a reference to a slave in this group by index.
-    // ///
-    // /// Each slave may not be individually borrowed more than once, but multiple slaves can be
-    // /// borrowed at the same time. If the slave at the given index is already borrowed, this method
-    // /// will return an [`Error::Borrow`].
-    // pub fn slave<'client>(
-    //     &self,
-    //     client: &'client Client<'client>,
-    //     index: usize,
-    // ) -> Result<SlaveRef<'client, SlavePdi<'_>>, Error> {
-    //     let slave = self
-    //         .inner()
-    //         .slaves
-    //         .get(index)
-    //         .ok_or(Error::NotFound {
-    //             item: Item::Slave,
-    //             index: Some(index),
-    //         })?
-    //         .try_borrow_mut()
-    //         .map_err(|e| {
-    //             log::error!("Slave index {}: {}", index, e);
-
-    //             Error::Borrow
-    //         })?;
-
-    //     let IoRanges {
-    //         input: input_range,
-    //         output: output_range,
-    //     } = slave.io_segments();
-
-    //     // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
-    //     let i_data = self.pdi();
-    //     let o_data = self.pdi_mut();
-
-    //     log::trace!(
-    //         "Get slave {:#06x} IO ranges I: {}, O: {}",
-    //         slave.configured_address,
-    //         input_range,
-    //         output_range
-    //     );
-
-    //     log::trace!(
-    //         "--> Group PDI: {:?} ({} byte subset of {} max)",
-    //         i_data,
-    //         self.pdi_len,
-    //         MAX_PDI
-    //     );
-
-    //     // NOTE: Using panicking `[]` indexing as the indices and arrays should all be correct by
-    //     // this point. If something isn't right, that's a bug.
-    //     let inputs = if !input_range.is_empty() {
-    //         &i_data[input_range.bytes.clone()]
-    //     } else {
-    //         EMPTY_PDI_SLICE
-    //     };
-
-    //     let outputs = if !output_range.is_empty() {
-    //         &mut o_data[output_range.bytes.clone()]
-    //     } else {
-    //         // SAFETY: Slice is empty so can never be mutated
-    //         unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr() as *mut _, 0) }
-    //     };
-
-    //     Ok(SlaveRef::new(
-    //         client,
-    //         slave.configured_address,
-    //         // SAFETY: A given slave contained in a `SlavePdi` MUST only be borrowed once (currently
-    //         // enforced by `AtomicRefCell`). If it is borrowed more than once, immutable APIs in
-    //         // `SlaveRef<SlavePdi>` will be unsound.
-    //         SlavePdi::new(slave, inputs, outputs),
-    //     ))
-    // }
-
     fn pdi_mut(&self) -> &mut [u8] {
         let all_buf = unsafe { &mut *self.pdi.get() };
 
@@ -448,42 +319,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
 
         &all_buf[0..self.pdi_len]
     }
-
-    /// Drive the slave group's inputs and outputs.
-    ///
-    /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
-    /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
-    pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<(), Error> {
-        log::trace!(
-            "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
-            self.inner().pdi_start.start_address,
-            self.pdi_mut().len(),
-            self.read_pdi_len
-        );
-
-        let (_res, _wkc) = client
-            .lrw_buf(
-                self.inner().pdi_start.start_address,
-                self.pdi_mut(),
-                self.read_pdi_len,
-            )
-            .await?;
-
-        Ok(())
-
-        // FIXME: EL400 gives 2, expects 3
-        // if wkc != self.group_working_counter {
-        //     Err(Error::WorkingCounter {
-        //         expected: self.group_working_counter,
-        //         received: wkc,
-        //         context: Some("group working counter"),
-        //     })
-        // } else {
-        //     Ok(())
-        // }
-    }
 }
 
+/// Items common to all states on [`SlaveGroup`].
 #[doc(hidden)]
 pub trait SlaveGroupState {
     type RefType<'group>
@@ -498,12 +336,6 @@ pub trait SlaveGroupState {
 
     fn len(&self) -> usize;
 }
-
-#[doc(hidden)]
-pub trait HasPdi {}
-
-impl HasPdi for SafeOp {}
-impl HasPdi for Op {}
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupState
     for SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp>
@@ -537,6 +369,12 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupState
         self.len()
     }
 }
+
+#[doc(hidden)]
+pub trait HasPdi {}
+
+impl HasPdi for SafeOp {}
+impl HasPdi for Op {}
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroupState
     for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
@@ -618,76 +456,50 @@ where
     }
 }
 
+// Methods for any state where a PDI has been configured.
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MAX_PDI, S>
 where
     S: HasPdi,
 {
     /// Get an iterator over all slaves in this group.
     pub fn iter<'group, 'client>(
-        &'group self,
+        &'group mut self,
         client: &'client Client<'client>,
     ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, Self> {
-        GroupSlaveIterator {
-            group: self,
-            idx: 0,
-            client,
-        }
-    }
-}
-
-/// An iterator over all slaves in a group.
-///
-/// Created by calling [`SlaveGroup::iter`](crate::slave_group::SlaveGroup::iter).
-pub struct GroupSlaveIterator<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S> {
-    group: &'group S,
-    idx: usize,
-    client: &'client Client<'client>,
-}
-
-impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S> Iterator
-    for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S>
-where
-    'client: 'group,
-    S: SlaveGroupState,
-{
-    type Item = SlaveRef<'group, S::RefType<'group>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.idx >= self.group.len() {
-            return None;
-        }
-
-        // Squelch errors. If we're failing at this point, something is _very_ wrong.
-        let slave = self.group.slave(self.client, self.idx).map_err(|e| {
-            log::error!("Failed to get slave at index {} from group with {} slaves: {e:?}. This is very wrong. Please open an issue.", self.idx, self.group.len());
-        }).ok()?;
-
-        self.idx += 1;
-
-        Some(slave)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn group_unique_id_defaults() {
-        let g1 = SlaveGroup::<16, 16, PreOp>::default();
-        let g2 = SlaveGroup::<16, 16, PreOp>::default();
-        let g3 = SlaveGroup::<16, 16, PreOp>::default();
-
-        assert_ne!(g1.id, g2.id);
-        assert_ne!(g2.id, g3.id);
-        assert_ne!(g1.id, g3.id);
+        GroupSlaveIterator::new(client, self)
     }
 
-    #[test]
-    fn group_unique_id_same_fn() {
-        let g1 = SlaveGroup::<16, 16, PreOp>::new();
-        let g2 = SlaveGroup::<16, 16, PreOp>::new();
+    /// Drive the slave group's inputs and outputs.
+    ///
+    /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
+    /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
+    pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<(), Error> {
+        log::trace!(
+            "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
+            self.inner().pdi_start.start_address,
+            self.pdi_mut().len(),
+            self.read_pdi_len
+        );
 
-        assert_ne!(g1.id, g2.id);
+        let (_res, _wkc) = client
+            .lrw_buf(
+                self.inner().pdi_start.start_address,
+                self.pdi_mut(),
+                self.read_pdi_len,
+            )
+            .await?;
+
+        Ok(())
+
+        // FIXME: EL400 gives 2, expects 3
+        // if wkc != self.group_working_counter {
+        //     Err(Error::WorkingCounter {
+        //         expected: self.group_working_counter,
+        //         received: wkc,
+        //         context: Some("group working counter"),
+        //     })
+        // } else {
+        //     Ok(())
+        // }
     }
 }
