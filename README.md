@@ -30,6 +30,7 @@ $env:RUST_LOG="debug" ; cargo run --example ek1100 --release -- '\Device\NPF_{FF
 use env_logger::Env;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    slave_group
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -71,52 +72,41 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let group = SlaveGroup::<MAX_SLAVES, PDI_LEN>::new(|slave| {
-        Box::pin(async {
-            // Special case: if an EL3004 module is discovered, it needs some specific config during
-            // init to function properly
-            if slave.name() == "EL3004" {
-                log::info!("Found EL3004. Configuring...");
-
-                slave.sdo_write(0x1c12, 0, 0u8).await?;
-                slave.sdo_write(0x1c13, 0, 0u8).await?;
-
-                slave
-                    .sdo_write(0x1c13, 1, 0x1a00u16)
-                    .await?;
-                slave
-                    .sdo_write(0x1c13, 2, 0x1a02u16)
-                    .await?;
-                slave
-                    .sdo_write(0x1c13, 3, 0x1a04u16)
-                    .await?;
-                slave
-                    .sdo_write(0x1c13, 4, 0x1a06u16)
-                    .await?;
-                slave.sdo_write(0x1c13, 0, 4u8).await?;
-            }
-
-            Ok(())
-        })
-    });
-
     let mut group = client
-        // Initialise a single group
-        .init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
+        .init_single_group::<MAX_SLAVES, PDI_LEN>()
         .await
         .expect("Init");
 
     log::info!("Discovered {} slaves", group.len());
 
     for slave in group.iter(&client) {
+        // Special case: if an EL3004 module is discovered, it needs some specific config during
+        // init to function properly
+        if slave.name() == "EL3004" {
+            log::info!("Found EL3004. Configuring...");
+
+            slave.sdo_write(0x1c12, 0, 0u8).await?;
+            slave.sdo_write(0x1c13, 0, 0u8).await?;
+
+            slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+            slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+            slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+            slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+            slave.sdo_write(0x1c13, 0, 4u8).await?;
+        }
+    }
+
+    let mut group = group.into_op(&client).await.expect("PRE-OP -> OP");
+
+    for slave in group.iter(&client) {
         let (i, o) = slave.io_raw();
 
         log::info!(
-            "-> Slave {:#06x} {} has {} input bytes, {} output bytes",
+            "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
             slave.configured_address(),
             slave.name(),
             i.len(),
-            o.len(),
+            o.len()
         );
     }
 

@@ -9,7 +9,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
     register::RegisterAddress,
     slave::Slave,
-    slave_group::SlaveGroupHandle,
+    slave_group::{self, SlaveGroupHandle},
     slave_state::SlaveState,
     timer_factory::timeout,
     ClientConfig, SlaveGroup, Timeouts, BASE_SLAVE_ADDR,
@@ -159,6 +159,7 @@ impl<'sto> Client<'sto> {
     /// ```rust,no_run
     /// use ethercrab::{
     ///     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    ///     slave_group
     /// };
     ///
     /// const MAX_SLAVES: usize = 2;
@@ -182,7 +183,7 @@ impl<'sto> Client<'sto> {
     ///
     /// # async {
     /// let groups = client
-    ///     .init::<MAX_SLAVES, _>(Groups::default(), |groups, slave| {
+    ///     .init::<MAX_SLAVES, _>(|groups: &Groups, slave| {
     ///         match slave.name() {
     ///             "COUPLER" | "IO69420" => Ok(&groups.group_1),
     ///             "COOLSERVO" => Ok(&groups.group_2),
@@ -195,9 +196,14 @@ impl<'sto> Client<'sto> {
     /// ```
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
-        groups: G,
+
         mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn SlaveGroupHandle, Error>,
-    ) -> Result<G, Error> {
+    ) -> Result<G, Error>
+    where
+        G: Default,
+    {
+        let groups = G::default();
+
         self.reset_slaves().await?;
 
         // Each slave increments working counter, so we can use it as a total count of slaves
@@ -260,7 +266,7 @@ impl<'sto> Client<'sto> {
             let mut offset = PdiOffset::default();
 
             for (id, group) in group_map.iter_mut() {
-                offset = group.configure_from_eeprom(offset, self).await?;
+                offset = group.into_pre_op(offset, self).await?;
 
                 log::debug!("After group ID {id} offset: {:?}", offset);
             }
@@ -268,8 +274,8 @@ impl<'sto> Client<'sto> {
             log::debug!("Total PDI {} bytes", offset.start_address);
         }
 
-        // Wait for all slaves to reach SAFE-OP
-        self.wait_for_state(SlaveState::SafeOp).await?;
+        // Check that all slaves reached PRE-OP
+        self.wait_for_state(SlaveState::PreOp).await?;
 
         Ok(groups)
     }
@@ -300,14 +306,14 @@ impl<'sto> Client<'sto> {
     /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
     ///
     /// # async {
-    /// let groups = client
-    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>(SlaveGroup::default())
+    /// let group = client
+    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>()
     ///     .await
     ///     .expect("Init");
     /// # };
     /// ```
     ///
-    /// ## Create a single slave group with `PREOP -> SAFEOP` hook
+    /// ## Create a single slave group with `PREOP -> SAFEOP` configuration of SDOs
     ///
     /// ```rust,no_run
     /// use ethercrab::{
@@ -326,36 +332,32 @@ impl<'sto> Client<'sto> {
     /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
     ///
     /// # async {
-    /// let groups = client
-    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>(SlaveGroup::new(|slave| {
-    ///         Box::pin(async {
-    ///             // Example: configure a specific slave device during PREOP -> SAFEOP transition
-    ///             if slave.name() == "EL3004" {
-    ///                 log::info!("Found EL3004. Configuring...");
-    ///
-    ///                 slave.sdo_write(0x1c12, 0, 0u8).await?;
-    ///                 slave.sdo_write(0x1c13, 0, 0u8).await?;
-    ///
-    ///                 slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-    ///                 slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
-    ///                 slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
-    ///                 slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
-    ///                 slave.sdo_write(0x1c13, 0, 4u8).await?;
-    ///             }
-    ///
-    ///             Ok(())
-    ///         })
-    ///     }))
+    /// let mut group = client
+    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>()
     ///     .await
     ///     .expect("Init");
+    ///
+    /// for slave in group.iter(&client) {
+    ///     if slave.name() == "EL3004" {
+    ///         log::info!("Found EL3004. Configuring...");
+    ///
+    ///         slave.sdo_write(0x1c12, 0, 0u8).await?;
+    ///         slave.sdo_write(0x1c13, 0, 0u8).await?;
+    ///
+    ///         slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+    ///         slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+    ///         slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+    ///         slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+    ///         slave.sdo_write(0x1c13, 0, 4u8).await?;
+    ///     }
+    /// }
+    /// # Ok::<(), ethercrab::error::Error>(())
     /// # };
     /// ```
     pub async fn init_single_group<const MAX_SLAVES: usize, const MAX_PDI: usize>(
         &self,
-        group: SlaveGroup<MAX_SLAVES, MAX_PDI>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI>, Error> {
-        self.init::<MAX_SLAVES, _>(group, |group, _slave| Ok(group))
-            .await
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, slave_group::PreOp>, Error> {
+        self.init::<MAX_SLAVES, _>(|group, _slave| Ok(group)).await
     }
 
     /// Get the number of discovered slaves in the EtherCAT network.
@@ -364,20 +366,6 @@ impl<'sto> Client<'sto> {
     /// method to get an accurate count.
     pub fn num_slaves(&self) -> usize {
         usize::from(self.num_slaves.load(Ordering::Relaxed))
-    }
-
-    /// Request the same state for all slaves.
-    pub async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        let num_slaves = self.num_slaves.load(Ordering::Relaxed);
-
-        self.bwr(
-            RegisterAddress::AlControl,
-            AlControl::new(desired_state).pack().unwrap(),
-        )
-        .await?
-        .wkc(num_slaves, "set all slaves state")?;
-
-        self.wait_for_state(desired_state).await
     }
 
     /// Wait for all slaves on the network to reach a given state.

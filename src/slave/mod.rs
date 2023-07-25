@@ -31,8 +31,8 @@ use crate::{
 };
 use core::{
     any::type_name,
-    borrow::Borrow,
     fmt::{Debug, Write},
+    ops::Deref,
 };
 use nom::{bytes::complete::take, number::complete::le_u32};
 use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
@@ -195,18 +195,20 @@ pub struct SlaveRef<'a, S> {
     state: S,
 }
 
+// TODO: Can we move most methods onto `Slave`? We still need `SlaveRef<SlavePdi>` but why
+// everything else?
 impl<'a, S> SlaveRef<'a, S>
 where
-    S: Borrow<Slave>,
+    S: Deref<Target = Slave>,
 {
     /// Get the human readable name of the slave device.
     pub fn name(&self) -> &str {
-        self.state.borrow().name.as_str()
+        self.state.name.as_str()
     }
 
     /// Get the configured station address of the slave device.
     pub fn configured_address(&self) -> u16 {
-        self.configured_address
+        self.state.configured_address
     }
 
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
@@ -221,7 +223,6 @@ where
     {
         let write_mailbox = self
             .state
-            .borrow()
             .config
             .mailbox
             .write
@@ -232,7 +233,6 @@ where
             })?;
         let read_mailbox = self
             .state
-            .borrow()
             .config
             .mailbox
             .read
@@ -259,7 +259,7 @@ where
                     .pdu_loop
                     .pdu_tx_readonly(
                         Command::Fprd {
-                            address: self.configured_address,
+                            address: self.state.configured_address,
                             register: read_mailbox.address,
                         },
                         read_mailbox.len,
@@ -286,7 +286,7 @@ where
         .map_err(|e| {
             log::error!(
                 "Mailbox IN ready error for slave {:#06x}: {e:?}",
-                self.configured_address
+                self.state.configured_address
             );
 
             e
@@ -297,7 +297,7 @@ where
             .pdu_loop
             .pdu_tx_readwrite_len(
                 Command::Fpwr {
-                    address: self.configured_address,
+                    address: self.state.configured_address,
                     register: write_mailbox.address,
                 },
                 request.pack().unwrap().as_ref(),
@@ -325,7 +325,7 @@ where
         .map_err(|e| {
             log::error!(
                 "Response mailbox IN error for slave {:#06x}: {e:?}",
-                self.configured_address
+                self.state.configured_address
             );
 
             e
@@ -337,7 +337,7 @@ where
             .pdu_loop
             .pdu_tx_readonly(
                 Command::Fprd {
-                    address: self.configured_address,
+                    address: self.state.configured_address,
                     register: read_mailbox.address,
                 },
                 read_mailbox.len,
@@ -559,10 +559,6 @@ where
                     Error::Pdu(PduError::Decode)
                 })
             })
-    }
-
-    pub(crate) fn working_counter_sum(&self) -> u16 {
-        self.state.borrow().config.io.working_counter_sum()
     }
 }
 
