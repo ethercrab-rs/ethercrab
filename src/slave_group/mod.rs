@@ -49,7 +49,7 @@ struct GroupInner<const MAX_SLAVES: usize> {
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
 /// slave PDI sections.
-pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, S> {
+pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, S = PreOp> {
     id: GroupId,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
     /// The number of bytes at the beginning of the PDI reserved for slave inputs.
