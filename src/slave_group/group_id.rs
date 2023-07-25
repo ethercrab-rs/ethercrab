@@ -23,12 +23,4 @@ mod tests {
         assert_ne!(g2.id, g3.id);
         assert_ne!(g1.id, g3.id);
     }
-
-    #[test]
-    fn group_unique_id_same_fn() {
-        let g1 = SlaveGroup::<16, 16, PreOp>::new();
-        let g2 = SlaveGroup::<16, 16, PreOp>::new();
-
-        assert_ne!(g1.id, g2.id);
-    }
 }

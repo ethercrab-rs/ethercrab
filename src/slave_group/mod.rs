@@ -61,11 +61,6 @@ pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, S = PreOp> 
 }
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp> {
-    /// Create a new slave group.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Configure read/write FMMUs and PDI for this group.
     async fn configure_fmmus(&mut self, client: &Client<'_>) -> Result<(), Error> {
         let inner = self.inner.get_mut();
