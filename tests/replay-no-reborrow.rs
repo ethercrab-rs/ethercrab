@@ -22,7 +22,7 @@ struct Groups {
 
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
-async fn no_reborrow() -> Result<(), Error> {
+async fn replay_no_reborrow() -> Result<(), Error> {
     static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
@@ -36,7 +36,7 @@ async fn no_reborrow() -> Result<(), Error> {
         },
     );
 
-    util::spawn_tx_rx("tests/no_reborrow.pcapng", tx, rx);
+    util::spawn_tx_rx("tests/replay-no-reborrow.pcapng", tx, rx);
 
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
