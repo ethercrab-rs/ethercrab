@@ -1,5 +1,11 @@
 //! Borrowing different slaves at the same time is ok, but borrowing the same one more than once is
 //! not.
+//!
+//! Required hardware:
+//!
+//! - EK1100
+//! - EL2828
+//! - EL2889
 
 mod util;
 
