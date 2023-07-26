@@ -218,7 +218,7 @@ where
         request: H,
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
-        H: CoeServiceRequest,
+        H: CoeServiceRequest + Debug,
         <H as PackedStruct>::ByteArray: AsRef<[u8]>,
     {
         let write_mailbox = self
@@ -366,6 +366,13 @@ where
 
                     Error::Internal
                 })?;
+
+            log::error!(
+                "Mailbox error for slave {:#06x} {}: {}",
+                self.configured_address,
+                request,
+                code
+            );
 
             Err(Error::Mailbox(MailboxError::Aborted {
                 code,
