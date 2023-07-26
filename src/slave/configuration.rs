@@ -2,8 +2,8 @@ use super::{Slave, SlaveRef};
 use crate::{
     coe::SubIndex,
     eeprom::types::{
-        FmmuEx, FmmuUsage, MailboxProtocols, Pdo, SiiOwner, SyncManager, SyncManagerEnable,
-        SyncManagerType,
+        CoeDetails, FmmuEx, FmmuUsage, MailboxProtocols, Pdo, SiiOwner, SyncManager,
+        SyncManagerEnable, SyncManagerType,
     },
     error::{Error, Item},
     fmmu::Fmmu,
@@ -42,19 +42,61 @@ where
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
         self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
+        log::debug!(
+            "Slave {:#06x} mailbox SMs configured. Transitioning to PRE-OP",
+            self.configured_address
+        );
+
         self.request_slave_state(SlaveState::PreOp).await?;
 
         if self.state.config.mailbox.has_coe {
-            // Up to 16 sync managers as per ETG1000.4 Table 59
-            let mut sms_buf = [0u8; 16];
+            // TODO: Abstract no complete access shim into a method call so we can reuse it. CA is
+            // currently only used here inside EtherCrab.
+            let sms = if self.state.config.mailbox.complete_access {
+                // Up to 16 sync managers as per ETG1000.4 Table 59
+                let mut sms_buf = [0u8; 16];
 
-            let sms = self
-                .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
-                .await?
-                .iter()
-                .map(|sm| SyncManagerType::from_primitive(*sm));
+                let sms = self
+                    .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
+                    .await?
+                    .iter()
+                    .map(|sm| SyncManagerType::from_primitive(*sm));
 
-            self.state.config.mailbox.coe_sync_manager_types = heapless::Vec::from_iter(sms);
+                heapless::Vec::from_iter(sms)
+            } else {
+                let num_indices = self
+                    .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
+                    .await?;
+
+                let mut sms = heapless::Vec::new();
+
+                for index in 1..=num_indices {
+                    let sm = self
+                        .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(index))
+                        .await
+                        .map(|sm| {
+                            log::trace!("Sync manager {} at sub-index {}", sm, index);
+
+                            SyncManagerType::from_primitive(sm)
+                        })?;
+
+                    sms.push(sm).map_err(|_| {
+                        log::error!("More than 16 sync manager types deteced");
+
+                        Error::Capacity(Item::SyncManager)
+                    })?;
+                }
+
+                sms
+            };
+
+            log::debug!(
+                "Slave {:#06x} found sync managers {:?}",
+                self.configured_address,
+                sms
+            );
+
+            self.state.config.mailbox.coe_sync_manager_types = sms;
         }
 
         self.set_eeprom_mode(SiiOwner::Master).await?;
@@ -216,6 +258,8 @@ where
         // Read default mailbox configuration from slave information area
         let mailbox_config = self.eeprom_mailbox_config().await?;
 
+        let general = self.eeprom_general().await?;
+
         log::trace!(
             "Slave {:#06x} Mailbox configuration: {:#?}",
             self.state.configured_address,
@@ -280,6 +324,9 @@ where
                 .supported_protocols
                 .contains(MailboxProtocols::COE)
                 && read_mailbox.map(|mbox| mbox.len > 0).unwrap_or(false),
+            complete_access: general
+                .coe_details
+                .contains(CoeDetails::ENABLE_COMPLETE_ACCESS),
         };
 
         Ok(())

@@ -79,6 +79,30 @@ pub enum RegisterAddress {
     Fmmu2 = 0x0620,
     /// Fieldbus Memory Management Unit (FMMU) 3.
     Fmmu3 = 0x0630,
+    /// Fieldbus Memory Management Unit (FMMU) 4.
+    Fmmu4 = 0x0640,
+    /// Fieldbus Memory Management Unit (FMMU) 5.
+    Fmmu5 = 0x0650,
+    /// Fieldbus Memory Management Unit (FMMU) 6.
+    Fmmu6 = 0x0660,
+    /// Fieldbus Memory Management Unit (FMMU) 7.
+    Fmmu7 = 0x0670,
+    /// Fieldbus Memory Management Unit (FMMU) 8.
+    Fmmu8 = 0x0680,
+    /// Fieldbus Memory Management Unit (FMMU) 9.
+    Fmmu9 = 0x0690,
+    /// Fieldbus Memory Management Unit (FMMU) 10.
+    Fmmu10 = 0x06A0,
+    /// Fieldbus Memory Management Unit (FMMU) 11.
+    Fmmu11 = 0x06B0,
+    /// Fieldbus Memory Management Unit (FMMU) 12.
+    Fmmu12 = 0x06C0,
+    /// Fieldbus Memory Management Unit (FMMU) 13.
+    Fmmu13 = 0x06D0,
+    /// Fieldbus Memory Management Unit (FMMU) 14.
+    Fmmu14 = 0x06E0,
+    /// Fieldbus Memory Management Unit (FMMU) 15.
+    Fmmu15 = 0x06F0,
 
     /// Sync Manager (SM) 0.
     ///
@@ -90,6 +114,30 @@ pub enum RegisterAddress {
     Sm2 = 0x0810,
     /// Sync Manager (SM) 3.
     Sm3 = 0x0818,
+    /// Sync Manager (SM) 4.
+    Sm4 = 0x0820,
+    /// Sync Manager (SM) 5.
+    Sm5 = 0x0828,
+    /// Sync Manager (SM) 6.
+    Sm6 = 0x0830,
+    /// Sync Manager (SM) 7.
+    Sm7 = 0x0838,
+    /// Sync Manager (SM) 8.
+    Sm8 = 0x0840,
+    /// Sync Manager (SM) 9.
+    Sm9 = 0x0848,
+    /// Sync Manager (SM) 10.
+    Sm10 = 0x0850,
+    /// Sync Manager (SM) 11.
+    Sm11 = 0x0858,
+    /// Sync Manager (SM) 12.
+    Sm12 = 0x0860,
+    /// Sync Manager (SM) 13.
+    Sm13 = 0x0868,
+    /// Sync Manager (SM) 14.
+    Sm14 = 0x0870,
+    /// Sync Manager (SM) 15.
+    Sm15 = 0x0878,
 
     /// Distributed clock (DC) port 0 receive time in ns.
     ///
@@ -156,7 +204,19 @@ impl RegisterAddress {
             1 => Self::Fmmu1,
             2 => Self::Fmmu2,
             3 => Self::Fmmu3,
-            _ => unreachable!(),
+            4 => Self::Fmmu4,
+            5 => Self::Fmmu5,
+            6 => Self::Fmmu6,
+            7 => Self::Fmmu7,
+            8 => Self::Fmmu8,
+            9 => Self::Fmmu9,
+            10 => Self::Fmmu10,
+            11 => Self::Fmmu11,
+            12 => Self::Fmmu12,
+            13 => Self::Fmmu13,
+            14 => Self::Fmmu14,
+            15 => Self::Fmmu15,
+            index => unreachable!("Bad FMMU index {}", index),
         }
     }
 
@@ -167,7 +227,19 @@ impl RegisterAddress {
             1 => Self::Sm1,
             2 => Self::Sm2,
             3 => Self::Sm3,
-            _ => unreachable!(),
+            4 => Self::Sm4,
+            5 => Self::Sm5,
+            6 => Self::Sm6,
+            7 => Self::Sm7,
+            8 => Self::Sm8,
+            9 => Self::Sm9,
+            10 => Self::Sm10,
+            11 => Self::Sm11,
+            12 => Self::Sm12,
+            13 => Self::Sm13,
+            14 => Self::Sm14,
+            15 => Self::Sm15,
+            index => unreachable!("Bad SM index {}", index),
         }
     }
 }

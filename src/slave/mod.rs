@@ -90,11 +90,13 @@ impl Slave {
         index: usize,
         configured_address: u16,
     ) -> Result<Self, Error> {
-        // let slave_ref = SlaveClient::new(client, configured_address);
-
-        // let mut this =;
-
         let slave_ref = SlaveRef::new(client, configured_address, ());
+
+        log::debug!(
+            "Waiting for slave {:#06x} to enter {}",
+            configured_address,
+            SlaveState::Init
+        );
 
         slave_ref.wait_for_state(SlaveState::Init).await?;
 
@@ -218,7 +220,7 @@ where
         request: H,
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
-        H: CoeServiceRequest,
+        H: CoeServiceRequest + Debug,
         <H as PackedStruct>::ByteArray: AsRef<[u8]>,
     {
         let write_mailbox = self
@@ -366,6 +368,14 @@ where
 
                     Error::Internal
                 })?;
+
+            log::error!(
+                "Mailbox error for slave {:#06x} (supports complete access: {}) {}: {}",
+                self.configured_address,
+                self.state.config.mailbox.complete_access,
+                request,
+                code
+            );
 
             Err(Error::Mailbox(MailboxError::Aborted {
                 code,
@@ -672,8 +682,8 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         crate::timer_factory::timeout(self.client.timeouts.state_transition, async {
             loop {
-                let status = self
-                    .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
+                let (status, _working_counter) = self
+                    .read_ignore_wkc::<AlControl>(RegisterAddress::AlStatus)
                     .await?;
 
                 if status.state == desired_state {
@@ -728,10 +738,14 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
-        self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
+        self.write::<u16>(RegisterAddress::SiiConfig, 2, "Write SII config literal")
             .await?;
-        self.write::<u16>(RegisterAddress::SiiConfig, mode as u16, "debug write 2")
-            .await?;
+        self.write::<u16>(
+            RegisterAddress::SiiConfig,
+            mode as u16,
+            "Write SII config mode",
+        )
+        .await?;
 
         Ok(())
     }

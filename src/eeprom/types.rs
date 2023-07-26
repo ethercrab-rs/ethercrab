@@ -310,14 +310,13 @@ impl FromEeprom for FmmuEx {
 ///
 /// Defined in ETG1000.6 Table 21
 #[derive(Debug, PartialEq, Eq)]
-#[allow(unused)]
 pub struct SiiGeneral {
     group_string_idx: u8,
     image_string_idx: u8,
     order_string_idx: u8,
     pub name_string_idx: u8,
     // reserved: u8,
-    coe_details: CoeDetails,
+    pub coe_details: CoeDetails,
     foe_enabled: bool,
     eoe_enabled: bool,
     // Following 3 fields marked as reserved
@@ -341,7 +340,6 @@ pub struct SiiGeneral {
 impl FromEeprom for SiiGeneral {
     const STORAGE_SIZE: usize = 16;
 
-    #[allow(unused)]
     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, group_string_idx) = le_u8(i)?;
         let (i, image_string_idx) = le_u8(i)?;

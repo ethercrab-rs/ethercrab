@@ -1,4 +1,10 @@
 //! Replay comms between EK1100, EL2828, EL2889. Based on `multiple-groups` demo at time of writing.
+//!
+//! Required hardware:
+//!
+//! - EK1100
+//! - EL2828
+//! - EL2889
 
 mod util;
 

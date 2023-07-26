@@ -1,3 +1,5 @@
+use core::fmt::Display;
+
 use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SegmentSdoHeader, SubIndex};
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 use packed_struct::{prelude::PackedStruct, PackedStructInfo};
@@ -9,6 +11,24 @@ pub struct SdoExpeditedDownload {
     #[packed_field(size_bytes = "12")]
     pub headers: SdoNormal,
     pub data: [u8; 4],
+}
+
+impl Display for SdoExpeditedDownload {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "SDO expedited({:#06x}:{}",
+            self.headers.sdo_header.index, self.headers.sdo_header.sub_index
+        )?;
+
+        if self.headers.sdo_header.flags.complete_access {
+            write!(f, " complete access)")?;
+        } else {
+            write!(f, ")")?;
+        }
+
+        Ok(())
+    }
 }
 
 /// A normal SDO request or response with no additional payload.
@@ -26,6 +46,24 @@ pub struct SdoNormal {
     pub sdo_header: InitSdoHeader,
 }
 
+impl Display for SdoNormal {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "SDO normal({:#06x}:{}",
+            self.sdo_header.index, self.sdo_header.sub_index
+        )?;
+
+        if self.sdo_header.flags.complete_access {
+            write!(f, " complete access)")?;
+        } else {
+            write!(f, ")")?;
+        }
+
+        Ok(())
+    }
+}
+
 /// Headers belonging to segmented SDO transfers.
 #[derive(Debug, Copy, Clone, PackedStruct)]
 pub struct SdoSegmented {
@@ -35,6 +73,14 @@ pub struct SdoSegmented {
     pub coe_header: CoeHeader,
     #[packed_field(size_bytes = "1")]
     pub sdo_header: SegmentSdoHeader,
+}
+
+impl Display for SdoSegmented {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "SDO segmented")?;
+
+        Ok(())
+    }
 }
 
 /// Functionality common to all service responses (normal, expedited, segmented).
@@ -47,7 +93,7 @@ pub trait CoeServiceResponse: PackedStruct + PackedStructInfo {
 }
 
 /// Must be implemented for any type used to send a CoE service.
-pub trait CoeServiceRequest: PackedStruct {
+pub trait CoeServiceRequest: PackedStruct + Display {
     type Response: CoeServiceResponse;
 
     /// Get the auto increment counter value for this request.
