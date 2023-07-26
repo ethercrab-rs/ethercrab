@@ -680,8 +680,8 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         crate::timer_factory::timeout(self.client.timeouts.state_transition, async {
             loop {
-                let status = self
-                    .read::<AlControl>(RegisterAddress::AlStatus, "Read AL status")
+                let (status, _working_counter) = self
+                    .read_ignore_wkc::<AlControl>(RegisterAddress::AlStatus)
                     .await?;
 
                 if status.state == desired_state {
