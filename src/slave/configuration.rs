@@ -42,6 +42,11 @@ where
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
         self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
+        log::debug!(
+            "Slave {:#06x} mailbox SMs configured. Transitioning to PRE-OP",
+            self.configured_address
+        );
+
         self.request_slave_state(SlaveState::PreOp).await?;
 
         if self.state.config.mailbox.has_coe {

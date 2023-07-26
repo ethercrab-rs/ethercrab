@@ -90,11 +90,13 @@ impl Slave {
         index: usize,
         configured_address: u16,
     ) -> Result<Self, Error> {
-        // let slave_ref = SlaveClient::new(client, configured_address);
-
-        // let mut this =;
-
         let slave_ref = SlaveRef::new(client, configured_address, ());
+
+        log::debug!(
+            "Waiting for slave {:#06x} to enter {}",
+            configured_address,
+            SlaveState::Init
+        );
 
         slave_ref.wait_for_state(SlaveState::Init).await?;
 
@@ -736,10 +738,14 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
-        self.write::<u16>(RegisterAddress::SiiConfig, 2, "debug write")
+        self.write::<u16>(RegisterAddress::SiiConfig, 2, "Write SII config literal")
             .await?;
-        self.write::<u16>(RegisterAddress::SiiConfig, mode as u16, "debug write 2")
-            .await?;
+        self.write::<u16>(
+            RegisterAddress::SiiConfig,
+            mode as u16,
+            "Write SII config mode",
+        )
+        .await?;
 
         Ok(())
     }

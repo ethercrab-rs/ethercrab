@@ -90,6 +90,8 @@ impl<'sto> Client<'sto> {
     // FIXME: When adding a powered on slave to the network, something breaks. Maybe need to reset
     // the configured address? But this broke other stuff so idk...
     async fn reset_slaves(&self) -> Result<(), Error> {
+        log::debug!("Beginning reset");
+
         // Reset slaves to init
         self.bwr(
             RegisterAddress::AlControl,
@@ -130,6 +132,8 @@ impl<'sto> Client<'sto> {
         // Must be after param 3 so DC control unit is reset
         self.bwr(RegisterAddress::DcControlLoopParam1, 0x1000u16)
             .await?;
+
+        log::debug!("--> Reset complete");
 
         Ok(())
     }
@@ -208,6 +212,8 @@ impl<'sto> Client<'sto> {
 
         // Each slave increments working counter, so we can use it as a total count of slaves
         let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
+
+        log::debug!("Discovered {} slave devices", num_slaves);
 
         // This is the only place we store the number of slave devices, so the ordering can be
         // pretty much anything.
