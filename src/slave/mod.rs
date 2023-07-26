@@ -368,8 +368,9 @@ where
                 })?;
 
             log::error!(
-                "Mailbox error for slave {:#06x} {}: {}",
+                "Mailbox error for slave {:#06x} (supports complete access: {}) {}: {}",
                 self.configured_address,
+                self.state.config.mailbox.complete_access,
                 request,
                 code
             );

@@ -70,6 +70,8 @@ pub struct MailboxConfig {
     pub(in crate::slave) supported_protocols: MailboxProtocols,
     pub(in crate::slave) coe_sync_manager_types: heapless::Vec<SyncManagerType, 16>,
     pub(in crate::slave) has_coe: bool,
+    /// True if Complete Access is supported.
+    pub(in crate::slave) complete_access: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
