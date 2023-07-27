@@ -236,6 +236,8 @@ mod tests {
     // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
     #[cfg_attr(miri, ignore)]
     fn single_frame_round_trip() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         const FRAME_OVERHEAD: usize = 28;
 
         // 1 frame, up to 128 bytes payload
@@ -281,6 +283,13 @@ mod tests {
         assert_eq!(written_packet.len(), FRAME_OVERHEAD + data.len());
 
         // ---
+
+        // Munge fake sent frame into a fake received frame
+        let written_packet = {
+            let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
+            frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+            frame.into_inner()
+        };
 
         let result = rx.receive_frame(&written_packet);
 
