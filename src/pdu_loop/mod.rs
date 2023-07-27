@@ -180,8 +180,8 @@ mod tests {
     use crate::pdu_loop::frame_element::{
         sendable_frame::SendableFrame, FrameBox, FrameElement, FrameState,
     };
-    use core::marker::PhantomData;
-    use futures_lite::future::poll_once;
+    use core::{future::poll_fn, marker::PhantomData, ops::Deref, pin::pin, task::Poll};
+    use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
     #[test]
@@ -247,53 +247,78 @@ mod tests {
 
         let data = [0xaau8, 0xbb, 0xcc, 0xdd];
 
-        let mut written_packet = Vec::new();
-        written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
+        let poller = poll_fn(|ctx| {
+            let mut written_packet = Vec::new();
+            written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
-        // Poll future up to first await point. This gets the frame ready and marks it as sendable
-        // so TX can pick it up, but we don't want to wait for the response so we won't poll it
-        // again.
-        let frame_fut = poll_once(pdu_loop.pdu_tx_readwrite(
-            Command::Fpwr {
-                address: 0x5678,
-                register: 0x1234,
-            },
-            &data,
-        ));
+            let mut frame_fut = pin!(pdu_loop.pdu_tx_readwrite(
+                Command::Fpwr {
+                    address: 0x5678,
+                    register: 0x1234,
+                },
+                &data,
+            ));
 
-        let _ = async_io::block_on(frame_fut);
+            // Poll future up to first await point. This gets the frame ready and marks it as
+            // sendable so TX can pick it up, but we don't want to wait for the response so we won't
+            // poll it again.
+            assert!(
+                matches!(frame_fut.as_mut().poll(ctx), Poll::Pending),
+                "frame fut should be pending"
+            );
 
-        let send_fut = poll_once(async {
             let mut packet_buf = [0u8; 1536];
 
             let frame = tx.next_sendable_frame().expect("need a frame");
 
-            frame
-                .send(&mut packet_buf, |bytes| async {
-                    written_packet.copy_from_slice(bytes);
+            let send_fut = pin!(async move {
+                frame
+                    .send(&mut packet_buf, |bytes| async {
+                        written_packet.copy_from_slice(bytes);
 
-                    Ok(())
-                })
-                .await
-                .unwrap();
+                        Ok(())
+                    })
+                    .await
+                    .expect("send");
+
+                // Munge fake sent frame into a fake received frame
+                let written_packet = {
+                    let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
+                    frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+                    frame.into_inner()
+                };
+
+                written_packet
+            });
+
+            let Poll::Ready(written_packet) = send_fut.poll(ctx) else {
+                panic!("no send")
+            };
+
+            assert_eq!(written_packet.len(), FRAME_OVERHEAD + data.len());
+
+            // ---
+
+            let result = rx.receive_frame(&written_packet);
+
+            assert!(result.is_ok());
+
+            // The frame has received a response at this point so should be ready to get the data
+            // from
+            match frame_fut.poll(ctx) {
+                Poll::Ready(Ok(frame)) => {
+                    assert_eq!(frame.into_data().0.deref(), &data);
+                }
+                Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
+                Poll::Pending => panic!("frame future still pending"),
+            }
+
+            // We should only ever be going through this loop once as the number of individual
+            // `poll()` calls is calculated.
+            Poll::Ready(())
         });
 
-        let _ = async_io::block_on(send_fut);
-
-        assert_eq!(written_packet.len(), FRAME_OVERHEAD + data.len());
-
-        // ---
-
-        // Munge fake sent frame into a fake received frame
-        let written_packet = {
-            let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
-            frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
-            frame.into_inner()
-        };
-
-        let result = rx.receive_frame(&written_packet);
-
-        assert!(result.is_ok());
+        smol::block_on(poller);
     }
 
     #[test]
