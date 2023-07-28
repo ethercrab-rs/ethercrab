@@ -161,8 +161,6 @@ fn configure_slave_offsets(
     parents: &[Slave],
     delay_accum: &mut u32,
 ) -> Result<i64, Error> {
-    slave.parent_index = find_slave_parent(parents, slave)?;
-
     // Convenient variable names
     let dc_receive_time = slave.dc_receive_time;
 
@@ -270,6 +268,8 @@ pub(crate) async fn configure_dc<'slaves>(
     for i in 0..slaves.len() {
         let (parents, rest) = slaves.split_at_mut(i);
         let slave = rest.first_mut().ok_or(Error::Internal)?;
+
+        slave.parent_index = find_slave_parent(parents, slave)?;
 
         log::debug!(
             "Slave {:#06x} {} {}",
