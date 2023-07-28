@@ -452,3 +452,159 @@ Allow root login with `PermitRootLogin yes` in `/etc/ssh/sshd_config` (then rest
 ```bash
 ssh root@ethercrab tcpdump -U -s0 -i enp2s0 -w - | sudo wireshark -k -i -
 ```
+
+# Jitter measurements
+
+All run with `--release` on `Linux 5.15.0-1032-realtime #35-Ubuntu SMP PREEMPT_RT`, i3-7100T.
+
+```bash
+just linux-example-release jitter enp2s0
+```
+
+| Test case                                                      | standard deviation (ns) | mean (ns) | comments                                          |
+| -------------------------------------------------------------- | ----------------------- | --------- | ------------------------------------------------- |
+| 5ms `tokio` timer                                              | 361909                  | 4998604   |                                                   |
+| 5ms `tokio-timerfd`                                            | 4264\*                  | 4997493   | std. dev. jumped from 2646 to 4508ns during test  |
+| 5ms `tokio-timerfd` + pinned tx/rx thread                      | 14315\*                 | 4997157   | std. dev. jumped from 2945 to 15280ns during test |
+| 5ms `tokio-timerfd` + pinned tx/rx thread + pinned loop thread | 117284                  | 4997443   | std. dev. jumps around a lot but max is huge      |
+| 5ms `smol::Timer`                                              | 5391\*                  | 4997841   | std. dev. jumped to 11558ns during test           |
+| 1ms `smol::Timer`                                              | 21218\*                 | 997581    | Highest std. dev. I saw was 21k ns                |
+| 1ms `smol::Timer`, another run                                 | 19224\*                 | 997483    | Just under 2% jitter at 1ms                       |
+
+## Results from oscilloscope
+
+This is running the "1ms `smol::Timer`, another run" case from above, measuring output 1 of an
+EL2004 hooked up to an EK1100.
+
+| Measurement                  | Value         |
+| ---------------------------- | ------------- |
+| Mean (software)              | 997456ns      |
+| std. dev. (software)         | 72038ns (~7%) |
+| Period std. dev. (oscope)    | ~15us         |
+| Frequency std. dev. (oscope) | ~3.5Hz        |
+
+The display flickers occasionally showing some occasional glitches in the output stream which isn't
+great. I'm not sure where those might be coming from...
+
+## Kernel/OS/hardware tuning
+
+A good looking guide at <https://rigtorp.se/low-latency-guide/>.
+
+`tokio` is awful, `smol` is much better for jitter. Tokio has 17us SD jitter (oscope) or 347246ns
+jitter (34.72) (SW).
+
+`tokio-timerfd` makes things a little better at ~18-23% SW jitter or 11us SD jitter (oscope).
+
+Single threaded `tokio-timerfd` is a little better still at ~10% SW jitter or 4us oscope jitter.
+
+`smol` still seems better.
+
+List threads, priority and policy with
+
+```bash
+ps -m -l -c $(pidof jitter)
+```
+
+### First changeset
+
+- `tuned-adm profile latency-performance`
+- Disable hyperthreading at runtime with `echo off > /sys/devices/system/cpu/smt/control`
+
+#### Run 1
+
+Promising results. 4500ns SD (software), saw a jump up to 16360ns. Seems happy at 15000ns (1.54%)
+SD.
+
+Oscope shows 600ns SD (but is shrinking all the time).
+
+I think there was one hiccup at the beginning of the test which skewed the results.
+
+#### Run 2
+
+650ns SW SD, 20ns oscope SD, but reducing continuously.
+
+Saw a jump up to 1156 SW SD not long after startup again, but reducing all the time during run.
+
+Saw a 5676ns (SW) jump, pushed oscope SD up to ~300ns.
+
+Saw a 9265ns (SW) jump, pushed oscope SD up to ~350ns.
+
+Saw a 19565ns (2%) SW jump, pushed oscope SD up to 772ns.
+
+Saw a 28264ns (2.8%) SW jump, pushed oscope SD up to 700ns.
+
+### Second changeset
+
+Setting thread priority in code.
+
+#### Without thread prio:
+
+```
+❯ ps -m -l -c $(pidof jitter)
+F S   UID     PID    PPID CLS PRI ADDR SZ WCHAN  TTY        TIME CMD
+4 -  1000   25164   25158 -     - - 35337 -      pts/5      0:01 ./target/release/examples/jitter enp2s0
+4 S  1000       -       - TS   19 -     - -      -          0:00 -
+1 S  1000       -       - TS   19 -     - -      -          0:00 -
+1 S  1000       -       - TS   19 -     - -      -          0:00 -
+```
+
+Started at ~5% SW jitter, shrank down to <1% after about 2 mins of runtime. Oscope shows 6ns SD BUT
+jumped up to 1us from one enormous glitch. SW SD went to 1.21%.
+
+#### With this thread prio code:
+
+```rust
+let thread_id = thread_native_id();
+assert!(set_thread_priority_and_policy(
+    thread_id,
+    ThreadPriority::Crossplatform(ThreadPriorityValue::try_from(99u8).unwrap()),
+    ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo)
+)
+.is_ok());
+```
+
+This gives:
+
+```
+❯ ps -m -l -c $(pidof jitter)
+F S   UID     PID    PPID CLS PRI ADDR SZ WCHAN  TTY        TIME CMD
+4 -  1000   23969   23904 -     - - 35340 -      pts/5      0:01 ./target/release/examples/jitter enp2s0
+4 S  1000       -       - FF  139 -     - -      -          0:01 -
+1 S  1000       -       - FF  139 -     - -      -          0:00 -
+1 S  1000       -       - FF  139 -     - -      -          0:00 -
+```
+
+##### Run 1
+
+Max 0.06% SW SD jitter (561ns). Oscope SD showing ~6ns SD jitter. Wow!
+
+After a few minutes of running it's a little worse with max 0.99% SW SD (10000ns) but still not bad.
+
+##### Run 2
+
+1800s duration (went to the shops lol)
+
+```
+1800 s: mean 0.998 ms, std dev 0.010 ms (0.99 % / 2.18 % max)
+```
+
+Pretty darn good. To summarise, this is with:
+
+- i3-7100T / 8GB DDR4 (Dell Optiplex 3050 micro)
+- Realtek somethingsomething gigabit NIC
+- EK1100 + EL2004 slave device
+- `smol`
+- 4 total threads
+  - ```
+    ❯ ps -m -l -c $(pidof jitter)
+    F S   UID     PID    PPID CLS PRI ADDR SZ WCHAN  TTY        TIME CMD
+    4 -  1000   23969   23904 -     - - 35340 -      pts/5      0:01 ./target/release/examples/jitter enp2s0
+    4 S  1000       -       - FF  139 -     - -      -          0:01 -
+    1 S  1000       -       - FF  139 -     - -      -          0:00 -
+    1 S  1000       -       - FF  139 -     - -      -          0:00 -
+    ```
+- `tuned-adm profile latency-performance`
+- Hyperthreading disabled with `echo off > /sys/devices/system/cpu/smt/control` (2 cores on
+  i3-7100T)
+- 1ms cycle time
+- Setting thread priority to 99 and `FIFO` policy.
