@@ -191,15 +191,23 @@ impl Slave {
         &self.config.io
     }
 
+    /// Check if the current slave device is a child of `parent`.
+    ///
+    /// An EK1100 (parent) with an EL2004 module connected (child) as well as another EK1914 coupler
+    /// (downstream) connected has one child: the EL2004.
     pub(crate) fn is_child_of(&self, parent: &Slave) -> bool {
+        // Only forks in the network can have child devices. Passthroughs only have downstream
+        // devices.
         let parent_is_fork = parent.ports.topology() == Topology::Fork;
 
         let child_port = parent.ports.port_assigned_to(self);
 
-        parent_is_fork
-            && child_port
-                .map(|child_port| parent.ports.is_last_port(child_port))
-                .unwrap_or(false)
+        // Children in a fork must be connected to intermediate ports
+        let child_attached_to_last_parent_port = child_port
+            .map(|child_port| parent.ports.is_last_port(child_port))
+            .unwrap_or(false);
+
+        parent_is_fork && !child_attached_to_last_parent_port
     }
 }
 

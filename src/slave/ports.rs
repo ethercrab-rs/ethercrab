@@ -74,10 +74,7 @@ impl Ports {
 
     /// Get the last open port.
     pub fn last_port(&self) -> Option<&Port> {
-        self.0
-            .iter()
-            .filter(|port| port.active)
-            .max_by_key(|port| port.dc_receive_time)
+        self.active_ports().last()
     }
 
     /// Find the next port that hasn't already been assigned as the upstream port of another slave.
