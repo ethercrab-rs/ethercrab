@@ -563,4 +563,325 @@ mod tests {
 
         assert_eq!(slave.dc_receive_time, 0i64);
     }
+
+    // Test that slave parent/child relationships are established, and that propagation delays are
+    // computed correctly.
+    #[test]
+    fn propagation_delay_calc() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        fn ports(
+            active1: bool,
+            t1: u32,
+            active2: bool,
+            t2: u32,
+            active3: bool,
+            t3: u32,
+            active4: bool,
+            t4: u32,
+        ) -> Ports {
+            Ports([
+                Port {
+                    active: active1,
+                    dc_receive_time: t1,
+                    number: 0,
+                    downstream_to: None,
+                },
+                Port {
+                    active: active2,
+                    dc_receive_time: t2,
+                    number: 1,
+                    downstream_to: None,
+                },
+                Port {
+                    active: active3,
+                    dc_receive_time: t3,
+                    number: 2,
+                    downstream_to: None,
+                },
+                Port {
+                    active: active4,
+                    dc_receive_time: t4,
+                    number: 3,
+                    downstream_to: None,
+                },
+            ])
+        }
+
+        // Input data represents the following topology
+        //
+        // EK1100
+        // --> EL2004
+        // --> EL2828
+        // EK1914
+        // --> EL2889
+        // EK1101
+        let mut slaves = [
+            Slave {
+                configured_address: 4096,
+                name: "EK1100".into(),
+                ports: ports(
+                    true, 2841776746, true, 2841777326, true, 2841779666, false, 1819436374,
+                ),
+                dc_receive_time: 20339511923306,
+                index: 0,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+            Slave {
+                configured_address: 4097,
+                name: "EL2004".into(),
+                ports: ports(
+                    true, 2926187217, true, 2926187517, false, 0, false, 1819436374,
+                ),
+                dc_receive_time: 20339596333777,
+                index: 1,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+            Slave {
+                configured_address: 4098,
+                name: "EL2828".into(),
+                ports: ports(
+                    true, 3048834100, false, 1717989224, false, 0, false, 1819436374,
+                ),
+                dc_receive_time: 0,
+                index: 2,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+            Slave {
+                configured_address: 4099,
+                name: "EK1914".into(),
+                ports: ports(
+                    true, 2876155570, true, 2876155880, true, 2876156930, false, 1819436374,
+                ),
+                dc_receive_time: 0,
+                index: 3,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+            Slave {
+                configured_address: 4100,
+                name: "EL2889".into(),
+                ports: ports(
+                    true, 1615690495, false, 1717989224, false, 0, false, 1819436374,
+                ),
+                dc_receive_time: 18620298918655,
+                index: 4,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+            Slave {
+                configured_address: 4101,
+                name: "EK1101".into(),
+                ports: ports(
+                    true, 2965149096, false, 1717989224, false, 0, false, 1819436374,
+                ),
+                dc_receive_time: 20339635295656,
+                index: 5,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+        ];
+
+        fn ports_downstream(
+            active1: bool,
+            t1: u32,
+            d1: Option<usize>,
+            active2: bool,
+            t2: u32,
+            d2: Option<usize>,
+            active3: bool,
+            t3: u32,
+            d3: Option<usize>,
+            active4: bool,
+            t4: u32,
+            d4: Option<usize>,
+        ) -> Ports {
+            Ports([
+                Port {
+                    active: active1,
+                    dc_receive_time: t1,
+                    number: 0,
+                    downstream_to: d1,
+                },
+                Port {
+                    active: active2,
+                    dc_receive_time: t2,
+                    number: 1,
+                    downstream_to: d2,
+                },
+                Port {
+                    active: active3,
+                    dc_receive_time: t3,
+                    number: 2,
+                    downstream_to: d3,
+                },
+                Port {
+                    active: active4,
+                    dc_receive_time: t4,
+                    number: 3,
+                    downstream_to: d4,
+                },
+            ])
+        }
+
+        let expected = [
+            Slave {
+                configured_address: 4096,
+                name: "EK1100".into(),
+                ports: ports_downstream(
+                    true,
+                    2841776746,
+                    None,
+                    true,
+                    2841777326,
+                    Some(1),
+                    true,
+                    2841779666,
+                    Some(3),
+                    false,
+                    1819436374,
+                    None,
+                ),
+                dc_receive_time: 20339511923306,
+                index: 0,
+                parent_index: None,
+                propagation_delay: 0,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+            Slave {
+                configured_address: 4097,
+                name: "EL2004".into(),
+                ports: ports_downstream(
+                    true,
+                    2926187217,
+                    None,
+                    true,
+                    2926187517,
+                    Some(2),
+                    false,
+                    0,
+                    None,
+                    false,
+                    1819436374,
+                    None,
+                ),
+                dc_receive_time: 20339596333777,
+                index: 1,
+                parent_index: Some(0),
+                propagation_delay: 140,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+            Slave {
+                configured_address: 4098,
+                name: "EL2828".into(),
+                ports: ports_downstream(
+                    true, 3048834100, None, false, 1717989224, None, false, 0, None, false,
+                    1819436374, None,
+                ),
+                dc_receive_time: 0,
+                index: 2,
+                parent_index: Some(1),
+                propagation_delay: 290,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+            Slave {
+                configured_address: 4099,
+                name: "EK1914".into(),
+                ports: ports_downstream(
+                    true,
+                    2876155570,
+                    None,
+                    true,
+                    2876155880,
+                    Some(4),
+                    true,
+                    2876156930,
+                    Some(5),
+                    false,
+                    1819436374,
+                    None,
+                ),
+                dc_receive_time: 0,
+                index: 3,
+                parent_index: Some(0),
+                propagation_delay: 1070,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+            Slave {
+                configured_address: 4100,
+                name: "EL2889".into(),
+                ports: ports_downstream(
+                    true, 1615690495, None, false, 1717989224, None, false, 0, None, false,
+                    1819436374, None,
+                ),
+                dc_receive_time: 18620298918655,
+                index: 4,
+                parent_index: Some(3),
+                propagation_delay: 1225,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+            Slave {
+                configured_address: 4101,
+                name: "EK1101".into(),
+                ports: ports_downstream(
+                    true, 2965149096, None, false, 1717989224, None, false, 0, None, false,
+                    1819436374, None,
+                ),
+                dc_receive_time: 20339635295656,
+                index: 5,
+                parent_index: Some(3),
+                propagation_delay: 1905,
+                flags: SupportFlags {
+                    dc_supported: true,
+                    ..SupportFlags::default()
+                },
+                ..Slave::default()
+            },
+        ];
+
+        assign_parent_relationships(&mut slaves).expect("assign");
+
+        pretty_assertions::assert_eq!(slaves, expected);
+    }
 }
