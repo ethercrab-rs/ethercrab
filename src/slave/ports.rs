@@ -1,3 +1,4 @@
+use crate::Slave;
 use core::fmt::{self, Debug};
 
 /// Flags showing which ports are active or not on the slave.
@@ -57,15 +58,18 @@ impl fmt::Display for Ports {
 
 impl Ports {
     fn open_ports(&self) -> u8 {
-        self.0.iter().filter(|port| port.active).count() as u8
+        self.active_ports().count() as u8
+    }
+
+    fn active_ports(&self) -> impl Iterator<Item = &Port> {
+        self.0.iter().filter(|port| port.active)
     }
 
     /// The port of the slave that first sees EtherCAT traffic.
     pub fn entry_port(&self) -> Option<Port> {
-        self.0
-            .into_iter()
-            .filter(|port| port.active)
+        self.active_ports()
             .min_by_key(|port| port.dc_receive_time)
+            .copied()
     }
 
     /// Get the last open port.
@@ -110,22 +114,6 @@ impl Ports {
         None
     }
 
-    pub fn prev_open_port(&self, port: &Port) -> Option<&Port> {
-        let mut index = port.index();
-
-        for _ in 0..4 {
-            index = if index == 0 { 3 } else { index - 1 };
-
-            let prev_port = &self.0[index];
-
-            if prev_port.active {
-                return Some(prev_port);
-            }
-        }
-
-        None
-    }
-
     /// Link a downstream device to the current device using the next open port from the entry port.
     pub fn assign_next_downstream_port(&mut self, downstream_slave_index: usize) -> Option<usize> {
         let entry_port = self.entry_port().expect("No input port? Wtf");
@@ -135,6 +123,12 @@ impl Ports {
         next_port.downstream_to = Some(downstream_slave_index);
 
         Some(next_port.number)
+    }
+
+    /// Find the port assigned to the given slave device.
+    pub fn port_assigned_to(&self, slave: &Slave) -> Option<&Port> {
+        self.active_ports()
+            .find(|port| port.downstream_to == Some(slave.index))
     }
 
     pub fn topology(&self) -> Topology {
@@ -270,6 +264,14 @@ pub mod tests {
     }
 
     #[test]
+    fn propagation_time_fork() {
+        // Fork, e.g. EK1100 with modules AND downstream devices
+        let ports = make_ports(true, true, true, false);
+
+        assert_eq!(ports.propagation_time(), Some(200));
+    }
+
+    #[test]
     fn child_delay() {
         // EK1100 with children attached to port 3 and downstream devices on port 1
         let ports = make_ports(true, true, true, false);
@@ -291,51 +293,5 @@ pub mod tests {
         let port_number = ports.assign_next_downstream_port(2);
 
         assert_eq!(port_number, Some(1), "assign slave idx 2");
-    }
-
-    #[test]
-    fn prev_open_port() {
-        let ports = make_ports(true, true, true, false);
-
-        let start_port = &ports.0[2];
-
-        let start_port = ports.prev_open_port(start_port);
-
-        assert_eq!(
-            start_port,
-            Some(&Port {
-                active: true,
-                number: 3,
-                dc_receive_time: ENTRY_RECEIVE + 100,
-                ..Port::default()
-            }),
-            "first previous port"
-        );
-
-        let start_port = ports.prev_open_port(start_port.unwrap());
-
-        assert_eq!(
-            start_port,
-            Some(&Port {
-                active: true,
-                number: 0,
-                dc_receive_time: ENTRY_RECEIVE,
-                ..Port::default()
-            }),
-            "second previous port"
-        );
-
-        let start_port = ports.prev_open_port(start_port.unwrap());
-
-        assert_eq!(
-            start_port,
-            Some(&Port {
-                active: true,
-                number: 1,
-                dc_receive_time: ENTRY_RECEIVE + 200,
-                ..Port::default()
-            }),
-            "third previous port"
-        );
     }
 }

@@ -4,7 +4,10 @@ pub mod pdi;
 pub mod ports;
 mod types;
 
-use self::types::{SlaveConfig, SlaveIdentity};
+use self::{
+    ports::Topology,
+    types::{SlaveConfig, SlaveIdentity},
+};
 use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
@@ -62,7 +65,6 @@ pub struct Slave {
 
     pub(crate) ports: Ports,
 
-    // DELETEME?
     /// Distributed Clock latch receive time.
     pub(crate) dc_receive_time: i64,
 
@@ -187,6 +189,17 @@ impl Slave {
 
     pub(crate) fn io_segments(&self) -> &IoRanges {
         &self.config.io
+    }
+
+    pub(crate) fn is_child_of(&self, parent: &Slave) -> bool {
+        let parent_is_fork = parent.ports.topology() == Topology::Fork;
+
+        let child_port = parent.ports.port_assigned_to(self);
+
+        parent_is_fork
+            && child_port
+                .map(|child_port| parent.ports.is_last_port(child_port))
+                .unwrap_or(false)
     }
 }
 

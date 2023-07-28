@@ -192,70 +192,23 @@ fn configure_slave_offsets(
             .find(|parent| parent.index == parent_idx)
             .expect("Parent");
 
-        let me_delay = parent
+        // If we're a child of this parent (e.g. a module in an EK1100 chain), use the parent's
+        // child delay. If we're downstream of it, use the whole propagation time.
+        let parent_time = parent
             .ports
-            .propagation_time()
-            .map(|parent| (parent - slave.ports.propagation_time().unwrap_or(0)) / 2);
+            .child_delay()
+            .filter(|_| slave.is_child_of(&parent))
+            .or(parent.ports.propagation_time());
 
-        *delay_accum += me_delay.unwrap_or(0);
+        let slave_delay =
+            parent_time.map(|parent| (parent - slave.ports.propagation_time().unwrap_or(0)) / 2);
 
-        println!("Prop time {:?} accum {}", me_delay, delay_accum);
+        *delay_accum += slave_delay.unwrap_or(0);
 
-        // let parent_port = parent
-        //     .ports
-        //     .last_port()
-        //     .expect("No open ports on parent. Logic error.");
-
-        // let prev_parent_port = parent
-        //     .ports
-        //     .prev_open_port(&parent_port)
-        //     .expect("Parent prev open port");
-        // let parent_time = parent_port.dc_receive_time - prev_parent_port.dc_receive_time;
-
-        // let entry_port = slave.ports.entry_port().expect("Entry port");
-        // let prev_port = slave
-        //     .ports
-        //     .prev_open_port(&entry_port)
-        //     .expect("Prev open port");
-
-        // let my_time = prev_port.dc_receive_time - entry_port.dc_receive_time;
-
-        // // dbg!(
-        // //     entry_port,
-        // //     prev_port,
-        // //     parent_time,
-        // //     prev_port.dc_receive_time,
-        // //     entry_port.dc_receive_time,
-        // //     my_time
-        // // );
-
-        // // The delay between the previous slave and this one
-        // let delay = (my_time.saturating_sub(parent_time)) / 2;
-
-        // *delay_accum += delay;
-
-        // // If parent has children but we're not one of them, add the children's delay to this
-        // // slave's offset.
-        // if let Some(child_delay) = parent
-        //     .ports
-        //     .child_delay()
-        //     .filter(|_| parent.ports.is_last_port(&parent_port))
-        // {
-        //     log::debug!("--> Child delay of parent {}", child_delay);
-
-        //     *delay_accum += child_delay / 2;
-        // }
-
-        // slave.propagation_delay = *delay_accum;
-
-        // log::debug!(
-        //     "--> Parent time {} ns, my time {} ns, delay {} ns (Δ {} ns to previous slave)",
-        //     parent_time,
-        //     my_time,
-        //     delay_accum,
-        //     delay
-        // );
+        slave.propagation_delay = *delay_accum;
     }
+
+    log::debug!("--> Propagation delay {} ns", slave.propagation_delay);
 
     if !slave.flags.has_64bit_dc {
         // TODO?
