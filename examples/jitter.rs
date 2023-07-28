@@ -2,10 +2,7 @@
 //! reference.
 
 use env_logger::Env;
-use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SlaveState,
-    Timeouts,
-};
+use ethercrab::{error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts};
 use futures_lite::StreamExt;
 use std::{
     sync::Arc,
@@ -72,36 +69,14 @@ fn main() -> Result<(), Error> {
 
         smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
-        let mut group = client
-            .init_single_group::<MAX_SLAVES, PDI_LEN>(SlaveGroup::new(|slave| {
-                Box::pin(async {
-                    // Special case: if an EL3004 module is discovered, it needs some specific config during
-                    // init to function properly
-                    if slave.name() == "EL3004" {
-                        log::info!("Found EL3004. Configuring...");
-
-                        slave.sdo_write(0x1c12, 0, 0u8).await?;
-                        slave.sdo_write(0x1c13, 0, 0u8).await?;
-
-                        slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-                        slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
-                        slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
-                        slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
-                        slave.sdo_write(0x1c13, 0, 4u8).await?;
-                    }
-
-                    Ok(())
-                })
-            }))
+        let group = client
+            .init_single_group::<MAX_SLAVES, PDI_LEN>()
             .await
             .expect("Init");
 
         log::info!("Discovered {} slaves", group.len());
 
-        client
-            .request_slave_state(SlaveState::Op)
-            .await
-            .expect("OP");
+        let mut group = group.into_op(&client).await.expect("OP");
 
         for slave in group.iter(&client) {
             let (i, o) = slave.io_raw();
@@ -154,7 +129,7 @@ fn main() -> Result<(), Error> {
                     max_sd = max_sd.max(sd);
 
                     println!(
-                        "{} s: mean {:.3} ms, std dev {:.3} ms ({:3.2} % / {:3.2} % max)",
+                        "{}s: mean {:.3} ms, std dev {:.3} ms ({:3.2} % / {:3.2} % max)",
                         start.elapsed().as_secs(),
                         histo.mean() / 1000.0 / 1000.0,
                         histo.stdev() / 1000.0 / 1000.0,
