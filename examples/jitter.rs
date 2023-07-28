@@ -1,5 +1,4 @@
-//! Jitter measurement. Results from my (@jamwaffles) experiments are recorded in `NOTES.md` for
-//! reference.
+//! Jitter measurement. Requires PREEMPT-RT kernel. Run with `--release` for best results.
 
 use env_logger::Env;
 use ethercrab::{error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts};
