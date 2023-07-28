@@ -608,3 +608,10 @@ Pretty darn good. To summarise, this is with:
   i3-7100T)
 - 1ms cycle time
 - Setting thread priority to 99 and `FIFO` policy.
+
+# Distributed clocks (again)
+
+- Decent resource here:
+  <https://infosys.beckhoff.com/english.php?content=../content/1033/ethercatsystem/2469118347.html&id=>
+- Sync modes:
+  <https://infosys.beckhoff.com/english.php?content=../content/1033/ethercatsystem/2469122443.html&id=>
