@@ -69,9 +69,9 @@ impl Ports {
     }
 
     /// Get the last open port.
-    pub fn last_port(&self) -> Option<Port> {
+    pub fn last_port(&self) -> Option<&Port> {
         self.0
-            .into_iter()
+            .iter()
             .filter(|port| port.active)
             .max_by_key(|port| port.dc_receive_time)
     }
@@ -149,7 +149,7 @@ impl Ports {
     }
 
     pub fn is_last_port(&self, port: &Port) -> bool {
-        self.last_port().filter(|p| p == port).is_some()
+        self.last_port().filter(|p| *p == port).is_some()
     }
 
     /// If the current node is a fork in the network, compute the propagation delay of all the

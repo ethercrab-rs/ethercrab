@@ -177,11 +177,12 @@ fn configure_slave_offsets(
         let d32 = time_p3.saturating_sub(time_p2);
 
         let loop_propagation_time = slave.ports.propagation_time();
-        let child_delay = slave.ports.child_delay().unwrap_or(0);
+        let child_delay = slave.ports.child_delay();
 
+        log::debug!("--> Topology {:?}, {}", slave.ports.topology(), slave.ports);
         log::debug!("--> Receive times {time_p0} ns (Δ {d01} ns) {time_p1} (Δ {d21} ns) {time_p2} (Δ {d32} ns) {time_p3}");
         log::debug!(
-            "--> Loop propagation time {loop_propagation_time:?} ns, child delay {child_delay} ns"
+            "--> Loop propagation time {loop_propagation_time:?} ns, child delay {child_delay:?} ns"
         );
     }
 
@@ -191,50 +192,69 @@ fn configure_slave_offsets(
             .find(|parent| parent.index == parent_idx)
             .expect("Parent");
 
-        let parent_port = parent
+        let me_delay = parent
             .ports
-            .last_port()
-            .expect("No open ports on parent. Logic error.");
+            .propagation_time()
+            .map(|parent| (parent - slave.ports.propagation_time().unwrap_or(0)) / 2);
 
-        let prev_parent_port = parent
-            .ports
-            .prev_open_port(&parent_port)
-            .expect("Parent prev open port");
-        let parent_time = parent_port.dc_receive_time - prev_parent_port.dc_receive_time;
+        *delay_accum += me_delay.unwrap_or(0);
 
-        let entry_port = slave.ports.entry_port().expect("Entry port");
-        let prev_port = slave
-            .ports
-            .prev_open_port(&entry_port)
-            .expect("Prev open port");
-        let my_time = prev_port.dc_receive_time - entry_port.dc_receive_time;
+        println!("Prop time {:?} accum {}", me_delay, delay_accum);
 
-        // The delay between the previous slave and this one
-        let delay = (my_time.saturating_sub(parent_time)) / 2;
+        // let parent_port = parent
+        //     .ports
+        //     .last_port()
+        //     .expect("No open ports on parent. Logic error.");
 
-        *delay_accum += delay;
+        // let prev_parent_port = parent
+        //     .ports
+        //     .prev_open_port(&parent_port)
+        //     .expect("Parent prev open port");
+        // let parent_time = parent_port.dc_receive_time - prev_parent_port.dc_receive_time;
 
-        // If parent has children but we're not one of them, add the children's delay to this
-        // slave's offset.
-        if let Some(child_delay) = parent
-            .ports
-            .child_delay()
-            .filter(|_| parent.ports.is_last_port(&parent_port))
-        {
-            log::debug!("--> Child delay of parent {}", child_delay);
+        // let entry_port = slave.ports.entry_port().expect("Entry port");
+        // let prev_port = slave
+        //     .ports
+        //     .prev_open_port(&entry_port)
+        //     .expect("Prev open port");
 
-            *delay_accum += child_delay / 2;
-        }
+        // let my_time = prev_port.dc_receive_time - entry_port.dc_receive_time;
 
-        slave.propagation_delay = *delay_accum;
+        // // dbg!(
+        // //     entry_port,
+        // //     prev_port,
+        // //     parent_time,
+        // //     prev_port.dc_receive_time,
+        // //     entry_port.dc_receive_time,
+        // //     my_time
+        // // );
 
-        log::debug!(
-            "--> Parent time {} ns, my time {} ns, delay {} ns (Δ {} ns to previous slave)",
-            parent_time,
-            my_time,
-            delay_accum,
-            delay
-        );
+        // // The delay between the previous slave and this one
+        // let delay = (my_time.saturating_sub(parent_time)) / 2;
+
+        // *delay_accum += delay;
+
+        // // If parent has children but we're not one of them, add the children's delay to this
+        // // slave's offset.
+        // if let Some(child_delay) = parent
+        //     .ports
+        //     .child_delay()
+        //     .filter(|_| parent.ports.is_last_port(&parent_port))
+        // {
+        //     log::debug!("--> Child delay of parent {}", child_delay);
+
+        //     *delay_accum += child_delay / 2;
+        // }
+
+        // slave.propagation_delay = *delay_accum;
+
+        // log::debug!(
+        //     "--> Parent time {} ns, my time {} ns, delay {} ns (Δ {} ns to previous slave)",
+        //     parent_time,
+        //     my_time,
+        //     delay_accum,
+        //     delay
+        // );
     }
 
     if !slave.flags.has_64bit_dc {

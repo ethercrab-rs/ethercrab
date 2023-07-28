@@ -62,6 +62,7 @@ pub struct Slave {
 
     pub(crate) ports: Ports,
 
+    // DELETEME?
     /// Distributed Clock latch receive time.
     pub(crate) dc_receive_time: i64,
 
