@@ -216,7 +216,8 @@ impl Slave {
 pub struct SlaveRef<'a, S> {
     client: &'a Client<'a>,
     configured_address: u16,
-    state: S,
+    /// DELETE THE PUB
+    pub state: S,
 }
 
 // TODO: Can we move most methods onto `Slave`? We still need `SlaveRef<SlavePdi>` but why

@@ -160,10 +160,7 @@ fn configure_slave_offsets(
     slave: &mut Slave,
     parents: &[Slave],
     delay_accum: &mut u32,
-) -> Result<i64, Error> {
-    // Convenient variable names
-    let dc_receive_time = slave.dc_receive_time;
-
+) -> Result<(), Error> {
     // Just for debug
     {
         let time_p0 = slave.ports.0[0].dc_receive_time;
@@ -215,27 +212,12 @@ fn configure_slave_offsets(
         log::warn!("--> Slave uses seconds instead of ns?");
     }
 
-    Ok(dc_receive_time)
+    Ok(())
 }
 
-/// Configure distributed clocks.
-///
-/// This method walks through the discovered list of devices and sets the system time offset and
-/// transmission delay of each device.
-pub(crate) async fn configure_dc<'slaves>(
-    client: &Client<'_>,
-    slaves: &'slaves mut [Slave],
-) -> Result<Option<&'slaves Slave>, Error> {
-    latch_dc_times(client, slaves).await?;
-
-    // let ethercat_offset = Utc.ymd(2000, 01, 01).and_hms(0, 0, 0);
-
-    // TODO: Allow passing in of an initial value
-    // let now_nanos =
-    //     chrono::Utc::now().timestamp_nanos() - dbg!(ethercat_offset.timestamp_nanos());
-    let now_nanos = 0;
-
-    // The cumulative delay through all slave devices in the network
+/// Assign parent/child relationships between slave devices, and compute propagation delays for all
+/// salves.
+fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
     let mut delay_accum = 0;
 
     for i in 0..slaves.len() {
@@ -270,15 +252,39 @@ pub(crate) async fn configure_dc<'slaves>(
         }
 
         if slave.flags.dc_supported {
-            let dc_receive_time = configure_slave_offsets(slave, parents, &mut delay_accum)?;
-
-            write_dc_parameters(client, slave, dc_receive_time, now_nanos).await?;
+            configure_slave_offsets(slave, parents, &mut delay_accum)?;
         } else {
             log::trace!(
                 "--> Skipping DC config for slave {:#06x}: DC not supported",
                 slave.configured_address
             );
         }
+    }
+
+    Ok(())
+}
+
+/// Configure distributed clocks.
+///
+/// This method walks through the discovered list of devices and sets the system time offset and
+/// transmission delay of each device.
+pub(crate) async fn configure_dc<'slaves>(
+    client: &Client<'_>,
+    slaves: &'slaves mut [Slave],
+) -> Result<Option<&'slaves Slave>, Error> {
+    latch_dc_times(client, slaves).await?;
+
+    // let ethercat_offset = Utc.ymd(2000, 01, 01).and_hms(0, 0, 0);
+
+    // TODO: Allow passing in of an initial value
+    // let now_nanos =
+    //     chrono::Utc::now().timestamp_nanos() - dbg!(ethercat_offset.timestamp_nanos());
+    let now_nanos = 0;
+
+    assign_parent_relationships(slaves)?;
+
+    for slave in slaves.iter() {
+        write_dc_parameters(client, slave, slave.dc_receive_time, now_nanos).await?;
     }
 
     let first_dc_slave = slaves.iter().find(|slave| slave.flags.dc_supported);
@@ -553,8 +559,8 @@ mod tests {
 
         let mut delay_accum = 0u32;
 
-        let result = configure_slave_offsets(&mut slave, &mut parents, &mut delay_accum);
+        configure_slave_offsets(&mut slave, &mut parents, &mut delay_accum).expect("bad config");
 
-        assert_eq!(result.unwrap(), 0i64);
+        assert_eq!(slave.dc_receive_time, 0i64);
     }
 }
