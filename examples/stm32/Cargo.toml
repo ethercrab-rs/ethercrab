@@ -6,6 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ethercrab = { path = "../..", default-features = false }
+
 defmt = "0.3"
 defmt-rtt = "0.4.0"
 
@@ -17,16 +19,8 @@ cortex-m-rt = "0.7.0"
 embedded-hal = "0.2.6"
 embedded-io = "0.4.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-futures = { version = "0.3.17", default-features = false, features = [
-    "async-await",
-] }
 heapless = { version = "0.7.5", default-features = false }
-nb = "1.0.0"
-embedded-storage = "0.3.0"
-micromath = "2.0.0"
 static_cell = { version = "1.1", features = ["nightly"] }
-chrono = { version = "^0.4", default-features = false }
-rand_core = "0.6.3"
 
 embassy-sync = { version = "0.2.0", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
     "defmt",
@@ -57,9 +51,6 @@ embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embass
     "memory-x",
     "time-driver-any",
     "exti",
-] }
-embassy-usb = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
-    "defmt",
 ] }
 embassy-net = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
     "defmt",

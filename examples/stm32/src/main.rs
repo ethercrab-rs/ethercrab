@@ -17,6 +17,7 @@ use embassy_stm32::{
     time::mhz,
     Config,
 };
+use ethercrab::PduStorage;
 use panic_probe as _;
 use static_cell::make_static;
 
@@ -26,10 +27,16 @@ bind_interrupts!(struct Irqs {
 
 type Device = Ethernet<'static, ETH, GenericSMI>;
 
-// #[embassy_executor::task]
-// async fn net_task(stack: &'static Stack<Device>) -> ! {
-//     stack.run().await
-// }
+/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
+const MAX_SLAVES: usize = 16;
+/// Maximum PDU data payload size - set this to the max PDI size or higher.
+const MAX_PDU_DATA: usize = 1100;
+/// Maximum number of EtherCAT frames that can be in flight at any one time.
+const MAX_FRAMES: usize = 16;
+/// Maximum total PDI length.
+const PDI_LEN: usize = 64;
+
+static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -40,12 +47,6 @@ async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(config);
 
     defmt::info!("Hello World!");
-
-    // // Generate random seed.
-    // let mut rng = Rng::new(p.RNG);
-    // let mut seed = [0; 8];
-    // rng.fill_bytes(&mut seed);
-    // let seed = u64::from_le_bytes(seed);
 
     let mac_addr = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
@@ -67,11 +68,14 @@ async fn main(spawner: Spawner) {
         0,
     );
 
+    let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+
     loop {
         poll_fn(|cx| {
             defmt::info!("Poll");
 
             let Some((rx, tx)) = device.receive(cx) else {
+                defmt::info!("--> No frames");
                 return Poll::Pending;
             };
 
