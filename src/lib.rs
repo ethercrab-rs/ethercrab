@@ -133,8 +133,6 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 
-extern crate alloc;
-
 mod al_control;
 mod al_status_code;
 mod base_data_types;
