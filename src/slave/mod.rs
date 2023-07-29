@@ -722,9 +722,10 @@ impl<'a, S> SlaveRef<'a, S> {
         &self,
         desired_state: SlaveState,
     ) -> Result<(), Error> {
-        debug!(
+        log::debug!(
             "Set state {} for slave address {:#04x}",
-            desired_state, self.configured_address
+            desired_state,
+            self.configured_address
         );
 
         // Send state request

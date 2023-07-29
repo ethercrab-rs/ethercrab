@@ -135,9 +135,6 @@
 
 extern crate alloc;
 
-// This mod MUST go first, so that the others see its macros.
-pub(crate) mod log;
-
 mod al_control;
 mod al_status_code;
 mod base_data_types;
