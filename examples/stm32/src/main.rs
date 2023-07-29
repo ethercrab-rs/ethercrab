@@ -2,24 +2,23 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-use core::future::poll_fn;
-use core::task::Poll;
-use defmt::*;
+use core::{future::poll_fn, task::Poll};
+use defmt_rtt as _;
 use embassy_executor::Spawner;
-use embassy_net::driver::Driver;
-use embassy_net::driver::RxToken;
-use embassy_net::driver::TxToken;
-use embassy_net::{Stack, StackResources};
-use embassy_stm32::eth::generic_smi::GenericSMI;
-use embassy_stm32::eth::{Ethernet, PacketQueue};
-use embassy_stm32::peripherals::ETH;
-use embassy_stm32::rng::Rng;
-use embassy_stm32::time::mhz;
-use embassy_stm32::{bind_interrupts, eth, Config};
-use embedded_io::asynch::Write;
-use rand_core::RngCore;
+use embassy_net::{
+    driver::{Driver, RxToken, TxToken},
+    Stack, StackResources,
+};
+use embassy_stm32::{
+    bind_interrupts,
+    eth::{self, generic_smi::GenericSMI, Ethernet, PacketQueue},
+    peripherals::ETH,
+    rng::Rng,
+    time::mhz,
+    Config,
+};
+use panic_probe as _;
 use static_cell::make_static;
-use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct Irqs {
     ETH => eth::InterruptHandler;
@@ -50,8 +49,8 @@ async fn main(spawner: Spawner) {
 
     let mac_addr = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
-    let device = &mut *make_static!(Ethernet::new(
-        make_static!(PacketQueue::<16, 16>::new()),
+    let mut device = Ethernet::new(
+        make_static!(PacketQueue::<8, 8>::new()),
         p.ETH,
         Irqs,
         p.PA1,
@@ -66,23 +65,7 @@ async fn main(spawner: Spawner) {
         GenericSMI::new(),
         mac_addr,
         0,
-    ));
-
-    // // let config = embassy_net::Config::dhcpv4(Default::default());
-    // let config = embassy_net::Config {
-    //     ipv4: embassy_net::ConfigV4::None,
-    // };
-
-    // // Init network stack
-    // let stack = &*make_static!(Stack::new(
-    //     device,
-    //     config,
-    //     make_static!(StackResources::<2>::new()),
-    //     seed
-    // ));
-
-    // // Launch network task
-    // defmt::unwrap!(spawner.spawn(net_task(&stack)));
+    );
 
     loop {
         poll_fn(|cx| {
@@ -92,13 +75,13 @@ async fn main(spawner: Spawner) {
                 return Poll::Pending;
             };
 
-            // rx.consume(|rx| {
-            //     defmt::info!("--> Rx");
-            // });
+            rx.consume(|rx| {
+                defmt::info!("--> Rx");
+            });
 
-            // tx.consume(0, |tx| {
-            //     defmt::info!("--> Tx");
-            // });
+            tx.consume(0, |tx| {
+                defmt::info!("--> Tx");
+            });
 
             // Poll::Ready((rx, tx))
             Poll::<()>::Pending
