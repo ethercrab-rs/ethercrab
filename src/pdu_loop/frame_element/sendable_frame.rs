@@ -43,7 +43,7 @@ impl<'sto> SendableFrame<'sto> {
 
     /// The length in bytes required to hold the full Ethernet II frame, containing an EtherCAT
     /// payload.
-    fn ethernet_frame_len(&self) -> usize {
+    pub fn len(&self) -> usize {
         EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len())
     }
 
@@ -90,7 +90,7 @@ impl<'sto> SendableFrame<'sto> {
     /// device. If the buffer is not large enough to hold the full frame, this method will return
     /// [`Error::Pdu(PduError::TooLong)`](PduError::TooLong).
     pub fn write_ethernet_packet<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
-        let ethernet_len = self.ethernet_frame_len();
+        let ethernet_len = self.len();
 
         let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
 
