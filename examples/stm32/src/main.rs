@@ -1,23 +1,21 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+#![feature(never_type)]
 
 use core::{future::poll_fn, task::Poll};
 use defmt_rtt as _;
 use embassy_executor::Spawner;
-use embassy_net::{
-    driver::{Driver, RxToken, TxToken},
-    Stack, StackResources,
-};
+use embassy_net::driver::{Driver, RxToken, TxToken};
 use embassy_stm32::{
     bind_interrupts,
     eth::{self, generic_smi::GenericSMI, Ethernet, PacketQueue},
     peripherals::ETH,
-    rng::Rng,
     time::mhz,
     Config,
 };
-use ethercrab::PduStorage;
+use embassy_time::Timer;
+use ethercrab::{AlStatusCode, Client, ClientConfig, PduRx, PduStorage, PduTx, Timeouts};
 use panic_probe as _;
 use static_cell::make_static;
 
@@ -38,6 +36,56 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
+#[embassy_executor::task]
+async fn tx_rx_task(
+    mut device: Ethernet<'static, ETH, GenericSMI>,
+    mut tx: PduTx<'static>,
+    mut rx: PduRx<'static>,
+) -> ! {
+    defmt::info!("Spawn TX/RX");
+
+    poll_fn(|ctx| {
+        defmt::info!("Poll");
+
+        let mut tx_waker = tx.lock_waker();
+
+        if let Some(frame) = tx.next_sendable_frame() {
+            defmt::info!("--> Found sendable frame {} bytes", frame.len());
+
+            let tx_token = device.transmit(ctx).expect("no txitches?");
+
+            tx_token.consume(frame.len(), |buf| {
+                frame.write_ethernet_packet(buf).expect("write frame");
+            });
+        }
+
+        if let Some((rx, tx)) = device.receive(ctx) {
+            rx.consume(|rx| {
+                let frame = smoltcp::wire::EthernetFrame::new_unchecked(rx);
+
+                match frame.ethertype() {
+                    smoltcp::wire::EthernetProtocol::Unknown(value) if value == 0x88a4 => {
+                        defmt::info!("--> Rx ethercat")
+                    }
+                    other => defmt::info!("--> Rx non-ethercat {:?}", other),
+                }
+            });
+
+            // tx.consume(0, |tx| {
+            //     defmt::info!("--> Tx");
+            // });
+        } else {
+            defmt::info!("--> No frames")
+        }
+
+        tx_waker.replace(ctx.waker().clone());
+
+        // Poll::Ready((rx, tx))
+        Poll::<!>::Pending
+    })
+    .await
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let mut config = Config::default();
@@ -50,8 +98,8 @@ async fn main(spawner: Spawner) {
 
     let mac_addr = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
-    let mut device = Ethernet::new(
-        make_static!(PacketQueue::<8, 8>::new()),
+    let device = Ethernet::new(
+        make_static!(PacketQueue::<2, 2>::new()),
         p.ETH,
         Irqs,
         p.PA1,
@@ -70,28 +118,25 @@ async fn main(spawner: Spawner) {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
+    let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+
+    defmt::unwrap!(spawner.spawn(tx_rx_task(device, tx, rx)));
+
+    // // Do nothing here for now except let the tx/rx task run
+    // core::future::pending::<()>().await;
+
     loop {
-        poll_fn(|cx| {
-            defmt::info!("Poll");
-
-            let Some((rx, tx)) = device.receive(cx) else {
-                defmt::info!("--> No frames");
-                return Poll::Pending;
-            };
-
-            rx.consume(|rx| {
-                defmt::info!("--> Rx");
-            });
-
-            tx.consume(0, |tx| {
-                defmt::info!("--> Tx");
-            });
-
-            // Poll::Ready((rx, tx))
-            Poll::<()>::Pending
-        })
-        .await;
+        //
 
         defmt::info!("Loop");
+
+        if let Ok((status, wkc)) = client
+            .brd::<AlStatusCode>(ethercrab::RegisterAddress::AlStatus)
+            .await
+        {
+            defmt::info!("--> WKC {}", wkc);
+        }
+
+        Timer::after(embassy_time::Duration::from_secs(1)).await;
     }
 }
