@@ -1,7 +1,6 @@
 target_steps: &target_steps
   docker:
-    # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.69.0
+    - image: cimg/rust
   steps:
     - checkout
     - restore_cache:
@@ -40,8 +39,7 @@ target_steps: &target_steps
 
 miri_steps: &miri_steps
   docker:
-    # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.69.0
+    - image: cimg/rust
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
@@ -63,8 +61,7 @@ miri_steps: &miri_steps
 
 target_steps_no_std: &target_steps_no_std
   docker:
-    # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.69.0
+    - image: cimg/rust
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
@@ -81,11 +78,26 @@ target_steps_no_std: &target_steps_no_std
           - ./target
           - /home/circleci/.cargo/registry
 
+target_steps_embassy: &target_steps_embassy
+  working_directory: ~/project/examples/stm32
+  docker:
+    - image: cimg/rust
+  steps:
+    - checkout
+    - restore_cache:
+        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+    - run: cargo build --release
+
+    - save_cache:
+        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        paths:
+          - ./target
+          - /home/circleci/.cargo/registry
+
 macos_steps: &macos_steps
   resource_class: large
   docker:
-    # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.69.0
+    - image: cimg/rust
   steps:
     - checkout
     - restore_cache:
@@ -119,8 +131,7 @@ jobs:
       - TARGET: "x86_64-pc-windows-gnu"
     resource_class: large
     docker:
-      # NOTE: Exact version is overridden in `rust-toolchain.toml`
-      - image: cimg/rust:1.69.0
+      - image: cimg/rust
     steps:
       - checkout
       - restore_cache:
@@ -155,6 +166,10 @@ jobs:
       - TARGET: "thumbv7m-none-eabi"
     <<: *target_steps_no_std
 
+  target-embassy:
+    resource_class: large
+    <<: *target_steps_embassy
+
 build_jobs: &build_jobs
   jobs:
     - target-x86_64-unknown-linux-gnu
@@ -163,6 +178,7 @@ build_jobs: &build_jobs
     - macos-cross
     - macos-arm-cross
     - target-thumbv7m-none-eabi
+    - target-embassy
 
 workflows:
   version: 2
