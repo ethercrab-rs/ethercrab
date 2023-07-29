@@ -112,3 +112,8 @@ harness = false
 [profile.profiling]
 inherits = "release"
 debug = true
+
+# Used to get beter location info with defmt in `examples/stm32`. This is ignored if EtherCrab is
+# used as a dependency.
+[profile.release]
+debug = 2
