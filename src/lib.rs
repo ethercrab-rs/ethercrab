@@ -1,5 +1,19 @@
 //! An EtherCAT master written in pure Rust.
 //!
+//! # Crate features
+//!
+//! - `std` (enabled by default) - exposes the [`std`] module, containing helpers to run the TX/RX
+//!   loop on desktop operating systems.
+//! - `defmt` - enable logging with the [`defmt`](https://docs.rs/defmt) crate.
+//! - `log` - enable logging with the [`log`](https://docs.rs/log) crate. This is enabled by default
+//!   when the `std` feature is enabled.
+//!
+//! For `no_std` targets, it is recommended to add this crate with
+//!
+//! ```bash
+//! cargo add --no-default-features --features defmt
+//! ```
+//!
 //! # Examples
 //!
 //! This example increments the output bytes of all detected slaves every tick. It is tested on an
