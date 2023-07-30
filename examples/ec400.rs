@@ -1,6 +1,11 @@
 //! Configure a Leadshine EtherCat EL7 series drive and turn the motor.
 //!
 //! This demonstrates using the DS402 state machine to operate a DS402 compliant servo drive.
+//!
+//! # Experimental
+//!
+//! Please note the `ds402` module is experimental and may change drastically at any time. It is
+//! also not well tested so use at your own risk.
 
 use env_logger::Env;
 use ethercrab::{
