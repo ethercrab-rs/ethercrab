@@ -11,6 +11,7 @@ use crate::{
         },
     },
     error::{EepromError, Error, Item},
+    log,
     slave::SlaveIdentity,
 };
 use core::{ops::RangeInclusive, str::FromStr};

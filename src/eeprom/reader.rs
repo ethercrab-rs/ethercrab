@@ -1,6 +1,7 @@
 use crate::{
     eeprom::types::{CategoryType, SiiControl, SiiReadSize, SiiRequest},
     error::{EepromError, Error},
+    log,
     register::RegisterAddress,
     slave::SlaveRef,
 };

@@ -22,6 +22,7 @@ use crate::{
     dl_status::DlStatus,
     eeprom::types::SiiOwner,
     error::{Error, MailboxError, PduError},
+    log,
     mailbox::MailboxType,
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
@@ -309,8 +310,9 @@ where
         .await
         .map_err(|e| {
             log::error!(
-                "Mailbox IN ready error for slave {:#06x}: {e:?}",
-                self.state.configured_address
+                "Mailbox IN ready error for slave {:#06x}: {}",
+                self.state.configured_address,
+                e
             );
 
             e
@@ -348,8 +350,9 @@ where
         .await
         .map_err(|e| {
             log::error!(
-                "Response mailbox IN error for slave {:#06x}: {e:?}",
-                self.state.configured_address
+                "Response mailbox IN error for slave {:#06x}: {}",
+                self.state.configured_address,
+                e
             );
 
             e
@@ -376,7 +379,7 @@ where
         let (headers, data) = response.split_at(headers_len);
 
         let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
-            log::error!("Failed to unpack mailbox response headers: {e}");
+            log::error!("Failed to unpack mailbox response headers: {}", e);
 
             e
         })?;

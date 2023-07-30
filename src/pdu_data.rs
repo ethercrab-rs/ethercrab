@@ -6,7 +6,11 @@ use core::array::TryFromSliceError;
 pub trait PduRead: Sized {
     const LEN: u16;
 
-    type Error: core::fmt::Debug;
+    #[cfg(feature = "defmt")]
+    type Error: defmt::Format;
+
+    #[cfg(not(feature = "defmt"))]
+    type Error: code::fmt::Debug;
 
     fn len() -> u16 {
         Self::LEN & LEN_MASK

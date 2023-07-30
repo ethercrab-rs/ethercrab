@@ -1,5 +1,6 @@
 use crate::{
     error::Error,
+    log,
     pdi::PdiOffset,
     slave::{Slave, SlaveRef},
     Client, SlaveGroup,

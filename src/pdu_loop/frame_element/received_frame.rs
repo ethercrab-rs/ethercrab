@@ -1,6 +1,7 @@
 use super::{FrameBox, FrameElement, PduFrame};
 use crate::{
     error::Error,
+    log,
     pdu_loop::{frame_element::FrameState, PduResponse},
 };
 

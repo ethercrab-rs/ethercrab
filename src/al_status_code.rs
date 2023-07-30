@@ -6,6 +6,7 @@ use num_enum::TryFromPrimitiveError;
 ///
 /// Defined in ETG1000.6 Table 11.
 #[derive(Debug, Copy, Clone, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum AlStatusCode {
     /// No error

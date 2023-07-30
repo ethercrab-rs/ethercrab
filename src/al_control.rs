@@ -1,4 +1,4 @@
-use crate::{pdu_data::PduRead, slave_state::SlaveState};
+use crate::{log, pdu_data::PduRead, slave_state::SlaveState};
 use packed_struct::prelude::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -22,7 +22,7 @@ impl PackedStruct for AlControl {
     fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
         let byte = src[0];
 
-        log::trace!("AL raw byte {byte:#010b} (slice {:?})", src);
+        log::trace!("AL raw byte {:#010b} (slice {:?})", byte, src);
 
         let state = SlaveState::try_from(byte & 0x0f).unwrap_or(SlaveState::Unknown);
         let error = (byte & (1 << 4)) > 0;

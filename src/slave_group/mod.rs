@@ -10,6 +10,7 @@ mod iterator;
 
 use crate::{
     error::{Error, Item},
+    log,
     pdi::PdiOffset,
     slave::{configuration::PdoDirection, pdi::SlavePdi, IoRanges, Slave, SlaveRef},
     timer_factory::timeout,
@@ -382,7 +383,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupState
             })?
             .try_borrow_mut()
             .map_err(|e| {
-                log::error!("Slave index {}: {}", index, e);
+                log::error!("Slave index {} already borrowed", index);
 
                 Error::Borrow
             })?;
@@ -423,7 +424,7 @@ where
             })?
             .try_borrow_mut()
             .map_err(|e| {
-                log::error!("Slave index {}: {}", index, e);
+                log::error!("Slave index {} already borrowed", index);
 
                 Error::Borrow
             })?;

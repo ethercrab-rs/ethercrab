@@ -4,6 +4,7 @@ use crate::{
     command::Command,
     dc,
     error::{Error, Item, PduError},
+    log,
     pdi::PdiOffset,
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
@@ -274,7 +275,7 @@ impl<'sto> Client<'sto> {
             for (id, group) in group_map.iter_mut() {
                 offset = group.into_pre_op(offset, self).await?;
 
-                log::debug!("After group ID {id} offset: {:?}", offset);
+                log::debug!("After group ID {} offset: {:?}", id, offset);
             }
 
             log::debug!("Total PDI {} bytes", offset.start_address);
@@ -385,7 +386,7 @@ impl<'sto> Client<'sto> {
                     .await?
                     .wkc(num_slaves, "read all slaves state")?;
 
-                log::trace!("Global AL status {status:?}");
+                log::trace!("Global AL status {:?}", status);
 
                 if status.error {
                     log::error!(

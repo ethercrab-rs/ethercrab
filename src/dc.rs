@@ -2,6 +2,7 @@
 
 use crate::{
     error::Error,
+    log,
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
     slave::{ports::Topology, Slave, SlaveRef},
@@ -177,9 +178,20 @@ fn configure_slave_offsets(
         let child_delay = slave.ports.child_delay();
 
         log::debug!("--> Topology {:?}, {}", slave.ports.topology(), slave.ports);
-        log::debug!("--> Receive times {time_p0} ns (Δ {d01} ns) {time_p1} (Δ {d21} ns) {time_p2} (Δ {d32} ns) {time_p3}");
         log::debug!(
-            "--> Loop propagation time {loop_propagation_time:?} ns, child delay {child_delay:?} ns"
+            "--> Receive times {} ns (Δ {} ns) {} (Δ {} ns) {} (Δ {} ns) {}",
+            time_p0,
+            d01,
+            time_p1,
+            d21,
+            time_p2,
+            d32,
+            time_p3
+        );
+        log::debug!(
+            "--> Loop propagation time {:?} ns, child delay {:?} ns",
+            loop_propagation_time,
+            child_delay,
         );
     }
 

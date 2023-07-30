@@ -2,6 +2,7 @@
 
 use crate::{
     error::Error as EthercrabError,
+    log,
     slave::{pdi::SlavePdi, SlaveRef},
 };
 use core::fmt;

@@ -308,6 +308,16 @@ pub enum VisibleStringError {
     TooLong,
 }
 
+#[cfg(feature = "defmt")]
+impl defmt::Format for VisibleStringError {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            VisibleStringError::Decode(_) => defmt::write!(f, "Decode"),
+            VisibleStringError::TooLong => defmt::write!(f, "TooLong"),
+        }
+    }
+}
+
 impl fmt::Display for VisibleStringError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

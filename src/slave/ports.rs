@@ -19,7 +19,7 @@ impl Port {
             3 => 1,
             1 => 2,
             2 => 3,
-            n => unreachable!("Invalid port number {n}"),
+            n => unreachable!("Invalid port number {}", n),
         }
     }
 }
@@ -135,7 +135,7 @@ impl Ports {
             3 => Topology::Fork,
             // TODO: I need test devices!
             4 => todo!("Cross topology not yet supported"),
-            n => unreachable!("Invalid topology {n}"),
+            n => unreachable!("Invalid topology {}", n),
         }
     }
 

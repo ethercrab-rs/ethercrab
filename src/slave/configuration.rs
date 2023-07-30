@@ -7,6 +7,7 @@ use crate::{
     },
     error::{Error, Item},
     fmmu::Fmmu,
+    log,
     pdi::PdiOffset,
     pdi::PdiSegment,
     register::RegisterAddress,
@@ -137,8 +138,9 @@ where
         let has_coe = self.state.config.mailbox.has_coe;
 
         log::debug!(
-            "Slave {:#06x} has CoE: {has_coe:?}",
-            self.state.configured_address
+            "Slave {:#06x} has CoE: {:?}",
+            self.state.configured_address,
+            has_coe
         );
 
         match direction {
@@ -244,8 +246,9 @@ where
         .await?;
 
         log::debug!(
-            "Slave {:#06x} SM{sync_manager_index}: {}",
+            "Slave {:#06x} SM{}: {}",
             self.state.configured_address,
+            sync_manager_index,
             sm_config
         );
         log::trace!("{:#?}", sm_config);
@@ -385,7 +388,13 @@ where
             // Total number of PDO assignments for this sync manager
             let num_sm_assignments = self.sdo_read::<u8>(sm_address, SubIndex::Index(0)).await?;
 
-            log::trace!("SDO sync manager {sync_manager_index}  {sm_address:#06x} {sm_type:?}, sub indices: {num_sm_assignments}");
+            log::trace!(
+                "SDO sync manager {}  {:#06x} {:?}, sub indices: {}",
+                sync_manager_index,
+                sm_address,
+                sm_type,
+                num_sm_assignments
+            );
 
             let mut sm_bit_len = 0u16;
 
@@ -393,7 +402,7 @@ where
                 let pdo = self.sdo_read::<u16>(sm_address, SubIndex::Index(i)).await?;
                 let num_mappings = self.sdo_read::<u8>(pdo, SubIndex::Index(0)).await?;
 
-                log::trace!("--> #{i} data: {pdo:#06x} ({num_mappings} mappings):");
+                log::trace!("--> #{} data: {:#06x} ({} mappings):", i, pdo, num_mappings);
 
                 for i in 1..=num_mappings {
                     let mapping = self.sdo_read::<u32>(pdo, SubIndex::Index(i)).await?;
@@ -407,7 +416,10 @@ where
                     let mapping_bit_len = parts[3];
 
                     log::trace!(
-                        "----> index {index:#06x}, sub index {sub_index}, bit length {mapping_bit_len}"
+                        "----> index {:#06x}, sub index {}, bit length {}",
+                        index,
+                        sub_index,
+                        mapping_bit_len,
                     );
 
                     sm_bit_len += u16::from(mapping_bit_len);
@@ -415,7 +427,8 @@ where
             }
 
             log::trace!(
-                "----= total SM bit length {sm_bit_len} ({} bytes)",
+                "----= total SM bit length {} ({} bytes)",
+                sm_bit_len,
                 (sm_bit_len + 7) / 8
             );
 
@@ -494,8 +507,9 @@ where
         )
         .await?;
         log::debug!(
-            "Slave {:#06x} FMMU{fmmu_index}: {}",
+            "Slave {:#06x} FMMU{}: {}",
             self.state.configured_address,
+            fmmu_index,
             fmmu_config
         );
         log::trace!("{:#?}", fmmu_config);
@@ -541,13 +555,13 @@ where
                 .find(|fmmu| fmmu.sync_manager == sync_manager_index)
                 .map(|fmmu| fmmu.sync_manager)
                 .or_else(|| {
-                    log::trace!("Could not find FMMU for PDO SM{sync_manager_index}");
+                    log::trace!("Could not find FMMU for PDO SM{}", sync_manager_index);
 
                     fmmu_usage
                         .iter()
                         .position(|usage| *usage == fmmu_type)
                         .map(|idx| {
-                            log::trace!("Using fallback FMMU FMMU{idx}");
+                            log::trace!("Using fallback FMMU FMMU{}", idx);
 
                             idx as u8
                         })
