@@ -3,34 +3,32 @@
 #![feature(type_alias_impl_trait)]
 #![feature(never_type)]
 
-use core::{future::poll_fn, task::Poll};
+use core::{
+    future::poll_fn,
+    sync::atomic::{AtomicBool, Ordering},
+    task::Poll,
+};
 use defmt_rtt as _;
 use embassy_executor::Spawner;
-use embassy_net::{
-    driver::{Driver, RxToken, TxToken},
-    EthernetAddress,
-};
+use embassy_net::driver::{Driver, RxToken, TxToken};
 use embassy_stm32::{
     bind_interrupts,
     eth::{self, generic_smi::GenericSMI, Ethernet, PacketQueue},
-    peripherals::ETH,
+    gpio::{Level, Output, Speed},
+    peripherals::{ETH, PB7},
     time::mhz,
     Config,
 };
-use embassy_time::Timer;
-use embedded_io::asynch::{Read, Write};
+use embassy_time::{Duration, Timer};
 use ethercrab::{
     AlStatusCode, Client, ClientConfig, PduRx, PduStorage, PduTx, SendableFrame, Timeouts,
 };
 use panic_probe as _;
-use smoltcp::wire::EthernetProtocol;
 use static_cell::make_static;
 
 bind_interrupts!(struct Irqs {
     ETH => eth::InterruptHandler;
 });
-
-type Device = Ethernet<'static, ETH, GenericSMI>;
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -42,6 +40,8 @@ const MAX_FRAMES: usize = 8;
 const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+
+static HAS_SPAWNED: AtomicBool = AtomicBool::new(false);
 
 #[embassy_executor::task]
 async fn tx_rx_task(
@@ -70,43 +70,50 @@ async fn tx_rx_task(
 
         pdu_tx.lock_waker().replace(ctx.waker().clone());
 
-        loop {
-            if let Some((rx, tx)) = device.receive(ctx) {
-                defmt::info!("TX WITH RX");
+        if let Some((rx, tx)) = device.receive(ctx) {
+            defmt::info!("TX WITH RX");
 
-                rx.consume(|frame| {
-                    defmt::unwrap!(pdu_rx.receive_frame(frame));
-                });
+            rx.consume(|frame| {
+                defmt::unwrap!(pdu_rx.receive_frame(frame));
+            });
 
-                if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
-                    defmt::info!("Sennnddddd FROM RX");
+            if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
+                defmt::info!("Sennnddddd FROM RX");
 
-                    send_ecat(tx, ethercat_frame);
-                }
-            } else if let Some(tx) = device.transmit(ctx) {
-                defmt::info!("TX ONLY");
+                send_ecat(tx, ethercat_frame);
+            }
+        } else if let Some(tx) = device.transmit(ctx) {
+            defmt::info!("TX ONLY");
 
-                if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
-                    defmt::info!("Sennnddddd");
+            if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
+                defmt::info!("Sennnddddd");
 
-                    send_ecat(tx, ethercat_frame);
-                } else {
-                    break;
-                }
-            } else {
-                break;
+                send_ecat(tx, ethercat_frame);
             }
         }
+
+        HAS_SPAWNED.store(true, Ordering::Relaxed);
 
         Poll::<!>::Pending
     })
     .await
 }
 
+#[embassy_executor::task]
+async fn blinky(mut led: Output<'static, PB7>) -> ! {
+    loop {
+        led.set_high();
+        Timer::after(Duration::from_millis(250)).await;
+
+        led.set_low();
+        Timer::after(Duration::from_millis(250)).await;
+    }
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let mut config = Config::default();
-    // config.rcc.pll48 = true;
+    config.rcc.pll48 = true;
     config.rcc.sys_ck = Some(mhz(96));
 
     let p = embassy_stm32::init(config);
@@ -133,9 +140,18 @@ async fn main(spawner: Spawner) {
         0,
     );
 
+    let led = Output::new(p.PB7, Level::High, Speed::Low);
+    defmt::unwrap!(spawner.spawn(blinky(led)));
+
     let (tx, rx, pdu_loop) = defmt::unwrap!(PDU_STORAGE.try_split());
 
     defmt::unwrap!(spawner.spawn(tx_rx_task(device, tx, rx)));
+
+    defmt::info!("Waiting for spawn");
+    while HAS_SPAWNED.load(Ordering::Relaxed) == false {
+        defmt::info!("Waiting for spawn");
+        Timer::after(embassy_time::Duration::from_millis(100)).await;
+    }
 
     let client = Client::new(
         pdu_loop,
@@ -167,17 +183,17 @@ async fn main(spawner: Spawner) {
     // }
 
     loop {
-        match client
-            .brd::<u16>(ethercrab::RegisterAddress::AlStatus)
-            .await
-        {
-            Ok((status, wkc)) => {
-                defmt::info!("--> WKC {}", wkc);
-            }
-            Err(e) => {
-                defmt::error!("--> BRD fail: {}", e);
-            }
-        }
+        // match client
+        //     .brd::<u16>(ethercrab::RegisterAddress::AlStatus)
+        //     .await
+        // {
+        //     Ok((status, wkc)) => {
+        //         defmt::info!("--> WKC {}", wkc);
+        //     }
+        //     Err(e) => {
+        //         defmt::error!("--> BRD fail: {}", e);
+        //     }
+        // }
 
         // defmt::unwrap!(group.tx_rx(&client).await);
 
