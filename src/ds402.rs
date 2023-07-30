@@ -1,4 +1,12 @@
 //! DS402 state machine.
+//!
+//! # Experimental
+//!
+//! Please note the `ds402` module is rough, experimental and may change drastically at any time as
+//! the API evolves. It has basic functionality at the moment and can be used to make motors spin,
+//! but there is a lot missing.
+//!
+//! Use at your own risk.
 
 use crate::{
     error::Error as EthercrabError,
