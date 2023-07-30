@@ -68,12 +68,14 @@ async fn tx_rx_task(
             if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
                 send_ecat(tx, ethercat_frame);
 
+                // Wake the poll_fn again so that any still-queued frames can be sent.
                 ctx.waker().wake_by_ref();
             }
         } else if let Some(tx) = device.transmit(ctx) {
             if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
                 send_ecat(tx, ethercat_frame);
 
+                // Wake the poll_fn again so that any still-queued frames can be sent.
                 ctx.waker().wake_by_ref();
             }
         }

@@ -10,7 +10,6 @@ ethercrab = { path = "../..", default-features = false, features = ["defmt"] }
 
 defmt = "0.3"
 defmt-rtt = "0.4.0"
-
 cortex-m = { version = "0.7.6", features = [
     "inline-asm",
     "critical-section-single-core",
@@ -19,7 +18,6 @@ cortex-m-rt = "0.7.0"
 embedded-hal = "0.2.6"
 embedded-io = "0.4.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-heapless = { version = "0.7.5", default-features = false }
 static_cell = { version = "1.1", features = ["nightly"] }
 
 embassy-sync = { version = "0.2.0", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
@@ -38,7 +36,7 @@ embassy-time = { version = "0.1.2", git = "https://github.com/embassy-rs/embassy
     "defmt",
     "defmt-timestamp-uptime",
     "unstable-traits",
-    "tick-hz-32_768",
+    "tick-hz-1_000_000",
 ] }
 embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
     "nightly",

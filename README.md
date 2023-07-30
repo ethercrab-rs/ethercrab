@@ -137,7 +137,9 @@ async fn main() -> Result<(), Error> {
 ## Current and future features
 
 - [x] `async` API
-- [x] Usable in `no_std` contexts as long as an allocator is available
+- [x] Usable in `no_std` contexts with no allocator required, as long as an `async` executor is available.
+  - [x] Tested with [Embassy](https://embassy.dev)
+  - [ ] Tested with [RTIC](https://rtic.rs/2/book/en/)
 - [x] Autoconfigure slaves from their EEPROM (SII) data during startup
   - [x] Supports configuration using CoE data
 - [x] Safely usable in multi-threaded Linux systems with e.g. `tokio` or `std::thread` and
