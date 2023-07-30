@@ -38,7 +38,7 @@ impl<'sto> ReceivingFrame<'sto> {
         let frame = unsafe { self.inner.frame() };
 
         let waker = unsafe { self.inner.take_waker() }.ok_or_else(|| {
-            log::error!(
+            defmt::error!(
                 "Attempted to wake frame #{} with no waker, possibly caused by timeout",
                 frame.index
             );
@@ -51,6 +51,8 @@ impl<'sto> ReceivingFrame<'sto> {
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::RxDone);
         }
+
+        defmt::info!("----> Frame has waker");
 
         waker.wake();
 
@@ -101,7 +103,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
         let rxin = match self.frame.take() {
             Some(r) => r,
             None => {
-                log::error!("Frame is taken");
+                defmt::error!("Frame is taken");
 
                 return Poll::Ready(Err(PduError::InvalidFrameState.into()));
             }
@@ -127,7 +129,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
                 Poll::Pending
             }
             state => {
-                log::error!("Frame is in invalid state {:?}", state);
+                defmt::error!("Frame is in invalid state {:?}", state);
 
                 Poll::Ready(Err(PduError::InvalidFrameState.into()))
             }

@@ -25,6 +25,7 @@ async-io = { version = "1.13.0", optional = true }
 atomic_enum = "0.2.0"
 atomic_refcell = "0.1.10"
 bitflags = "2.3.3"
+defmt = { version = "0.3.5", optional = true }
 embassy-futures = "0.1.0"
 embassy-time = "0.1.2"
 futures-lite = { version = "1.13.0", default-features = false }
@@ -76,6 +77,7 @@ tokio = { version = "1.29.1", features = [
 
 [features]
 default = ["std"]
+defmt = ["dep:defmt"]
 std = ["pnet_datalink", "async-io", "smoltcp/phy-raw_socket", "log/std"]
 # Development only - DO NOT USE
 bench-hacks = []

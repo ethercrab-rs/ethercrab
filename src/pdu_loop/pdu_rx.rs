@@ -84,7 +84,11 @@ impl<'sto> PduRx<'sto> {
         let (i, data) = take(flags.length)(i)?;
         let (i, working_counter) = le_u16(i)?;
 
-        log::trace!("Received frame with index {index:#04x}, WKC {working_counter}");
+        defmt::trace!(
+            "Received frame with index {:#04x}, WKC {}",
+            index,
+            working_counter,
+        );
 
         // `_i` should be empty as we `take()`d an exact amount above.
         debug_assert_eq!(i.len(), 0, "trailing data in received frame");

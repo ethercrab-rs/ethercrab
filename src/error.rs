@@ -5,6 +5,7 @@ use core::{cell::BorrowError, fmt, num::TryFromIntError, str::Utf8Error};
 
 /// An EtherCrab error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error {
     /// A low level error occurred when producing or consuming a PDU.
     Pdu(PduError),
@@ -158,6 +159,7 @@ impl From<BorrowError> for Error {
 
 /// The kind of item being looked for.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Item {
     /// An EtherCAT slave device.
     Slave,
@@ -177,6 +179,7 @@ pub enum Item {
 
 /// Low-level PDU (Process Data Unit) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PduError {
     /// Failed to decode raw PDU data into a given data type.
     Decode,
@@ -219,6 +222,7 @@ impl fmt::Display for PduError {
 
 /// CoE mailbox error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum MailboxError {
     /// The mailbox operation was aborted.
     Aborted {
@@ -272,6 +276,7 @@ impl fmt::Display for MailboxError {
 
 /// EEPROM (SII) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum EepromError {
     /// Failed to decode data from EEPROM.
     Decode,
@@ -314,6 +319,7 @@ impl fmt::Display for VisibleStringError {
 
 /// A PDU response failed to validate.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PduValidationError {
     /// The index of the received PDU does not match that of the sent one.
     IndexMismatch {
@@ -380,16 +386,24 @@ impl<I> From<nom::Err<nom::error::Error<I>>> for Error
 where
     I: core::fmt::Debug,
 {
+    #[allow(unused)]
     fn from(e: nom::Err<nom::error::Error<I>>) -> Self {
-        log::error!("Nom error {:?}", e);
+        #[cfg(feature = "defmt")]
+        defmt::error!("Nom error");
+        #[cfg(not(feature = "defmt"))]
+        log::error!("Nom error");
 
         Self::Pdu(PduError::Decode)
     }
 }
 
 impl From<packed_struct::PackingError> for Error {
+    #[allow(unused)]
     fn from(e: packed_struct::PackingError) -> Self {
-        log::error!("Packing error {:?}", e);
+        #[cfg(feature = "defmt")]
+        defmt::error!("Packing error");
+        #[cfg(not(feature = "defmt"))]
+        log::error!("Packing error");
 
         Self::Pdu(PduError::Decode)
     }
@@ -397,7 +411,7 @@ impl From<packed_struct::PackingError> for Error {
 
 impl From<TryFromIntError> for Error {
     fn from(e: TryFromIntError) -> Self {
-        log::error!("Integer conversion error: {}", e);
+        defmt::error!("Integer conversion error: {}", e);
 
         Self::IntegerTypeConversion
     }
