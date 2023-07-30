@@ -1,7 +1,7 @@
 use super::{FrameBox, FrameElement, PduFrame};
 use crate::{
     error::Error,
-    log,
+    fmt,
     pdu_loop::{frame_element::FrameState, PduResponse},
 };
 
@@ -68,7 +68,7 @@ impl<'sto> ReceivedFrame<'sto> {
 
 impl<'sto> Drop for ReceivedFrame<'sto> {
     fn drop(&mut self) {
-        log::trace!("Drop frame element idx {}", self.frame().index);
+        fmt::trace!("Drop frame element idx {}", self.frame().index);
 
         unsafe { FrameElement::set_state(self.inner.frame, FrameState::None) }
     }

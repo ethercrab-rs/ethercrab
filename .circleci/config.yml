@@ -5,7 +5,7 @@ target_steps: &target_steps
   steps:
     - checkout
     - restore_cache:
-        key: v6-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v7-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # For docs gen
     - run: rustup target add x86_64-unknown-linux-gnu || true
@@ -29,10 +29,11 @@ target_steps: &target_steps
     - run: cargo test --target $TARGET
     - run: cargo bench --no-run --target $TARGET
     - run: cargo build --target $TARGET --examples --release
+    - run: cargo build --target $TARGET --no-default-features
     - run: cargo deadlinks --ignore-fragments
 
     - save_cache:
-        key: v6-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v7-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
@@ -69,21 +70,20 @@ target_steps_no_std: &target_steps_no_std
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
     - restore_cache:
-        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     - run: rustup target add $TARGET || true
-    # TODO: Add --examples when there are some no_std examples ready
     - run: cargo build --target $TARGET --no-default-features --release
     - run: cargo build --target $TARGET --no-default-features --release --features defmt
 
     - save_cache:
-        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
 
 target_steps_embassy: &target_steps_embassy
-  working_directory: ~/project/examples/stm32
+  working_directory: ~/project/examples/embassy-stm32
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
     - image: cimg/rust:1.71

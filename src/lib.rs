@@ -134,7 +134,7 @@
 #![deny(rustdoc::private_intra_doc_links)]
 
 // MUST go first so everything else can see the macros inside
-pub(crate) mod log;
+pub(crate) mod fmt;
 
 mod al_control;
 mod al_status_code;

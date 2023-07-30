@@ -2,7 +2,7 @@
 
 use crate::{
     error::Error,
-    log,
+    fmt,
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
     slave::{ports::Topology, Slave, SlaveRef},
@@ -37,7 +37,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
             .read::<[u32; 4]>(RegisterAddress::DcTimePort0, "Port receive times")
             .await
             .map_err(|e| {
-                log::error!(
+                fmt::error!(
                     "Failed to read DC times for slave {:#06x}: {}",
                     slave.configured_address,
                     e
@@ -131,7 +131,7 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
             let split_point = parents_it
                 .find(|slave| slave.ports.topology() == Topology::Fork)
                 .ok_or_else(|| {
-                    log::error!(
+                    fmt::error!(
                         "Did not find fork parent for slave {:#06x}",
                         slave.configured_address
                     );
@@ -146,7 +146,7 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
             Ok(Some(parent.index))
         }
     } else {
-        log::error!(
+        fmt::error!(
             "Did not find parent for slave {:#06x}",
             slave.configured_address
         );
@@ -177,8 +177,8 @@ fn configure_slave_offsets(
         let loop_propagation_time = slave.ports.propagation_time();
         let child_delay = slave.ports.child_delay();
 
-        log::debug!("--> Topology {:?}, {}", slave.ports.topology(), slave.ports);
-        log::debug!(
+        fmt::debug!("--> Topology {:?}, {}", slave.ports.topology(), slave.ports);
+        fmt::debug!(
             "--> Receive times {} ns (Δ {} ns) {} (Δ {} ns) {} (Δ {} ns) {}",
             time_p0,
             d01,
@@ -188,7 +188,7 @@ fn configure_slave_offsets(
             d32,
             time_p3
         );
-        log::debug!(
+        fmt::debug!(
             "--> Loop propagation time {:?} ns, child delay {:?} ns",
             loop_propagation_time,
             child_delay,
@@ -217,11 +217,11 @@ fn configure_slave_offsets(
         slave.propagation_delay = *delay_accum;
     }
 
-    log::debug!("--> Propagation delay {} ns", slave.propagation_delay);
+    fmt::debug!("--> Propagation delay {} ns", slave.propagation_delay);
 
     if !slave.flags.has_64bit_dc {
         // TODO?
-        log::warn!("--> Slave uses seconds instead of ns?");
+        fmt::warn!("--> Slave uses seconds instead of ns?");
     }
 
     Ok(())
@@ -238,7 +238,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
 
         slave.parent_index = find_slave_parent(parents, slave)?;
 
-        log::debug!(
+        fmt::debug!(
             "Slave {:#06x} {} {}",
             slave.configured_address,
             slave.name,
@@ -266,7 +266,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
         if slave.flags.dc_supported {
             configure_slave_offsets(slave, parents, &mut delay_accum)?;
         } else {
-            log::trace!(
+            fmt::trace!(
                 "--> Skipping DC config for slave {:#06x}: DC not supported",
                 slave.configured_address
             );
@@ -301,7 +301,7 @@ pub(crate) async fn configure_dc<'slaves>(
 
     let first_dc_slave = slaves.iter().find(|slave| slave.flags.dc_supported);
 
-    log::debug!("Distributed clock config complete");
+    fmt::debug!("Distributed clock config complete");
 
     // TODO: Set a flag so we can periodically send a FRMW to keep clocks in sync. Maybe add a
     // config item to set minimum tick rate?
@@ -314,7 +314,7 @@ pub(crate) async fn run_dc_static_sync(
     dc_reference_slave: &Slave,
     iterations: u32,
 ) -> Result<(), Error> {
-    log::debug!(
+    fmt::debug!(
         "Performing static drift compensation using slave {:#06x} {} as reference. This can take some time...",
         dc_reference_slave.configured_address,
         dc_reference_slave.name
@@ -331,7 +331,7 @@ pub(crate) async fn run_dc_static_sync(
             .await?;
     }
 
-    log::debug!("Static drift compensation complete");
+    fmt::debug!("Static drift compensation complete");
 
     Ok(())
 }

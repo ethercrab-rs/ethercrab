@@ -1,4 +1,4 @@
-use crate::{log, Client, SlaveGroupState, SlaveRef};
+use crate::{fmt, Client, SlaveGroupState, SlaveRef};
 
 /// An iterator over all slaves in a group.
 ///
@@ -36,7 +36,7 @@ where
 
         // Squelch errors. If we're failing at this point, something is _very_ wrong.
         let slave = self.group.slave(self.client, self.idx).map_err(|e| {
-            log::error!("Failed to get slave at index {} from group with {} slaves: {}. This is very wrong. Please open an issue.", self.idx, self.group.len(), e);
+            fmt::error!("Failed to get slave at index {} from group with {} slaves: {}. This is very wrong. Please open an issue.", self.idx, self.group.len(), e);
         }).ok()?;
 
         self.idx += 1;

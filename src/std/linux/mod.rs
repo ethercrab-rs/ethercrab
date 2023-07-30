@@ -5,7 +5,7 @@ mod raw_socket;
 use self::raw_socket::RawSocketDesc;
 use crate::{
     error::Error,
-    log,
+    fmt,
     pdu_loop::{PduRx, PduTx},
 };
 use async_io::Async;
@@ -50,7 +50,7 @@ impl Future for TxRxFut<'_> {
             match Pin::new(&mut self.socket).poll_write(ctx, data) {
                 Poll::Ready(Ok(bytes_written)) => {
                     if bytes_written != data.len() {
-                        log::error!("Only wrote {} of {} bytes", bytes_written, data.len());
+                        fmt::error!("Only wrote {} of {} bytes", bytes_written, data.len());
 
                         // FIXME: Release frame
 
@@ -64,7 +64,7 @@ impl Future for TxRxFut<'_> {
                 }
                 // FIXME: Release frame on failure
                 Poll::Ready(Err(e)) => {
-                    log::error!("Send PDU failed: {}", e);
+                    fmt::error!("Send PDU failed: {}", e);
 
                     return Poll::Ready(Err(Error::SendFrame));
                 }
@@ -78,14 +78,14 @@ impl Future for TxRxFut<'_> {
 
                 // FIXME: Release frame on failure
                 if let Err(e) = self.rx.receive_frame(packet) {
-                    log::error!("Failed to receive frame: {}", e);
+                    fmt::error!("Failed to receive frame: {}", e);
 
                     return Poll::Ready(Err(Error::ReceiveFrame));
                 }
             }
             // FIXME: Release frame on failure
             Poll::Ready(Err(e)) => {
-                log::error!("Receive PDU failed: {}", e);
+                fmt::error!("Receive PDU failed: {}", e);
 
                 return Poll::Ready(Err(Error::ReceiveFrame));
             }

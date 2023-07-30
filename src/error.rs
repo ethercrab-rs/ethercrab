@@ -1,7 +1,7 @@
 //! EtherCrab error types.
 
-use crate::{coe::abort_code::AbortCode, command::Command, log, SlaveState};
-use core::{cell::BorrowError, fmt, num::TryFromIntError, str::Utf8Error};
+use crate::{coe::abort_code::AbortCode, command::Command, fmt, SlaveState};
+use core::{cell::BorrowError, num::TryFromIntError, str::Utf8Error};
 use packed_struct::PackingError;
 
 /// An EtherCrab error.
@@ -90,8 +90,8 @@ pub enum Error {
     },
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Error::Pdu(e) => write!(f, "pdu: {}", e),
             Error::WorkingCounter {
@@ -206,8 +206,8 @@ pub enum PduError {
     SwapState,
 }
 
-impl fmt::Display for PduError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for PduError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             PduError::Decode => write!(f, "failed to decode raw PDU data into type"),
             PduError::Ethernet(e) => write!(f, "network: {}", e),
@@ -252,8 +252,8 @@ pub enum MailboxError {
     },
 }
 
-impl fmt::Display for MailboxError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for MailboxError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             MailboxError::Aborted {
                 code,
@@ -289,8 +289,8 @@ pub enum EepromError {
     SectionUnderrun,
 }
 
-impl fmt::Display for EepromError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for EepromError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             EepromError::Decode => f.write_str("failed to decode data"),
             EepromError::SectionOverrun => f.write_str("section too large to fit in buffer"),
@@ -319,8 +319,8 @@ impl defmt::Format for VisibleStringError {
     }
 }
 
-impl fmt::Display for VisibleStringError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for VisibleStringError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             VisibleStringError::Decode(e) => write!(f, "failed to decode string: {}", e),
             VisibleStringError::TooLong => write!(f, "string is too long"),
@@ -348,8 +348,8 @@ pub enum PduValidationError {
     },
 }
 
-impl fmt::Display for PduValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for PduValidationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::IndexMismatch { sent, received } => {
                 write!(
@@ -402,7 +402,7 @@ where
         #[cfg(feature = "defmt")]
         defmt::error!("Nom error");
         #[cfg(not(feature = "defmt"))]
-        log::error!("Nom error");
+        fmt::error!("Nom error");
 
         Self::Pdu(PduError::Decode)
     }
@@ -411,7 +411,7 @@ where
 impl From<PackingError> for Error {
     #[allow(unused)]
     fn from(e: PackingError) -> Self {
-        log::error!("Packing error");
+        fmt::error!("Packing error");
 
         Self::Pdu(PduError::Decode)
     }
@@ -419,7 +419,7 @@ impl From<PackingError> for Error {
 
 impl From<TryFromIntError> for Error {
     fn from(_e: TryFromIntError) -> Self {
-        log::error!("Integer conversion error");
+        fmt::error!("Integer conversion error");
 
         Self::IntegerTypeConversion
     }

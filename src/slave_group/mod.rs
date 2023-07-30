@@ -10,7 +10,7 @@ mod iterator;
 
 use crate::{
     error::{Error, Item},
-    log,
+    fmt,
     pdi::PdiOffset,
     slave::{configuration::PdoDirection, pdi::SlavePdi, IoRanges, Slave, SlaveRef},
     timer_factory::timeout,
@@ -68,7 +68,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 
         let mut pdi_position = inner.pdi_start;
 
-        log::debug!(
+        fmt::debug!(
             "Going to configure group with {} slave(s), starting PDI offset {:#010x}",
             inner.slaves.len(),
             inner.pdi_start.start_address
@@ -88,7 +88,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 
         self.read_pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
 
-        log::debug!("Slave mailboxes configured and init hooks called");
+        fmt::debug!("Slave mailboxes configured and init hooks called");
 
         // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
@@ -157,11 +157,11 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             // }
         }
 
-        log::debug!("Slave FMMUs configured for group. Able to move to SAFE-OP");
+        fmt::debug!("Slave FMMUs configured for group. Able to move to SAFE-OP");
 
         self.pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
 
-        log::debug!(
+        fmt::debug!(
             "Group PDI length: start {:#010x}, {} total bytes ({} input bytes)",
             inner.pdi_start.start_address,
             self.pdi_len,
@@ -330,11 +330,11 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
                 .await?;
         }
 
-        log::debug!("Waiting for group state {}", desired_state);
+        fmt::debug!("Waiting for group state {}", desired_state);
 
         self.wait_for_state(client, desired_state).await?;
 
-        log::debug!("--> Group reached state {}", desired_state);
+        fmt::debug!("--> Group reached state {}", desired_state);
 
         Ok(SlaveGroup {
             id: self.id,
@@ -383,7 +383,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupState
             })?
             .try_borrow_mut()
             .map_err(|_e| {
-                log::error!("Slave index {} already borrowed", index);
+                fmt::error!("Slave index {} already borrowed", index);
 
                 Error::Borrow
             })?;
@@ -424,7 +424,7 @@ where
             })?
             .try_borrow_mut()
             .map_err(|_e| {
-                log::error!("Slave index {} already borrowed", index);
+                fmt::error!("Slave index {} already borrowed", index);
 
                 Error::Borrow
             })?;
@@ -438,14 +438,14 @@ where
         let i_data = self.pdi();
         let o_data = self.pdi_mut();
 
-        log::trace!(
+        fmt::trace!(
             "Get slave {:#06x} IO ranges I: {}, O: {}",
             slave.configured_address,
             input_range,
             output_range
         );
 
-        log::trace!(
+        fmt::trace!(
             "--> Group PDI: {:?} ({} byte subset of {} max)",
             i_data,
             self.pdi_len,
@@ -500,7 +500,7 @@ where
     /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
     pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<(), Error> {
-        log::trace!(
+        fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
             self.pdi_mut().len(),

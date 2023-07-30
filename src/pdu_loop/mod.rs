@@ -179,7 +179,7 @@ impl<'sto> PduLoop<'sto> {
 mod tests {
     use super::{storage::PduStorage, *};
     use crate::{
-        log,
+        fmt,
         pdu_loop::frame_element::{
             sendable_frame::SendableFrame, FrameBox, FrameElement, FrameState,
         },
@@ -417,7 +417,7 @@ mod tests {
             let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
             let tx_task = async {
-                log::info!("Spawn TX task");
+                fmt::info!("Spawn TX task");
 
                 let mut packet_buf = [0u8; 1536];
 
@@ -438,10 +438,10 @@ mod tests {
             };
 
             let rx_task = async {
-                log::info!("Spawn RX task");
+                fmt::info!("Spawn RX task");
 
                 while let Some(ethernet_frame) = r.recv().await {
-                    log::trace!("RX task received packet");
+                    fmt::trace!("RX task received packet");
 
                     // Munge fake sent frame into a fake received frame
                     let ethernet_frame = {
@@ -462,7 +462,7 @@ mod tests {
         for i in 0..64 {
             let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
 
-            log::info!("Send PDU {i}");
+            fmt::info!("Send PDU {i}");
 
             let result = pdu_loop
                 .pdu_tx_readwrite(
@@ -480,6 +480,6 @@ mod tests {
             assert_eq!(&*result, &data);
         }
 
-        log::info!("Sent all PDUs");
+        fmt::info!("Sent all PDUs");
     }
 }

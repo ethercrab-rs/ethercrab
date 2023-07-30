@@ -7,7 +7,7 @@ use crate::{
     },
     error::{Error, Item},
     fmmu::Fmmu,
-    log,
+    fmt,
     pdi::PdiOffset,
     pdi::PdiSegment,
     register::RegisterAddress,
@@ -43,7 +43,7 @@ where
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
         self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
-        log::debug!(
+        fmt::debug!(
             "Slave {:#06x} mailbox SMs configured. Transitioning to PRE-OP",
             self.configured_address
         );
@@ -76,13 +76,13 @@ where
                         .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(index))
                         .await
                         .map(|sm| {
-                            log::trace!("Sync manager {} at sub-index {}", sm, index);
+                            fmt::trace!("Sync manager {} at sub-index {}", sm, index);
 
                             SyncManagerType::from_primitive(sm)
                         })?;
 
                     sms.push(sm).map_err(|_| {
-                        log::error!("More than 16 sync manager types deteced");
+                        fmt::error!("More than 16 sync manager types deteced");
 
                         Error::Capacity(Item::SyncManager)
                     })?;
@@ -91,7 +91,7 @@ where
                 sms
             };
 
-            log::debug!(
+            fmt::debug!(
                 "Slave {:#06x} found sync managers {:?}",
                 self.configured_address,
                 sms
@@ -121,7 +121,7 @@ where
         let (state, _status_code) = self.status().await?;
 
         if state != SlaveState::PreOp {
-            log::error!(
+            fmt::error!(
                 "Slave {:#06x} is in invalid state {}. Expected {}",
                 self.state.configured_address,
                 state,
@@ -137,7 +137,7 @@ where
 
         let has_coe = self.state.config.mailbox.has_coe;
 
-        log::debug!(
+        fmt::debug!(
             "Slave {:#06x} has CoE: {:?}",
             self.state.configured_address,
             has_coe
@@ -147,7 +147,7 @@ where
             PdoDirection::MasterRead => {
                 let pdos = self.eeprom_master_read_pdos().await?;
 
-                log::trace!("Slave inputs PDOs {:#?}", pdos);
+                fmt::trace!("Slave inputs PDOs {:#?}", pdos);
 
                 let input_range = if has_coe {
                     self.configure_pdos_coe(
@@ -178,7 +178,7 @@ where
             PdoDirection::MasterWrite => {
                 let pdos = self.eeprom_master_write_pdos().await?;
 
-                log::trace!("Slave outputs PDOs {:#?}", pdos);
+                fmt::trace!("Slave outputs PDOs {:#?}", pdos);
 
                 let output_range = if has_coe {
                     self.configure_pdos_coe(
@@ -208,7 +208,7 @@ where
             }
         }
 
-        log::debug!(
+        fmt::debug!(
             "Slave {:#06x} PDI inputs: {:?} ({} bytes), outputs: {:?} ({} bytes)",
             self.state.configured_address,
             self.state.config.io.input,
@@ -245,13 +245,13 @@ where
         )
         .await?;
 
-        log::debug!(
+        fmt::debug!(
             "Slave {:#06x} SM{}: {}",
             self.state.configured_address,
             sync_manager_index,
             sm_config
         );
-        log::trace!("{:#?}", sm_config);
+        fmt::trace!("{:#?}", sm_config);
 
         Ok(sm_config)
     }
@@ -263,14 +263,14 @@ where
 
         let general = self.eeprom_general().await?;
 
-        log::trace!(
+        fmt::trace!(
             "Slave {:#06x} Mailbox configuration: {:#?}",
             self.state.configured_address,
             mailbox_config
         );
 
         if !mailbox_config.has_mailbox() {
-            log::trace!(
+            fmt::trace!(
                 "Slave {:#06x} has no valid mailbox configuration",
                 self.state.configured_address
             );
@@ -344,7 +344,7 @@ where
         gobal_offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
         if !self.state.config.mailbox.has_coe {
-            log::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
+            fmt::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
         }
 
         let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
@@ -388,7 +388,7 @@ where
             // Total number of PDO assignments for this sync manager
             let num_sm_assignments = self.sdo_read::<u8>(sm_address, SubIndex::Index(0)).await?;
 
-            log::trace!(
+            fmt::trace!(
                 "SDO sync manager {}  {:#06x} {:?}, sub indices: {}",
                 sync_manager_index,
                 sm_address,
@@ -402,7 +402,7 @@ where
                 let pdo = self.sdo_read::<u16>(sm_address, SubIndex::Index(i)).await?;
                 let num_mappings = self.sdo_read::<u8>(pdo, SubIndex::Index(0)).await?;
 
-                log::trace!("--> #{} data: {:#06x} ({} mappings):", i, pdo, num_mappings);
+                fmt::trace!("--> #{} data: {:#06x} ({} mappings):", i, pdo, num_mappings);
 
                 for i in 1..=num_mappings {
                     let mapping = self.sdo_read::<u32>(pdo, SubIndex::Index(i)).await?;
@@ -415,7 +415,7 @@ where
                     let sub_index = parts[2];
                     let mapping_bit_len = parts[3];
 
-                    log::trace!(
+                    fmt::trace!(
                         "----> index {:#06x}, sub index {}, bit length {}",
                         index,
                         sub_index,
@@ -426,7 +426,7 @@ where
                 }
             }
 
-            log::trace!(
+            fmt::trace!(
                 "----= total SM bit length {} ({} bytes)",
                 sm_bit_len,
                 (sm_bit_len + 7) / 8
@@ -506,13 +506,13 @@ where
             "PDI FMMU",
         )
         .await?;
-        log::debug!(
+        fmt::debug!(
             "Slave {:#06x} FMMU{}: {}",
             self.state.configured_address,
             fmmu_index,
             fmmu_config
         );
-        log::trace!("{:#?}", fmmu_config);
+        fmt::trace!("{:#?}", fmmu_config);
         *global_offset = global_offset.increment_byte_aligned(sm_bit_len);
         Ok(())
     }
@@ -555,13 +555,13 @@ where
                 .find(|fmmu| fmmu.sync_manager == sync_manager_index)
                 .map(|fmmu| fmmu.sync_manager)
                 .or_else(|| {
-                    log::trace!("Could not find FMMU for PDO SM{}", sync_manager_index);
+                    fmt::trace!("Could not find FMMU for PDO SM{}", sync_manager_index);
 
                     fmmu_usage
                         .iter()
                         .position(|usage| *usage == fmmu_type)
                         .map(|idx| {
-                            log::trace!("Using fallback FMMU FMMU{}", idx);
+                            fmt::trace!("Using fallback FMMU FMMU{}", idx);
 
                             idx as u8
                         })

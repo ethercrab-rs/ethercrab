@@ -4,7 +4,7 @@ use crate::{
     command::Command,
     dc,
     error::{Error, Item, PduError},
-    log,
+    fmt,
     pdi::PdiOffset,
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
@@ -91,7 +91,7 @@ impl<'sto> Client<'sto> {
     // FIXME: When adding a powered on slave to the network, something breaks. Maybe need to reset
     // the configured address? But this broke other stuff so idk...
     async fn reset_slaves(&self) -> Result<(), Error> {
-        log::debug!("Beginning reset");
+        fmt::debug!("Beginning reset");
 
         // Reset slaves to init
         self.bwr(
@@ -134,7 +134,7 @@ impl<'sto> Client<'sto> {
         self.bwr(RegisterAddress::DcControlLoopParam1, 0x1000u16)
             .await?;
 
-        log::debug!("--> Reset complete");
+        fmt::debug!("--> Reset complete");
 
         Ok(())
     }
@@ -214,7 +214,7 @@ impl<'sto> Client<'sto> {
         // Each slave increments working counter, so we can use it as a total count of slaves
         let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
 
-        log::debug!("Discovered {} slave devices", num_slaves);
+        fmt::debug!("Discovered {} slave devices", num_slaves);
 
         // This is the only place we store the number of slave devices, so the ordering can be
         // pretty much anything.
@@ -241,7 +241,7 @@ impl<'sto> Client<'sto> {
                 .map_err(|_| Error::Capacity(Item::Slave))?;
         }
 
-        log::debug!("Configuring topology/distributed clocks");
+        fmt::debug!("Configuring topology/distributed clocks");
 
         // Configure distributed clock offsets/propagation delays, perform static drift
         // compensation. We need the slaves in a single list so we can read the topology.
@@ -275,10 +275,10 @@ impl<'sto> Client<'sto> {
             for (id, group) in group_map.iter_mut() {
                 offset = group.into_pre_op(offset, self).await?;
 
-                log::debug!("After group ID {} offset: {:?}", id, offset);
+                fmt::debug!("After group ID {} offset: {:?}", id, offset);
             }
 
-            log::debug!("Total PDI {} bytes", offset.start_address);
+            fmt::debug!("Total PDI {} bytes", offset.start_address);
         }
 
         // Check that all slaves reached PRE-OP
@@ -386,10 +386,10 @@ impl<'sto> Client<'sto> {
                     .await?
                     .wkc(num_slaves, "read all slaves state")?;
 
-                log::trace!("Global AL status {:?}", status);
+                fmt::trace!("Global AL status {:?}", status);
 
                 if status.error {
-                    log::error!(
+                    fmt::error!(
                         "Error occurred transitioning all slaves to {:?}",
                         desired_state,
                     );
@@ -400,7 +400,7 @@ impl<'sto> Client<'sto> {
                             .fprd::<AlStatusCode>(slave_addr, RegisterAddress::AlStatusCode)
                             .await?;
 
-                        log::error!("--> Slave {:#06x} status code {}", slave_addr, slave_status);
+                        fmt::error!("--> Slave {:#06x} status code {}", slave_addr, slave_status);
                     }
 
                     return Err(Error::StateTransition);
@@ -426,7 +426,7 @@ impl<'sto> Client<'sto> {
         )
         .await
         .map_err(|e| {
-            log::error!(
+            fmt::error!(
                 "Read service timeout, command {:?}, timeout {} ms",
                 command,
                 self.timeouts.pdu.as_millis()
@@ -439,7 +439,7 @@ impl<'sto> Client<'sto> {
             let data = &*data;
 
             let res = T::try_from_slice(data).map_err(|e| {
-                log::error!(
+                fmt::error!(
                     "PDU data decode: {:?}, T: {} data {:?}",
                     e,
                     type_name::<T>(),
@@ -463,7 +463,7 @@ impl<'sto> Client<'sto> {
         )
         .await
         .map_err(|e| {
-            log::error!(
+            fmt::error!(
                 "Write service timeout, command {:?}, timeout {} ms",
                 command,
                 self.timeouts.pdu.as_millis()
@@ -476,7 +476,7 @@ impl<'sto> Client<'sto> {
             let data = &*data;
 
             let res = T::try_from_slice(data).map_err(|e| {
-                log::error!(
+                fmt::error!(
                     "PDU data decode: {:?}, T: {} data {:?}",
                     e,
                     type_name::<T>(),
@@ -655,7 +655,7 @@ impl<'sto> Client<'sto> {
         )
         .await
         .map_err(|e| {
-            log::error!("LRW timeout, max time {} ms", self.timeouts.pdu.as_millis());
+            fmt::error!("LRW timeout, max time {} ms", self.timeouts.pdu.as_millis());
 
             e
         })?;
@@ -663,7 +663,7 @@ impl<'sto> Client<'sto> {
         let (data, working_counter) = response.into_data();
 
         if data.len() != value.len() {
-            log::error!(
+            fmt::error!(
                 "Data length {} does not match value length {}",
                 data.len(),
                 value.len()

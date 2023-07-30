@@ -1,6 +1,6 @@
 use crate::{
     error::Error,
-    log,
+    fmt,
     pdi::PdiOffset,
     slave::{Slave, SlaveRef},
     Client, SlaveGroup,
@@ -55,7 +55,7 @@ impl<'a> SlaveGroupRef<'a> {
         // Set the starting position in the PDI for this group's segment
         *inner.pdi_start = pdi_position;
 
-        log::debug!(
+        fmt::debug!(
             "Going to configure group with {} slave(s), starting PDI offset {:#08x}",
             inner.slaves.len(),
             inner.pdi_start.start_address
