@@ -68,7 +68,6 @@ target_steps_no_std: &target_steps_no_std
     - image: cimg/rust:1.71
   steps:
     - checkout
-    - run: sudo apt update && sudo apt install -y libpcap-dev
     - restore_cache:
         key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
