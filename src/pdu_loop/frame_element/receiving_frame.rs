@@ -52,8 +52,6 @@ impl<'sto> ReceivingFrame<'sto> {
             FrameElement::set_state(self.inner.frame, FrameState::RxDone);
         }
 
-        defmt::info!("----> Frame has waker");
-
         waker.wake();
 
         Ok(())
