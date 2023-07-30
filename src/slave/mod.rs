@@ -21,7 +21,7 @@ use crate::{
     command::Command,
     dl_status::DlStatus,
     eeprom::types::SiiOwner,
-    error::{Error, MailboxError, PduError},
+    error::{Error, MailboxError, PduError, WrappedPackingError},
     log,
     mailbox::MailboxType,
     pdu_data::{PduData, PduRead},
@@ -379,7 +379,10 @@ where
         let (headers, data) = response.split_at(headers_len);
 
         let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
-            log::error!("Failed to unpack mailbox response headers: {}", e);
+            log::error!(
+                "Failed to unpack mailbox response headers: {}",
+                WrappedPackingError(e)
+            );
 
             e
         })?;
@@ -395,10 +398,9 @@ where
                 })?;
 
             log::error!(
-                "Mailbox error for slave {:#06x} (supports complete access: {}) {}: {}",
+                "Mailbox error for slave {:#06x} (supports complete access: {}): {}",
                 self.configured_address,
                 self.state.config.mailbox.complete_access,
-                request,
                 code
             );
 

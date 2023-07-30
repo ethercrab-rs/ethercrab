@@ -382,7 +382,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupState
                 index: Some(index),
             })?
             .try_borrow_mut()
-            .map_err(|e| {
+            .map_err(|_e| {
                 log::error!("Slave index {} already borrowed", index);
 
                 Error::Borrow
@@ -423,7 +423,7 @@ where
                 index: Some(index),
             })?
             .try_borrow_mut()
-            .map_err(|e| {
+            .map_err(|_e| {
                 log::error!("Slave index {} already borrowed", index);
 
                 Error::Borrow

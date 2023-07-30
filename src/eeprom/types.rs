@@ -3,7 +3,7 @@
 use crate::{
     all_consumed,
     base_data_types::PrimitiveDataType,
-    error::{EepromError, Error},
+    error::{EepromError, Error, WrappedPackingError},
     pdu_data::PduRead,
     sync_manager_channel::{self},
 };
@@ -95,10 +95,12 @@ impl SiiControl {
 impl PduRead for SiiControl {
     const LEN: u16 = u16::LEN;
 
-    type Error = PackingError;
+    type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
+        let res = Self::unpack_from_slice(slice)?;
+
+        Ok(res)
     }
 }
 

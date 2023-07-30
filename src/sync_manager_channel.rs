@@ -1,4 +1,4 @@
-use crate::pdu_data::PduRead;
+use crate::{error::WrappedPackingError, pdu_data::PduRead};
 use core::fmt;
 use packed_struct::prelude::*;
 
@@ -65,10 +65,12 @@ impl fmt::Display for SyncManagerChannel {
 impl PduRead for SyncManagerChannel {
     const LEN: u16 = 8;
 
-    type Error = PackingError;
+    type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
+        let res = Self::unpack_from_slice(slice)?;
+
+        Ok(res)
     }
 }
 

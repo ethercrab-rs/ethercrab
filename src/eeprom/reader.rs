@@ -46,7 +46,8 @@ impl EepromSectionReader {
             start_word += 2;
 
             log::trace!(
-                "Found category {category_type:?}, data starts at {:#06x?}, length {:#04x?} ({}) bytes",
+                "Found category {:?}, data starts at {:#06x}, length {:#04x} ({}) bytes",
+                category_type,
                 start_word,
                 len_words,
                 len_words
@@ -152,7 +153,7 @@ impl EepromSectionReader {
             }
         };
 
-        log::trace!("Read {:#04x?} {:02x?}", eeprom_address, data);
+        log::trace!("Read {:#04x} {:02x}", eeprom_address, data);
 
         Ok(data)
     }
@@ -274,7 +275,7 @@ impl EepromSectionReader {
         let mut count = 0;
 
         log::trace!(
-            "Taking bytes from EEPROM start {:#06x?}, len {}, N {}",
+            "Taking bytes from EEPROM start {:#06x}, len {}, N {}",
             self.start,
             len,
             N

@@ -1,5 +1,6 @@
 #![macro_use]
 #![allow(unused_macros)]
+#![allow(unused)]
 
 use core::fmt::{Debug, Display, LowerHex};
 
@@ -105,7 +106,6 @@ macro_rules! panic_ {
     };
 }
 
-#[macro_export]
 macro_rules! trace_ {
     ($s:literal $(, $x:expr)* $(,)?) => {
         {

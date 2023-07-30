@@ -1,4 +1,4 @@
-use crate::{log, pdu_data::PduRead, slave_state::SlaveState};
+use crate::{error::WrappedPackingError, log, pdu_data::PduRead, slave_state::SlaveState};
 use packed_struct::prelude::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -58,7 +58,7 @@ impl AlControl {
 impl PduRead for AlControl {
     const LEN: u16 = u16::LEN;
 
-    type Error = PackingError;
+    type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         match Self::unpack_from_slice(slice) {
@@ -66,7 +66,7 @@ impl PduRead for AlControl {
                 state: SlaveState::Unknown,
                 ..Default::default()
             }),
-            Err(e) => Err(e),
+            Err(e) => Err(e.into()),
             Ok(res) => Ok(res),
         }
     }

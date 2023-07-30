@@ -407,9 +407,9 @@ where
     }
 }
 
-impl From<packed_struct::PackingError> for Error {
+impl From<PackingError> for Error {
     #[allow(unused)]
-    fn from(e: packed_struct::PackingError) -> Self {
+    fn from(e: PackingError) -> Self {
         #[cfg(feature = "defmt")]
         defmt::error!("Packing error");
         #[cfg(not(feature = "defmt"))]
@@ -424,5 +424,39 @@ impl From<TryFromIntError> for Error {
         defmt::error!("Integer conversion error: {}", e);
 
         Self::IntegerTypeConversion
+    }
+}
+
+#[cfg(not(feature = "defmt"))]
+pub use packed_struct::PackingError as WrappedPackingError;
+
+#[cfg(feature = "defmt")]
+use packed_struct::PackingError;
+
+/// A wrapper around [`packed_struct::PackingError`] to allow for support for `defmt::Format`.
+#[cfg(feature = "defmt")]
+#[derive(Debug, Copy, Clone)]
+pub struct WrappedPackingError(pub PackingError);
+
+impl From<PackingError> for WrappedPackingError {
+    fn from(value: PackingError) -> Self {
+        Self(value)
+    }
+}
+
+impl defmt::Format for WrappedPackingError {
+    fn format(&self, f: defmt::Formatter) {
+        match self.0 {
+            PackingError::InvalidValue => defmt::write!(f, "Invalid value"),
+            PackingError::BitsError => defmt::write!(f, "Bits error"),
+            PackingError::BufferTooSmall => defmt::write!(f, "Buffer too small"),
+            PackingError::BufferSizeMismatch { .. } => defmt::write!(f, "Buffer size mismatched"),
+            PackingError::NotImplemented => defmt::write!(f, "Not implemented"),
+            PackingError::InstanceRequiredForSize => defmt::write!(f, "This structure's packing size can't be determined statically, an instance is required."),
+            PackingError::BufferModMismatch { .. } => defmt::write!(f, "The structure's size is not a multiple of the item's size"),
+            PackingError::SliceIndexingError { .. } => defmt::write!(f, "Failed to index into a slice"),
+            PackingError::MoreThanOneDynamicType => defmt::write!(f, "Only one dynamically sized type is supported in the tuple"),
+            PackingError::InternalError => defmt::write!(f, "Internal error"),
+        }
     }
 }
