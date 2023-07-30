@@ -27,11 +27,11 @@ bind_interrupts!(struct Irqs {
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
-const MAX_PDU_DATA: usize = 64;
+const MAX_PDU_DATA: usize = 256;
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
 const MAX_FRAMES: usize = 8;
 /// Maximum total PDI length.
-const PDI_LEN: usize = 64;
+const PDI_LEN: usize = 256;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
@@ -115,7 +115,7 @@ async fn main(spawner: Spawner) {
 
     let device = {
         let mut device = Ethernet::new(
-            make_static!(PacketQueue::<3, 3>::new()),
+            make_static!(PacketQueue::<4, 4>::new()),
             p.ETH,
             Irqs,
             p.PA1,
