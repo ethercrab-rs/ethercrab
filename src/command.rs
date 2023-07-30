@@ -4,6 +4,7 @@ use nom::{combinator::map, error::ParseError, sequence::pair, IResult};
 
 /// PDU command.
 #[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Command {
     /// No operation.
     #[default]

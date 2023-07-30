@@ -1,10 +1,12 @@
 //! EtherCrab error types.
 
-use crate::{coe::abort_code::AbortCode, command::Command, SlaveState};
-use core::{cell::BorrowError, fmt, num::TryFromIntError, str::Utf8Error};
+use crate::{coe::abort_code::AbortCode, command::Command, fmt, SlaveState};
+use core::{cell::BorrowError, num::TryFromIntError, str::Utf8Error};
+use packed_struct::PackingError;
 
 /// An EtherCrab error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error {
     /// A low level error occurred when producing or consuming a PDU.
     Pdu(PduError),
@@ -88,8 +90,8 @@ pub enum Error {
     },
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Error::Pdu(e) => write!(f, "pdu: {}", e),
             Error::WorkingCounter {
@@ -158,6 +160,7 @@ impl From<BorrowError> for Error {
 
 /// The kind of item being looked for.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Item {
     /// An EtherCAT slave device.
     Slave,
@@ -177,6 +180,7 @@ pub enum Item {
 
 /// Low-level PDU (Process Data Unit) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PduError {
     /// Failed to decode raw PDU data into a given data type.
     Decode,
@@ -202,8 +206,8 @@ pub enum PduError {
     SwapState,
 }
 
-impl fmt::Display for PduError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for PduError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             PduError::Decode => write!(f, "failed to decode raw PDU data into type"),
             PduError::Ethernet(e) => write!(f, "network: {}", e),
@@ -219,6 +223,7 @@ impl fmt::Display for PduError {
 
 /// CoE mailbox error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum MailboxError {
     /// The mailbox operation was aborted.
     Aborted {
@@ -247,8 +252,8 @@ pub enum MailboxError {
     },
 }
 
-impl fmt::Display for MailboxError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for MailboxError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             MailboxError::Aborted {
                 code,
@@ -272,6 +277,7 @@ impl fmt::Display for MailboxError {
 
 /// EEPROM (SII) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum EepromError {
     /// Failed to decode data from EEPROM.
     Decode,
@@ -283,8 +289,8 @@ pub enum EepromError {
     SectionUnderrun,
 }
 
-impl fmt::Display for EepromError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for EepromError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             EepromError::Decode => f.write_str("failed to decode data"),
             EepromError::SectionOverrun => f.write_str("section too large to fit in buffer"),
@@ -303,8 +309,18 @@ pub enum VisibleStringError {
     TooLong,
 }
 
-impl fmt::Display for VisibleStringError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+#[cfg(feature = "defmt")]
+impl defmt::Format for VisibleStringError {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            VisibleStringError::Decode(_) => defmt::write!(f, "Decode"),
+            VisibleStringError::TooLong => defmt::write!(f, "TooLong"),
+        }
+    }
+}
+
+impl core::fmt::Display for VisibleStringError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             VisibleStringError::Decode(e) => write!(f, "failed to decode string: {}", e),
             VisibleStringError::TooLong => write!(f, "string is too long"),
@@ -314,6 +330,7 @@ impl fmt::Display for VisibleStringError {
 
 /// A PDU response failed to validate.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PduValidationError {
     /// The index of the received PDU does not match that of the sent one.
     IndexMismatch {
@@ -331,8 +348,8 @@ pub enum PduValidationError {
     },
 }
 
-impl fmt::Display for PduValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for PduValidationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::IndexMismatch { sent, received } => {
                 write!(
@@ -380,25 +397,63 @@ impl<I> From<nom::Err<nom::error::Error<I>>> for Error
 where
     I: core::fmt::Debug,
 {
+    #[allow(unused)]
     fn from(e: nom::Err<nom::error::Error<I>>) -> Self {
-        log::error!("Nom error {:?}", e);
+        #[cfg(feature = "defmt")]
+        defmt::error!("Nom error");
+        #[cfg(not(feature = "defmt"))]
+        fmt::error!("Nom error");
 
         Self::Pdu(PduError::Decode)
     }
 }
 
-impl From<packed_struct::PackingError> for Error {
-    fn from(e: packed_struct::PackingError) -> Self {
-        log::error!("Packing error {:?}", e);
+impl From<PackingError> for Error {
+    #[allow(unused)]
+    fn from(e: PackingError) -> Self {
+        fmt::error!("Packing error");
 
         Self::Pdu(PduError::Decode)
     }
 }
 
 impl From<TryFromIntError> for Error {
-    fn from(e: TryFromIntError) -> Self {
-        log::error!("Integer conversion error: {}", e);
+    fn from(_e: TryFromIntError) -> Self {
+        fmt::error!("Integer conversion error");
 
         Self::IntegerTypeConversion
+    }
+}
+
+#[cfg(not(feature = "defmt"))]
+pub use packed_struct::PackingError as WrappedPackingError;
+
+/// A wrapper around [`packed_struct::PackingError`] to allow for support for `defmt::Format`.
+#[cfg(feature = "defmt")]
+#[derive(Debug, Copy, Clone)]
+pub struct WrappedPackingError(pub PackingError);
+
+#[cfg(feature = "defmt")]
+impl From<PackingError> for WrappedPackingError {
+    fn from(value: PackingError) -> Self {
+        Self(value)
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for WrappedPackingError {
+    fn format(&self, f: defmt::Formatter) {
+        match self.0 {
+            PackingError::InvalidValue => defmt::write!(f, "Invalid value"),
+            PackingError::BitsError => defmt::write!(f, "Bits error"),
+            PackingError::BufferTooSmall => defmt::write!(f, "Buffer too small"),
+            PackingError::BufferSizeMismatch { .. } => defmt::write!(f, "Buffer size mismatched"),
+            PackingError::NotImplemented => defmt::write!(f, "Not implemented"),
+            PackingError::InstanceRequiredForSize => defmt::write!(f, "This structure's packing size can't be determined statically, an instance is required."),
+            PackingError::BufferModMismatch { .. } => defmt::write!(f, "The structure's size is not a multiple of the item's size"),
+            PackingError::SliceIndexingError { .. } => defmt::write!(f, "Failed to index into a slice"),
+            PackingError::MoreThanOneDynamicType => defmt::write!(f, "Only one dynamically sized type is supported in the tuple"),
+            PackingError::InternalError => defmt::write!(f, "Internal error"),
+        }
     }
 }

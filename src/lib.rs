@@ -1,5 +1,19 @@
 //! An EtherCAT master written in pure Rust.
 //!
+//! # Crate features
+//!
+//! - `std` (enabled by default) - exposes the [`std`] module, containing helpers to run the TX/RX
+//!   loop on desktop operating systems.
+//! - `defmt` - enable logging with the [`defmt`](https://docs.rs/defmt) crate.
+//! - `log` - enable logging with the [`log`](https://docs.rs/log) crate. This is enabled by default
+//!   when the `std` feature is enabled.
+//!
+//! For `no_std` targets, it is recommended to add this crate with
+//!
+//! ```bash
+//! cargo add --no-default-features --features defmt
+//! ```
+//!
 //! # Examples
 //!
 //! This example increments the output bytes of all detected slaves every tick. It is tested on an
@@ -133,10 +147,8 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 
-extern crate alloc;
-
-// This mod MUST go first, so that the others see its macros.
-pub(crate) mod log;
+// MUST go first so everything else can see the macros inside
+pub(crate) mod fmt;
 
 mod al_control;
 mod al_status_code;
@@ -177,7 +189,7 @@ pub use al_status_code::AlStatusCode;
 pub use client::Client;
 pub use client_config::ClientConfig;
 pub use coe::SubIndex;
-pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx};
+pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::RegisterAddress;
 pub use slave::{Slave, SlavePdi, SlaveRef};
 pub use slave_group::{GroupId, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle, SlaveGroupState};

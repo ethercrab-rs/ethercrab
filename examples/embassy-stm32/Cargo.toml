@@ -1,0 +1,61 @@
+[package]
+name = "ethercrab-stm32-embassy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ethercrab = { path = "../..", default-features = false, features = ["defmt"] }
+
+defmt = "0.3"
+defmt-rtt = "0.4.0"
+cortex-m = { version = "0.7.6", features = [
+    "inline-asm",
+    "critical-section-single-core",
+] }
+cortex-m-rt = "0.7.0"
+embedded-hal = "0.2.6"
+embedded-io = "0.4.0"
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+static_cell = { version = "1.1", features = ["nightly"] }
+
+embassy-sync = { version = "0.2.0", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
+    "defmt",
+] }
+embassy-executor = { version = "0.2.0", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
+    "nightly",
+    "arch-cortex-m",
+    "executor-thread",
+    "executor-interrupt",
+    "defmt",
+    "integrated-timers",
+    "arch-cortex-m",
+] }
+embassy-time = { version = "0.1.2", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
+    "defmt",
+    "defmt-timestamp-uptime",
+    "unstable-traits",
+    "tick-hz-1_000_000",
+] }
+embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
+    "nightly",
+    "unstable-traits",
+    "defmt",
+    "stm32f429zi",
+    "unstable-pac",
+    "memory-x",
+    "time-driver-any",
+] }
+embassy-net = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
+    "defmt",
+    "tcp",
+    "dhcpv4",
+    "medium-ethernet",
+    "nightly",
+] }
+smoltcp = { version = "0.10.0", features = ["defmt"], default-features = false }
+
+[profile.release]
+debug = 2
+opt-level = "z"

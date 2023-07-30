@@ -1,11 +1,11 @@
 use crate::pdu_data::PduRead;
 use core::fmt;
-use num_enum::TryFromPrimitiveError;
 
 /// AL (Application Layer) Status Code.
 ///
 /// Defined in ETG1000.6 Table 11.
-#[derive(Debug, Copy, Clone, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
+#[derive(Debug, Default, Copy, Clone, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum AlStatusCode {
     /// No error
@@ -116,17 +116,20 @@ pub enum AlStatusCode {
     ApplicationControllerAvailableI = 0x00F0,
     // NOTE: Other codes < 0x8000 are reserved.
     // NOTE: Codes 0x8000 - 0xffff are vendor specific.
+    /// Unknown status code.
+    #[default]
+    Unknown,
 }
 
 impl PduRead for AlStatusCode {
     const LEN: u16 = u16::LEN;
 
-    type Error = TryFromPrimitiveError<Self>;
+    type Error = ();
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         let data = u16::from_le_bytes(slice.try_into().unwrap());
 
-        Self::try_from(data)
+        Ok(Self::from(data))
     }
 }
 
@@ -192,6 +195,7 @@ impl fmt::Display for AlStatusCode {
             AlStatusCode::ApplicationControllerAvailableI => {
                 "0x00F0: Application controller available"
             }
+            AlStatusCode::Unknown => "(unknown)",
         };
 
         f.write_str(s)

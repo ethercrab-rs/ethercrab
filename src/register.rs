@@ -1,4 +1,7 @@
-use crate::pdu_data::{PduData, PduRead};
+use crate::{
+    error::WrappedPackingError,
+    pdu_data::{PduData, PduRead},
+};
 use core::fmt;
 use packed_struct::{prelude::*, PackingError};
 
@@ -260,14 +263,16 @@ pub struct PortDescriptors {
 impl PduRead for PortDescriptors {
     const LEN: u16 = 1;
 
-    type Error = PackingError;
+    type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         let arr = slice[0..1]
             .try_into()
             .map_err(|_| PackingError::BufferTooSmall)?;
 
-        Self::unpack(arr)
+        let res = Self::unpack(arr)?;
+
+        Ok(res)
     }
 }
 
@@ -288,6 +293,7 @@ pub enum PortType {
 
 #[derive(Default, Clone, Debug, PartialEq)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SupportFlags {
     pub fmmu_supports_bit_ops: bool,
     pub reserved_register_support: bool,
@@ -371,10 +377,12 @@ impl PackedStruct for SupportFlags {
 impl PduRead for SupportFlags {
     const LEN: u16 = 2;
 
-    type Error = PackingError;
+    type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
+        let res = Self::unpack_from_slice(slice)?;
+
+        Ok(res)
     }
 }
 

@@ -1,7 +1,8 @@
-use crate::{pdu_data::PduRead, slave_state::SlaveState};
+use crate::{error::WrappedPackingError, fmt, pdu_data::PduRead, slave_state::SlaveState};
 use packed_struct::prelude::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct AlControl {
     pub state: SlaveState,
     pub error: bool,
@@ -22,7 +23,7 @@ impl PackedStruct for AlControl {
     fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
         let byte = src[0];
 
-        log::trace!("AL raw byte {byte:#010b} (slice {:?})", src);
+        fmt::trace!("AL raw byte {:#010b} (slice {:?})", byte, src);
 
         let state = SlaveState::try_from(byte & 0x0f).unwrap_or(SlaveState::Unknown);
         let error = (byte & (1 << 4)) > 0;
@@ -58,7 +59,7 @@ impl AlControl {
 impl PduRead for AlControl {
     const LEN: u16 = u16::LEN;
 
-    type Error = PackingError;
+    type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         match Self::unpack_from_slice(slice) {
@@ -66,7 +67,7 @@ impl PduRead for AlControl {
                 state: SlaveState::Unknown,
                 ..Default::default()
             }),
-            Err(e) => Err(e),
+            Err(e) => Err(e.into()),
             Ok(res) => Ok(res),
         }
     }

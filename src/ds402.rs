@@ -2,9 +2,9 @@
 
 use crate::{
     error::Error as EthercrabError,
+    fmt,
     slave::{pdi::SlavePdi, SlaveRef},
 };
-use core::fmt;
 
 smlang::statemachine! {
     transitions: {
@@ -96,8 +96,8 @@ impl<'a> StateMachineContext for Ds402<'a> {
     }
 }
 
-impl fmt::Debug for States {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Debug for States {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Fault => write!(f, "Fault"),
             Self::FaultReactionActive => write!(f, "FaultReactionActive"),
@@ -203,7 +203,7 @@ impl<'a> Ds402Sm<'a> {
         let status = self.sm.context().status_word();
 
         if self.sm.process_event(Events::EnableOp).is_ok() {
-            log::debug!("Edge {:?}", status);
+            fmt::debug!("Edge {:?}", status);
         }
 
         self.sm.state == States::OpEnable
@@ -216,7 +216,7 @@ impl<'a> Ds402Sm<'a> {
         let status = self.sm.context().status_word();
 
         if self.sm.process_event(Events::DisableOp).is_ok() {
-            log::debug!("Edge {:?}", status);
+            fmt::debug!("Edge {:?}", status);
         }
 
         self.sm.state == States::SwitchOnDisabled
@@ -298,6 +298,14 @@ bitflags::bitflags! {
         const MAN_SPECIFIC_1 = 1 << 14;
         /// Manufacturer-specific (reserved)
         const MAN_SPECIFIC_2 = 1 << 15;
+    }
+}
+
+// Can't derive, so manual impl
+#[cfg(feature = "defmt")]
+impl defmt::Format for StatusWord {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{=u16:b}", self.bits())
     }
 }
 

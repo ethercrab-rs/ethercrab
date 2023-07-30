@@ -21,7 +21,8 @@ use crate::{
     command::Command,
     dl_status::DlStatus,
     eeprom::types::SiiOwner,
-    error::{Error, MailboxError, PduError},
+    error::{Error, MailboxError, PduError, WrappedPackingError},
+    fmt,
     mailbox::MailboxType,
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
@@ -95,7 +96,7 @@ impl Slave {
     ) -> Result<Self, Error> {
         let slave_ref = SlaveRef::new(client, configured_address, ());
 
-        log::debug!(
+        fmt::debug!(
             "Waiting for slave {:#06x} to enter {}",
             configured_address,
             SlaveState::Init
@@ -154,7 +155,7 @@ impl Slave {
                 ])
             })?;
 
-        log::debug!(
+        fmt::debug!(
             "Slave {:#06x} name {} {}, {}, {}",
             configured_address,
             name,
@@ -252,7 +253,7 @@ where
             .write
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))
             .map_err(|e| {
-                log::error!("No write (slave IN) mailbox found but one is required");
+                fmt::error!("No write (slave IN) mailbox found but one is required");
                 e
             })?;
         let read_mailbox = self
@@ -262,7 +263,7 @@ where
             .read
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))
             .map_err(|e| {
-                log::error!("No read (slave OUT) mailbox found but one is required");
+                fmt::error!("No read (slave OUT) mailbox found but one is required");
                 e
             })?;
 
@@ -308,9 +309,10 @@ where
         })
         .await
         .map_err(|e| {
-            log::error!(
-                "Mailbox IN ready error for slave {:#06x}: {e:?}",
-                self.state.configured_address
+            fmt::error!(
+                "Mailbox IN ready error for slave {:#06x}: {}",
+                self.state.configured_address,
+                e
             );
 
             e
@@ -347,9 +349,10 @@ where
         })
         .await
         .map_err(|e| {
-            log::error!(
-                "Response mailbox IN error for slave {:#06x}: {e:?}",
-                self.state.configured_address
+            fmt::error!(
+                "Response mailbox IN error for slave {:#06x}: {}",
+                self.state.configured_address,
+                e
             );
 
             e
@@ -376,7 +379,10 @@ where
         let (headers, data) = response.split_at(headers_len);
 
         let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
-            log::error!("Failed to unpack mailbox response headers: {e}");
+            fmt::error!(
+                "Failed to unpack mailbox response headers: {}",
+                WrappedPackingError::from(e)
+            );
 
             e
         })?;
@@ -386,16 +392,15 @@ where
                 .try_into()
                 .map(|arr| AbortCode::from(u32::from_le_bytes(arr)))
                 .map_err(|_| {
-                    log::error!("Not enough data to decode abort code u32");
+                    fmt::error!("Not enough data to decode abort code u32");
 
                     Error::Internal
                 })?;
 
-            log::error!(
-                "Mailbox error for slave {:#06x} (supports complete access: {}) {}: {}",
+            fmt::error!(
+                "Mailbox error for slave {:#06x} (supports complete access: {}): {}",
                 self.configured_address,
                 self.state.config.mailbox.complete_access,
-                request,
                 code
             );
 
@@ -411,7 +416,7 @@ where
         else if headers.mailbox_type() != MailboxType::Coe
         /* || headers.counter() != counter */
         {
-            log::error!(
+            fmt::error!(
                 "Invalid SDO response. Type: {:?} (expected {:?}), counter {} (expected {})",
                 headers.mailbox_type(),
                 MailboxType::Coe,
@@ -447,7 +452,7 @@ where
         let counter = self.client.mailbox_counter();
 
         if T::len() > 4 {
-            log::error!("Only 4 byte SDO writes or smaller are supported currently.");
+            fmt::error!("Only 4 byte SDO writes or smaller are supported currently.");
 
             // TODO: Normal SDO download. Only expedited requests for now
             return Err(Error::Internal);
@@ -461,7 +466,7 @@ where
 
         let request = coe::services::download(counter, index, sub_index, data, len as u8);
 
-        log::trace!("CoE download");
+        fmt::trace!("CoE download");
 
         let (_response, _data) = self.send_coe_service(request).await?;
 
@@ -480,7 +485,7 @@ where
 
         let request = coe::services::upload(self.client.mailbox_counter(), index, sub_index);
 
-        log::trace!("CoE upload {:#06x} {:?}", index, sub_index);
+        fmt::trace!("CoE upload {:#06x} {:?}", index, sub_index);
 
         let (headers, response) = self.send_coe_service(request).await?;
         let data: &[u8] = &response;
@@ -531,7 +536,7 @@ where
                     let request =
                         coe::services::upload_segmented(self.client.mailbox_counter(), toggle);
 
-                    log::trace!("CoE upload segmented");
+                    fmt::trace!("CoE upload segmented");
 
                     let (headers, data) = self.send_coe_service(request).await?;
 
@@ -580,7 +585,7 @@ where
             .await
             .and_then(|data| {
                 T::try_from_slice(data).map_err(|_| {
-                    log::error!(
+                    fmt::error!(
                         "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
                         type_name::<T>(),
                         T::len(),
@@ -722,9 +727,10 @@ impl<'a, S> SlaveRef<'a, S> {
         &self,
         desired_state: SlaveState,
     ) -> Result<(), Error> {
-        debug!(
+        fmt::debug!(
             "Set state {} for slave address {:#04x}",
-            desired_state, self.configured_address
+            desired_state,
+            self.configured_address
         );
 
         // Send state request
@@ -740,7 +746,7 @@ impl<'a, S> SlaveRef<'a, S> {
         if response.error {
             let error: AlStatusCode = self.read(RegisterAddress::AlStatus, "AL status").await?;
 
-            log::error!(
+            fmt::error!(
                 "Error occurred transitioning slave {:#06x} to {:?}: {}",
                 self.configured_address,
                 desired_state,

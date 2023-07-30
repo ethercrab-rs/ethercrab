@@ -1,4 +1,4 @@
-use crate::pdu_data::PduRead;
+use crate::{error::WrappedPackingError, pdu_data::PduRead};
 use core::fmt;
 use packed_struct::prelude::*;
 
@@ -12,6 +12,7 @@ pub const SM_BASE_ADDRESS: u16 = 0x1c10;
 ///
 /// Defined in ETG1000.4 6.7.2
 #[derive(Default, Copy, Clone, PartialEq, Eq, PackedStruct)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[packed_struct(size_bytes = "8", bit_numbering = "msb0", endian = "lsb")]
 pub struct SyncManagerChannel {
     #[packed_field(size_bytes = "2")]
@@ -65,14 +66,17 @@ impl fmt::Display for SyncManagerChannel {
 impl PduRead for SyncManagerChannel {
     const LEN: u16 = 8;
 
-    type Error = PackingError;
+    type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
+        let res = Self::unpack_from_slice(slice)?;
+
+        Ok(res)
     }
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Control {
     #[packed_field(bits = "0..=1", ty = "enum")]
@@ -89,6 +93,7 @@ pub struct Control {
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Status {
     #[packed_field(bits = "0")]
@@ -107,6 +112,7 @@ pub struct Status {
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 pub struct Enable {
     // ---
@@ -134,6 +140,7 @@ pub struct Enable {
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum OperationMode {
     #[default]
     Normal = 0x00,
@@ -141,6 +148,7 @@ pub enum OperationMode {
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Direction {
     #[default]
     MasterRead = 0x00,
@@ -149,6 +157,7 @@ pub enum Direction {
 
 // TODO: More informative names
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum BufferState {
     #[default]
     Read = 0x00,
