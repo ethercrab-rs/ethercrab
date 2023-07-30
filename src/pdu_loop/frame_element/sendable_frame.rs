@@ -107,6 +107,7 @@ impl<'sto> SendableFrame<'sto> {
         Ok(ethernet_frame.into_inner())
     }
 
+    /// Send the frame using a callback returning a future.
     pub async fn send<'buf, F, O>(self, packet_buf: &'buf mut [u8], send: F) -> Result<(), Error>
     where
         F: FnOnce(&'buf [u8]) -> O,
@@ -123,6 +124,7 @@ impl<'sto> SendableFrame<'sto> {
         Ok(())
     }
 
+    /// Send the frame using a blocking callback.
     pub fn send_blocking<'buf>(
         self,
         packet_buf: &'buf mut [u8],

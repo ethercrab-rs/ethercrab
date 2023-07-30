@@ -13,6 +13,7 @@ use crate::{
 };
 
 pub use frame_element::received_frame::RxFrameDataBuf;
+pub use frame_element::sendable_frame::SendableFrame;
 pub use pdu_rx::PduRx;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
