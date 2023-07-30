@@ -5,6 +5,7 @@ mod raw_socket;
 use self::raw_socket::RawSocketDesc;
 use crate::{
     error::Error,
+    log,
     pdu_loop::{PduRx, PduTx},
 };
 use async_io::Async;
@@ -63,7 +64,7 @@ impl Future for TxRxFut<'_> {
                 }
                 // FIXME: Release frame on failure
                 Poll::Ready(Err(e)) => {
-                    log::error!("Send PDU failed: {e}");
+                    log::error!("Send PDU failed: {}", e);
 
                     return Poll::Ready(Err(Error::SendFrame));
                 }
@@ -84,7 +85,7 @@ impl Future for TxRxFut<'_> {
             }
             // FIXME: Release frame on failure
             Poll::Ready(Err(e)) => {
-                log::error!("Receive PDU failed: {e}");
+                log::error!("Receive PDU failed: {}", e);
 
                 return Poll::Ready(Err(Error::ReceiveFrame));
             }

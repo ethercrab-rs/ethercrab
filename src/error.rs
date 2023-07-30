@@ -1,7 +1,8 @@
 //! EtherCrab error types.
 
-use crate::{coe::abort_code::AbortCode, command::Command, SlaveState};
+use crate::{coe::abort_code::AbortCode, command::Command, log, SlaveState};
 use core::{cell::BorrowError, fmt, num::TryFromIntError, str::Utf8Error};
+use packed_struct::PackingError;
 
 /// An EtherCrab error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -410,9 +411,6 @@ where
 impl From<PackingError> for Error {
     #[allow(unused)]
     fn from(e: PackingError) -> Self {
-        #[cfg(feature = "defmt")]
-        defmt::error!("Packing error");
-        #[cfg(not(feature = "defmt"))]
         log::error!("Packing error");
 
         Self::Pdu(PduError::Decode)
@@ -420,8 +418,8 @@ impl From<PackingError> for Error {
 }
 
 impl From<TryFromIntError> for Error {
-    fn from(e: TryFromIntError) -> Self {
-        defmt::error!("Integer conversion error: {}", e);
+    fn from(_e: TryFromIntError) -> Self {
+        log::error!("Integer conversion error");
 
         Self::IntegerTypeConversion
     }
@@ -430,20 +428,19 @@ impl From<TryFromIntError> for Error {
 #[cfg(not(feature = "defmt"))]
 pub use packed_struct::PackingError as WrappedPackingError;
 
-#[cfg(feature = "defmt")]
-use packed_struct::PackingError;
-
 /// A wrapper around [`packed_struct::PackingError`] to allow for support for `defmt::Format`.
 #[cfg(feature = "defmt")]
 #[derive(Debug, Copy, Clone)]
 pub struct WrappedPackingError(pub PackingError);
 
+#[cfg(feature = "defmt")]
 impl From<PackingError> for WrappedPackingError {
     fn from(value: PackingError) -> Self {
         Self(value)
     }
 }
 
+#[cfg(feature = "defmt")]
 impl defmt::Format for WrappedPackingError {
     fn format(&self, f: defmt::Formatter) {
         match self.0 {

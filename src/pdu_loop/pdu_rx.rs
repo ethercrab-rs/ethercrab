@@ -2,6 +2,7 @@ use super::storage::PduStorageRef;
 use crate::{
     command::CommandCode,
     error::{Error, PduError, PduValidationError},
+    log,
     pdu_loop::{frame_header::FrameHeader, pdu_flags::PduFlags},
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
@@ -84,7 +85,7 @@ impl<'sto> PduRx<'sto> {
         let (i, data) = take(flags.length)(i)?;
         let (i, working_counter) = le_u16(i)?;
 
-        defmt::trace!(
+        log::trace!(
             "Received frame with index {:#04x}, WKC {}",
             index,
             working_counter,

@@ -381,7 +381,7 @@ where
         let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
             log::error!(
                 "Failed to unpack mailbox response headers: {}",
-                WrappedPackingError(e)
+                WrappedPackingError::from(e)
             );
 
             e

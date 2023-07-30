@@ -17,9 +17,6 @@ all-features = true
 default-target = "x86_64-unknown-linux-gnu"
 targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu"]
 
-[workspace]
-members = ["examples/embassy-stm32"]
-
 [dependencies]
 async-io = { version = "1.13.0", optional = true }
 atomic_enum = "0.2.0"
@@ -76,18 +73,10 @@ tokio = { version = "1.29.1", features = [
 ] }
 
 [features]
-# default = ["std"]
-# DELETEME
-default = ["defmt"]
+default = ["std"]
 defmt = ["dep:defmt", "smoltcp/defmt"]
 log = ["dep:log_dep"]
-std = [
-    "log",
-    "pnet_datalink",
-    "async-io",
-    "smoltcp/phy-raw_socket",
-    "log_dep/std",
-]
+std = ["pnet_datalink", "async-io", "smoltcp/phy-raw_socket", "log_dep/std"]
 # Development only - DO NOT USE
 bench-hacks = []
 

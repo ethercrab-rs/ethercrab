@@ -2,6 +2,7 @@ use super::{received_frame::ReceivedFrame, FrameBox};
 use crate::{
     command::Command,
     error::{Error, PduError},
+    log,
     pdu_loop::{
         frame_element::{FrameElement, FrameState},
         pdu_flags::PduFlags,
@@ -38,7 +39,7 @@ impl<'sto> ReceivingFrame<'sto> {
         let frame = unsafe { self.inner.frame() };
 
         let waker = unsafe { self.inner.take_waker() }.ok_or_else(|| {
-            defmt::error!(
+            log::error!(
                 "Attempted to wake frame #{} with no waker, possibly caused by timeout",
                 frame.index
             );
@@ -101,7 +102,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
         let rxin = match self.frame.take() {
             Some(r) => r,
             None => {
-                defmt::error!("Frame is taken");
+                log::error!("Frame is taken");
 
                 return Poll::Ready(Err(PduError::InvalidFrameState.into()));
             }
@@ -127,7 +128,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
                 Poll::Pending
             }
             state => {
-                defmt::error!("Frame is in invalid state {:?}", state);
+                log::error!("Frame is in invalid state {:?}", state);
 
                 Poll::Ready(Err(PduError::InvalidFrameState.into()))
             }

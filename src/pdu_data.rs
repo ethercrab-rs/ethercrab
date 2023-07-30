@@ -10,7 +10,7 @@ pub trait PduRead: Sized {
     type Error: defmt::Format;
 
     #[cfg(not(feature = "defmt"))]
-    type Error: code::fmt::Debug;
+    type Error: core::fmt::Debug;
 
     fn len() -> u16 {
         Self::LEN & LEN_MASK

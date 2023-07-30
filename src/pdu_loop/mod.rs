@@ -178,8 +178,11 @@ impl<'sto> PduLoop<'sto> {
 #[cfg(test)]
 mod tests {
     use super::{storage::PduStorage, *};
-    use crate::pdu_loop::frame_element::{
-        sendable_frame::SendableFrame, FrameBox, FrameElement, FrameState,
+    use crate::{
+        log,
+        pdu_loop::frame_element::{
+            sendable_frame::SendableFrame, FrameBox, FrameElement, FrameState,
+        },
     };
     use core::{future::poll_fn, marker::PhantomData, ops::Deref, pin::pin, task::Poll};
     use futures_lite::Future;

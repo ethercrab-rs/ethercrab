@@ -74,6 +74,7 @@ target_steps_no_std: &target_steps_no_std
     - run: rustup target add $TARGET || true
     # TODO: Add --examples when there are some no_std examples ready
     - run: cargo build --target $TARGET --no-default-features --release
+    - run: cargo build --target $TARGET --no-default-features --release --features defmt
 
     - save_cache:
         key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}

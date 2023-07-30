@@ -1,4 +1,4 @@
-use crate::{command::Command, error::PduError, pdu_loop::pdu_flags::PduFlags};
+use crate::{command::Command, error::PduError, log, pdu_loop::pdu_flags::PduFlags};
 use core::{
     fmt::Debug,
     marker::PhantomData,
@@ -136,7 +136,7 @@ impl<const N: usize> FrameElement<N> {
         // matters slightly less for all other state transitions because once we have a created
         // frame nothing else is able to take it unless it is put back into the `None` state.
         Self::swap_state(this, FrameState::None, FrameState::Created).map_err(|e| {
-            defmt::error!(
+            log::error!(
                 "Failed to claim frame: status is {:?}, expected {:?}",
                 e,
                 FrameState::None
