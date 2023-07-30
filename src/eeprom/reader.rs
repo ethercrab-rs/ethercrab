@@ -1,6 +1,7 @@
 use crate::{
     eeprom::types::{CategoryType, SiiControl, SiiReadSize, SiiRequest},
     error::{EepromError, Error},
+    fmt,
     register::RegisterAddress,
     slave::SlaveRef,
 };
@@ -44,8 +45,9 @@ impl EepromSectionReader {
             // Position after header
             start_word += 2;
 
-            log::trace!(
-                "Found category {category_type:?}, data starts at {:#06x?}, length {:#04x?} ({}) bytes",
+            fmt::trace!(
+                "Found category {:?}, data starts at {:#06x}, length {:#04x} ({}) bytes",
+                category_type,
                 start_word,
                 len_words,
                 len_words
@@ -86,7 +88,7 @@ impl EepromSectionReader {
 
         // Clear errors
         if status.has_error() {
-            log::trace!("Resetting EEPROM error flags");
+            fmt::trace!("Resetting EEPROM error flags");
 
             slave
                 .write(
@@ -151,7 +153,10 @@ impl EepromSectionReader {
             }
         };
 
-        log::trace!("Read {:#04x?} {:02x?}", eeprom_address, data);
+        #[cfg(not(feature = "defmt"))]
+        fmt::trace!("Read {:#04x} {:02x?}", eeprom_address, data);
+        #[cfg(feature = "defmt")]
+        fmt::trace!("Read {:#04x} {=[u8]}", eeprom_address, data);
 
         Ok(data)
     }
@@ -187,7 +192,7 @@ impl EepromSectionReader {
 
             for byte in slice.iter() {
                 self.read.push_back(*byte).map_err(|_| {
-                    log::error!("EEPROM read queue is full");
+                    fmt::error!("EEPROM read queue is full");
 
                     Error::Eeprom(EepromError::SectionOverrun)
                 })?;
@@ -272,8 +277,8 @@ impl EepromSectionReader {
 
         let mut count = 0;
 
-        log::trace!(
-            "Taking bytes from EEPROM start {:#06x?}, len {}, N {}",
+        fmt::trace!(
+            "Taking bytes from EEPROM start {:#06x}, len {}, N {}",
             self.start,
             len,
             N
@@ -287,7 +292,7 @@ impl EepromSectionReader {
 
             // If buffer is full, we'd end up with truncated data, so error out.
             if buf.is_full() {
-                log::error!("take_n_vec output buffer is full");
+                fmt::error!("take_n_vec output buffer is full");
 
                 break Err(Error::Eeprom(EepromError::SectionOverrun));
             }

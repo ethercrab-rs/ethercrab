@@ -43,7 +43,7 @@ impl<'sto> SendableFrame<'sto> {
 
     /// The length in bytes required to hold the full Ethernet II frame, containing an EtherCAT
     /// payload.
-    fn ethernet_frame_len(&self) -> usize {
+    pub fn len(&self) -> usize {
         EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len())
     }
 
@@ -89,11 +89,8 @@ impl<'sto> SendableFrame<'sto> {
     /// The consumed part of the buffer is returned on success, ready for passing to the network
     /// device. If the buffer is not large enough to hold the full frame, this method will return
     /// [`Error::Pdu(PduError::TooLong)`](PduError::TooLong).
-    pub(crate) fn write_ethernet_packet<'buf>(
-        &self,
-        buf: &'buf mut [u8],
-    ) -> Result<&'buf [u8], PduError> {
-        let ethernet_len = self.ethernet_frame_len();
+    pub fn write_ethernet_packet<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
+        let ethernet_len = self.len();
 
         let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
 
@@ -110,6 +107,7 @@ impl<'sto> SendableFrame<'sto> {
         Ok(ethernet_frame.into_inner())
     }
 
+    /// Send the frame using a callback returning a future.
     pub async fn send<'buf, F, O>(self, packet_buf: &'buf mut [u8], send: F) -> Result<(), Error>
     where
         F: FnOnce(&'buf [u8]) -> O,
@@ -126,6 +124,7 @@ impl<'sto> SendableFrame<'sto> {
         Ok(())
     }
 
+    /// Send the frame using a blocking callback.
     pub fn send_blocking<'buf>(
         self,
         packet_buf: &'buf mut [u8],

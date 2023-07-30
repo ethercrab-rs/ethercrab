@@ -1,4 +1,4 @@
-use crate::{command::Command, error::PduError, pdu_loop::pdu_flags::PduFlags};
+use crate::{command::Command, error::PduError, fmt, pdu_loop::pdu_flags::PduFlags};
 use core::{
     fmt::Debug,
     marker::PhantomData,
@@ -14,6 +14,7 @@ pub mod sendable_frame;
 /// Frame state.
 #[atomic_enum::atomic_enum]
 #[derive(PartialEq, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum FrameState {
     // SAFETY: Because we create a bunch of `Frame`s with `MaybeUninit::zeroed`, the `None` state
     // MUST be equal to zero. All other fields in `Frame` are overridden in `replace`, so there
@@ -135,7 +136,7 @@ impl<const N: usize> FrameElement<N> {
         // matters slightly less for all other state transitions because once we have a created
         // frame nothing else is able to take it unless it is put back into the `None` state.
         Self::swap_state(this, FrameState::None, FrameState::Created).map_err(|e| {
-            log::error!(
+            fmt::error!(
                 "Failed to claim frame: status is {:?}, expected {:?}",
                 e,
                 FrameState::None

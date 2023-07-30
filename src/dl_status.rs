@@ -1,5 +1,5 @@
-use crate::pdu_data::PduRead;
-use packed_struct::{PackedStruct, PackedStructSlice, PackingError};
+use crate::{error::WrappedPackingError, pdu_data::PduRead};
+use packed_struct::{PackedStruct, PackedStructSlice};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
@@ -86,10 +86,12 @@ impl PackedStruct for DlStatus {
 impl PduRead for DlStatus {
     const LEN: u16 = 2;
 
-    type Error = PackingError;
+    type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
+        let res = Self::unpack_from_slice(slice)?;
+
+        Ok(res)
     }
 }
 

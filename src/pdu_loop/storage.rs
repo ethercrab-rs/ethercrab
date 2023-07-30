@@ -1,6 +1,7 @@
 use crate::{
     command::Command,
     error::{Error, PduError},
+    fmt,
     pdu_loop::{
         frame_element::{
             created_frame::CreatedFrame, receiving_frame::ReceivingFrame, FrameBox, FrameElement,
@@ -134,7 +135,7 @@ impl<'sto> PduStorageRef<'sto> {
 
         let idx = usize::from(idx_u8);
 
-        log::trace!("Try to allocate frame #{idx}");
+        fmt::trace!("Try to allocate frame #{}", idx);
 
         // Claim frame so it is no longer free and can be used. It must be claimed before
         // initialisation to avoid race conditions with other threads potentially claiming the same
@@ -173,7 +174,7 @@ impl<'sto> PduStorageRef<'sto> {
             return None;
         }
 
-        log::trace!("Receiving frame {idx}");
+        fmt::trace!("Receiving frame {}", idx);
 
         let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(idx)) };
         let frame = unsafe { FrameElement::claim_receiving(frame)? };

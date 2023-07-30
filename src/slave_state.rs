@@ -15,6 +15,7 @@ use packed_struct::prelude::*;
     num_enum::TryFromPrimitive,
     num_enum::IntoPrimitive,
 )]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum SlaveState {
     /// No state recorded/read/known.

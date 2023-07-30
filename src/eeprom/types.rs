@@ -3,7 +3,7 @@
 use crate::{
     all_consumed,
     base_data_types::PrimitiveDataType,
-    error::{EepromError, Error},
+    error::{EepromError, Error, WrappedPackingError},
     pdu_data::PduRead,
     sync_manager_channel::{self},
 };
@@ -95,10 +95,12 @@ impl SiiControl {
 impl PduRead for SiiControl {
     const LEN: u16 = u16::LEN;
 
-    type Error = PackingError;
+    type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
+        let res = Self::unpack_from_slice(slice)?;
+
+        Ok(res)
     }
 }
 
@@ -240,6 +242,7 @@ pub enum SiiCoding {
 ///
 /// Additional information also in ETG1000.6 Table 17.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum CategoryType {
     #[num_enum(default)]
@@ -264,6 +267,7 @@ pub enum CategoryType {
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
 )]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FmmuUsage {
     #[num_enum(alternatives = [0xff])]
@@ -287,6 +291,7 @@ impl FromEeprom for FmmuUsage {
 ///
 /// NOTE: Most fields defined are discarded from this struct as they are unused in Ethercrab.
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct FmmuEx {
     /// Sync manager index.
     pub sync_manager: u8,
@@ -438,6 +443,7 @@ bitflags::bitflags! {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SyncManager {
     pub(crate) start_addr: u16,
     pub(crate) length: u16,
@@ -502,7 +508,16 @@ bitflags::bitflags! {
     }
 }
 
+// Can't derive, so manual impl
+#[cfg(feature = "defmt")]
+impl defmt::Format for SyncManagerEnable {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{=u8:b}", self.bits())
+    }
+}
+
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, num_enum::FromPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum SyncManagerType {
     /// Not used or unknown.
@@ -520,6 +535,7 @@ pub enum SyncManagerType {
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
 #[derive(Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Pdo {
     pub(crate) index: u16,
     pub(crate) num_entries: u8,
@@ -585,6 +601,7 @@ impl FromEeprom for Pdo {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PdoEntry {
     index: u16,
     sub_index: u8,
@@ -672,6 +689,14 @@ bitflags::bitflags! {
     }
 }
 
+// Can't derive, so manual impl
+#[cfg(feature = "defmt")]
+impl defmt::Format for PdoFlags {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{=u16:b}", self.bits())
+    }
+}
+
 bitflags::bitflags! {
     /// Supported mailbox category.
     ///
@@ -693,7 +718,16 @@ bitflags::bitflags! {
     }
 }
 
+// Can't derive, so manual impl
+#[cfg(feature = "defmt")]
+impl defmt::Format for MailboxProtocols {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{=u16:b}", self.bits())
+    }
+}
+
 #[derive(Copy, Clone, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DefaultMailbox {
     /// Master to slave receive mailbox address offset.
     pub slave_receive_offset: u16,

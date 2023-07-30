@@ -11,6 +11,7 @@ use crate::{
         },
     },
     error::{EepromError, Error, Item},
+    fmt,
     slave::SlaveIdentity,
 };
 use core::{ops::RangeInclusive, str::FromStr};
@@ -28,7 +29,7 @@ impl<'a, S> SlaveRef<'a, S> {
         // let general = self.general().await?;
         // let name_idx = general.name_string_idx;
 
-        log::trace!("Get device name");
+        fmt::trace!("Get device name");
 
         // NOTE: Hard coded to the first string. This mirrors SOEM's behaviour. Reading the
         // string index from EEPROM gives a different value in my testing - still a name, but
@@ -43,7 +44,7 @@ impl<'a, S> SlaveRef<'a, S> {
         // Mailbox config is 10 bytes long.
         let mut reader = EepromSectionReader::start_at(0x0018, DefaultMailbox::STORAGE_SIZE as u16);
 
-        log::trace!("Get mailbox config");
+        fmt::trace!("Get mailbox config");
 
         let buf = reader
             .take_vec_exact::<{ DefaultMailbox::STORAGE_SIZE }, _>(self)
@@ -68,7 +69,7 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn eeprom_identity(&self) -> Result<SlaveIdentity, Error> {
         let mut reader = EepromSectionReader::start_at(0x0008, SlaveIdentity::STORAGE_SIZE as u16);
 
-        log::trace!("Get identity");
+        fmt::trace!("Get identity");
 
         reader
             .take_vec_exact::<{ SlaveIdentity::STORAGE_SIZE }, _>(self)
@@ -81,7 +82,7 @@ impl<'a, S> SlaveRef<'a, S> {
     ) -> Result<heapless::Vec<SyncManager, 8>, Error> {
         let mut sync_managers = heapless::Vec::<_, 8>::new();
 
-        log::trace!("Get sync managers");
+        fmt::trace!("Get sync managers");
 
         if let Some(mut reader) = EepromSectionReader::new(self, CategoryType::SyncManager).await? {
             while let Some(bytes) = reader
@@ -96,7 +97,7 @@ impl<'a, S> SlaveRef<'a, S> {
             }
         }
 
-        log::debug!("Discovered sync managers:\n{:#?}", sync_managers);
+        fmt::debug!("Discovered sync managers:\n{:#?}", sync_managers);
 
         Ok(sync_managers)
     }
@@ -104,7 +105,7 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn eeprom_fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
         let category = EepromSectionReader::new(self, CategoryType::Fmmu).await?;
 
-        log::trace!("Get FMMUs");
+        fmt::trace!("Get FMMUs");
 
         // ETG100.4 6.6.1 states there may be up to 16 FMMUs
         let mut fmmus = heapless::Vec::<_, 16>::new();
@@ -118,7 +119,7 @@ impl<'a, S> SlaveRef<'a, S> {
             }
         }
 
-        log::debug!("Discovered FMMUs:\n{:#?}", fmmus);
+        fmt::debug!("Discovered FMMUs:\n{:#?}", fmmus);
 
         Ok(fmmus)
     }
@@ -126,7 +127,7 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn eeprom_fmmu_mappings(&self) -> Result<heapless::Vec<FmmuEx, 16>, Error> {
         let mut mappings = heapless::Vec::<_, 16>::new();
 
-        log::trace!("Get FMMU mappings");
+        fmt::trace!("Get FMMU mappings");
 
         if let Some(mut reader) = EepromSectionReader::new(self, CategoryType::FmmuExtended).await?
         {
@@ -139,7 +140,7 @@ impl<'a, S> SlaveRef<'a, S> {
             }
         }
 
-        log::debug!("FMMU mappings: {:#?}", mappings);
+        fmt::debug!("FMMU mappings: {:#?}", mappings);
 
         Ok(mappings)
     }
@@ -151,17 +152,17 @@ impl<'a, S> SlaveRef<'a, S> {
     ) -> Result<heapless::Vec<Pdo, 16>, Error> {
         let mut pdos = heapless::Vec::new();
 
-        log::trace!("Get {:?} PDUs", category);
+        fmt::trace!("Get {:?} PDUs", category);
 
         if let Some(mut reader) = EepromSectionReader::new(self, category).await? {
             while let Some(pdo) = reader.take_vec::<{ Pdo::STORAGE_SIZE }, _>(self).await? {
                 let mut pdo = Pdo::parse(&pdo).map_err(|e| {
-                    log::error!("PDO: {:?}", e);
+                    fmt::error!("PDO: {:?}", e);
 
                     Error::Eeprom(EepromError::Decode)
                 })?;
 
-                log::trace!("Range {:?} value {}", valid_range, pdo.index);
+                fmt::trace!("Range {:?} value {}", valid_range, pdo.index);
 
                 if !valid_range.contains(&pdo.index) {
                     return Err(Error::Eeprom(EepromError::Decode));
@@ -173,7 +174,7 @@ impl<'a, S> SlaveRef<'a, S> {
                         .await
                         .and_then(|bytes| {
                             let entry = PdoEntry::parse(&bytes).map_err(|e| {
-                                log::error!("PDO entry: {:?}", e);
+                                fmt::error!("PDO entry: {:?}", e);
 
                                 Error::Eeprom(EepromError::Decode)
                             })?;
@@ -190,7 +191,7 @@ impl<'a, S> SlaveRef<'a, S> {
             }
         }
 
-        log::debug!("Discovered PDOs:\n{:#?}", pdos);
+        fmt::debug!("Discovered PDOs:\n{:#?}", pdos);
 
         Ok(pdos)
     }
@@ -209,7 +210,7 @@ impl<'a, S> SlaveRef<'a, S> {
         &self,
         search_index: u8,
     ) -> Result<Option<heapless::String<N>>, Error> {
-        log::trace!("Get string, index {}", search_index);
+        fmt::trace!("Get string, index {}", search_index);
 
         // An index of zero in EtherCAT denotes an empty string.
         if search_index == 0 {
@@ -222,7 +223,7 @@ impl<'a, S> SlaveRef<'a, S> {
         if let Some(mut reader) = EepromSectionReader::new(self, CategoryType::Strings).await? {
             let num_strings = reader.try_next(self).await?;
 
-            log::trace!("--> Slave has {} strings", num_strings);
+            fmt::trace!("--> Slave has {} strings", num_strings);
 
             if search_index > num_strings {
                 return Ok(None);
@@ -244,7 +245,7 @@ impl<'a, S> SlaveRef<'a, S> {
                     string_length: string_len,
                 })?;
 
-            log::trace!("--> Raw string bytes {:?}", bytes);
+            fmt::trace!("--> Raw string bytes {:?}", bytes);
 
             let s = core::str::from_utf8(&bytes).map_err(|_| Error::Eeprom(EepromError::Decode))?;
 
@@ -255,7 +256,7 @@ impl<'a, S> SlaveRef<'a, S> {
             let s = heapless::String::<N>::from_str(s)
                 .map_err(|_| Error::Eeprom(EepromError::Decode))?;
 
-            log::trace!(
+            fmt::trace!(
                 "--> String at search index {} with length {}: {}",
                 search_index,
                 string_len,

@@ -5,6 +5,7 @@ use core::{fmt, ops::Range};
 ///
 /// PDI mappings are byte-aligned per each slave.
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PdiOffset {
     pub start_address: u32,
     // Not really used, but will become useful if we support bit-packed PDI mappings in the future.
@@ -70,6 +71,7 @@ impl PdiOffset {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PdiSegment {
     pub bytes: Range<usize>,
     pub bit_len: usize,

@@ -2,6 +2,7 @@ use packed_struct::prelude::*;
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum Priority {
     #[default]
@@ -13,6 +14,7 @@ pub enum Priority {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum MailboxType {
     /// error (ERR)
@@ -37,6 +39,7 @@ pub enum MailboxType {
 /// Defined in ETG1000.6 under either `TMBXHEADER` or `MbxHeader` e.g. Table 29 - CoE Elements.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PackedStruct)]
 #[packed_struct(size_bytes = "6", bit_numbering = "msb0", endian = "lsb")]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct MailboxHeader {
     /// Mailbox data payload length.
     #[packed_field(bytes = "0..=1")]

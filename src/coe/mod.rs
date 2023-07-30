@@ -119,6 +119,7 @@ impl SegmentSdoHeader {
 
 /// Subindex access.
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SubIndex {
     /// Complete access.
     ///
