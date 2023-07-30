@@ -43,7 +43,7 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-#[embassy_executor::task]
+#[embassy_executor::task(pool_size = 4)]
 async fn tx_rx_task(
     mut device: Ethernet<'static, ETH, GenericSMI>,
     mut pdu_tx: PduTx<'static>,
@@ -65,55 +65,53 @@ async fn tx_rx_task(
     }
 
     poll_fn(|ctx| {
-        defmt::info!("Poll");
+        // defmt::info!("Poll");
+
+        pdu_tx.lock_waker().replace(ctx.waker().clone());
 
         if let Some((rx, tx)) = device.receive(ctx) {
-            defmt::info!("--> Rx and tx available");
+            // defmt::info!("--> Rx and tx available");
 
             rx.consume(|frame| {
-                let mut f = smoltcp::wire::EthernetFrame::new_unchecked(frame);
+                // let mut f = smoltcp::wire::EthernetFrame::new_unchecked(frame);
 
-                if f.ethertype() == smoltcp::wire::EthernetProtocol::Unknown(0x88a4) {
-                    defmt::info!("--> ECAT RESPONSE!");
+                // if f.ethertype() == smoltcp::wire::EthernetProtocol::Unknown(0x88a4) {
+                //     defmt::info!("--> ECAT RESPONSE!");
 
-                    defmt::info!(
-                        "type {:?}, dst {:?} src {:?}",
-                        f.ethertype(),
-                        f.dst_addr(),
-                        f.src_addr()
-                    );
-                }
+                //     defmt::info!(
+                //         "type {:?}, dst {:?} src {:?}",
+                //         f.ethertype(),
+                //         f.dst_addr(),
+                //         f.src_addr()
+                //     );
+                // }
 
-                pdu_rx.receive_frame(f.payload_mut()).map_err(|_| {
+                defmt::unwrap!(pdu_rx.receive_frame(frame).map_err(|_| {
                     defmt::error!("RX");
-                });
+                }));
             });
 
             if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
                 defmt::info!("Sennnddddd FROM RX");
 
                 send_ecat(tx, ethercat_frame);
-
-                pdu_tx.lock_waker().replace(ctx.waker().clone());
             }
 
             // Wake again to continue processing any queued packets
             ctx.waker().wake_by_ref();
         } else if let Some(tx) = device.transmit(ctx) {
-            defmt::info!("--> Tx available");
+            // defmt::info!("--> Tx available");
 
             if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
                 defmt::info!("Sennnddddd");
 
                 send_ecat(tx, ethercat_frame);
 
-                pdu_tx.lock_waker().replace(ctx.waker().clone());
-
                 // Wake again to continue processing any queued packets
                 ctx.waker().wake_by_ref();
             }
         } else {
-            defmt::info!("--> No stuff");
+            // defmt::info!("--> No stuff");
         }
 
         Poll::<!>::Pending
@@ -134,7 +132,7 @@ async fn main(spawner: Spawner) {
     let mac_addr = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
     let device = Ethernet::new(
-        make_static!(PacketQueue::<1, 1>::new()),
+        make_static!(PacketQueue::<2, 2>::new()),
         p.ETH,
         Irqs,
         p.PA1,
@@ -156,7 +154,7 @@ async fn main(spawner: Spawner) {
     let client = Client::new(
         pdu_loop,
         Timeouts {
-            pdu: core::time::Duration::from_secs(5),
+            // pdu: core::time::Duration::from_secs(5),
             ..Timeouts::default()
         },
         ClientConfig::default(),
@@ -172,13 +170,16 @@ async fn main(spawner: Spawner) {
     defmt::info!("Loop");
 
     loop {
-        if let Ok((status, wkc)) = client
-            .brd::<AlStatusCode>(ethercrab::RegisterAddress::AlStatus)
+        match client
+            .brd::<u16>(ethercrab::RegisterAddress::AlStatus)
             .await
         {
-            defmt::info!("--> WKC {}", wkc);
-        } else {
-            defmt::error!("--> Bad shit idk");
+            Ok((status, wkc)) => {
+                defmt::info!("--> WKC {}", wkc);
+            }
+            Err(e) => {
+                defmt::error!("--> BRD fail: {}", e);
+            }
         }
 
         Timer::after(embassy_time::Duration::from_secs(1)).await;
