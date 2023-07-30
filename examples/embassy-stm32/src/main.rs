@@ -43,7 +43,7 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-#[embassy_executor::task(pool_size = 4)]
+#[embassy_executor::task]
 async fn tx_rx_task(
     mut device: Ethernet<'static, ETH, GenericSMI>,
     mut pdu_tx: PduTx<'static>,
@@ -70,25 +70,31 @@ async fn tx_rx_task(
 
         pdu_tx.lock_waker().replace(ctx.waker().clone());
 
-        if let Some((rx, tx)) = device.receive(ctx) {
-            defmt::info!("TX WITH RX");
+        loop {
+            if let Some((rx, tx)) = device.receive(ctx) {
+                defmt::info!("TX WITH RX");
 
-            rx.consume(|frame| {
-                defmt::unwrap!(pdu_rx.receive_frame(frame));
-            });
+                rx.consume(|frame| {
+                    defmt::unwrap!(pdu_rx.receive_frame(frame));
+                });
 
-            if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
-                defmt::info!("Sennnddddd FROM RX");
+                if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
+                    defmt::info!("Sennnddddd FROM RX");
 
-                send_ecat(tx, ethercat_frame);
-            }
-        } else if let Some(tx) = device.transmit(ctx) {
-            defmt::info!("TX ONLY");
+                    send_ecat(tx, ethercat_frame);
+                }
+            } else if let Some(tx) = device.transmit(ctx) {
+                defmt::info!("TX ONLY");
 
-            if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
-                defmt::info!("Sennnddddd");
+                if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
+                    defmt::info!("Sennnddddd");
 
-                send_ecat(tx, ethercat_frame);
+                    send_ecat(tx, ethercat_frame);
+                } else {
+                    break;
+                }
+            } else {
+                break;
             }
         }
 
@@ -110,7 +116,7 @@ async fn main(spawner: Spawner) {
     let mac_addr = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
     let device = Ethernet::new(
-        make_static!(PacketQueue::<4, 4>::new()),
+        make_static!(PacketQueue::<2, 2>::new()),
         p.ETH,
         Irqs,
         p.PA1,
@@ -127,7 +133,9 @@ async fn main(spawner: Spawner) {
         0,
     );
 
-    let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+    let (tx, rx, pdu_loop) = defmt::unwrap!(PDU_STORAGE.try_split());
+
+    defmt::unwrap!(spawner.spawn(tx_rx_task(device, tx, rx)));
 
     let client = Client::new(
         pdu_loop,
@@ -138,14 +146,25 @@ async fn main(spawner: Spawner) {
         ClientConfig::default(),
     );
 
-    defmt::unwrap!(spawner.spawn(tx_rx_task(device, tx, rx)));
+    defmt::info!("Begin loop");
 
-    // // Do nothing here for now except let the tx/rx task run
-    // core::future::pending::<()>().await;
+    // let mut group = defmt::unwrap!(client.init_single_group::<MAX_SLAVES, PDI_LEN>().await);
 
-    //
+    // defmt::info!("Discovered {} slaves", group.len());
 
-    defmt::info!("Loop");
+    // let mut group = defmt::unwrap!(group.into_op(&client).await);
+
+    // for slave in group.iter(&client) {
+    //     let (i, o) = slave.io_raw();
+
+    //     defmt::info!(
+    //         "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
+    //         slave.configured_address(),
+    //         slave.name(),
+    //         i.len(),
+    //         o.len()
+    //     );
+    // }
 
     loop {
         match client
@@ -159,6 +178,17 @@ async fn main(spawner: Spawner) {
                 defmt::error!("--> BRD fail: {}", e);
             }
         }
+
+        // defmt::unwrap!(group.tx_rx(&client).await);
+
+        // // Increment every output byte for every slave device by one
+        // for slave in group.iter(&client) {
+        //     let (_i, o) = slave.io_raw();
+
+        //     for byte in o.iter_mut() {
+        //         *byte = byte.wrapping_add(1);
+        //     }
+        // }
 
         Timer::after(embassy_time::Duration::from_secs(1)).await;
     }
