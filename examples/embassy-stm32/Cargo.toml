@@ -1,5 +1,5 @@
 [package]
-name = "ethercrab-stm32"
+name = "ethercrab-stm32-embassy"
 version = "0.1.0"
 edition = "2021"
 
@@ -48,7 +48,6 @@ embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embass
     "unstable-pac",
     "memory-x",
     "time-driver-any",
-    "exti",
 ] }
 embassy-net = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22", features = [
     "defmt",
