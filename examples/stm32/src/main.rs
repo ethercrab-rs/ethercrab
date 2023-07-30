@@ -6,7 +6,10 @@
 use core::{future::poll_fn, task::Poll};
 use defmt_rtt as _;
 use embassy_executor::Spawner;
-use embassy_net::driver::{Driver, RxToken, TxToken};
+use embassy_net::{
+    driver::{Driver, RxToken, TxToken},
+    EthernetAddress,
+};
 use embassy_stm32::{
     bind_interrupts,
     eth::{self, generic_smi::GenericSMI, Ethernet, PacketQueue},
@@ -15,8 +18,12 @@ use embassy_stm32::{
     Config,
 };
 use embassy_time::Timer;
-use ethercrab::{AlStatusCode, Client, ClientConfig, PduRx, PduStorage, PduTx, Timeouts};
+use embedded_io::asynch::{Read, Write};
+use ethercrab::{
+    AlStatusCode, Client, ClientConfig, PduRx, PduStorage, PduTx, SendableFrame, Timeouts,
+};
 use panic_probe as _;
+use smoltcp::wire::EthernetProtocol;
 use static_cell::make_static;
 
 bind_interrupts!(struct Irqs {
@@ -39,48 +46,55 @@ static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 #[embassy_executor::task]
 async fn tx_rx_task(
     mut device: Ethernet<'static, ETH, GenericSMI>,
-    mut tx: PduTx<'static>,
-    mut rx: PduRx<'static>,
+    mut pdu_tx: PduTx<'static>,
+    mut pdu_rx: PduRx<'static>,
 ) -> ! {
     defmt::info!("Spawn TX/RX");
+
+    fn send_ecat(tx: embassy_stm32::eth::TxToken<'_, '_>, frame: SendableFrame<'_>) {
+        // let len = frame.len();
+
+        tx.consume(frame.len(), |tx_buf| {
+            frame.send_blocking(tx_buf, |_ethernet_frame| {
+                // Frame is copied into `tx_buf` inside `send_blocking` so we don't need to do
+                // anything here. The frame is sent once the outer closure in `tx.consume` ends.
+
+                Ok(())
+            });
+        });
+    }
 
     poll_fn(|ctx| {
         defmt::info!("Poll");
 
-        let mut tx_waker = tx.lock_waker();
-
-        if let Some(frame) = tx.next_sendable_frame() {
-            defmt::info!("--> Found sendable frame {} bytes", frame.len());
-
-            let tx_token = device.transmit(ctx).expect("no txitches?");
-
-            tx_token.consume(frame.len(), |buf| {
-                frame.write_ethernet_packet(buf).expect("write frame");
-            });
-        }
-
         if let Some((rx, tx)) = device.receive(ctx) {
-            rx.consume(|rx| {
-                let frame = smoltcp::wire::EthernetFrame::new_unchecked(rx);
+            defmt::info!("--> Rx and tx available");
 
-                match frame.ethertype() {
-                    smoltcp::wire::EthernetProtocol::Unknown(value) if value == 0x88a4 => {
-                        defmt::info!("--> Rx ethercat")
-                    }
-                    other => defmt::info!("--> Rx non-ethercat {:?}", other),
+            rx.consume(|frame| {
+                let frame = smoltcp::wire::EthernetFrame::new_unchecked(frame);
+
+                if frame.ethertype() == EthernetProtocol::Unknown(0x88a4) {
+                    defmt::info!("--> RESPONSE!");
                 }
             });
 
-            // tx.consume(0, |tx| {
-            //     defmt::info!("--> Tx");
-            // });
+            if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
+                defmt::info!("Sennnddddd FROM RX");
+
+                send_ecat(tx, ethercat_frame);
+            }
+        } else if let Some(tx) = device.transmit(ctx) {
+            defmt::info!("--> Tx available");
+
+            if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
+                defmt::info!("Sennnddddd");
+
+                send_ecat(tx, ethercat_frame);
+            }
         } else {
-            defmt::info!("--> No frames")
+            defmt::info!("--> No stuff");
         }
 
-        tx_waker.replace(ctx.waker().clone());
-
-        // Poll::Ready((rx, tx))
         Poll::<!>::Pending
     })
     .await
@@ -125,11 +139,11 @@ async fn main(spawner: Spawner) {
     // // Do nothing here for now except let the tx/rx task run
     // core::future::pending::<()>().await;
 
+    //
+
+    defmt::info!("Loop");
+
     loop {
-        //
-
-        defmt::info!("Loop");
-
         if let Ok((status, wkc)) = client
             .brd::<AlStatusCode>(ethercrab::RegisterAddress::AlStatus)
             .await
