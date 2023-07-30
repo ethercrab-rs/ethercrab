@@ -55,7 +55,7 @@ async fn tx_rx_task(
         // let len = frame.len();
 
         tx.consume(frame.len(), |tx_buf| {
-            frame.send_blocking(tx_buf, |_ethernet_frame| {
+            let _ = frame.send_blocking(tx_buf, |_ethernet_frame| {
                 // Frame is copied into `tx_buf` inside `send_blocking` so we don't need to do
                 // anything here. The frame is sent once the outer closure in `tx.consume` ends.
 
@@ -71,18 +71,34 @@ async fn tx_rx_task(
             defmt::info!("--> Rx and tx available");
 
             rx.consume(|frame| {
-                let frame = smoltcp::wire::EthernetFrame::new_unchecked(frame);
+                let mut f = smoltcp::wire::EthernetFrame::new_unchecked(frame);
 
-                if frame.ethertype() == EthernetProtocol::Unknown(0x88a4) {
-                    defmt::info!("--> RESPONSE!");
+                if f.ethertype() == smoltcp::wire::EthernetProtocol::Unknown(0x88a4) {
+                    defmt::info!("--> ECAT RESPONSE!");
+
+                    defmt::info!(
+                        "type {:?}, dst {:?} src {:?}",
+                        f.ethertype(),
+                        f.dst_addr(),
+                        f.src_addr()
+                    );
                 }
+
+                pdu_rx.receive_frame(f.payload_mut()).map_err(|_| {
+                    defmt::error!("RX");
+                });
             });
 
             if let Some(ethercat_frame) = pdu_tx.next_sendable_frame() {
                 defmt::info!("Sennnddddd FROM RX");
 
                 send_ecat(tx, ethercat_frame);
+
+                pdu_tx.lock_waker().replace(ctx.waker().clone());
             }
+
+            // Wake again to continue processing any queued packets
+            ctx.waker().wake_by_ref();
         } else if let Some(tx) = device.transmit(ctx) {
             defmt::info!("--> Tx available");
 
@@ -90,6 +106,11 @@ async fn tx_rx_task(
                 defmt::info!("Sennnddddd");
 
                 send_ecat(tx, ethercat_frame);
+
+                pdu_tx.lock_waker().replace(ctx.waker().clone());
+
+                // Wake again to continue processing any queued packets
+                ctx.waker().wake_by_ref();
             }
         } else {
             defmt::info!("--> No stuff");
@@ -113,7 +134,7 @@ async fn main(spawner: Spawner) {
     let mac_addr = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
     let device = Ethernet::new(
-        make_static!(PacketQueue::<2, 2>::new()),
+        make_static!(PacketQueue::<1, 1>::new()),
         p.ETH,
         Irqs,
         p.PA1,
@@ -132,7 +153,14 @@ async fn main(spawner: Spawner) {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    let client = Client::new(
+        pdu_loop,
+        Timeouts {
+            pdu: core::time::Duration::from_secs(5),
+            ..Timeouts::default()
+        },
+        ClientConfig::default(),
+    );
 
     defmt::unwrap!(spawner.spawn(tx_rx_task(device, tx, rx)));
 
@@ -149,6 +177,8 @@ async fn main(spawner: Spawner) {
             .await
         {
             defmt::info!("--> WKC {}", wkc);
+        } else {
+            defmt::error!("--> Bad shit idk");
         }
 
         Timer::after(embassy_time::Duration::from_secs(1)).await;
