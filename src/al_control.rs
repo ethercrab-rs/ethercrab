@@ -2,6 +2,7 @@ use crate::{error::WrappedPackingError, fmt, pdu_data::PduRead, slave_state::Sla
 use packed_struct::prelude::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct AlControl {
     pub state: SlaveState,
     pub error: bool,

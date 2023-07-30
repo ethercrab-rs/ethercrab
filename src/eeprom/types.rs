@@ -242,6 +242,7 @@ pub enum SiiCoding {
 ///
 /// Additional information also in ETG1000.6 Table 17.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum CategoryType {
     #[num_enum(default)]
@@ -266,6 +267,7 @@ pub enum CategoryType {
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
 )]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FmmuUsage {
     #[num_enum(alternatives = [0xff])]
@@ -289,6 +291,7 @@ impl FromEeprom for FmmuUsage {
 ///
 /// NOTE: Most fields defined are discarded from this struct as they are unused in Ethercrab.
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct FmmuEx {
     /// Sync manager index.
     pub sync_manager: u8,
@@ -411,6 +414,7 @@ pub enum PortStatus {
 
 bitflags::bitflags! {
     #[derive(Debug, PartialEq, Eq)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct Flags: u8 {
         const ENABLE_SAFE_OP = 0x01;
         const ENABLE_NOT_LRW = 0x02;
@@ -423,6 +427,7 @@ bitflags::bitflags! {
 
 bitflags::bitflags! {
     #[derive(Debug, PartialEq, Eq)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct CoeDetails: u8 {
         /// Bit 0: Enable SDO
         const ENABLE_SDO = 0x01;
@@ -440,6 +445,7 @@ bitflags::bitflags! {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SyncManager {
     pub(crate) start_addr: u16,
     pub(crate) length: u16,
@@ -492,6 +498,7 @@ impl FromEeprom for SyncManager {
 
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct SyncManagerEnable: u8 {
         /// Bit 0: enable.
         const ENABLE = 0x01;
@@ -505,6 +512,7 @@ bitflags::bitflags! {
 }
 
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, num_enum::FromPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum SyncManagerType {
     /// Not used or unknown.
@@ -522,6 +530,7 @@ pub enum SyncManagerType {
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
 #[derive(Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Pdo {
     pub(crate) index: u16,
     pub(crate) num_entries: u8,
@@ -587,6 +596,7 @@ impl FromEeprom for Pdo {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PdoEntry {
     index: u16,
     sub_index: u8,
@@ -640,6 +650,7 @@ impl FromEeprom for PdoEntry {
 bitflags::bitflags! {
     /// Defined in ETG2010 Table 14 offset 0x0006.
     #[derive(Copy, Clone, Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct PdoFlags: u16 {
         /// PdoMandatory [Esi:RTxPdo@Mandatory]
         const PDO_MANDATORY = 0x0001;
@@ -679,6 +690,7 @@ bitflags::bitflags! {
     ///
     /// Defined in ETG1000.6 Table 18 or ETG2010 Table 4.
     #[derive(Copy, Clone, Default, Debug, PartialEq)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct MailboxProtocols: u16 {
         /// ADS over EtherCAT (routing and parallel services).
         const AOE = 0x0001;
@@ -696,6 +708,7 @@ bitflags::bitflags! {
 }
 
 #[derive(Copy, Clone, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DefaultMailbox {
     /// Master to slave receive mailbox address offset.
     pub slave_receive_offset: u16,

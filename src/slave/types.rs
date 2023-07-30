@@ -7,6 +7,7 @@ use core::fmt::{self, Debug};
 use nom::{number::complete::le_u32, IResult};
 
 #[derive(Default, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SlaveIdentity {
     pub vendor_id: u32,
     pub product_id: u32,

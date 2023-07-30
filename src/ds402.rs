@@ -264,6 +264,7 @@ bitflags::bitflags! {
 
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     /// AKD EtherCAT Communications Manual section   5.3.56
     pub struct StatusWord: u16 {
         /// Ready to switch on

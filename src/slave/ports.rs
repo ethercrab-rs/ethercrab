@@ -3,6 +3,7 @@ use core::fmt::{self, Debug};
 
 /// Flags showing which ports are active or not on the slave.
 #[derive(Default, Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Port {
     pub active: bool,
     pub dc_receive_time: u32,
@@ -25,6 +26,7 @@ impl Port {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Topology {
     /// The slave device has two open ports, with only upstream and downstream slaves.
     Passthrough,
@@ -36,6 +38,7 @@ pub enum Topology {
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Ports(pub [Port; 4]);
 
 impl fmt::Display for Ports {

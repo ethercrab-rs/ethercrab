@@ -293,6 +293,7 @@ pub enum PortType {
 
 #[derive(Default, Clone, Debug, PartialEq)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SupportFlags {
     pub fmmu_supports_bit_ops: bool,
     pub reserved_register_support: bool,
