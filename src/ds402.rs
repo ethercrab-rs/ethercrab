@@ -264,7 +264,6 @@ bitflags::bitflags! {
 
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     /// AKD EtherCAT Communications Manual section   5.3.56
     pub struct StatusWord: u16 {
         /// Ready to switch on
@@ -299,6 +298,14 @@ bitflags::bitflags! {
         const MAN_SPECIFIC_1 = 1 << 14;
         /// Manufacturer-specific (reserved)
         const MAN_SPECIFIC_2 = 1 << 15;
+    }
+}
+
+// Can't derive, so manual impl
+#[cfg(feature = "defmt")]
+impl defmt::Format for StatusWord {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{=u16:b}", self.bits())
     }
 }
 

@@ -414,7 +414,6 @@ pub enum PortStatus {
 
 bitflags::bitflags! {
     #[derive(Debug, PartialEq, Eq)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct Flags: u8 {
         const ENABLE_SAFE_OP = 0x01;
         const ENABLE_NOT_LRW = 0x02;
@@ -427,7 +426,6 @@ bitflags::bitflags! {
 
 bitflags::bitflags! {
     #[derive(Debug, PartialEq, Eq)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct CoeDetails: u8 {
         /// Bit 0: Enable SDO
         const ENABLE_SDO = 0x01;
@@ -498,7 +496,6 @@ impl FromEeprom for SyncManager {
 
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct SyncManagerEnable: u8 {
         /// Bit 0: enable.
         const ENABLE = 0x01;
@@ -508,6 +505,14 @@ bitflags::bitflags! {
         const IS_VIRTUAL = 0x04;
         /// Bit 3: opOnly (SyncMan should be enabled only in OP state).
         const OP_ONLY = 0x08;
+    }
+}
+
+// Can't derive, so manual impl
+#[cfg(feature = "defmt")]
+impl defmt::Format for SyncManagerEnable {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{=u8:b}", self.bits())
     }
 }
 
@@ -650,7 +655,6 @@ impl FromEeprom for PdoEntry {
 bitflags::bitflags! {
     /// Defined in ETG2010 Table 14 offset 0x0006.
     #[derive(Copy, Clone, Debug)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct PdoFlags: u16 {
         /// PdoMandatory [Esi:RTxPdo@Mandatory]
         const PDO_MANDATORY = 0x0001;
@@ -685,12 +689,19 @@ bitflags::bitflags! {
     }
 }
 
+// Can't derive, so manual impl
+#[cfg(feature = "defmt")]
+impl defmt::Format for PdoFlags {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{=u16:b}", self.bits())
+    }
+}
+
 bitflags::bitflags! {
     /// Supported mailbox category.
     ///
     /// Defined in ETG1000.6 Table 18 or ETG2010 Table 4.
     #[derive(Copy, Clone, Default, Debug, PartialEq)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct MailboxProtocols: u16 {
         /// ADS over EtherCAT (routing and parallel services).
         const AOE = 0x0001;
@@ -704,6 +715,14 @@ bitflags::bitflags! {
         const SOE = 0x0010;
         /// Vendor specific protocol over EtherCAT.
         const VOE = 0x0020;
+    }
+}
+
+// Can't derive, so manual impl
+#[cfg(feature = "defmt")]
+impl defmt::Format for MailboxProtocols {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{=u16:b}", self.bits())
     }
 }
 
