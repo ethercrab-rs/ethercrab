@@ -233,6 +233,11 @@ where
         self.state.name.as_str()
     }
 
+    /// Get additional identifying details for the slave device.
+    pub fn identity(&self) -> SlaveIdentity {
+        self.state.identity
+    }
+
     /// Get the configured station address of the slave device.
     pub fn configured_address(&self) -> u16 {
         self.state.configured_address
