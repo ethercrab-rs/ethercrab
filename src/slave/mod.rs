@@ -44,9 +44,7 @@ use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
 
-/// Basic slave data.
-///
-/// See [`SlaveRef`] for richer behaviour.
+/// Slave device metadata. See [`SlaveRef`] for richer behaviour.
 #[derive(Debug, Clone, PartialEq)]
 // Gated by test feature so we can easily create test cases, but not expose a `Default`-ed `Slave`
 // to the user as this is an invalid state.
@@ -212,7 +210,11 @@ impl Slave {
     }
 }
 
-/// A slave device with additional metadata and methods.
+/// A wrapper around a [`Slave`] and additional state for richer behaviour.
+///
+/// For example, a `SlaveRef<SlavePdi>` is returned by
+/// [`SlaveGroup`](crate::slave_group::SlaveGroup) methods to allow the reading and writing of a
+/// slave device's process data.
 #[derive(Debug)]
 pub struct SlaveRef<'a, S> {
     client: &'a Client<'a>,

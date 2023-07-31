@@ -93,7 +93,7 @@ impl Future for DummyTxRxFut<'_> {
     type Output = Result<(), Error>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
-        let mut waker = self.tx.lock_waker();
+        let mut waker = self.tx.waker();
 
         let mut buf = [0u8; 1536];
 

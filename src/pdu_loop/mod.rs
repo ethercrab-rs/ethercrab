@@ -40,11 +40,13 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
     }
 }
 
-/// The core of the PDU send/receive machinery.
+/// The core EtherCrab network communications driver.
 ///
 /// This item orchestrates queuing, sending and receiving responses to individual PDUs. It uses a
 /// fixed length list of frame slots which are cycled through sequentially to ensure each PDU packet
 /// has a unique ID (by using the slot index).
+///
+/// Use [`PduTx`] and [`PduRx`] to integrate EtherCrab into network drivers.
 ///
 /// # High level overview
 ///

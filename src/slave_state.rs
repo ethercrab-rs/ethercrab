@@ -1,7 +1,7 @@
 use core::fmt;
 use packed_struct::prelude::*;
 
-/// AL (application layer) Status.
+/// AL (application layer) device state.
 ///
 /// Defined in ETG1000.6 6.4.1
 #[derive(

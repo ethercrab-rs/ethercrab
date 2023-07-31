@@ -188,7 +188,8 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 
     /// Transition the group from PRE-OP -> SAFE-OP -> OP.
     ///
-    /// To transition individually from PRE-OP to SAFE-OP, then SAFE-OP to OP, see `into_safe_op`.
+    /// To transition individually from PRE-OP to SAFE-OP, then SAFE-OP to OP, see
+    /// [`SlaveGroup::into_safe_op`].
     pub async fn into_op(
         self,
         client: &Client<'_>,
