@@ -6,9 +6,20 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- [#84] `GroupSlave::iter` will now panic instead of completing early if a slave device is already
+  borrowed.
+
 ### Added
 
-- [#83] Add `SlaveRef::identity` method to get the vendor ID, etc of a slave device.
+- [#83] Add `SlaveRef::identity` method to get the vendor ID, hardware revision, etc of a slave
+  device.
+
+### Changed
+
+- [#84] The `SlaveGroupState` trait is now not-doc-hidden so the `GroupSlave::slave` method is more
+  easily accessible.
 
 ## [0.2.0] - 2023-07-31
 
@@ -147,5 +158,6 @@ An EtherCAT master written in Rust.
 [#59]: https://github.com/ethercrab-rs/ethercrab/pull/59
 [#75]: https://github.com/ethercrab-rs/ethercrab/pull/75
 [#83]: https://github.com/ethercrab-rs/ethercrab/pull/83
+[#84]: https://github.com/ethercrab-rs/ethercrab/pull/84
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

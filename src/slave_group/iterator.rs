@@ -34,10 +34,11 @@ where
             return None;
         }
 
-        // Squelch errors. If we're failing at this point, something is _very_ wrong.
-        let slave = self.group.slave(self.client, self.idx).map_err(|e| {
+        let slave = fmt::unwrap!( self.group.slave(self.client, self.idx).map_err(|e| {
             fmt::error!("Failed to get slave at index {} from group with {} slaves: {}. This is very wrong. Please open an issue.", self.idx, self.group.len(), e);
-        }).ok()?;
+
+            e
+        }));
 
         self.idx += 1;
 
