@@ -6,6 +6,8 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.2.1] - 2023-07-31
+
 ### Fixed
 
 - [#84] `GroupSlave::iter` will now panic instead of completing early if a slave device is already
@@ -134,8 +136,9 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.2.1...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.2.0...HEAD
+[0.2.1]: https://github.com/ethercrab-rs/ethercrab/compare/v0.2.0...v0.2.1
 [#2]: https://github.com/ethercrab-rs/ethercrab/pull/2
 [#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
 [#6]: https://github.com/ethercrab-rs/ethercrab/pull/6
