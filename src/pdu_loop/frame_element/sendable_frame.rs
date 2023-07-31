@@ -12,8 +12,36 @@ use core::future::Future;
 use core::mem;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
-/// A frame has been initialised with valid header and data payload and is now ready to be picked up
-/// by the TX loop and sent over the network.
+/// An EtherCAT frame that is ready to be sent over the network.
+///
+/// This struct can be acquired by calling
+/// [`PduLoop::next_sendable_frame`](crate::pdu_loop::PduTx::next_sendable_frame).
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// # use ethercrab::PduStorage;
+/// use core::future::poll_fn;
+/// use core::task::Poll;
+///
+/// # static PDU_STORAGE: PduStorage<2, 2> = PduStorage::new();
+/// let (mut pdu_tx, _pdu_rx, _pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+///
+/// poll_fn(|ctx| {
+///     if let Some(packet) = pdu_tx.next_sendable_frame() {
+///         // Send packet over the network interface here
+///
+///         // Wake the future so it's polled again in case there are more frames to send
+///         ctx.waker().wake_by_ref();
+///     }
+///
+///     // Set the waker so this future is polled again when new EtherCAT frames are ready to
+///     // be sent.
+///     pdu_tx.waker().replace(ctx.waker().clone());
+///
+///     Poll::<()>::Pending
+/// });
+/// ```
 #[derive(Debug)]
 pub struct SendableFrame<'sto> {
     pub(in crate::pdu_loop) inner: FrameBox<'sto>,

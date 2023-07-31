@@ -25,7 +25,7 @@ impl Future for TxRxFut<'_> {
         let mut buf = [0u8; 1536];
 
         // Lock the waker so we don't poll concurrently. spin::RwLock does this atomically
-        let mut waker = self.tx.lock_waker();
+        let mut waker = self.tx.waker();
 
         while let Some(frame) = self.tx.next_sendable_frame() {
             // FIXME: Release frame on failure

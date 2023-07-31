@@ -5,7 +5,7 @@ use super::{
 use core::{marker::PhantomData, ptr::NonNull, task::Waker};
 use spin::RwLockWriteGuard;
 
-/// Send data frames over a network interface.
+/// EtherCAT frame transmit adapter.
 pub struct PduTx<'sto> {
     storage: PduStorageRef<'sto>,
 }
@@ -40,16 +40,36 @@ impl<'sto> PduTx<'sto> {
         None
     }
 
-    /// Get a handle to the storage waker.
+    /// Get a handle to the internal PDU loop waker.
     ///
-    /// Internal use only - please don't rely on this method existing forever. It's only
-    /// public/doc-hidden for use in test harnesses.
+    /// The waker must be set otherwise the future in charge of sending new packets will not be
+    /// woken again, causing a timeout error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use ethercrab::PduStorage;
+    /// use core::future::poll_fn;
+    /// use core::task::Poll;
+    ///
+    /// # static PDU_STORAGE: PduStorage<2, 2> = PduStorage::new();
+    /// let (pdu_tx, _pdu_rx, _pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+    ///
+    /// poll_fn(|ctx| {
+    ///     // Send and receive packets over the network interface here
+    ///
+    ///     // Set the waker so this future is polled again when new EtherCAT frames are ready to
+    ///     // be sent.
+    ///     pdu_tx.waker().replace(ctx.waker().clone());
+    ///
+    ///     Poll::<()>::Pending
+    /// });
+    /// ```
     #[cfg_attr(
         any(target_os = "windows", target_os = "macos", not(feature = "std")),
         allow(unused)
     )]
-    #[doc(hidden)]
-    pub fn lock_waker<'lock>(&self) -> RwLockWriteGuard<'lock, Option<Waker>>
+    pub fn waker<'lock>(&self) -> RwLockWriteGuard<'lock, Option<Waker>>
     where
         'sto: 'lock,
     {
