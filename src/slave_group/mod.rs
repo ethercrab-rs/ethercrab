@@ -348,22 +348,38 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
     }
 }
 
-/// Items common to all states on [`SlaveGroup`].
-#[doc(hidden)]
+/// Items common to all states ([`PreOp`], [`Op`], etc) on [`SlaveGroup`].
+///
+/// This trait is sealed and may not be implemented on types external to EtherCrab.
+#[sealed::sealed]
 pub trait SlaveGroupState {
+    /// The type of state returned with the [`SlaveGroup`] from the
+    /// [`slave`](SlaveGroupState::slave) method, e.g. [`SlavePdi`](crate::SlavePdi), etc.
     type RefType<'group>
     where
         Self: 'group;
 
+    /// Borrow an individual slave device.
+    ///
+    /// Each slave device in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
+    /// single reference to it at any one time. Multiple different slaves can be borrowed
+    /// simultaneously, but multiple references to the same slave are not allowed.
+    ///
+    /// # Panics
+    ///
+    /// Borrowing a slave across a [`SlaveGroup::iter`](crate::SlaveGroup::iter) call will cause the
+    /// returned iterator to panic as it tries to borrow the slave a second time.
     fn slave<'client, 'group>(
         &'group self,
         client: &'client Client<'client>,
         index: usize,
     ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error>;
 
+    /// Get the number of slave devices in this group.
     fn len(&self) -> usize;
 }
 
+#[sealed::sealed]
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupState
     for SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp>
 {
@@ -403,6 +419,7 @@ pub trait HasPdi {}
 impl HasPdi for SafeOp {}
 impl HasPdi for Op {}
 
+#[sealed::sealed]
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroupState
     for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
 where
