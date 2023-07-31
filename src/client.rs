@@ -22,8 +22,10 @@ use core::{
 use heapless::FnvIndexMap;
 use packed_struct::PackedStruct;
 
-/// A medium-level interface over PDUs (e.g. `BRD`, `LRW`, etc) and other EtherCAT master related
-/// infrastructure.
+/// The main EtherCAT master instance.
+///
+/// The client is passed to [`SlaveGroup`]s to drive their TX/RX methods. It also provides direct
+/// access to EtherCAT PDUs like `BRD`, `LRW`, etc.
 #[derive(Debug)]
 pub struct Client<'sto> {
     // TODO: un-pub

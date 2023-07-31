@@ -5,7 +5,7 @@ use crate::{
 use core::fmt;
 use packed_struct::{prelude::*, PackingError};
 
-/// Register address abstraction.
+/// Slave device register address abstraction.
 ///
 /// This enum makes it easier to work with raw EtherCAT addresses by giving them nice names.
 ///

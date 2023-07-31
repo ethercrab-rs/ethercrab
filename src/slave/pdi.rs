@@ -3,6 +3,8 @@ use atomic_refcell::AtomicRefMut;
 use core::ops::Deref;
 
 /// Process Data Image (PDI) segments for a given slave device.
+///
+/// Used in conjunction with [`SlaveRef`].
 #[derive(Debug)]
 pub struct SlavePdi<'group> {
     slave: AtomicRefMut<'group, Slave>,

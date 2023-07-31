@@ -1,4 +1,4 @@
-//! DS402 state machine.
+//! Experimental DS402 state machine.
 //!
 //! # Experimental
 //!
