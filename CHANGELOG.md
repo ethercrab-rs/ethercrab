@@ -6,6 +6,8 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.2.0] - 2023-07-31
+
 ### Added
 
 - [#47] Add the ability to read/write registers/SDOs from grouped slave devices, with the methods
@@ -117,6 +119,7 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.2.0...HEAD
 
 [#2]: https://github.com/ethercrab-rs/ethercrab/pull/2
 [#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
@@ -139,5 +142,5 @@ An EtherCAT master written in Rust.
 [#55]: https://github.com/ethercrab-rs/ethercrab/pull/55
 [#59]: https://github.com/ethercrab-rs/ethercrab/pull/59
 [#75]: https://github.com/ethercrab-rs/ethercrab/pull/75
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...HEAD
+[0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
