@@ -15,7 +15,7 @@ use nom::{
 use packed_struct::PackedStructSlice;
 use smoltcp::wire::EthernetFrame;
 
-/// Receive frames from network interface.
+/// EtherCAT frame receive adapter.
 pub struct PduRx<'sto> {
     storage: PduStorageRef<'sto>,
 }
@@ -29,7 +29,8 @@ impl<'sto> PduRx<'sto> {
         Self { storage }
     }
 
-    /// Parse a PDU from a complete Ethernet II frame.
+    /// Given a complete Ethernet II frame, parse a response PDU from it and wake the future that
+    /// sent the frame.
     // NOTE: &mut self so this struct can only be used in one place.
     pub fn receive_frame(&mut self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
