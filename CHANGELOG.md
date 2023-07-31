@@ -8,7 +8,7 @@ An EtherCAT master written in Rust.
 
 ### Added
 
-- [#TODO] Add `SlaveRef::identity` method to get the vendor ID, etc of a slave device.
+- [#83] Add `SlaveRef::identity` method to get the vendor ID, etc of a slave device.
 
 ## [0.2.0] - 2023-07-31
 
@@ -146,6 +146,6 @@ An EtherCAT master written in Rust.
 [#55]: https://github.com/ethercrab-rs/ethercrab/pull/55
 [#59]: https://github.com/ethercrab-rs/ethercrab/pull/59
 [#75]: https://github.com/ethercrab-rs/ethercrab/pull/75
-[#TODO]: https://github.com/ethercrab-rs/ethercrab/pull/TODO
+[#83]: https://github.com/ethercrab-rs/ethercrab/pull/83
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
