@@ -208,6 +208,9 @@ impl<'sto> PduStorageRef<'sto> {
     }
 }
 
+unsafe impl<'sto> Send for PduStorageRef<'sto> {}
+unsafe impl<'sto> Sync for PduStorageRef<'sto> {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
