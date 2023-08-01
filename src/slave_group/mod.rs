@@ -222,9 +222,6 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     }
 }
 
-// FIXME: Remove these unsafe impls if possible. There's some weird quirkiness when moving a group
-// into an async block going on...
-// TODO: Can we constrain the typestate here to just the one(s) that need to be?
 unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Sync
     for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
 {

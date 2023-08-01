@@ -20,10 +20,6 @@ pub struct PduRx<'sto> {
     storage: PduStorageRef<'sto>,
 }
 
-// SAFETY: We're tied to the lifetime of the backing storage with 'sto.
-unsafe impl<'sto> Send for PduRx<'sto> {}
-unsafe impl<'sto> Sync for PduRx<'sto> {}
-
 impl<'sto> PduRx<'sto> {
     pub(in crate::pdu_loop) fn new(storage: PduStorageRef<'sto>) -> Self {
         Self { storage }
