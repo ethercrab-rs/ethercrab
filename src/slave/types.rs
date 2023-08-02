@@ -6,12 +6,17 @@ use crate::{
 use core::fmt::{self, Debug};
 use nom::{number::complete::le_u32, IResult};
 
+/// Slave identity information (vendor ID, product ID, etc).
 #[derive(Default, Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SlaveIdentity {
+    /// Vendor ID.
     pub vendor_id: u32,
+    /// Product ID.
     pub product_id: u32,
+    /// Product revision.
     pub revision: u32,
+    /// Device serial number.
     pub serial: u32,
 }
 
