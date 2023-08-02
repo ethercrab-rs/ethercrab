@@ -4,10 +4,7 @@ pub mod pdi;
 pub mod ports;
 mod types;
 
-use self::{
-    ports::Topology,
-    types::{SlaveConfig, SlaveIdentity},
-};
+use self::{ports::Topology, types::SlaveConfig};
 use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
@@ -43,6 +40,7 @@ use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
+pub use self::types::SlaveIdentity;
 
 /// Slave device metadata. See [`SlaveRef`] for richer behaviour.
 #[derive(Debug, Clone, PartialEq)]
