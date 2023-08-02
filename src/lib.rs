@@ -191,7 +191,7 @@ pub use client_config::ClientConfig;
 pub use coe::SubIndex;
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::RegisterAddress;
-pub use slave::{Slave, SlavePdi, SlaveRef};
+pub use slave::{Slave, SlaveIdentity, SlavePdi, SlaveRef};
 pub use slave_group::{GroupId, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle, SlaveGroupState};
 pub use slave_state::SlaveState;
 pub use timer_factory::Timeouts;
