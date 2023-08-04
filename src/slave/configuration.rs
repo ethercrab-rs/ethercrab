@@ -51,8 +51,9 @@ where
         self.request_slave_state(SlaveState::PreOp).await?;
 
         if self.state.config.mailbox.has_coe {
-            // TODO: Abstract no complete access shim into a method call so we can reuse it. CA is
-            // currently only used here inside EtherCrab.
+            // TODO: Abstract this no-complete-access check into a method call so we can reuse it.
+            // CA is currently only used here inside EtherCrab, but may need to be used in other
+            // places eventually.
             let sms = if self.state.config.mailbox.complete_access {
                 // Up to 16 sync managers as per ETG1000.4 Table 59
                 let mut sms_buf = [0u8; 16];
