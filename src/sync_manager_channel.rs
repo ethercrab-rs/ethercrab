@@ -155,15 +155,24 @@ pub enum Direction {
     MasterWrite = 0x01,
 }
 
-// TODO: More informative names
+/// Buffer state.
+///
+/// Somewhat described in ETG1000.4 Figure 32 – SyncM mailbox interaction.
+///
+/// In cyclic mode the buffers need to be tripled. It's unclear why from the spec but that's what it
+/// says.
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum BufferState {
+    /// First buffer.
     #[default]
-    Read = 0x00,
+    First = 0x00,
+    /// Second buffer.
     Second = 0x01,
+    /// Third buffer.
     Third = 0x02,
-    Locked = 0x03,
+    /// Next buffer.
+    Next = 0x03,
 }
 
 #[cfg(test)]
@@ -192,7 +201,7 @@ mod tests {
                     has_write_event: false,
                     has_read_event: false,
                     mailbox_full: false,
-                    buffer_state: BufferState::Read,
+                    buffer_state: BufferState::First,
                     read_buffer_open: false,
                     write_buffer_open: false
                 },
@@ -328,7 +337,7 @@ mod tests {
                     has_write_event: false,
                     has_read_event: false,
                     mailbox_full: false,
-                    buffer_state: BufferState::Read,
+                    buffer_state: BufferState::First,
                     read_buffer_open: false,
                     write_buffer_open: false,
                 },
