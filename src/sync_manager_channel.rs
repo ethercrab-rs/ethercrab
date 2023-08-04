@@ -111,6 +111,7 @@ pub struct Status {
     pub write_buffer_open: bool,
 }
 
+/// Described in ETG1000.4 6.7.2 Sync Manager Attributes
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
@@ -123,11 +124,17 @@ pub struct Enable {
     #[packed_field(bits = "9")]
     pub repeat: bool,
     // reserved4: u8
-    // TODO: Less insane names
+    /// DC Event 0 with EtherCAT write.
+    ///
+    /// Set to `true` to enable DC 0 events on EtherCAT writes.
     #[packed_field(bits = "14")]
-    pub dc_event0w_busw: bool,
+    pub enable_dc_event_bus_write: bool,
+
+    /// DC Event 0 with local write.
+    ///
+    /// Set to `true` to enable DC 0 events from local writes.
     #[packed_field(bits = "15")]
-    pub dc_event0wlocw: bool,
+    pub enable_dc_event_local_write: bool,
     // ---
     // Second byte (little endian, so first index)
     // ---
@@ -208,8 +215,8 @@ mod tests {
                 enable: Enable {
                     enable: true,
                     repeat: false,
-                    dc_event0w_busw: false,
-                    dc_event0wlocw: false,
+                    enable_dc_event_bus_write: false,
+                    enable_dc_event_local_write: false,
                     channel_pdi_disabled: false,
                     repeat_ack: false
                 }
@@ -269,8 +276,8 @@ mod tests {
             Enable {
                 enable: true,
                 repeat: false,
-                dc_event0w_busw: false,
-                dc_event0wlocw: false,
+                enable_dc_event_bus_write: false,
+                enable_dc_event_local_write: false,
                 channel_pdi_disabled: false,
                 repeat_ack: false,
             }
@@ -291,8 +298,8 @@ mod tests {
         let raw = Enable {
             enable: true,
             repeat: false,
-            dc_event0w_busw: false,
-            dc_event0wlocw: false,
+            enable_dc_event_bus_write: false,
+            enable_dc_event_local_write: false,
             channel_pdi_disabled: false,
             repeat_ack: false,
         }
@@ -344,8 +351,8 @@ mod tests {
                 enable: Enable {
                     enable: true,
                     repeat: false,
-                    dc_event0w_busw: false,
-                    dc_event0wlocw: false,
+                    enable_dc_event_bus_write: false,
+                    enable_dc_event_local_write: false,
                     channel_pdi_disabled: false,
                     repeat_ack: false,
                 }
