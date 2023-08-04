@@ -415,11 +415,7 @@ where
             }))
         }
         // Validate that the mailbox response is to the request we just sent
-        // TODO: Determine if we need to check the counter. I don't think SOEM does, it might just
-        // be used by the slave?
-        else if headers.mailbox_type() != MailboxType::Coe
-        /* || headers.counter() != counter */
-        {
+        else if headers.mailbox_type() != MailboxType::Coe || headers.counter() != counter {
             fmt::error!(
                 "Invalid SDO response. Type: {:?} (expected {:?}), counter {} (expected {})",
                 headers.mailbox_type(),
@@ -434,6 +430,7 @@ where
             }))
         } else {
             response.trim_front(headers_len);
+
             Ok((headers, response))
         }
     }
