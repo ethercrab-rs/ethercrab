@@ -206,7 +206,7 @@ fn configure_slave_offsets(
         let parent_time = parent
             .ports
             .child_delay()
-            .filter(|_| slave.is_child_of(&parent))
+            .filter(|_| slave.is_child_of(parent))
             .or(parent.ports.propagation_time());
 
         let slave_delay =

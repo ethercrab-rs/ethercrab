@@ -18,7 +18,7 @@ use crate::{
     command::Command,
     dl_status::DlStatus,
     eeprom::types::SiiOwner,
-    error::{Error, MailboxError, PduError, WrappedPackingError},
+    error::{Error, MailboxError, PduError},
     fmt,
     mailbox::MailboxType,
     pdu_data::{PduData, PduRead},
@@ -384,10 +384,7 @@ where
         let (headers, data) = response.split_at(headers_len);
 
         let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
-            fmt::error!(
-                "Failed to unpack mailbox response headers: {}",
-                WrappedPackingError::from(e)
-            );
+            fmt::error!("Failed to unpack mailbox response headers: {}", e);
 
             e
         })?;

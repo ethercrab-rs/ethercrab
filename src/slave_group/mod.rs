@@ -372,6 +372,11 @@ pub trait SlaveGroupState {
         index: usize,
     ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error>;
 
+    /// Returns `true` if there are no slave devices in the group.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Get the number of slave devices in this group.
     fn len(&self) -> usize;
 }

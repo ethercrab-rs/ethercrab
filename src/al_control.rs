@@ -67,7 +67,7 @@ impl PduRead for AlControl {
                 state: SlaveState::Unknown,
                 ..Default::default()
             }),
-            Err(e) => Err(e.into()),
+            Err(e) => Err(e),
             Ok(res) => Ok(res),
         }
     }
