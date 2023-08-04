@@ -220,8 +220,6 @@ pub struct SlaveRef<'a, S> {
     state: S,
 }
 
-// TODO: Can we move most methods onto `Slave`? We still need `SlaveRef<SlavePdi>` but why
-// everything else?
 impl<'a, S> SlaveRef<'a, S>
 where
     S: Deref<Target = Slave>,
