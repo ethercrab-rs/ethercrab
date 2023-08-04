@@ -2,7 +2,7 @@
 //!
 //! Required hardware:
 //!
-//! - EK1914 (does not support CoE)
+//! - EK1914 (does not support CoE complete access)
 
 mod util;
 
