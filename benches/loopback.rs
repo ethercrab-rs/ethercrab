@@ -1,9 +1,15 @@
+#[cfg(target_os = "linux")]
+const INTERFACE: &str = "lo";
+
+#[cfg(target_os = "macos")]
+const INTERFACE: &str = "lo0";
+
 #[cfg(not(unix))]
 fn main() {}
 
 /// Due to requiring special permissions for access to raw sockets, this must be run with `just
 /// linux-bench loopback`.
-#[cfg(unix)]
+#[cfg(target_family = "unix")]
 fn main() {
     use criterion::{criterion_group, Bencher, Criterion, Throughput};
     use ethercrab::std::tx_rx_task;
@@ -39,8 +45,7 @@ fn main() {
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
 
-        // TODO: Configurable interface
-        rt.spawn(tx_rx_task("lo", pdu_tx, pdu_rx).expect("spawn tx/rx"));
+        rt.spawn(tx_rx_task(INTERFACE, pdu_tx, pdu_rx).expect("spawn tx/rx"));
 
         let mut group = c.benchmark_group("loopback");
 
