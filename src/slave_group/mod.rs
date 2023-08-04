@@ -519,7 +519,9 @@ where
     ///
     /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
-    pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<(), Error> {
+    ///
+    /// This method returns the working counter on success.
+    pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<u16, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -527,7 +529,7 @@ where
             self.read_pdi_len
         );
 
-        let (_res, _wkc) = client
+        let (_res, wkc) = client
             .lrw_buf(
                 self.inner().pdi_start.start_address,
                 self.pdi_mut(),
@@ -535,17 +537,6 @@ where
             )
             .await?;
 
-        Ok(())
-
-        // FIXME: EL400 gives 2, expects 3
-        // if wkc != self.group_working_counter {
-        //     Err(Error::WorkingCounter {
-        //         expected: self.group_working_counter,
-        //         received: wkc,
-        //         context: Some("group working counter"),
-        //     })
-        // } else {
-        //     Ok(())
-        // }
+        Ok(wkc)
     }
 }
