@@ -63,7 +63,6 @@ impl<'sto> SendableFrame<'sto> {
 
     /// The size of the total payload to be insterted into an EtherCAT frame.
     fn ethercat_payload_len(&self) -> u16 {
-        // TODO: Add unit test to stop regressions
         let pdu_overhead = 12;
 
         unsafe { self.inner.frame() }.flags.len() + pdu_overhead
