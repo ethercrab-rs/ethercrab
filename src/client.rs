@@ -7,7 +7,7 @@ use crate::{
     fmt,
     pdi::PdiOffset,
     pdu_data::{PduData, PduRead},
-    pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse},
+    pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse, RxFrameDataBuf},
     register::RegisterAddress,
     slave::Slave,
     slave_group::{self, SlaveGroupHandle},
@@ -28,8 +28,7 @@ use packed_struct::PackedStruct;
 /// access to EtherCAT PDUs like `BRD`, `LRW`, etc.
 #[derive(Debug)]
 pub struct Client<'sto> {
-    // TODO: un-pub
-    pub(crate) pdu_loop: PduLoop<'sto>,
+    pdu_loop: PduLoop<'sto>,
     /// The total number of discovered slaves.
     ///
     /// Using an `AtomicU16` here only to satisfy `Sync` requirements, but it's only ever written to
@@ -577,6 +576,25 @@ impl<'sto> Client<'sto> {
         .await
     }
 
+    /// Configured address read with configured length that returns a raw slice.
+    pub(crate) async fn fprd_raw(
+        &self,
+        address: u16,
+        register: impl Into<u16>,
+        len: u16,
+    ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
+        self.pdu_loop
+            .pdu_tx_readonly(
+                Command::Fprd {
+                    address,
+                    register: register.into(),
+                },
+                len,
+            )
+            .await
+            .map(|res| res.into_data())
+    }
+
     /// Configured address write.
     pub async fn fpwr<T>(
         &self,
@@ -595,6 +613,27 @@ impl<'sto> Client<'sto> {
             value,
         )
         .await
+    }
+
+    /// Configured address write with configured length that writes and returns a raw slice.
+    pub(crate) async fn fpwr_raw(
+        &self,
+        address: u16,
+        register: impl Into<u16>,
+        value: &[u8],
+        len: u16,
+    ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
+        self.pdu_loop
+            .pdu_tx_readwrite_len(
+                Command::Fpwr {
+                    address,
+                    register: register.into(),
+                },
+                value,
+                len,
+            )
+            .await
+            .map(|res| res.into_data())
     }
 
     /// Configured address read, multiple write.

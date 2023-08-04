@@ -15,7 +15,6 @@ use crate::{
         abort_code::AbortCode,
         services::{CoeServiceRequest, CoeServiceResponse},
     },
-    command::Command,
     dl_status::DlStatus,
     eeprom::types::SiiOwner,
     error::{Error, MailboxError, PduError},
@@ -284,12 +283,9 @@ where
             // If flag is set, read entire mailbox to clear it
             if sm.status.mailbox_full {
                 self.client
-                    .pdu_loop
-                    .pdu_tx_readonly(
-                        Command::Fprd {
-                            address: self.state.configured_address,
-                            register: read_mailbox.address,
-                        },
+                    .fprd_raw(
+                        self.state.configured_address,
+                        read_mailbox.address,
                         read_mailbox.len,
                     )
                     .await?;
@@ -322,13 +318,24 @@ where
         })?;
 
         // Send data to slave IN mailbox
+        // self.client
+        //     .pdu_loop
+        //     .pdu_tx_readwrite_len(
+        //         Command::Fpwr {
+        //             address: self.state.configured_address,
+        //             register: write_mailbox.address,
+        //         },
+        //         request.pack().unwrap().as_ref(),
+        //         // Need to write entire mailbox to latch it
+        //         write_mailbox.len,
+        //     )
+        //     .await?
+        //     .wkc(1, "SDO upload request")?;
+
         self.client
-            .pdu_loop
-            .pdu_tx_readwrite_len(
-                Command::Fpwr {
-                    address: self.state.configured_address,
-                    register: write_mailbox.address,
-                },
+            .fpwr_raw(
+                self.state.configured_address,
+                write_mailbox.address,
                 request.pack().unwrap().as_ref(),
                 // Need to write entire mailbox to latch it
                 write_mailbox.len,
@@ -364,12 +371,9 @@ where
         // Read acknowledgement from slave OUT mailbox
         let mut response = self
             .client
-            .pdu_loop
-            .pdu_tx_readonly(
-                Command::Fprd {
-                    address: self.state.configured_address,
-                    register: read_mailbox.address,
-                },
+            .fprd_raw(
+                self.state.configured_address,
+                read_mailbox.address,
                 read_mailbox.len,
             )
             .await?
