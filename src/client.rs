@@ -79,8 +79,6 @@ impl<'sto> Client<'sto> {
         for chunk in blank_mem_iter(start.into(), len, step) {
             let chunk_len = chunk.end - chunk.start;
 
-            dbg!(chunk.start, chunk_len);
-
             timeout(
                 self.timeouts.pdu,
                 self.pdu_loop.pdu_broadcast_zeros(chunk.start, chunk_len),
