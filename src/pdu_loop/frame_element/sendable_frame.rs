@@ -70,6 +70,8 @@ impl<'sto> SendableFrame<'sto> {
 
     /// The length in bytes required to hold the full Ethernet II frame, containing an EtherCAT
     /// payload.
+    // Clippy: We don't care if the frame is empty or not
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len())
     }

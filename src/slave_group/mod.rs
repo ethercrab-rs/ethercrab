@@ -264,6 +264,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
         self.inner().slaves.is_empty()
     }
 
+    #[allow(clippy::mut_from_ref)]
     fn pdi_mut(&self) -> &mut [u8] {
         let all_buf = unsafe { &mut *self.pdi.get() };
 
@@ -525,7 +526,7 @@ where
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
-            self.pdi_mut().len(),
+            self.pdi().len(),
             self.read_pdi_len
         );
 

@@ -67,7 +67,9 @@ impl PduRead for AlControl {
                 state: SlaveState::Unknown,
                 ..Default::default()
             }),
-            Err(e) => Err(e),
+            // Clippy: `WrappedPackingError` is not a no-op in no_std/`--features defmt` environments
+            #[allow(clippy::useless_conversion)]
+            Err(e) => Err(crate::error::WrappedPackingError::from(e)),
             Ok(res) => Ok(res),
         }
     }

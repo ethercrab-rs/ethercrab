@@ -385,8 +385,14 @@ where
 
         let (headers, data) = response.split_at(headers_len);
 
+        // Clippy: The WrappedPackingError conversion is a noop in std but in no_std/defmt land it's
+        // required for the `defmt::Format` impl.
+        #[allow(clippy::useless_conversion)]
         let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
-            fmt::error!("Failed to unpack mailbox response headers: {}", e);
+            fmt::error!(
+                "Failed to unpack mailbox response headers: {}",
+                crate::error::WrappedPackingError::from(e)
+            );
 
             e
         })?;
