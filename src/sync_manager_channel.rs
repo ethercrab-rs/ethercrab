@@ -111,6 +111,7 @@ pub struct Status {
     pub write_buffer_open: bool,
 }
 
+/// Described in ETG1000.4 6.7.2 Sync Manager Attributes
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
@@ -123,11 +124,17 @@ pub struct Enable {
     #[packed_field(bits = "9")]
     pub repeat: bool,
     // reserved4: u8
-    // TODO: Less insane names
+    /// DC Event 0 with EtherCAT write.
+    ///
+    /// Set to `true` to enable DC 0 events on EtherCAT writes.
     #[packed_field(bits = "14")]
-    pub dc_event0w_busw: bool,
+    pub enable_dc_event_bus_write: bool,
+
+    /// DC Event 0 with local write.
+    ///
+    /// Set to `true` to enable DC 0 events from local writes.
     #[packed_field(bits = "15")]
-    pub dc_event0wlocw: bool,
+    pub enable_dc_event_local_write: bool,
     // ---
     // Second byte (little endian, so first index)
     // ---
@@ -155,15 +162,24 @@ pub enum Direction {
     MasterWrite = 0x01,
 }
 
-// TODO: More informative names
+/// Buffer state.
+///
+/// Somewhat described in ETG1000.4 Figure 32 – SyncM mailbox interaction.
+///
+/// In cyclic mode the buffers need to be tripled. It's unclear why from the spec but that's what it
+/// says.
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum BufferState {
+    /// First buffer.
     #[default]
-    Read = 0x00,
+    First = 0x00,
+    /// Second buffer.
     Second = 0x01,
+    /// Third buffer.
     Third = 0x02,
-    Locked = 0x03,
+    /// Next buffer.
+    Next = 0x03,
 }
 
 #[cfg(test)]
@@ -192,15 +208,15 @@ mod tests {
                     has_write_event: false,
                     has_read_event: false,
                     mailbox_full: false,
-                    buffer_state: BufferState::Read,
+                    buffer_state: BufferState::First,
                     read_buffer_open: false,
                     write_buffer_open: false
                 },
                 enable: Enable {
                     enable: true,
                     repeat: false,
-                    dc_event0w_busw: false,
-                    dc_event0wlocw: false,
+                    enable_dc_event_bus_write: false,
+                    enable_dc_event_local_write: false,
                     channel_pdi_disabled: false,
                     repeat_ack: false
                 }
@@ -260,8 +276,8 @@ mod tests {
             Enable {
                 enable: true,
                 repeat: false,
-                dc_event0w_busw: false,
-                dc_event0wlocw: false,
+                enable_dc_event_bus_write: false,
+                enable_dc_event_local_write: false,
                 channel_pdi_disabled: false,
                 repeat_ack: false,
             }
@@ -282,8 +298,8 @@ mod tests {
         let raw = Enable {
             enable: true,
             repeat: false,
-            dc_event0w_busw: false,
-            dc_event0wlocw: false,
+            enable_dc_event_bus_write: false,
+            enable_dc_event_local_write: false,
             channel_pdi_disabled: false,
             repeat_ack: false,
         }
@@ -328,15 +344,15 @@ mod tests {
                     has_write_event: false,
                     has_read_event: false,
                     mailbox_full: false,
-                    buffer_state: BufferState::Read,
+                    buffer_state: BufferState::First,
                     read_buffer_open: false,
                     write_buffer_open: false,
                 },
                 enable: Enable {
                     enable: true,
                     repeat: false,
-                    dc_event0w_busw: false,
-                    dc_event0wlocw: false,
+                    enable_dc_event_bus_write: false,
+                    enable_dc_event_local_write: false,
                     channel_pdi_disabled: false,
                     repeat_ack: false,
                 }

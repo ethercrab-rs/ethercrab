@@ -36,7 +36,7 @@ fn get_tx_rx(
         ..Default::default()
     };
 
-    let (tx, rx) = match channel(&interface, config) {
+    let (tx, rx) = match channel(interface, config) {
         Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("Unhandled channel type"),
         Err(e) => return Err(e),

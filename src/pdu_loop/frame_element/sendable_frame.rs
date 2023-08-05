@@ -63,7 +63,6 @@ impl<'sto> SendableFrame<'sto> {
 
     /// The size of the total payload to be insterted into an EtherCAT frame.
     fn ethercat_payload_len(&self) -> u16 {
-        // TODO: Add unit test to stop regressions
         let pdu_overhead = 12;
 
         unsafe { self.inner.frame() }.flags.len() + pdu_overhead
@@ -71,6 +70,8 @@ impl<'sto> SendableFrame<'sto> {
 
     /// The length in bytes required to hold the full Ethernet II frame, containing an EtherCAT
     /// payload.
+    // Clippy: We don't care if the frame is empty or not
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         EthernetFrame::<&[u8]>::buffer_len(self.ethernet_payload_len())
     }

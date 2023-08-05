@@ -77,7 +77,8 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     pub fn try_split(&self) -> Result<(PduTx<'_>, PduRx<'_>, PduLoop<'_>), ()> {
         self.is_split
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
-            // TODO: Make try_split const when ? is allowed in const methods
+            // TODO: Make try_split const when ? is allowed in const methods, tracking issue
+            // <https://github.com/rust-lang/rust/issues/74935>
             .map_err(|_| ())?;
 
         let storage = self.as_ref();
@@ -91,7 +92,8 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 
     fn as_ref(&self) -> PduStorageRef {
         // MSRV: Remove when `const_maybe_uninit_zeroed` is stabilised. Rely on
-        // `MaybeUninit::zeroed` in `PduStorage::new()`.
+        // `MaybeUninit::zeroed` in `PduStorage::new()`. Tracking issue:
+        // <https://github.com/rust-lang/rust/issues/91850>
         unsafe { (*self.frames.get()).as_mut_ptr().write_bytes(0u8, 1) };
 
         PduStorageRef {
@@ -203,7 +205,7 @@ impl<'sto> PduStorageRef<'sto> {
 
         // MSRV: When `pointer_byte_offsets` is stabilised, use `self.frames.as_ptr().byte_add(idx *
         // stride)`. This code is a rip from the core lib function so should do pretty much the same
-        // thing.
+        // thing. Tracking issue: <https://github.com/rust-lang/rust/issues/96283>
         self.frames.as_ptr().cast::<u8>().add(idx * stride).cast()
     }
 }

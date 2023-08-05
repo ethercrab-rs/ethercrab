@@ -45,6 +45,8 @@ impl<'a> SlaveGroupRef<'a> {
     }
 
     /// Initialise all slaves in the group and place them in PRE-OP.
+    // Clippy: shush
+    #[allow(clippy::wrong_self_convention)]
     pub(crate) async fn into_pre_op<'sto>(
         &mut self,
         pdi_position: PdiOffset,
