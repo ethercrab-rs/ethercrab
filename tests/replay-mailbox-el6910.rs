@@ -15,7 +15,7 @@ const PDI_LEN: usize = 128;
 
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
-async fn replay_mailbox_el2828() -> Result<(), Error> {
+async fn replay_mailbox_el6910() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();

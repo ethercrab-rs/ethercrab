@@ -17,6 +17,7 @@ use crate::{
 };
 use core::{
     any::type_name,
+    ops::Range,
     sync::atomic::{AtomicU16, AtomicU8, Ordering},
 };
 use heapless::FnvIndexMap;
@@ -73,15 +74,16 @@ impl<'sto> Client<'sto> {
 
     /// Write zeroes to every slave's memory in chunks.
     async fn blank_memory(&self, start: impl Into<u16>, len: u16) -> Result<(), Error> {
-        let start: u16 = start.into();
         let step = self.pdu_loop.max_frame_data();
-        let range = start..(start + len);
 
-        // TODO: This will miss the last step if step is not a multiple of range. Use a loop instead.
-        for chunk_start in range.step_by(step) {
+        for chunk in blank_mem_iter(start.into(), len, step) {
+            let chunk_len = chunk.end - chunk.start;
+
+            dbg!(chunk.start, chunk_len);
+
             timeout(
                 self.timeouts.pdu,
-                self.pdu_loop.pdu_broadcast_zeros(chunk_start, step as u16),
+                self.pdu_loop.pdu_broadcast_zeros(chunk.start, chunk_len),
             )
             .await?;
         }
@@ -715,5 +717,66 @@ impl<'sto> Client<'sto> {
         value[0..read_back_len].copy_from_slice(&data[0..read_back_len]);
 
         Ok((value, working_counter))
+    }
+}
+
+fn blank_mem_iter(
+    start: impl Into<u16>,
+    mut len: u16,
+    step: usize,
+) -> impl Iterator<Item = Range<u16>> + Clone {
+    let start: u16 = start.into();
+    let mut range = (start..(start + len)).step_by(step.max(1));
+
+    core::iter::from_fn(move || {
+        if len == 0 || step == 0 {
+            return None;
+        }
+
+        range.next().map(|chunk_start| {
+            let chunk_len = (step as u16).min(len);
+
+            len -= chunk_len;
+
+            chunk_start..(chunk_start + chunk_len)
+        })
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn blank_mem_fuzz() {
+        heckcheck::check(|(start, len, step): (u16, u16, u16)| {
+            // For this test, anything that overflows we ignore. This is allowed to panic in prod
+            // IMO.
+            if u32::from(start) + u32::from(len) > u32::from(u16::MAX) {
+                return Ok(());
+            }
+
+            // Ensure we add another iteration for a partial final step
+            let iterations = len.checked_div(step).unwrap_or(0) + (len % step).min(1);
+
+            let step = usize::from(step);
+
+            let end = start + len;
+
+            let it = blank_mem_iter(start, len, step);
+
+            assert_eq!(it.clone().count(), usize::from(iterations));
+            assert_eq!(
+                it.last().map(|l| l.end),
+                if iterations == 0 { None } else { Some(end) },
+                "start {} end {} len {}",
+                start,
+                end,
+                len
+            );
+
+            Ok(())
+        });
     }
 }
