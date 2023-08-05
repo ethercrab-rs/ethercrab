@@ -264,6 +264,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
         self.inner().slaves.is_empty()
     }
 
+    #[allow(clippy::mut_from_ref)]
     fn pdi_mut(&self) -> &mut [u8] {
         let all_buf = unsafe { &mut *self.pdi.get() };
 
@@ -371,6 +372,11 @@ pub trait SlaveGroupState {
         client: &'client Client<'client>,
         index: usize,
     ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error>;
+
+    /// Returns `true` if there are no slave devices in the group.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 
     /// Get the number of slave devices in this group.
     fn len(&self) -> usize;
@@ -514,15 +520,17 @@ where
     ///
     /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
-    pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<(), Error> {
+    ///
+    /// This method returns the working counter on success.
+    pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<u16, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
-            self.pdi_mut().len(),
+            self.pdi().len(),
             self.read_pdi_len
         );
 
-        let (_res, _wkc) = client
+        let (_res, wkc) = client
             .lrw_buf(
                 self.inner().pdi_start.start_address,
                 self.pdi_mut(),
@@ -530,17 +538,6 @@ where
             )
             .await?;
 
-        Ok(())
-
-        // FIXME: EL400 gives 2, expects 3
-        // if wkc != self.group_working_counter {
-        //     Err(Error::WorkingCounter {
-        //         expected: self.group_working_counter,
-        //         received: wkc,
-        //         context: Some("group working counter"),
-        //     })
-        // } else {
-        //     Ok(())
-        // }
+        Ok(wkc)
     }
 }

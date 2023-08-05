@@ -15,10 +15,9 @@ use crate::{
         abort_code::AbortCode,
         services::{CoeServiceRequest, CoeServiceResponse},
     },
-    command::Command,
     dl_status::DlStatus,
     eeprom::types::SiiOwner,
-    error::{Error, MailboxError, PduError, WrappedPackingError},
+    error::{Error, MailboxError, PduError},
     fmt,
     mailbox::MailboxType,
     pdu_data::{PduData, PduRead},
@@ -220,8 +219,6 @@ pub struct SlaveRef<'a, S> {
     state: S,
 }
 
-// TODO: Can we move most methods onto `Slave`? We still need `SlaveRef<SlavePdi>` but why
-// everything else?
 impl<'a, S> SlaveRef<'a, S>
 where
     S: Deref<Target = Slave>,
@@ -286,12 +283,9 @@ where
             // If flag is set, read entire mailbox to clear it
             if sm.status.mailbox_full {
                 self.client
-                    .pdu_loop
-                    .pdu_tx_readonly(
-                        Command::Fprd {
-                            address: self.state.configured_address,
-                            register: read_mailbox.address,
-                        },
+                    .fprd_raw(
+                        self.state.configured_address,
+                        read_mailbox.address,
                         read_mailbox.len,
                     )
                     .await?;
@@ -325,12 +319,9 @@ where
 
         // Send data to slave IN mailbox
         self.client
-            .pdu_loop
-            .pdu_tx_readwrite_len(
-                Command::Fpwr {
-                    address: self.state.configured_address,
-                    register: write_mailbox.address,
-                },
+            .fpwr_raw(
+                self.state.configured_address,
+                write_mailbox.address,
                 request.pack().unwrap().as_ref(),
                 // Need to write entire mailbox to latch it
                 write_mailbox.len,
@@ -366,12 +357,9 @@ where
         // Read acknowledgement from slave OUT mailbox
         let mut response = self
             .client
-            .pdu_loop
-            .pdu_tx_readonly(
-                Command::Fprd {
-                    address: self.state.configured_address,
-                    register: read_mailbox.address,
-                },
+            .fprd_raw(
+                self.state.configured_address,
+                read_mailbox.address,
                 read_mailbox.len,
             )
             .await?
@@ -383,10 +371,13 @@ where
 
         let (headers, data) = response.split_at(headers_len);
 
+        // Clippy: The WrappedPackingError conversion is a noop in std but in no_std/defmt land it's
+        // required for the `defmt::Format` impl.
+        #[allow(clippy::useless_conversion)]
         let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
             fmt::error!(
                 "Failed to unpack mailbox response headers: {}",
-                WrappedPackingError::from(e)
+                crate::error::WrappedPackingError::from(e)
             );
 
             e
@@ -416,11 +407,7 @@ where
             }))
         }
         // Validate that the mailbox response is to the request we just sent
-        // TODO: Determine if we need to check the counter. I don't think SOEM does, it might just
-        // be used by the slave?
-        else if headers.mailbox_type() != MailboxType::Coe
-        /* || headers.counter() != counter */
-        {
+        else if headers.mailbox_type() != MailboxType::Coe || headers.counter() != counter {
             fmt::error!(
                 "Invalid SDO response. Type: {:?} (expected {:?}), counter {} (expected {})",
                 headers.mailbox_type(),
@@ -435,6 +422,7 @@ where
             }))
         } else {
             response.trim_front(headers_len);
+
             Ok((headers, response))
         }
     }

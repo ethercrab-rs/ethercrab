@@ -84,7 +84,7 @@ impl<'sto> PduLoop<'sto> {
         self.storage.frame_data_len
     }
 
-    /// Read data back from one or more slave devices.
+    /// Send a PDU to read data back from one or more slave devices.
     pub async fn pdu_tx_readonly(
         &self,
         command: Command,
@@ -101,7 +101,7 @@ impl<'sto> PduLoop<'sto> {
         Ok(res)
     }
 
-    /// Tell the packet sender there is data ready to send.
+    /// Tell the packet sender there are PDUs ready to send.
     fn wake_sender(&self) {
         let waker = self.storage.tx_waker.read();
 
@@ -110,7 +110,7 @@ impl<'sto> PduLoop<'sto> {
         }
     }
 
-    /// Broadcast (BWR) a packet full of zeroes, up to `max_data_length`.
+    /// Broadcast (BWR) a packet full of zeroes, up to `payload_length`.
     pub async fn pdu_broadcast_zeros(
         &self,
         register: u16,
@@ -131,13 +131,18 @@ impl<'sto> PduLoop<'sto> {
         frame.await
     }
 
-    /// Send data to and read data back from multiple slaves.
+    /// Send data to and read data back from the slave devices.
     ///
     /// Unlike [`pdu_tx_readwrite`](crate::pdu_loop::PduLoop::pdu_tx_readwrite), this method allows
     /// overriding the minimum data length of the payload.
     ///
     /// The PDU data length will be the larger of `send_data.len()` and `data_length`. If a larger
     /// response than `send_data` is desired, set the expected response length in `data_length`.
+    ///
+    /// This is useful for e.g. sending a 10 byte PDI with 4 output bytes and 6 input bytes. In this
+    /// case, `send_data` will be a slice of length `4` containing the outputs to send, and
+    /// `data_length` will be `10`. This makes the latter 6 bytes available for writing the PDU
+    /// response into.
     pub async fn pdu_tx_readwrite_len(
         &self,
         command: Command,
