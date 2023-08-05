@@ -318,20 +318,6 @@ where
         })?;
 
         // Send data to slave IN mailbox
-        // self.client
-        //     .pdu_loop
-        //     .pdu_tx_readwrite_len(
-        //         Command::Fpwr {
-        //             address: self.state.configured_address,
-        //             register: write_mailbox.address,
-        //         },
-        //         request.pack().unwrap().as_ref(),
-        //         // Need to write entire mailbox to latch it
-        //         write_mailbox.len,
-        //     )
-        //     .await?
-        //     .wkc(1, "SDO upload request")?;
-
         self.client
             .fpwr_raw(
                 self.state.configured_address,
