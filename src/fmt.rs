@@ -198,6 +198,26 @@ macro_rules! unwrap_ {
     }
 }
 
+#[cfg(not(feature = "defmt"))]
+macro_rules! unwrap_opt_ {
+    ($arg:expr) => {
+        match $arg {
+            ::core::option::Option::Some(t) => t,
+            ::core::option::Option::None => {
+                ::core::panic!("unwrap of `{}` failed: {:?}", ::core::stringify!($arg), e);
+            }
+        }
+    };
+    ($arg:expr, $($msg:expr),+ $(,)? ) => {
+        match $arg {
+            ::core::option::Option::Some(t) => t,
+            ::core::option::Option::None => {
+                ::core::panic!("unwrap of `{}` failed: {}", ::core::stringify!($arg), ::core::format_args!($($msg,)*));
+            }
+        }
+    }
+}
+
 pub(crate) use assert_ as assert;
 pub(crate) use assert_eq_ as assert_eq;
 pub(crate) use assert_ne_ as assert_ne;
@@ -212,4 +232,5 @@ pub(crate) use todo_ as todo;
 pub(crate) use trace_ as trace;
 pub(crate) use unreachable_ as unreachable;
 pub(crate) use unwrap_ as unwrap;
+pub(crate) use unwrap_opt_ as unwrap_opt;
 pub(crate) use warn_ as warn;
