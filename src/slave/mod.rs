@@ -126,28 +126,13 @@ impl Slave {
             .await
             .map(|dl_status| {
                 // NOTE: dc_receive_times are populated during DC initialisation
-                Ports([
-                    Port {
-                        number: 0,
-                        active: dl_status.link_port0,
-                        ..Default::default()
-                    },
-                    Port {
-                        number: 1,
-                        active: dl_status.link_port1,
-                        ..Default::default()
-                    },
-                    Port {
-                        number: 2,
-                        active: dl_status.link_port2,
-                        ..Default::default()
-                    },
-                    Port {
-                        number: 3,
-                        active: dl_status.link_port3,
-                        ..Default::default()
-                    },
-                ])
+                // Ports in EtherCAT order 0 -> 3 -> 1 -> 2
+                Ports::new(
+                    dl_status.link_port0,
+                    dl_status.link_port3,
+                    dl_status.link_port1,
+                    dl_status.link_port2,
+                )
             })?;
 
         fmt::debug!(
@@ -192,9 +177,9 @@ impl Slave {
     /// An EK1100 (parent) with an EL2004 module connected (child) as well as another EK1914 coupler
     /// (downstream) connected has one child: the EL2004.
     pub(crate) fn is_child_of(&self, parent: &Slave) -> bool {
-        // Only forks in the network can have child devices. Passthroughs only have downstream
-        // devices.
-        let parent_is_fork = parent.ports.topology() == Topology::Fork;
+        // Only forks or crosses in the network can have child devices. Passthroughs only have
+        // downstream devices.
+        let parent_is_fork = parent.ports.topology().is_junction();
 
         let child_port = parent.ports.port_assigned_to(self);
 
