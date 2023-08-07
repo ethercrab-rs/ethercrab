@@ -181,10 +181,10 @@ impl Slave {
         // downstream devices.
         let parent_is_fork = parent.ports.topology().is_junction();
 
-        let child_port = parent.ports.port_assigned_to(self);
+        let parent_port = parent.ports.port_assigned_to(self);
 
         // Children in a fork must be connected to intermediate ports
-        let child_attached_to_last_parent_port = child_port
+        let child_attached_to_last_parent_port = parent_port
             .map(|child_port| parent.ports.is_last_port(child_port))
             .unwrap_or(false);
 
