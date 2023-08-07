@@ -759,6 +759,8 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
+        // ETG1000.4 Table 48 – Slave information interface access
+        // A value of 2 sets owner to Master (not PDI) and cancels access
         self.write::<u16>(RegisterAddress::SiiConfig, 2, "Write SII config literal")
             .await?;
         self.write::<u16>(

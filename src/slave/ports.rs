@@ -35,6 +35,8 @@ pub enum Topology {
     LineEnd,
     /// The slave device forms a fork in the topology, with 3 open ports.
     Fork,
+    /// The slave device forms a cross in the topology, with 4 open ports.
+    Cross,
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq)]
@@ -136,8 +138,7 @@ impl Ports {
             1 => Topology::LineEnd,
             2 => Topology::Passthrough,
             3 => Topology::Fork,
-            // TODO: I need test devices!
-            4 => todo!("Cross topology not yet supported"),
+            4 => Topology::Cross,
             n => unreachable!("Invalid topology {}", n),
         }
     }

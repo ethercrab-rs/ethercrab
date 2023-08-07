@@ -129,7 +129,10 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
         // that as the parent.
         if parent.ports.topology() == Topology::LineEnd {
             let split_point = parents_it
-                .find(|slave| slave.ports.topology() == Topology::Fork)
+                .find(|slave| {
+                    slave.ports.topology() == Topology::Fork
+                        || slave.ports.topology() == Topology::Cross
+                })
                 .ok_or_else(|| {
                     fmt::error!(
                         "Did not find fork parent for slave {:#06x}",
