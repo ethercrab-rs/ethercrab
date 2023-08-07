@@ -47,10 +47,10 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
             })?;
 
         slave.dc_receive_time = dc_receive_time;
-        slave.ports.0[0].dc_receive_time = time_p0;
-        slave.ports.0[1].dc_receive_time = time_p1;
-        slave.ports.0[2].dc_receive_time = time_p2;
-        slave.ports.0[3].dc_receive_time = time_p3;
+
+        slave
+            .ports
+            .set_receive_times(time_p0, time_p3, time_p1, time_p2);
     }
 
     Ok(())
@@ -129,10 +129,7 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
         // that as the parent.
         if parent.ports.topology() == Topology::LineEnd {
             let split_point = parents_it
-                .find(|slave| {
-                    slave.ports.topology() == Topology::Fork
-                        || slave.ports.topology() == Topology::Cross
-                })
+                .find(|slave| slave.ports.topology().is_junction())
                 .ok_or_else(|| {
                     fmt::error!(
                         "Did not find fork parent for slave {:#06x}",
@@ -177,8 +174,8 @@ fn configure_slave_offsets(
         let d21 = time_p2.saturating_sub(time_p1);
         let d32 = time_p3.saturating_sub(time_p2);
 
-        let loop_propagation_time = slave.ports.propagation_time();
-        let child_delay = slave.ports.child_delay();
+        let loop_propagation_time = slave.ports.total_propagation_time();
+        let child_delay = slave.ports.fork_child_delay();
 
         fmt::debug!("--> Topology {:?}, {}", slave.ports.topology(), slave.ports);
         fmt::debug!(
@@ -204,16 +201,38 @@ fn configure_slave_offsets(
             .find(|parent| parent.index == parent_idx)
             .expect("Parent");
 
+        // The port that connects this slave's entry port to the parent slave device
+        let parent_port = parent
+            .ports
+            .port_assigned_to(slave)
+            .expect("parent has no relationship with current device");
+
+        log::debug!(
+            "--> Parent ({}) port number (NOT index) {} -> to this slave number {}",
+            parent.name(),
+            parent_port.number,
+            slave.ports.entry_port().map(|p| p.number).unwrap_or(99)
+        );
+
+        log::debug!(
+            "++> Propagation delay between entry and this port: {:?} (fork child delay {:?}) is child of parent {}",
+            parent.ports.propagation_time_to(parent_port),
+            parent.ports.fork_child_delay(),slave.is_child_of(parent)
+        );
+
         // If we're a child of this parent (e.g. a module in an EK1100 chain), use the parent's
         // child delay. If we're downstream of it, use the whole propagation time.
         let parent_time = parent
             .ports
-            .child_delay()
+            .fork_child_delay()
             .filter(|_| slave.is_child_of(parent))
-            .or(parent.ports.propagation_time());
+            .or(parent.ports.propagation_time_to(parent_port));
 
-        let slave_delay =
-            parent_time.map(|parent| (parent - slave.ports.propagation_time().unwrap_or(0)) / 2);
+        let slave_delay = parent_time.map(|parent| {
+            // log::debug!("++> Propagation time to port {:?}: {:?}", slave.ports.propagation_time_to());
+
+            (parent - slave.ports.total_propagation_time().unwrap_or(0)) / 2
+        });
 
         *delay_accum += slave_delay.unwrap_or(0);
 
@@ -586,41 +605,43 @@ mod tests {
         let _ = env_logger::builder().is_test(true).try_init();
 
         fn ports(
-            active1: bool,
-            t1: u32,
-            active2: bool,
-            t2: u32,
+            active0: bool,
+            t0: u32,
             active3: bool,
             t3: u32,
-            active4: bool,
-            t4: u32,
+            active2: bool,
+            t1: u32,
+            active1: bool,
+            t2: u32,
         ) -> Ports {
-            Ports([
-                Port {
-                    active: active1,
-                    dc_receive_time: t1,
-                    number: 0,
-                    downstream_to: None,
-                },
-                Port {
-                    active: active2,
-                    dc_receive_time: t2,
-                    number: 1,
-                    downstream_to: None,
-                },
-                Port {
-                    active: active3,
-                    dc_receive_time: t3,
-                    number: 2,
-                    downstream_to: None,
-                },
-                Port {
-                    active: active4,
-                    dc_receive_time: t4,
-                    number: 3,
-                    downstream_to: None,
-                },
-            ])
+            let mut ports = Ports::new(active0, active3, active1, active2);
+
+            ports.set_receive_times(t0, t3, t1, t2);
+
+            ports
+        }
+
+        fn ports_downstream(
+            active0: bool,
+            t0: u32,
+            d0: Option<usize>,
+            active3: bool,
+            t3: u32,
+            d3: Option<usize>,
+            active1: bool,
+            t1: u32,
+            d1: Option<usize>,
+            active2: bool,
+            t2: u32,
+            d2: Option<usize>,
+        ) -> Ports {
+            let mut ports = Ports::new(active0, active3, active1, active2);
+
+            ports.set_receive_times(t0, t3, t1, t2);
+
+            ports.set_downstreams(d0, d3, d1, d2);
+
+            ports
         }
 
         // Input data represents the following topology
@@ -717,48 +738,6 @@ mod tests {
                 ..Slave::default()
             },
         ];
-
-        fn ports_downstream(
-            active1: bool,
-            t1: u32,
-            d1: Option<usize>,
-            active2: bool,
-            t2: u32,
-            d2: Option<usize>,
-            active3: bool,
-            t3: u32,
-            d3: Option<usize>,
-            active4: bool,
-            t4: u32,
-            d4: Option<usize>,
-        ) -> Ports {
-            Ports([
-                Port {
-                    active: active1,
-                    dc_receive_time: t1,
-                    number: 0,
-                    downstream_to: d1,
-                },
-                Port {
-                    active: active2,
-                    dc_receive_time: t2,
-                    number: 1,
-                    downstream_to: d2,
-                },
-                Port {
-                    active: active3,
-                    dc_receive_time: t3,
-                    number: 2,
-                    downstream_to: d3,
-                },
-                Port {
-                    active: active4,
-                    dc_receive_time: t4,
-                    number: 3,
-                    downstream_to: d4,
-                },
-            ])
-        }
 
         let expected = [
             Slave {
