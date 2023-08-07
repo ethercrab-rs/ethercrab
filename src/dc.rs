@@ -165,14 +165,14 @@ fn configure_slave_offsets(
     // Just for debug
     {
         let time_p0 = slave.ports.0[0].dc_receive_time;
-        let time_p1 = slave.ports.0[1].dc_receive_time;
-        let time_p2 = slave.ports.0[2].dc_receive_time;
-        let time_p3 = slave.ports.0[3].dc_receive_time;
+        let time_p3 = slave.ports.0[1].dc_receive_time;
+        let time_p1 = slave.ports.0[2].dc_receive_time;
+        let time_p2 = slave.ports.0[3].dc_receive_time;
 
         // Deltas between port receive times
-        let d01 = time_p1.saturating_sub(time_p0);
-        let d21 = time_p2.saturating_sub(time_p1);
-        let d32 = time_p3.saturating_sub(time_p2);
+        let d03 = time_p3.saturating_sub(time_p0);
+        let d31 = time_p1.saturating_sub(time_p3);
+        let p12 = time_p2.saturating_sub(time_p1);
 
         let loop_propagation_time = slave.ports.total_propagation_time();
         let child_delay = slave.ports.fork_child_delay();
@@ -181,12 +181,12 @@ fn configure_slave_offsets(
         fmt::debug!(
             "--> Receive times {} ns (Δ {} ns) {} (Δ {} ns) {} (Δ {} ns) {}",
             time_p0,
-            d01,
+            d03,
+            time_p3,
+            d31,
             time_p1,
-            d21,
-            time_p2,
-            d32,
-            time_p3
+            p12,
+            time_p2
         );
         fmt::debug!(
             "--> Loop propagation time {:?} ns, child delay {:?} ns",
