@@ -234,6 +234,42 @@ impl Ports {
             .filter(|t| *t > 0)
     }
 
+    /// Propagation time between active ports in this slave.
+    pub fn intermediate_propagation_time(&self) -> u32 {
+        // let time_p0 = self.0[0].dc_receive_time;
+        // let time_p3 = self.0[1].dc_receive_time;
+        // let time_p1 = self.0[2].dc_receive_time;
+        // let time_p2 = self.0[3].dc_receive_time;
+
+        // // Deltas between port receive times
+        // let d03 = time_p3.saturating_sub(time_p0);
+        // let d31 = time_p1.saturating_sub(time_p3);
+        // let d12 = time_p2.saturating_sub(time_p1);
+
+        // let d03 = if self.0[1].active { d03 } else { 0 };
+        // let d31 = if self.0[2].active { d31 } else { 0 };
+        // let d12 = if self.0[3].active { d12 } else { 0 };
+
+        // d03 + d31 + d12
+
+        // If a pair of ports is open, they have a propagation delta between them, and we can sum these deltas up to get the child delays of this slave (fork or cross have children)
+        self.0
+            .windows(2)
+            .map(|window| {
+                let [a, b] = window else {
+            return 0
+        };
+
+                // Both ports must be active to have a delta
+                if a.active && b.active {
+                    b.dc_receive_time.saturating_sub(a.dc_receive_time)
+                } else {
+                    0
+                }
+            })
+            .sum::<u32>()
+    }
+
     /// Get the propagation time taken from entry to this slave device up to the given port.
     pub fn propagation_time_to(&self, this_port: &Port) -> Option<u32> {
         // If we don't have an entry port we can't be connected to the network so this is probably a

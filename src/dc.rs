@@ -172,79 +172,169 @@ fn configure_slave_offsets(
         // Deltas between port receive times
         let d03 = time_p3.saturating_sub(time_p0);
         let d31 = time_p1.saturating_sub(time_p3);
-        let p12 = time_p2.saturating_sub(time_p1);
+        let d12 = time_p2.saturating_sub(time_p1);
 
-        let loop_propagation_time = slave.ports.total_propagation_time();
-        let child_delay = slave.ports.fork_child_delay();
+        // let loop_propagation_time = slave.ports.total_propagation_time();
+        // let child_delay = slave.ports.fork_child_delay();
 
         fmt::debug!("--> Topology {:?}, {}", slave.ports.topology(), slave.ports);
         fmt::debug!(
-            "--> Receive times {} ns (Δ {} ns) {} (Δ {} ns) {} (Δ {} ns) {}",
+            "--> Receive times {} ns ({} ns) {} ({} ns) {} ({} ns) {} (total {})",
             time_p0,
-            d03,
+            if slave.ports.0[1].active { d03 } else { 0 },
+            // d03,
             time_p3,
-            d31,
+            if slave.ports.0[2].active { d31 } else { 0 },
+            // d31,
             time_p1,
-            p12,
-            time_p2
+            if slave.ports.0[3].active { d12 } else { 0 },
+            // d12,
+            time_p2,
+            slave.ports.total_propagation_time().unwrap_or(0)
         );
-        fmt::debug!(
-            "--> Loop propagation time {:?} ns, child delay {:?} ns",
-            loop_propagation_time,
-            child_delay,
-        );
+        // fmt::debug!(
+        //     "--> Loop propagation time {:?} ns, child delay {:?} ns",
+        //     loop_propagation_time,
+        //     child_delay,
+        // );
     }
 
-    if let Some(parent_idx) = slave.parent_index {
-        let parent = parents
-            .iter()
-            .find(|parent| parent.index == parent_idx)
-            .expect("Parent");
+    let parent = slave
+        .parent_index
+        .and_then(|parent_index| parents.iter().find(|parent| parent.index == parent_index));
 
-        // The port that connects this slave's entry port to the parent slave device
+    if let Some(parent) = parent {
         let parent_port = parent
             .ports
             .port_assigned_to(slave)
-            .expect("parent has no relationship with current device");
+            .expect("Parent assigned port");
+
+        // The port the master is connected to on this slave. Must always be entry port.
+        let this_port = slave.ports.entry_port().expect("No entry port lmao");
 
         log::debug!(
-            "--> Parent ({}) port number (NOT index) {} -> to this slave number {}",
+            "--> Parent ({:?}) {} port {} assigned to {} port {}",
+            parent.ports.topology(),
             parent.name(),
             parent_port.number,
-            slave.ports.entry_port().map(|p| p.number).unwrap_or(99)
+            slave.name(),
+            this_port.number
         );
 
-        log::debug!(
-            "++> Propagation delay between entry and this port: {:?} (fork child delay {:?}) is child of parent {}",
-            parent.ports.propagation_time_to(parent_port),
-            parent.ports.fork_child_delay(),slave.is_child_of(parent)
-        );
+        match parent.ports.topology() {
+            Topology::Fork if !slave.is_child_of(parent) => {
+                // Delays between intermediate ports on parent
+                let parent_intermediate_delays = parent.ports.intermediate_propagation_time();
 
-        // If we're a child of this parent (e.g. a module in an EK1100 chain), use the parent's
-        // child delay. If we're downstream of it, use the whole propagation time.
-        let parent_time = parent
-            .ports
-            .fork_child_delay()
-            .filter(|_| slave.is_child_of(parent))
-            .or(parent.ports.propagation_time_to(parent_port));
+                let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
 
-        let slave_delay = parent_time.map(|parent| {
-            // log::debug!("++> Propagation time to port {:?}: {:?}", slave.ports.propagation_time_to());
+                let my_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
 
-            (parent - slave.ports.total_propagation_time().unwrap_or(0)) / 2
-        });
+                let propagation_delay =
+                    parent_prop_time - (parent_intermediate_delays / 2) - (my_prop_time / 2);
 
-        *delay_accum += slave_delay.unwrap_or(0);
+                // TODO: Why is this just an assignment?
+                *delay_accum = propagation_delay;
 
-        slave.propagation_delay = *delay_accum;
+                log::debug!(
+                    "--> (a) Propagation delay {} ns (accum {})",
+                    propagation_delay,
+                    delay_accum
+                );
+            }
+            Topology::Fork if slave.is_child_of(parent) => {
+                // Delays between intermediate ports on parent
+                let parent_intermediate_delays = parent.ports.intermediate_propagation_time();
+
+                let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
+
+                let my_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
+
+                let propagation_delay =
+                    (parent_prop_time - parent_intermediate_delays - my_prop_time) / 2;
+
+                *delay_accum += propagation_delay;
+
+                log::debug!(
+                    "--> (b) Propagation delay {} ns (accum {})",
+                    propagation_delay,
+                    delay_accum
+                );
+            }
+            Topology::Passthrough => {
+                let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
+
+                let my_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
+
+                let propagation_delay = (parent_prop_time - my_prop_time) / 2;
+
+                *delay_accum += propagation_delay;
+
+                log::debug!(
+                    "--> (c) Propagation delay {} ns (accum {})",
+                    propagation_delay,
+                    delay_accum
+                );
+            }
+            _ => (),
+        }
     }
 
-    fmt::debug!("--> Propagation delay {} ns", slave.propagation_delay);
+    // For a passthrough parent, it's just (parent prop time - my prop time (which is zero for last slave)) / 2
+    // For a fork parent AND we're not connected to its last port, it's ((parent total time - parent between port times) - my time) / 2
 
-    if !slave.flags.has_64bit_dc {
-        // TODO?
-        fmt::warn!("--> Slave uses seconds instead of ns?");
-    }
+    // Find propagation delay
+
+    // if let Some(parent_idx) = slave.parent_index {
+    //     let parent = parents
+    //         .iter()
+    //         .find(|parent| parent.index == parent_idx)
+    //         .expect("Parent");
+
+    //     // The port that connects this slave's entry port to the parent slave device
+    //     let parent_port = parent
+    //         .ports
+    //         .port_assigned_to(slave)
+    //         .expect("parent has no relationship with current device");
+
+    //     log::debug!(
+    //         "--> Parent ({}) port number (NOT index) {} -> to this slave number {}",
+    //         parent.name(),
+    //         parent_port.number,
+    //         slave.ports.entry_port().map(|p| p.number).unwrap_or(99)
+    //     );
+
+    //     log::debug!(
+    //         "++> Propagation delay between entry and this port: {:?} (fork child delay {:?}) is child of parent {}",
+    //         parent.ports.propagation_time_to(parent_port),
+    //         parent.ports.fork_child_delay(),slave.is_child_of(parent)
+    //     );
+
+    //     // If we're a child of this parent (e.g. a module in an EK1100 chain), use the parent's
+    //     // child delay. If we're downstream of it, use the whole propagation time.
+    //     let parent_time = parent
+    //         .ports
+    //         .fork_child_delay()
+    //         .filter(|_| slave.is_child_of(parent))
+    //         .or(parent.ports.propagation_time_to(parent_port));
+
+    //     let slave_delay = parent_time.map(|parent| {
+    //         // log::debug!("++> Propagation time to port {:?}: {:?}", slave.ports.propagation_time_to());
+
+    //         (parent - slave.ports.total_propagation_time().unwrap_or(0)) / 2
+    //     });
+
+    //     *delay_accum += slave_delay.unwrap_or(0);
+
+    //     slave.propagation_delay = *delay_accum;
+    // }
+
+    // fmt::debug!("--> Propagation delay {} ns", slave.propagation_delay);
+
+    // if !slave.flags.has_64bit_dc {
+    //     // TODO?
+    //     fmt::warn!("--> Slave uses seconds instead of ns?");
+    // }
 
     Ok(())
 }
