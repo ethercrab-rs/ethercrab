@@ -224,17 +224,28 @@ fn configure_slave_offsets(
         match parent.ports.topology() {
             Topology::Fork if !slave.is_child_of(parent) => {
                 // Delays between intermediate ports on parent
-                let parent_intermediate_delays = parent.ports.intermediate_propagation_time();
+                let parent_intermediate_delays =
+                    parent.ports.intermediate_propagation_time_to(&parent_port);
+
+                dbg!(parent_intermediate_delays);
 
                 let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
 
                 let my_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
 
-                let propagation_delay =
-                    parent_prop_time - (parent_intermediate_delays / 2) - (my_prop_time / 2);
+                let propagation_delay = (parent_prop_time - my_prop_time) / 2;
 
-                // TODO: Why is this just an assignment?
-                *delay_accum = propagation_delay;
+                // dbg!(
+                //     *delay_accum,
+                //     parent_intermediate_delays,
+                //     parent_prop_time,
+                //     my_prop_time,
+                //     (parent_prop_time - parent_intermediate_delays - my_prop_time) / 2,
+                //     (parent_prop_time - my_prop_time) / 2,
+                //     propagation_delay,
+                // );
+
+                *delay_accum += propagation_delay;
 
                 log::debug!(
                     "--> (a) Propagation delay {} ns (accum {})",
@@ -244,7 +255,10 @@ fn configure_slave_offsets(
             }
             Topology::Fork if slave.is_child_of(parent) => {
                 // Delays between intermediate ports on parent
-                let parent_intermediate_delays = parent.ports.intermediate_propagation_time();
+                let parent_intermediate_delays =
+                    parent.ports.intermediate_propagation_time_to(&parent_port);
+
+                dbg!(parent_intermediate_delays);
 
                 let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
 
