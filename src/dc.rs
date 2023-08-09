@@ -230,35 +230,53 @@ fn configure_slave_offsets(
 
         let my_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
 
+        log::debug!(
+            "--> Parent propagation time {}, my prop. time {} delta {}",
+            parent_prop_time,
+            my_prop_time,
+            parent_prop_time - my_prop_time
+        );
+
         let propagation_delay = match parent.ports.topology() {
             Topology::Passthrough => {
-                parent.propagation_delay + (parent_prop_time - my_prop_time) / 2
+                //
+                (parent_prop_time - my_prop_time) / 2
             }
-            // This slave is in an alternate branch of the topology
-            Topology::Fork if !slave.is_child_of(parent) => (parent_prop_time - my_prop_time) / 2,
-            // This slave is downstream of its parent (i.e. attached to the last open port)
-            Topology::Fork => (parent_prop_time - my_prop_time) / 2,
-            Topology::Cross => parent_intermediate_delays / 2 - parent.propagation_delay,
+            Topology::Fork => {
+                // IF this slave is an inner child of the parent
+                if slave.is_child_of(parent) {
+                    let children_loop_time = parent_port.dc_receive_time
+                        - parent
+                            .ports
+                            .prev_active_port(&parent_port)
+                            .unwrap()
+                            .dc_receive_time;
+
+                    (children_loop_time - my_prop_time) / 2
+                }
+                // OTHERWISE just use entire parent prop delay
+                else {
+                    (parent_prop_time - my_prop_time) / 2
+                }
+            }
+            Topology::Cross => {
+                // TODO
+                0
+            }
+            // A parent of any device cannot have a `LineEnd` topology as it will always have at
+            // least 2 ports open (1 for comms to master, 1 to current slave device)
             Topology::LineEnd => 0,
         };
 
         *delay_accum += propagation_delay;
 
         log::debug!(
-            "--> Propagation delay {} ns (accum {})",
+            "--> Propagation delay {} (delta {}) ns",
+            delay_accum,
             propagation_delay,
-            delay_accum
         );
 
-        dbg!(
-            parent_intermediate_delays,
-            parent_prop_time,
-            parent.propagation_delay,
-            parent_port.number,
-            my_prop_time
-        );
-
-        slave.propagation_delay = propagation_delay;
+        slave.propagation_delay = *delay_accum;
     }
 
     // For a passthrough parent, it's just (parent prop time - my prop time (which is zero for last slave)) / 2

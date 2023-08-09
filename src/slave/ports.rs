@@ -134,6 +134,8 @@ impl Ports {
     }
 
     /// The port of the slave that first sees EtherCAT traffic.
+    // TODO: This shouldn't return an option. A slave HAS to have a entry port if it's even
+    // discovered on the network.
     pub fn entry_port(&self) -> Option<Port> {
         self.active_ports()
             .min_by_key(|port| port.dc_receive_time)
@@ -302,6 +304,21 @@ impl Ports {
             .filter(|t| *t > 0);
 
         between_ports
+    }
+
+    /// The previous active port to the one given.
+    pub fn prev_active_port(&self, port: &Port) -> Option<&Port> {
+        let mut sub_by = 1;
+
+        while let Some(idx) = port.index().checked_sub(sub_by) {
+            if self.0[idx].active {
+                return Some(&self.0[idx]);
+            }
+
+            sub_by += 1;
+        }
+
+        None
     }
 }
 
