@@ -222,46 +222,27 @@ fn configure_slave_offsets(
             !slave.is_child_of(parent)
         );
 
-        // Delays between intermediate ports on parent
-        let parent_intermediate_delays =
-            parent.ports.intermediate_propagation_time_to(&parent_port);
-
         let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
-
-        let my_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
+        let this_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
 
         log::debug!(
             "--> Parent propagation time {}, my prop. time {} delta {}",
             parent_prop_time,
-            my_prop_time,
-            parent_prop_time - my_prop_time
+            this_prop_time,
+            parent_prop_time - this_prop_time
         );
 
         let propagation_delay = match parent.ports.topology() {
-            Topology::Passthrough => {
-                //
-                (parent_prop_time - my_prop_time) / 2
-            }
-            Topology::Fork => {
-                // IF this slave is an inner child of the parent
+            Topology::Passthrough => (parent_prop_time - this_prop_time) / 2,
+            Topology::Fork | Topology::Cross => {
                 if slave.is_child_of(parent) {
-                    let children_loop_time = parent_port.dc_receive_time
-                        - parent
-                            .ports
-                            .prev_active_port(&parent_port)
-                            .unwrap()
-                            .dc_receive_time;
+                    let children_loop_time =
+                        parent.ports.intermediate_propagation_time_to(&parent_port);
 
-                    (children_loop_time - my_prop_time) / 2
+                    (children_loop_time - this_prop_time) / 2
+                } else {
+                    (parent_prop_time - this_prop_time) / 2
                 }
-                // OTHERWISE just use entire parent prop delay
-                else {
-                    (parent_prop_time - my_prop_time) / 2
-                }
-            }
-            Topology::Cross => {
-                // TODO
-                0
             }
             // A parent of any device cannot have a `LineEnd` topology as it will always have at
             // least 2 ports open (1 for comms to master, 1 to current slave device)
@@ -278,62 +259,6 @@ fn configure_slave_offsets(
 
         slave.propagation_delay = *delay_accum;
     }
-
-    // For a passthrough parent, it's just (parent prop time - my prop time (which is zero for last slave)) / 2
-    // For a fork parent AND we're not connected to its last port, it's ((parent total time - parent between port times) - my time) / 2
-
-    // Find propagation delay
-
-    // if let Some(parent_idx) = slave.parent_index {
-    //     let parent = parents
-    //         .iter()
-    //         .find(|parent| parent.index == parent_idx)
-    //         .expect("Parent");
-
-    //     // The port that connects this slave's entry port to the parent slave device
-    //     let parent_port = parent
-    //         .ports
-    //         .port_assigned_to(slave)
-    //         .expect("parent has no relationship with current device");
-
-    //     log::debug!(
-    //         "--> Parent ({}) port number (NOT index) {} -> to this slave number {}",
-    //         parent.name(),
-    //         parent_port.number,
-    //         slave.ports.entry_port().map(|p| p.number).unwrap_or(99)
-    //     );
-
-    //     log::debug!(
-    //         "++> Propagation delay between entry and this port: {:?} (fork child delay {:?}) is child of parent {}",
-    //         parent.ports.propagation_time_to(parent_port),
-    //         parent.ports.fork_child_delay(),slave.is_child_of(parent)
-    //     );
-
-    //     // If we're a child of this parent (e.g. a module in an EK1100 chain), use the parent's
-    //     // child delay. If we're downstream of it, use the whole propagation time.
-    //     let parent_time = parent
-    //         .ports
-    //         .fork_child_delay()
-    //         .filter(|_| slave.is_child_of(parent))
-    //         .or(parent.ports.propagation_time_to(parent_port));
-
-    //     let slave_delay = parent_time.map(|parent| {
-    //         // log::debug!("++> Propagation time to port {:?}: {:?}", slave.ports.propagation_time_to());
-
-    //         (parent - slave.ports.total_propagation_time().unwrap_or(0)) / 2
-    //     });
-
-    //     *delay_accum += slave_delay.unwrap_or(0);
-
-    //     slave.propagation_delay = *delay_accum;
-    // }
-
-    // fmt::debug!("--> Propagation delay {} ns", slave.propagation_delay);
-
-    // if !slave.flags.has_64bit_dc {
-    //     // TODO?
-    //     fmt::warn!("--> Slave uses seconds instead of ns?");
-    // }
 
     Ok(())
 }
