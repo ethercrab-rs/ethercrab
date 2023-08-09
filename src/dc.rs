@@ -213,13 +213,13 @@ fn configure_slave_offsets(
         let this_port = slave.ports.entry_port().expect("No entry port lmao");
 
         log::debug!(
-            "--> Parent ({:?}) {} port {} assigned to {} port {} (child is downstream: {:?})",
+            "--> Parent ({:?}) {} port {} assigned to {} port {} (slave is child of parent: {:?})",
             parent.ports.topology(),
             parent.name(),
             parent_port.number,
             slave.name(),
             this_port.number,
-            !slave.is_child_of(parent)
+            slave.is_child_of(parent)
         );
 
         let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
@@ -234,7 +234,17 @@ fn configure_slave_offsets(
 
         let propagation_delay = match parent.ports.topology() {
             Topology::Passthrough => (parent_prop_time - this_prop_time) / 2,
-            Topology::Fork | Topology::Cross => {
+            Topology::Fork => {
+                if slave.is_child_of(parent) {
+                    let children_loop_time =
+                        parent.ports.propagation_time_to(&parent_port).unwrap_or(0);
+
+                    (children_loop_time - this_prop_time) / 2
+                } else {
+                    (parent_prop_time - this_prop_time) / 2
+                }
+            }
+            Topology::Cross => {
                 if slave.is_child_of(parent) {
                     let children_loop_time =
                         parent.ports.intermediate_propagation_time_to(&parent_port);
@@ -615,7 +625,7 @@ mod tests {
     // Test that slave parent/child relationships are established, and that propagation delays are
     // computed correctly.
     #[test]
-    fn propagation_delay_calc() {
+    fn propagation_delay_calc_fork() {
         let _ = env_logger::builder().is_test(true).try_init();
 
         fn ports(
