@@ -251,7 +251,7 @@ fn configure_slave_offsets(
 
                     (children_loop_time - this_prop_time) / 2
                 } else {
-                    (parent_prop_time - this_prop_time) / 2
+                    parent_prop_time - *delay_accum
                 }
             }
             // A parent of any device cannot have a `LineEnd` topology as it will always have at
