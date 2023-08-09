@@ -174,6 +174,12 @@ impl Slave {
 
     /// Check if the current slave device is a child of `parent`.
     ///
+    /// A slave device is a child of a parent if it is connected to an intermediate port of the
+    /// parent device, i.e. is not connected to the last open port. In the latter case, this is a
+    /// "downstream" device.
+    ///
+    /// # Examples
+    ///
     /// An EK1100 (parent) with an EL2004 module connected (child) as well as another EK1914 coupler
     /// (downstream) connected has one child: the EL2004.
     pub(crate) fn is_child_of(&self, parent: &Slave) -> bool {
