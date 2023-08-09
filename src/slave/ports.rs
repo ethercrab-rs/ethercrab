@@ -268,7 +268,7 @@ impl Ports {
                 };
 
                 // Stop iterating as we've summed everything before the target port
-                if a.index() > port.index() {
+                if a.index() >= port.index() {
                     return 0;
                 }
 
@@ -339,11 +339,13 @@ pub mod tests {
         let passthrough_skip_port = make_ports(true, false, true, false);
         let fork = make_ports(true, true, true, false);
         let line_end = make_ports(true, false, false, false);
+        let cross = make_ports(true, true, true, true);
 
         assert_eq!(passthrough.topology(), Topology::Passthrough);
         assert_eq!(passthrough_skip_port.topology(), Topology::Passthrough);
         assert_eq!(fork.topology(), Topology::Fork);
         assert_eq!(line_end.topology(), Topology::LineEnd);
+        assert_eq!(cross.topology(), Topology::Cross);
     }
 
     #[test]
@@ -450,5 +452,55 @@ pub mod tests {
                 }
             ])
         )
+    }
+
+    #[test]
+    fn propagation_time_to_last_port() {
+        let ports = make_ports(true, false, true, true);
+
+        let last = ports.last_port().unwrap();
+
+        assert_eq!(
+            ports.propagation_time_to(last),
+            ports.total_propagation_time()
+        );
+    }
+
+    #[test]
+    fn propagation_time_to_intermediate_port() {
+        // Cross topology
+        let ports = make_ports(true, true, true, true);
+
+        let up_to = &ports.0[2];
+
+        assert_eq!(ports.propagation_time_to(up_to), Some(200));
+    }
+
+    #[test]
+    fn propagation_time_cross_first() {
+        // Cross topology, e.g. EK1122
+        let mut ports = make_ports(true, true, true, true);
+
+        // Deltas are 1340ns, 1080ns and 290ns
+        ports.set_receive_times(3699944655, 3699945995, 3699947075, 3699947365);
+
+        // Device connected to EtherCAT port number 3 (second index)
+        let up_to = &ports.0[1];
+
+        assert_eq!(ports.propagation_time_to(up_to), Some(1340));
+    }
+
+    #[test]
+    fn propagation_time_cross_second() {
+        // Cross topology, e.g. EK1122
+        let mut ports = make_ports(true, true, true, true);
+
+        // Deltas are 1340ns, 1080ns and 290ns
+        ports.set_receive_times(3699944655, 3699945995, 3699947075, 3699947365);
+
+        // Device connected to EtherCAT port number 3 (second index)
+        let up_to = &ports.0[2];
+
+        assert_eq!(ports.propagation_time_to(up_to), Some(1340 + 1080));
     }
 }

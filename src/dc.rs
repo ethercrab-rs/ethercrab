@@ -213,85 +213,52 @@ fn configure_slave_offsets(
         let this_port = slave.ports.entry_port().expect("No entry port lmao");
 
         log::debug!(
-            "--> Parent ({:?}) {} port {} assigned to {} port {}",
+            "--> Parent ({:?}) {} port {} assigned to {} port {} (child is downstream: {:?})",
             parent.ports.topology(),
             parent.name(),
             parent_port.number,
             slave.name(),
-            this_port.number
+            this_port.number,
+            !slave.is_child_of(parent)
         );
 
-        match parent.ports.topology() {
-            Topology::Fork if !slave.is_child_of(parent) => {
-                // Delays between intermediate ports on parent
-                let parent_intermediate_delays =
-                    parent.ports.intermediate_propagation_time_to(&parent_port);
+        // Delays between intermediate ports on parent
+        let parent_intermediate_delays =
+            parent.ports.intermediate_propagation_time_to(&parent_port);
 
-                dbg!(parent_intermediate_delays);
+        let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
 
-                let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
+        let my_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
 
-                let my_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
-
-                let propagation_delay = (parent_prop_time - my_prop_time) / 2;
-
-                // dbg!(
-                //     *delay_accum,
-                //     parent_intermediate_delays,
-                //     parent_prop_time,
-                //     my_prop_time,
-                //     (parent_prop_time - parent_intermediate_delays - my_prop_time) / 2,
-                //     (parent_prop_time - my_prop_time) / 2,
-                //     propagation_delay,
-                // );
-
-                *delay_accum += propagation_delay;
-
-                log::debug!(
-                    "--> (a) Propagation delay {} ns (accum {})",
-                    propagation_delay,
-                    delay_accum
-                );
-            }
-            Topology::Fork if slave.is_child_of(parent) => {
-                // Delays between intermediate ports on parent
-                let parent_intermediate_delays =
-                    parent.ports.intermediate_propagation_time_to(&parent_port);
-
-                dbg!(parent_intermediate_delays);
-
-                let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
-
-                let my_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
-
-                let propagation_delay =
-                    (parent_prop_time - parent_intermediate_delays - my_prop_time) / 2;
-
-                *delay_accum += propagation_delay;
-
-                log::debug!(
-                    "--> (b) Propagation delay {} ns (accum {})",
-                    propagation_delay,
-                    delay_accum
-                );
-            }
+        let propagation_delay = match parent.ports.topology() {
             Topology::Passthrough => {
-                let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
-
-                let my_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
-
-                let propagation_delay = (parent_prop_time - my_prop_time) / 2;
-
-                *delay_accum += propagation_delay;
-
-                log::debug!(
-                    "--> (c) Propagation delay {} ns (accum {})",
-                    propagation_delay,
-                    delay_accum
-                );
+                parent.propagation_delay + (parent_prop_time - my_prop_time) / 2
             }
-            _ => (),
-        }
+            // This slave is in an alternate branch of the topology
+            Topology::Fork if !slave.is_child_of(parent) => (parent_prop_time - my_prop_time) / 2,
+            // This slave is downstream of its parent (i.e. attached to the last open port)
+            Topology::Fork => (parent_prop_time - my_prop_time) / 2,
+            Topology::Cross => parent_intermediate_delays / 2 - parent.propagation_delay,
+            Topology::LineEnd => 0,
+        };
+
+        *delay_accum += propagation_delay;
+
+        log::debug!(
+            "--> Propagation delay {} ns (accum {})",
+            propagation_delay,
+            delay_accum
+        );
+
+        dbg!(
+            parent_intermediate_delays,
+            parent_prop_time,
+            parent.propagation_delay,
+            parent_port.number,
+            my_prop_time
+        );
+
+        slave.propagation_delay = propagation_delay;
     }
 
     // For a passthrough parent, it's just (parent prop time - my prop time (which is zero for last slave)) / 2
