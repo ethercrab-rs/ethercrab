@@ -118,11 +118,13 @@ impl Ports {
         d3: Option<usize>,
         d1: Option<usize>,
         d2: Option<usize>,
-    ) {
+    ) -> Self {
         self.0[0].downstream_to = d0;
         self.0[1].downstream_to = d3;
         self.0[2].downstream_to = d1;
         self.0[3].downstream_to = d2;
+
+        *self
     }
 
     fn open_ports(&self) -> u8 {
