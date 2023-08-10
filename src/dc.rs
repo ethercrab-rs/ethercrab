@@ -207,7 +207,7 @@ fn configure_slave_offsets(
         // The port the master is connected to on this slave. Must always be entry port.
         let this_port = slave.ports.entry_port().expect("No entry port lmao");
 
-        log::debug!(
+        fmt::debug!(
             "--> Parent ({:?}) {} port {} assigned to {} port {} (slave is child of parent: {:?})",
             parent.ports.topology(),
             parent.name(),
@@ -220,7 +220,7 @@ fn configure_slave_offsets(
         let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
         let this_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
 
-        log::debug!(
+        fmt::debug!(
             "--> Parent propagation time {}, my prop. time {} delta {}",
             parent_prop_time,
             this_prop_time,
@@ -256,7 +256,7 @@ fn configure_slave_offsets(
 
         *delay_accum += propagation_delay;
 
-        log::debug!(
+        fmt::debug!(
             "--> Propagation delay {} (delta {}) ns",
             delay_accum,
             propagation_delay,
@@ -315,6 +315,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
     }
 
     // Extremely crude output to generate test cases with. `rustfmt` makes it look nice in the test.
+    #[cfg(feature = "std")]
     if option_env!("PRINT_TEST_CASE").is_some() {
         for slave in slaves.iter() {
             let p = slave.ports.0;
