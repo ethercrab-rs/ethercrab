@@ -4,7 +4,6 @@ pub mod pdi;
 pub mod ports;
 mod types;
 
-use self::{ports::Topology, types::SlaveConfig};
 use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
@@ -24,7 +23,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     register::RegisterAddress,
     register::SupportFlags,
-    slave::ports::{Port, Ports},
+    slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
     sync_manager_channel::SyncManagerChannel,
     Timeouts,

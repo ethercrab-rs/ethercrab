@@ -1,4 +1,3 @@
-use crate::fmt;
 use crate::Slave;
 use core::fmt::Debug;
 
@@ -165,13 +164,6 @@ impl Ports {
         self.0.get_mut(next_port_index)
     }
 
-    /// Find the next open port after the given port.
-    fn next_open_port(&self, port: &Port) -> Option<&Port> {
-        let index = port.index();
-
-        self.active_ports().cycle().skip(index + 1).next()
-    }
-
     /// Link a downstream device to the current device using the next open port from the entry port.
     pub fn assign_next_downstream_port(&mut self, downstream_slave_index: usize) -> Option<usize> {
         let entry_port = self.entry_port().expect("No input port? Wtf");
@@ -203,26 +195,6 @@ impl Ports {
         self.last_port().filter(|p| *p == port).is_some()
     }
 
-    /// If the current node is a fork in the network, compute the propagation delay of all the
-    /// children.
-    ///
-    /// Returns `None` if the current node is not a fork.
-    pub fn fork_child_delay(&self) -> Option<u32> {
-        if self.topology() == Topology::Fork {
-            let input_port = self.entry_port()?;
-
-            // Because this is a fork, the slave's children will always be attached to the next open
-            // port after the input.
-            let children_port = self.next_open_port(&input_port)?;
-
-            // Some(children_port.dc_receive_time - input_port.dc_receive_time)
-
-            self.propagation_time_to(children_port)
-        } else {
-            None
-        }
-    }
-
     /// The time in nanoseconds for a packet to completely traverse all active ports of a slave
     /// device.
     pub fn total_propagation_time(&self) -> Option<u32> {
@@ -237,27 +209,6 @@ impl Ports {
             .and_then(|max| times.min().map(|min| max - min))
             .filter(|t| *t > 0)
     }
-
-    // /// Propagation time between active ports in this slave.
-    // pub fn intermediate_propagation_time(&self) -> u32 {
-    //     // If a pair of ports is open, they have a propagation delta between them, and we can sum
-    //     // these deltas up to get the child delays of this slave (fork or cross have children)
-    //     self.0
-    //         .windows(2)
-    //         .map(|window| {
-    //             let [a, b] = window else {
-    //                 return 0
-    //             };
-
-    //             // Both ports must be active to have a delta
-    //             if a.active && b.active {
-    //                 b.dc_receive_time.saturating_sub(a.dc_receive_time)
-    //             } else {
-    //                 0
-    //             }
-    //         })
-    //         .sum::<u32>()
-    // }
 
     /// Propagation time between active ports in this slave.
     pub fn intermediate_propagation_time_to(&self, port: &Port) -> u32 {
@@ -306,21 +257,6 @@ impl Ports {
             .filter(|t| *t > 0);
 
         between_ports
-    }
-
-    /// The previous active port to the one given.
-    pub fn prev_active_port(&self, port: &Port) -> Option<&Port> {
-        let mut sub_by = 1;
-
-        while let Some(idx) = port.index().checked_sub(sub_by) {
-            if self.0[idx].active {
-                return Some(&self.0[idx]);
-            }
-
-            sub_by += 1;
-        }
-
-        None
     }
 }
 
@@ -406,17 +342,6 @@ pub mod tests {
 
         assert_eq!(ports.topology(), Topology::Cross);
         assert_eq!(ports.total_propagation_time(), Some(300));
-    }
-
-    #[test]
-    fn child_delay() {
-        // EK1100 with children attached to port 3 and downstream devices on port 1
-        let ports = make_ports(true, true, true, false);
-        // Normal slave has no children, so no child delay
-        let passthrough = make_ports(true, true, false, false);
-
-        assert_eq!(ports.fork_child_delay(), Some(100));
-        assert_eq!(passthrough.fork_child_delay(), None);
     }
 
     #[test]
