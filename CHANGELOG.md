@@ -10,6 +10,10 @@ An EtherCAT master written in Rust.
 
 - [#91] Add support for "cross" topologies, e.g. with EK1122.
 
+### Changed
+
+- [#92] If no slave devices are detected, `Client::init` will no longer exit with an error.
+
 ## [0.2.1] - 2023-07-31
 
 ### Fixed
@@ -169,5 +173,6 @@ An EtherCAT master written in Rust.
 [#84]: https://github.com/ethercrab-rs/ethercrab/pull/84
 [#86]: https://github.com/ethercrab-rs/ethercrab/pull/86
 [#91]: https://github.com/ethercrab-rs/ethercrab/pull/91
+[#92]: https://github.com/ethercrab-rs/ethercrab/pull/92
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
