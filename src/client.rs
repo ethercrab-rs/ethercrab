@@ -12,7 +12,7 @@ use crate::{
     slave::Slave,
     slave_group::{self, SlaveGroupHandle},
     slave_state::SlaveState,
-    timer_factory::timeout,
+    timer_factory::{timeout, timer},
     ClientConfig, SlaveGroup, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
@@ -20,6 +20,7 @@ use core::{
     ops::Range,
     sync::atomic::{AtomicU16, AtomicU8, Ordering},
 };
+use embassy_futures::select::{select, Either};
 use heapless::FnvIndexMap;
 use packed_struct::PackedStruct;
 
@@ -210,12 +211,18 @@ impl<'sto> Client<'sto> {
     {
         let groups = G::default();
 
-        self.reset_slaves().await?;
-
         // Each slave increments working counter, so we can use it as a total count of slaves
-        let (_res, num_slaves) = self.brd::<u8>(RegisterAddress::Type).await?;
+        let num_slaves = self.count_slaves().await?;
 
         fmt::debug!("Discovered {} slave devices", num_slaves);
+
+        if num_slaves == 0 {
+            fmt::warn!("No slaves were discovered. Check NIC device, connections and PDU response timeouts");
+
+            return Ok(groups);
+        }
+
+        self.reset_slaves().await?;
 
         // This is the only place we store the number of slave devices, so the ordering can be
         // pretty much anything.
@@ -366,6 +373,25 @@ impl<'sto> Client<'sto> {
         &self,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, slave_group::PreOp>, Error> {
         self.init::<MAX_SLAVES, _>(|group, _slave| Ok(group)).await
+    }
+
+    /// Count the number of slaves on the network.
+    async fn count_slaves(&self) -> Result<u16, Error> {
+        let future = self.pdu_loop.pdu_tx_readonly(
+            Command::Brd {
+                address: 0,
+                register: RegisterAddress::Type.into(),
+            },
+            u8::len(),
+        );
+
+        let future = core::pin::pin!(future);
+
+        match select(future, timer(self.timeouts.pdu)).await {
+            Either::First(res) => res.map(|res| res.working_counter()),
+            // Timeout implies nothing was discovered
+            Either::Second(_timeout) => Ok(0),
+        }
     }
 
     /// Get the number of discovered slaves in the EtherCAT network.

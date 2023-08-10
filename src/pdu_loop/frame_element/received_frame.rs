@@ -17,7 +17,7 @@ pub struct ReceivedFrame<'sto> {
 }
 
 impl<'sto> ReceivedFrame<'sto> {
-    fn working_counter(&self) -> u16 {
+    pub(crate) fn working_counter(&self) -> u16 {
         unsafe { self.inner.frame() }.working_counter
     }
 
