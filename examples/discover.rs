@@ -28,12 +28,11 @@ fn main() {
 
     let client = Arc::new(Client::new(
         pdu_loop,
-        Timeouts {
-            wait_loop_delay: Duration::from_millis(2),
-            mailbox_response: Duration::from_millis(1000),
-            ..Default::default()
+        Timeouts::default(),
+        ClientConfig {
+            dc_static_sync_iterations: 0,
+            ..ClientConfig::default()
         },
-        ClientConfig::default(),
     ));
 
     smol::block_on(async {

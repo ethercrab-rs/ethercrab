@@ -4,7 +4,6 @@ pub mod pdi;
 pub mod ports;
 mod types;
 
-use self::{ports::Topology, types::SlaveConfig};
 use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
@@ -24,7 +23,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     register::RegisterAddress,
     register::SupportFlags,
-    slave::ports::{Port, Ports},
+    slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
     sync_manager_channel::SyncManagerChannel,
     Timeouts,
@@ -126,28 +125,13 @@ impl Slave {
             .await
             .map(|dl_status| {
                 // NOTE: dc_receive_times are populated during DC initialisation
-                Ports([
-                    Port {
-                        number: 0,
-                        active: dl_status.link_port0,
-                        ..Default::default()
-                    },
-                    Port {
-                        number: 1,
-                        active: dl_status.link_port1,
-                        ..Default::default()
-                    },
-                    Port {
-                        number: 2,
-                        active: dl_status.link_port2,
-                        ..Default::default()
-                    },
-                    Port {
-                        number: 3,
-                        active: dl_status.link_port3,
-                        ..Default::default()
-                    },
-                ])
+                // Ports in EtherCAT order 0 -> 3 -> 1 -> 2
+                Ports::new(
+                    dl_status.link_port0,
+                    dl_status.link_port3,
+                    dl_status.link_port1,
+                    dl_status.link_port2,
+                )
             })?;
 
         fmt::debug!(
@@ -189,17 +173,23 @@ impl Slave {
 
     /// Check if the current slave device is a child of `parent`.
     ///
+    /// A slave device is a child of a parent if it is connected to an intermediate port of the
+    /// parent device, i.e. is not connected to the last open port. In the latter case, this is a
+    /// "downstream" device.
+    ///
+    /// # Examples
+    ///
     /// An EK1100 (parent) with an EL2004 module connected (child) as well as another EK1914 coupler
     /// (downstream) connected has one child: the EL2004.
     pub(crate) fn is_child_of(&self, parent: &Slave) -> bool {
-        // Only forks in the network can have child devices. Passthroughs only have downstream
-        // devices.
-        let parent_is_fork = parent.ports.topology() == Topology::Fork;
+        // Only forks or crosses in the network can have child devices. Passthroughs only have
+        // downstream devices.
+        let parent_is_fork = parent.ports.topology().is_junction();
 
-        let child_port = parent.ports.port_assigned_to(self);
+        let parent_port = parent.ports.port_assigned_to(self);
 
         // Children in a fork must be connected to intermediate ports
-        let child_attached_to_last_parent_port = child_port
+        let child_attached_to_last_parent_port = parent_port
             .map(|child_port| parent.ports.is_last_port(child_port))
             .unwrap_or(false);
 
@@ -759,6 +749,8 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
+        // ETG1000.4 Table 48 – Slave information interface access
+        // A value of 2 sets owner to Master (not PDI) and cancels access
         self.write::<u16>(RegisterAddress::SiiConfig, 2, "Write SII config literal")
             .await?;
         self.write::<u16>(
