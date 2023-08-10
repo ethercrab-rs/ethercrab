@@ -198,6 +198,13 @@ macro_rules! unwrap_ {
     }
 }
 
+#[cfg(feature = "defmt")]
+macro_rules! unwrap_opt_ {
+    ($($x:tt)*) => {
+        ::defmt::unwrap!($($x)*)
+    };
+}
+
 #[cfg(not(feature = "defmt"))]
 macro_rules! unwrap_opt_ {
     ($arg:expr) => {
