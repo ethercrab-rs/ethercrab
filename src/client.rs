@@ -445,78 +445,75 @@ impl<'sto> Client<'sto> {
         .await
     }
 
+    async fn read_service_inner(
+        &self,
+        command: Command,
+        len: u16,
+    ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
+        timeout(
+            self.timeouts.pdu,
+            self.pdu_loop.pdu_tx_readonly(command, len),
+        )
+        .await
+        .map(|response| response.into_data())
+    }
+
     async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
     {
+        let (data, working_counter) = self.read_service_inner(command, T::len()).await?;
+
+        let res = T::try_from_slice(&*data).map_err(|e| {
+            fmt::error!(
+                "PDU data decode: {:?}, T: {} data {:?}",
+                e,
+                type_name::<T>(),
+                data
+            );
+
+            PduError::Decode
+        })?;
+
+        Ok((res, working_counter))
+    }
+
+    async fn write_service_inner(
+        &self,
+        command: Command,
+        value: &[u8],
+    ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
         timeout(
             self.timeouts.pdu,
-            self.pdu_loop.pdu_tx_readonly(command, T::len()),
+            self.pdu_loop.pdu_tx_readwrite(command, value),
         )
         .await
         .map_err(|e| {
-            fmt::error!(
-                "Read service timeout, command {:?}, timeout {} ms",
-                command,
-                self.timeouts.pdu.as_millis()
-            );
+            fmt::error!("Write service timeout, command {:?}", command);
 
             e
         })
-        .and_then(|response| {
-            let (data, working_counter) = response.into_data();
-            let data = &*data;
-
-            let res = T::try_from_slice(data).map_err(|e| {
-                fmt::error!(
-                    "PDU data decode: {:?}, T: {} data {:?}",
-                    e,
-                    type_name::<T>(),
-                    data
-                );
-
-                PduError::Decode
-            })?;
-
-            Ok((res, working_counter))
-        })
+        .map(|response| response.into_data())
     }
 
     async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
     {
-        timeout(
-            self.timeouts.pdu,
-            self.pdu_loop.pdu_tx_readwrite(command, value.as_slice()),
-        )
-        .await
-        .map_err(|e| {
+        let (data, working_counter) = self.write_service_inner(command, value.as_slice()).await?;
+
+        let res = T::try_from_slice(&*data).map_err(|e| {
             fmt::error!(
-                "Write service timeout, command {:?}, timeout {} ms",
-                command,
-                self.timeouts.pdu.as_millis()
+                "PDU data decode: {:?}, T: {} data {:?}",
+                e,
+                type_name::<T>(),
+                data
             );
 
-            e
-        })
-        .and_then(|response| {
-            let (data, working_counter) = response.into_data();
-            let data = &*data;
+            PduError::Decode
+        })?;
 
-            let res = T::try_from_slice(data).map_err(|e| {
-                fmt::error!(
-                    "PDU data decode: {:?}, T: {} data {:?}",
-                    e,
-                    type_name::<T>(),
-                    data
-                );
-
-                PduError::Decode
-            })?;
-
-            Ok((res, working_counter))
-        })
+        Ok((res, working_counter))
     }
 
     /// Send a `BRD` (Broadcast Read).

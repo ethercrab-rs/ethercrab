@@ -80,6 +80,20 @@ pub struct RxFrameDataBuf<'sto> {
     data_end: NonNull<u8>,
 }
 
+impl<'sto> core::fmt::Debug for RxFrameDataBuf<'sto> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl<'sto> defmt::Format for RxFrameDataBuf<'sto> {
+    fn format(&self, f: defmt::Formatter) {
+        // Format as hexadecimal.
+        defmt::write!(f, "{:?}", self);
+    }
+}
+
 // SAFETY: This is ok because we respect the lifetime of the underlying data by carrying the 'sto
 // lifetime.
 unsafe impl<'sto> Send for RxFrameDataBuf<'sto> {}
