@@ -2,7 +2,7 @@
 
 use env_logger::Env;
 use ethercrab::{std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts};
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 128;

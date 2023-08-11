@@ -1,4 +1,4 @@
-use crate::Slave;
+use crate::{fmt, Slave};
 use core::fmt::Debug;
 
 /// Flags showing which ports are active or not on the slave.
@@ -135,12 +135,11 @@ impl Ports {
     }
 
     /// The port of the slave that first sees EtherCAT traffic.
-    // TODO: This shouldn't return an option. A slave HAS to have a entry port if it's even
-    // discovered on the network.
-    pub fn entry_port(&self) -> Option<Port> {
-        self.active_ports()
+    pub fn entry_port(&self) -> Port {
+        fmt::unwrap_opt!(self
+            .active_ports()
             .min_by_key(|port| port.dc_receive_time)
-            .copied()
+            .copied())
     }
 
     /// Get the last open port.
@@ -166,7 +165,7 @@ impl Ports {
 
     /// Link a downstream device to the current device using the next open port from the entry port.
     pub fn assign_next_downstream_port(&mut self, downstream_slave_index: usize) -> Option<usize> {
-        let entry_port = self.entry_port().expect("No input port? Wtf");
+        let entry_port = self.entry_port();
 
         let next_port = self.next_assignable_port(&entry_port)?;
 
@@ -239,10 +238,7 @@ impl Ports {
 
     /// Get the propagation time taken from entry to this slave device up to the given port.
     pub fn propagation_time_to(&self, this_port: &Port) -> Option<u32> {
-        // If we don't have an entry port we can't be connected to the network so this is probably a
-        // logic bug and should panic.
-        let entry_port =
-            crate::fmt::unwrap_opt!(self.entry_port(), "no entry port. Likely a logic bug");
+        let entry_port = self.entry_port();
 
         // Find active ports between entry and this one
         let times = self
@@ -250,13 +246,11 @@ impl Ports {
             .filter(|port| port.index() >= entry_port.index() && port.index() <= this_port.index())
             .map(|port| port.dc_receive_time);
 
-        let between_ports = times
+        times
             .clone()
             .max()
             .and_then(|max| times.min().map(|min| max - min))
-            .filter(|t| *t > 0);
-
-        between_ports
+            .filter(|t| *t > 0)
     }
 }
 
@@ -310,12 +304,12 @@ pub mod tests {
 
         assert_eq!(
             ports.entry_port(),
-            Some(Port {
+            Port {
                 active: true,
                 number: 0,
                 dc_receive_time: ENTRY_RECEIVE,
                 ..Port::default()
-            })
+            }
         );
     }
 
@@ -350,12 +344,12 @@ pub mod tests {
 
         assert_eq!(
             ports.entry_port(),
-            Some(Port {
+            Port {
                 active: true,
                 dc_receive_time: ENTRY_RECEIVE,
                 number: 0,
                 downstream_to: None
-            })
+            }
         );
 
         let port_number = ports.assign_next_downstream_port(1);

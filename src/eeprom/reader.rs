@@ -39,8 +39,8 @@ impl EepromSectionReader {
             let chunk = Self::read_eeprom_raw(slave, start_word).await?;
 
             let category_type =
-                CategoryType::from(u16::from_le_bytes(chunk[0..2].try_into().unwrap()));
-            let len_words = u16::from_le_bytes(chunk[2..4].try_into().unwrap());
+                CategoryType::from(u16::from_le_bytes(fmt::unwrap!(chunk[0..2].try_into())));
+            let len_words = u16::from_le_bytes(fmt::unwrap!(chunk[2..4].try_into()));
 
             // Position after header
             start_word += 2;

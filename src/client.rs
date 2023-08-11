@@ -62,15 +62,15 @@ impl<'sto> Client<'sto> {
     /// Calling this method internally increments the counter, so subequent calls will produce a new
     /// value.
     pub(crate) fn mailbox_counter(&self) -> u8 {
-        self.mailbox_counter
+        fmt::unwrap!(self
+            .mailbox_counter
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
                 if n >= 7 {
                     Some(1)
                 } else {
                     Some(n + 1)
                 }
-            })
-            .unwrap()
+            }))
     }
 
     /// Write zeroes to every slave's memory in chunks.
@@ -98,7 +98,9 @@ impl<'sto> Client<'sto> {
         // Reset slaves to init
         self.bwr(
             RegisterAddress::AlControl,
-            AlControl::reset().pack().unwrap(),
+            fmt::unwrap!(AlControl::reset()
+                .pack()
+                .map_err(crate::error::WrappedPackingError::from)),
         )
         .await?;
 
