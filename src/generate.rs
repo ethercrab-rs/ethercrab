@@ -2,6 +2,7 @@
 //!
 //! Like cookie_factory but much simpler and will quite happily panic.
 
+use crate::fmt;
 use packed_struct::{PackedStructInfo, PackedStructSlice};
 
 /// Write a `u16`, little-endian.
@@ -29,7 +30,9 @@ where
 {
     let (buf, rest) = buf.split_at_mut(T::packed_bits() / 8);
 
-    value.pack_to_slice(buf).unwrap();
+    fmt::unwrap!(value
+        .pack_to_slice(buf)
+        .map_err(crate::error::WrappedPackingError::from));
 
     rest
 }

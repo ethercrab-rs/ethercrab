@@ -57,6 +57,8 @@ embassy-net = { version = "0.1.0", features = [
 [profile.release]
 debug = 2
 opt-level = "z"
+lto = true
+codegen-units = 1
 
 [patch.crates-io]
 embassy-sync = { git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22" }

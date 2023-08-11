@@ -106,12 +106,12 @@ impl Slave {
         let name = slave_ref.eeprom_device_name().await?.unwrap_or_else(|| {
             let mut s = heapless::String::new();
 
-            write!(
+            fmt::unwrap!(write!(
                 s,
                 "manu. {:#010x}, device {:#010x}, serial {:#010x}",
                 identity.vendor_id, identity.product_id, identity.serial
             )
-            .unwrap();
+            .map_err(|_| ()));
 
             s
         });
@@ -312,7 +312,10 @@ where
             .fpwr_raw(
                 self.state.configured_address,
                 write_mailbox.address,
-                request.pack().unwrap().as_ref(),
+                fmt::unwrap!(request
+                    .pack()
+                    .map_err(crate::error::WrappedPackingError::from))
+                .as_ref(),
                 // Need to write entire mailbox to latch it
                 write_mailbox.len,
             )
@@ -720,7 +723,9 @@ impl<'a, S> SlaveRef<'a, S> {
         let response = self
             .write(
                 RegisterAddress::AlControl,
-                AlControl::new(desired_state).pack().unwrap(),
+                fmt::unwrap!(AlControl::new(desired_state)
+                    .pack()
+                    .map_err(crate::error::WrappedPackingError::from)),
                 "AL control",
             )
             .await

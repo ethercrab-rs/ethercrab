@@ -34,7 +34,7 @@ impl<'a> SlaveGroupRef<'a> {
         Self {
             max_pdi_len: MAX_PDI,
             inner: {
-                let inner = unsafe { group.inner.get().as_mut().unwrap() };
+                let inner = unsafe { fmt::unwrap_opt!(group.inner.get().as_mut()) };
 
                 GroupInnerRef {
                     slaves: &mut inner.slaves,

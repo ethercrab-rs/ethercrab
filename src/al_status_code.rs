@@ -1,5 +1,5 @@
+use crate::fmt;
 use crate::pdu_data::PduRead;
-use core::fmt;
 
 /// AL (Application Layer) Status Code.
 ///
@@ -127,14 +127,14 @@ impl PduRead for AlStatusCode {
     type Error = ();
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let data = u16::from_le_bytes(slice.try_into().unwrap());
+        let data = u16::from_le_bytes(fmt::unwrap!(slice.try_into()));
 
         Ok(Self::from(data))
     }
 }
 
-impl fmt::Display for AlStatusCode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for AlStatusCode {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let s = match self {
             AlStatusCode::NoError => "0x0000: No error",
             AlStatusCode::UnspecifiedError => "0x0001: Unspecified error",

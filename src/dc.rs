@@ -157,11 +157,7 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
 
 /// Calculate and assign a slave device's propagation delay, i.e. the time it takes for a packet to
 /// reach it when sent from the master.
-fn configure_slave_offsets(
-    slave: &mut Slave,
-    parents: &[Slave],
-    delay_accum: &mut u32,
-) -> Result<(), Error> {
+fn configure_slave_offsets(slave: &mut Slave, parents: &[Slave], delay_accum: &mut u32) {
     // Just for debug
     {
         let time_p0 = slave.ports.0[0].dc_receive_time;
@@ -199,13 +195,11 @@ fn configure_slave_offsets(
         .and_then(|parent_index| parents.iter().find(|parent| parent.index == parent_index));
 
     if let Some(parent) = parent {
-        let parent_port = parent
-            .ports
-            .port_assigned_to(slave)
-            .expect("Parent assigned port");
+        let parent_port =
+            fmt::unwrap_opt!(parent.ports.port_assigned_to(slave), "Parent assigned port");
 
         // The port the master is connected to on this slave. Must always be entry port.
-        let this_port = slave.ports.entry_port().expect("No entry port lmao");
+        let this_port = slave.ports.entry_port();
 
         fmt::debug!(
             "--> Parent ({:?}) {} port {} assigned to {} port {} (slave is child of parent: {:?})",
@@ -232,7 +226,7 @@ fn configure_slave_offsets(
             Topology::Fork => {
                 if slave.is_child_of(parent) {
                     let children_loop_time =
-                        parent.ports.propagation_time_to(&parent_port).unwrap_or(0);
+                        parent.ports.propagation_time_to(parent_port).unwrap_or(0);
 
                     (children_loop_time - this_prop_time) / 2
                 } else {
@@ -242,7 +236,7 @@ fn configure_slave_offsets(
             Topology::Cross => {
                 if slave.is_child_of(parent) {
                     let children_loop_time =
-                        parent.ports.intermediate_propagation_time_to(&parent_port);
+                        parent.ports.intermediate_propagation_time_to(parent_port);
 
                     (children_loop_time - this_prop_time) / 2
                 } else {
@@ -264,8 +258,6 @@ fn configure_slave_offsets(
 
         slave.propagation_delay = *delay_accum;
     }
-
-    Ok(())
 }
 
 /// Assign parent/child relationships between slave devices, and compute propagation delays for all
@@ -293,19 +285,17 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
         // If this slave has a parent, find it, then assign the parent's next open port to this
         // slave, estabilishing the relationship between them by index.
         if let Some(parent_idx) = slave.parent_index {
-            let parent = parents
-                .iter_mut()
-                .find(|parent| parent.index == parent_idx)
-                .expect("Parent");
+            let parent =
+                fmt::unwrap_opt!(parents.iter_mut().find(|parent| parent.index == parent_idx));
 
-            parent
-                .ports
-                .assign_next_downstream_port(slave.index)
-                .expect("No free ports on parent. Logic error.");
+            fmt::unwrap_opt!(
+                parent.ports.assign_next_downstream_port(slave.index),
+                "no free ports on parent"
+            );
         }
 
         if slave.flags.dc_supported {
-            configure_slave_offsets(slave, parents, &mut delay_accum)?;
+            configure_slave_offsets(slave, parents, &mut delay_accum);
         } else {
             fmt::trace!(
                 "--> Skipping DC config for slave {:#06x}: DC not supported",
@@ -367,7 +357,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
 
             print!("),");
 
-            println!("");
+            println!();
         }
     }
 
@@ -669,7 +659,7 @@ mod tests {
 
         let mut delay_accum = 0u32;
 
-        configure_slave_offsets(&mut slave, &mut parents, &mut delay_accum).expect("bad config");
+        configure_slave_offsets(&mut slave, &mut parents, &mut delay_accum);
 
         assert_eq!(slave.dc_receive_time, 0i64);
     }
