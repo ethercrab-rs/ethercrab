@@ -38,6 +38,7 @@ use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
+use self::types::Mailbox;
 pub use self::types::SlaveIdentity;
 
 /// Slave device metadata. See [`SlaveRef`] for richer behaviour.
@@ -228,16 +229,8 @@ where
         self.state.configured_address
     }
 
-    /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
-    /// and return as a slice.
-    async fn send_coe_service<H>(
-        &self,
-        request: H,
-    ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
-    where
-        H: CoeServiceRequest + Debug,
-        <H as PackedStruct>::ByteArray: AsRef<[u8]>,
-    {
+    /// Get CoE read/write mailboxes.
+    async fn coe_mailboxes(&self) -> Result<(Mailbox, Mailbox), Error> {
         let write_mailbox = self
             .state
             .config
@@ -261,8 +254,6 @@ where
 
         let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
         let mailbox_write_sm = RegisterAddress::sync_manager(write_mailbox.sync_manager);
-
-        let counter = request.counter();
 
         // Ensure slave OUT (master IN) mailbox is empty
         {
@@ -307,20 +298,12 @@ where
             e
         })?;
 
-        // Send data to slave IN mailbox
-        self.client
-            .fpwr_raw(
-                self.state.configured_address,
-                write_mailbox.address,
-                fmt::unwrap!(request
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from))
-                .as_ref(),
-                // Need to write entire mailbox to latch it
-                write_mailbox.len,
-            )
-            .await?
-            .wkc(1, "SDO upload request")?;
+        Ok((read_mailbox, write_mailbox))
+    }
+
+    /// Wait for a mailbox response
+    async fn coe_response(&self, read_mailbox: &Mailbox) -> Result<RxFrameDataBuf<'_>, Error> {
+        let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
 
         // Wait for slave OUT mailbox to be ready
         crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
@@ -348,7 +331,7 @@ where
         })?;
 
         // Read acknowledgement from slave OUT mailbox
-        let mut response = self
+        let response = self
             .client
             .fprd_raw(
                 self.state.configured_address,
@@ -359,6 +342,40 @@ where
             .wkc(1, "read OUT mailbox after write")?;
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
+
+        Ok(response)
+    }
+
+    /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
+    /// and return as a slice.
+    async fn send_coe_service<H>(
+        &self,
+        request: H,
+    ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
+    where
+        H: CoeServiceRequest + Debug,
+        <H as PackedStruct>::ByteArray: AsRef<[u8]>,
+    {
+        let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
+
+        let counter = request.counter();
+
+        // Send data to slave IN mailbox
+        self.client
+            .fpwr_raw(
+                self.state.configured_address,
+                write_mailbox.address,
+                fmt::unwrap!(request
+                    .pack()
+                    .map_err(crate::error::WrappedPackingError::from))
+                .as_ref(),
+                // Need to write entire mailbox to latch it
+                write_mailbox.len,
+            )
+            .await?
+            .wkc(1, "SDO upload request")?;
+
+        let mut response = self.coe_response(&read_mailbox).await?;
 
         let headers_len = H::Response::packed_bits() / 8;
 
@@ -377,14 +394,7 @@ where
         })?;
 
         if headers.is_aborted() {
-            let code = data[0..4]
-                .try_into()
-                .map(|arr| AbortCode::from(u32::from_le_bytes(arr)))
-                .map_err(|_| {
-                    fmt::error!("Not enough data to decode abort code u32");
-
-                    Error::Internal
-                })?;
+            let code = AbortCode::from(u32::from_le_bytes(fmt::unwrap!(data[0..4].try_into())));
 
             fmt::error!(
                 "Mailbox error for slave {:#06x} (supports complete access: {}): {}",
