@@ -98,7 +98,9 @@ impl<'sto> Client<'sto> {
         // Reset slaves to init
         self.bwr(
             RegisterAddress::AlControl,
-            AlControl::reset().pack().unwrap(),
+            fmt::unwrap!(AlControl::reset()
+                .pack()
+                .map_err(crate::error::WrappedPackingError::from)),
         )
         .await?;
 

@@ -4,10 +4,10 @@ use crate::{
     all_consumed,
     base_data_types::PrimitiveDataType,
     error::{EepromError, Error, WrappedPackingError},
+    fmt,
     pdu_data::PduRead,
     sync_manager_channel::{self},
 };
-use core::fmt;
 use nom::{
     combinator::{map, map_opt, map_res},
     number::complete::{le_i16, le_u16, le_u8},
@@ -88,7 +88,7 @@ impl SiiControl {
     }
 
     pub fn as_array(&self) -> [u8; 2] {
-        self.pack().unwrap()
+        fmt::unwrap!(self.pack().map_err(crate::error::WrappedPackingError::from))
     }
 }
 
@@ -133,7 +133,7 @@ pub struct SiiRequest {
     address: u16,
 }
 
-impl fmt::Debug for SiiRequest {
+impl core::fmt::Debug for SiiRequest {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SiiRequest")
             .field("control", &self.control)
@@ -153,7 +153,10 @@ impl SiiRequest {
     pub fn as_array(&self) -> [u8; 6] {
         let mut buf = [0u8; 6];
 
-        self.control.pack_to_slice(&mut buf[0..2]).unwrap();
+        fmt::unwrap!(self
+            .control
+            .pack_to_slice(&mut buf[0..2])
+            .map_err(crate::error::WrappedPackingError::from));
 
         buf[2..4].copy_from_slice(&self.address.to_le_bytes());
         buf[4..6].copy_from_slice(&[0, 0]);
@@ -301,7 +304,7 @@ impl FromEeprom for FmmuEx {
     const STORAGE_SIZE: usize = 3;
 
     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, _before) = le_u8(i)?;
+        let (i, _becore) = le_u8(i)?;
         let (i, sync_manager) = le_u8(i)?;
         let (i, _after) = le_u8(i)?;
 
@@ -452,7 +455,7 @@ pub struct SyncManager {
     pub(crate) usage_type: SyncManagerType,
 }
 
-impl fmt::Debug for SyncManager {
+impl core::fmt::Debug for SyncManager {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SyncManager")
             .field("start_addr", &format_args!("{:#06x}", self.start_addr))
@@ -547,7 +550,7 @@ pub struct Pdo {
     pub(crate) entries: heapless::Vec<PdoEntry, 16>,
 }
 
-impl fmt::Debug for Pdo {
+impl core::fmt::Debug for Pdo {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Pdo")
             .field("index", &format_args!("{:#06x}", self.index))
@@ -612,7 +615,7 @@ pub struct PdoEntry {
     flags: u16,
 }
 
-impl fmt::Debug for PdoEntry {
+impl core::fmt::Debug for PdoEntry {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("PdoEntry")
             .field("index", &format_args!("{:#06x}", self.index))
@@ -773,7 +776,7 @@ impl FromEeprom for DefaultMailbox {
     }
 }
 
-impl fmt::Debug for DefaultMailbox {
+impl core::fmt::Debug for DefaultMailbox {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("MailboxConfig")
             .field(

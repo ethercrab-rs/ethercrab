@@ -241,7 +241,9 @@ where
 
         self.write(
             RegisterAddress::sync_manager(sync_manager_index),
-            sm_config.pack().unwrap(),
+            fmt::unwrap!(sm_config
+                .pack()
+                .map_err(crate::error::WrappedPackingError::from)),
             "SM config",
         )
         .await?;
@@ -412,7 +414,7 @@ where
                     // data fields.
                     let parts = mapping.to_be_bytes();
 
-                    let index = u16::from_be_bytes(parts[0..=1].try_into().unwrap());
+                    let index = u16::from_be_bytes(fmt::unwrap!(parts[0..=1].try_into()));
                     let sub_index = parts[2];
                     let mapping_bit_len = parts[3];
 
@@ -503,7 +505,9 @@ where
 
         self.write(
             RegisterAddress::fmmu(fmmu_index as u8),
-            fmmu_config.pack().unwrap(),
+            fmt::unwrap!(fmmu_config
+                .pack()
+                .map_err(crate::error::WrappedPackingError::from)),
             "PDI FMMU",
         )
         .await?;

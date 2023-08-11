@@ -211,7 +211,7 @@ macro_rules! unwrap_opt_ {
         match $arg {
             ::core::option::Option::Some(t) => t,
             ::core::option::Option::None => {
-                ::core::panic!("unwrap of `{}` failed: {:?}", ::core::stringify!($arg), e);
+                ::core::panic!("unwrap of `{}` failed", ::core::stringify!($arg));
             }
         }
     };

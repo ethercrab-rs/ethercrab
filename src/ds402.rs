@@ -161,7 +161,7 @@ impl<'a> Ds402<'a> {
 
     /// Get the DS402 status word.
     pub fn status_word(&self) -> StatusWord {
-        let status = u16::from_le_bytes(self.slave.inputs_raw()[0..=1].try_into().unwrap());
+        let status = u16::from_le_bytes(fmt::unwrap!(self.slave.inputs_raw()[0..=1].try_into()));
 
         StatusWord::from_bits_truncate(status)
     }

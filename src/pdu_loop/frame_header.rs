@@ -7,25 +7,14 @@ use nom::{
     IResult,
 };
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
 #[repr(u8)]
 enum ProtocolType {
     DlPdu = 0x01u8,
     NetworkVariables = 0x04,
     Mailbox = 0x05,
-}
-
-impl TryFrom<u8> for ProtocolType {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0x01 => Ok(Self::DlPdu),
-            0x04 => Ok(Self::NetworkVariables),
-            0x05 => Ok(Self::Mailbox),
-            _ => Err(()),
-        }
-    }
+    #[num_enum(catch_all)]
+    Unknown(u8),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -35,7 +24,7 @@ pub struct FrameHeader(pub u16);
 impl FrameHeader {
     /// Create a new PDU frame header.
     pub fn pdu(len: u16) -> Self {
-        assert!(
+        debug_assert!(
             len <= LEN_MASK,
             "Frame length may not exceed {} bytes",
             LEN_MASK
@@ -43,7 +32,7 @@ impl FrameHeader {
 
         let len = len & LEN_MASK;
 
-        let protocol_type = (ProtocolType::DlPdu as u16) << 12;
+        let protocol_type = u16::from(u8::from(ProtocolType::DlPdu)) << 12;
 
         Self(len | protocol_type)
     }
@@ -66,7 +55,7 @@ impl FrameHeader {
     fn protocol_type(&self) -> ProtocolType {
         let raw = (self.0 >> 12) as u8 & 0b1111;
 
-        raw.try_into().unwrap()
+        raw.into()
     }
 }
 
