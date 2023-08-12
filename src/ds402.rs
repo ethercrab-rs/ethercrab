@@ -107,15 +107,15 @@ impl<'a> StateMachineContext for Ds402<'a> {
 impl core::fmt::Debug for States {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Fault => write!(f, "Fault"),
-            Self::FaultReactionActive => write!(f, "FaultReactionActive"),
-            Self::NotReadyToSwitchOn => write!(f, "NotReadyToSwitchOn"),
-            Self::OpEnable => write!(f, "OpEnable"),
-            Self::QuickStopActive => write!(f, "QuickStopActive"),
-            Self::ReadyToSwitchOn => write!(f, "ReadyToSwitchOn"),
-            Self::ResettingFault => write!(f, "ResettingFault"),
-            Self::SwitchOnDisabled => write!(f, "SwitchOnDisabled"),
-            Self::SwitchedOn => write!(f, "SwitchedOn"),
+            Self::Fault => f.write_str("Fault"),
+            Self::FaultReactionActive => f.write_str("FaultReactionActive"),
+            Self::NotReadyToSwitchOn => f.write_str("NotReadyToSwitchOn"),
+            Self::OpEnable => f.write_str("OpEnable"),
+            Self::QuickStopActive => f.write_str("QuickStopActive"),
+            Self::ReadyToSwitchOn => f.write_str("ReadyToSwitchOn"),
+            Self::ResettingFault => f.write_str("ResettingFault"),
+            Self::SwitchOnDisabled => f.write_str("SwitchOnDisabled"),
+            Self::SwitchedOn => f.write_str("SwitchedOn"),
         }
     }
 }
