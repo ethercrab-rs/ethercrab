@@ -2,7 +2,6 @@ use crate::{
     error::WrappedPackingError,
     pdu_data::{PduData, PduRead},
 };
-use core::fmt;
 use packed_struct::{prelude::*, PackingError};
 
 /// Slave device register address abstraction.
@@ -309,8 +308,8 @@ pub struct SupportFlags {
     pub special_fmmu: bool,
 }
 
-impl fmt::Display for SupportFlags {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for SupportFlags {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         // Just print DC for now
         f.write_str("DC: ")?;
 

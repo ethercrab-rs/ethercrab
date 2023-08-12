@@ -1,4 +1,4 @@
-use core::{fmt, ops::Range};
+use core::ops::Range;
 
 /// An accumulator that stores the bit and byte offsets in the PDI so slave IO data can be mapped
 /// to/from the PDI using FMMUs.
@@ -87,7 +87,7 @@ impl PdiSegment {
     }
 }
 
-impl fmt::Display for PdiSegment {
+impl core::fmt::Display for PdiSegment {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.bit_len > 0 {
             write!(
