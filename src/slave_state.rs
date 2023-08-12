@@ -1,4 +1,3 @@
-use core::fmt;
 use packed_struct::prelude::*;
 
 /// AL (application layer) device state.
@@ -35,8 +34,8 @@ pub enum SlaveState {
     Unknown = 0xff,
 }
 
-impl fmt::Display for SlaveState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for SlaveState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let s = match self {
             SlaveState::None => "None",
             SlaveState::Init => "Init",

@@ -88,7 +88,7 @@ impl<'sto> SendableFrame<'sto> {
 
         let buf = le_u16(header.0, buf);
 
-        let buf = le_u8(frame.command.code() as u8, buf);
+        let buf = le_u8(frame.command.code(), buf);
         let buf = le_u8(frame.index, buf);
 
         // Write address and register data

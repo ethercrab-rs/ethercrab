@@ -1,5 +1,3 @@
-use core::fmt;
-
 /// Defined in ETG1000.6 Table 41 – SDO Abort Codes
 #[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -84,8 +82,8 @@ pub enum AbortCode {
     Unknown(u32),
 }
 
-impl fmt::Display for AbortCode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for AbortCode {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let num = u32::from(*self);
 
         f.write_fmt(format_args!("{:#010x}", num))?;

@@ -1,6 +1,6 @@
 use super::storage::PduStorageRef;
 use crate::{
-    command::CommandCode,
+    command::Command,
     error::{Error, PduError, PduValidationError},
     fmt,
     pdu_loop::{frame_header::FrameHeader, pdu_flags::PduFlags},
@@ -47,7 +47,7 @@ impl<'sto> PduRx<'sto> {
         // Only take as much as the header says we should
         let (_rest, i) = take(header.payload_len())(i)?;
 
-        let (i, command_code) = map_res(u8, CommandCode::try_from)(i)?;
+        let (i, command_code) = u8(i)?;
         let (i, index) = u8(i)?;
 
         let mut frame = self
@@ -64,7 +64,7 @@ impl<'sto> PduRx<'sto> {
             )));
         }
 
-        let (i, command) = command_code.parse_address(i)?;
+        let (i, command) = Command::parse(command_code, i)?;
 
         // Check for weird bugs where a slave might return a different command than the one sent for
         // this PDU index.

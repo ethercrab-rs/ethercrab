@@ -93,7 +93,7 @@ pub trait CoeServiceResponse: PackedStruct + PackedStructInfo {
 }
 
 /// Must be implemented for any type used to send a CoE service.
-pub trait CoeServiceRequest: PackedStruct + Display {
+pub trait CoeServiceRequest: PackedStruct {
     type Response: CoeServiceResponse;
 
     /// Get the auto increment counter value for this request.
