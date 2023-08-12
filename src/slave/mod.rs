@@ -676,7 +676,10 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: PduRead,
     {
-        self.read_ignore_wkc(register.into()).await?.wkc(1, context)
+        self.client
+            .fprd(self.configured_address, register)
+            .await?
+            .wkc(1, context)
     }
 
     /// A wrapper around an FPWR service to this slave's configured address.
@@ -689,7 +692,8 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: PduData,
     {
-        self.write_ignore_wkc(register, value)
+        self.client
+            .fpwr(self.configured_address, register, value)
             .await?
             .wkc(1, context)
     }
