@@ -36,7 +36,16 @@ macro_rules! impl_pdudata {
 
         impl PduData for $ty {
             fn as_slice(&self) -> &[u8] {
-                safe_transmute::to_bytes::transmute_one_to_bytes(self)
+                unsafe {
+                    #[allow(trivial_casts)]
+                    core::slice::from_raw_parts(
+                        self as *const _ as *const u8,
+                        core::mem::size_of::<$ty>(),
+                    )
+                }
+
+                // Above is equivalent to the following, but without the dependency
+                // safe_transmute::to_bytes::transmute_one_to_bytes(self)
             }
         }
     };
