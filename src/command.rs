@@ -1,6 +1,17 @@
-use crate::generate::le_u16;
-use core::fmt;
-use nom::{combinator::map, error::ParseError, sequence::pair, IResult};
+use crate::{fmt, generate::le_u16};
+use nom::{combinator::map, sequence::pair, IResult};
+
+const NOP: u8 = 0x00;
+const APRD: u8 = 0x01;
+const FPRD: u8 = 0x04;
+const BRD: u8 = 0x07;
+const LRD: u8 = 0x0A;
+const BWR: u8 = 0x08;
+const APWR: u8 = 0x02;
+const FPWR: u8 = 0x05;
+const FRMW: u8 = 0x0E;
+const LWR: u8 = 0x0B;
+const LRW: u8 = 0x0c;
 
 /// PDU command.
 #[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
@@ -85,8 +96,8 @@ pub enum Command {
     },
 }
 
-impl fmt::Display for Command {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for Command {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Command::Nop => write!(f, "NOP"),
             Command::Aprd { address, register } => {
@@ -119,25 +130,25 @@ impl fmt::Display for Command {
 
 impl Command {
     /// Get just the command code for a command.
-    pub const fn code(&self) -> CommandCode {
+    pub const fn code(&self) -> u8 {
         match self {
-            Self::Nop => CommandCode::Nop,
+            Self::Nop => NOP,
 
             // Reads
-            Self::Aprd { .. } => CommandCode::Aprd,
-            Self::Fprd { .. } => CommandCode::Fprd,
-            Self::Brd { .. } => CommandCode::Brd,
-            Self::Lrd { .. } => CommandCode::Lrd,
+            Self::Aprd { .. } => APRD,
+            Self::Fprd { .. } => FPRD,
+            Self::Brd { .. } => BRD,
+            Self::Lrd { .. } => LRD,
 
             // Writes
-            Self::Bwr { .. } => CommandCode::Bwr,
-            Self::Apwr { .. } => CommandCode::Apwr,
-            Self::Fpwr { .. } => CommandCode::Fpwr,
-            Self::Lwr { .. } => CommandCode::Lwr,
-            Self::Frmw { .. } => CommandCode::Frmw,
+            Self::Bwr { .. } => BWR,
+            Self::Apwr { .. } => APWR,
+            Self::Fpwr { .. } => FPWR,
+            Self::Frmw { .. } => FRMW,
+            Self::Lwr { .. } => LWR,
 
             // Read/writes
-            Self::Lrw { .. } => CommandCode::Lrw,
+            Self::Lrw { .. } => LRW,
         }
     }
 
@@ -169,74 +180,56 @@ impl Command {
     }
 }
 
-/// Broadcast or configured station addressing.
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, num_enum::TryFromPrimitive)]
-#[repr(u8)]
-pub enum CommandCode {
-    #[default]
-    Nop = 0x00,
-
-    // Reads
-    Aprd = 0x01,
-    Fprd = 0x04,
-    Brd = 0x07,
-    Lrd = 0x0A,
-
-    // Writes
-    Bwr = 0x08,
-    Apwr = 0x02,
-    Fpwr = 0x05,
-    Frmw = 0x0E,
-    Lwr = 0x0B,
-
-    // Read/writes
-    Lrw = 0x0c,
-}
-
-impl CommandCode {
-    /// Parse an address, producing a [`Command`].
-    pub fn parse_address<'a, E>(self, i: &'a [u8]) -> IResult<&'a [u8], Command, E>
-    where
-        E: ParseError<&'a [u8]>,
-    {
+impl Command {
+    /// Parse a command from a code and address data (e.g. `(u16, u16)` or `u32`), producing a [`Command`].
+    pub fn parse(command_code: u8, i: &[u8]) -> IResult<&[u8], Self> {
         use nom::number::complete::{le_u16, le_u32};
 
-        match self {
-            Self::Nop => Ok((i, Command::Nop)),
+        match command_code {
+            NOP => Ok((i, Command::Nop)),
 
-            Self::Aprd => map(pair(le_u16, le_u16), |(address, register)| Command::Aprd {
+            APRD => map(pair(le_u16, le_u16), |(address, register)| Command::Aprd {
                 address,
                 register,
             })(i),
-            Self::Fprd => map(pair(le_u16, le_u16), |(address, register)| Command::Fprd {
+            FPRD => map(pair(le_u16, le_u16), |(address, register)| Command::Fprd {
                 address,
                 register,
             })(i),
-            Self::Brd => map(pair(le_u16, le_u16), |(address, register)| Command::Brd {
+            BRD => map(pair(le_u16, le_u16), |(address, register)| Command::Brd {
                 address,
                 register,
             })(i),
-            Self::Lrd => map(le_u32, |address| Command::Lrd { address })(i),
+            LRD => map(le_u32, |address| Command::Lrd { address })(i),
 
-            Self::Bwr => map(pair(le_u16, le_u16), |(address, register)| Command::Bwr {
+            BWR => map(pair(le_u16, le_u16), |(address, register)| Command::Bwr {
                 address,
                 register,
             })(i),
-            Self::Apwr => map(pair(le_u16, le_u16), |(address, register)| Command::Apwr {
+            APWR => map(pair(le_u16, le_u16), |(address, register)| Command::Apwr {
                 address,
                 register,
             })(i),
-            Self::Fpwr => map(pair(le_u16, le_u16), |(address, register)| Command::Fpwr {
+            FPWR => map(pair(le_u16, le_u16), |(address, register)| Command::Fpwr {
                 address,
                 register,
             })(i),
-            Self::Frmw => map(pair(le_u16, le_u16), |(address, register)| Command::Frmw {
+            FRMW => map(pair(le_u16, le_u16), |(address, register)| Command::Frmw {
                 address,
                 register,
             })(i),
-            Self::Lwr => map(le_u32, |address| Command::Lwr { address })(i),
+            LWR => map(le_u32, |address| Command::Lwr { address })(i),
 
-            Self::Lrw => map(le_u32, |address| Command::Lrw { address })(i),
+            LRW => map(le_u32, |address| Command::Lrw { address })(i),
+
+            other => {
+                fmt::error!("Invalid command code {:#02x}", other);
+
+                Err(nom::Err::Failure(nom::error::Error {
+                    input: i,
+                    code: nom::error::ErrorKind::Tag,
+                }))
+            }
         }
     }
 }
