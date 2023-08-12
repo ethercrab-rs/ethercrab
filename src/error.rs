@@ -105,8 +105,8 @@ impl core::fmt::Display for Error {
                 received,
                 context.unwrap_or("[no context provided]")
             ),
-            Error::Borrow => write!(f, ""),
-            Error::Timeout => write!(f, ""),
+            Error::Borrow => f.write_str("already borrowed"),
+            Error::Timeout => f.write_str("timeout"),
             Error::Eeprom(e) => write!(f, "eeprom: {}", e),
             Error::Capacity(item) => write!(f, "not enough capacity for {:?}", item),
             Error::StringTooLong {
@@ -118,8 +118,8 @@ impl core::fmt::Display for Error {
                 string_length, max_length
             ),
             Error::Mailbox(e) => write!(f, "mailbox: {e}"),
-            Error::SendFrame => write!(f, "failed to send EtherCAT frame"),
-            Error::ReceiveFrame => write!(f, "failed to receive an EtherCAT frame"),
+            Error::SendFrame => f.write_str("failed to send EtherCAT frame"),
+            Error::ReceiveFrame => f.write_str("failed to receive an EtherCAT frame"),
             Error::PartialSend { len, sent } => {
                 write!(f, "frame of {} bytes only had {} bytes sent", len, sent)
             }
@@ -135,10 +135,10 @@ impl core::fmt::Display for Error {
             Error::NotFound { item, index } => {
                 write!(f, "item kind {:?} not found (index: {:?})", item, index)
             }
-            Error::Internal => write!(f, "internal error"),
-            Error::Topology => write!(f, "topology"),
-            Error::StateTransition => write!(f, "a slave failed to transition to a new state"),
-            Error::UnknownSlave => write!(f, "unknown slave device"),
+            Error::Internal => f.write_str("internal error"),
+            Error::Topology => f.write_str("topology"),
+            Error::StateTransition => f.write_str("a slave failed to transition to a new state"),
+            Error::UnknownSlave => f.write_str("unknown slave device"),
             Error::InvalidState {
                 expected,
                 actual,
@@ -209,14 +209,14 @@ pub enum PduError {
 impl core::fmt::Display for PduError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            PduError::Decode => write!(f, "failed to decode raw PDU data into type"),
+            PduError::Decode => f.write_str("failed to decode raw PDU data into type"),
             PduError::Ethernet(e) => write!(f, "network: {}", e),
-            PduError::TooLong => write!(f, "data is too long to fit in given buffer"),
+            PduError::TooLong => f.write_str("data is too long to fit in given buffer"),
             PduError::CreateFrame(e) => write!(f, "failed to create frame: {}", e),
             PduError::InvalidIndex(index) => write!(f, "invalid PDU index {}", index),
             PduError::Validation(e) => write!(f, "received PDU validation failed: {}", e),
-            PduError::InvalidFrameState => write!(f, "invalid PDU frame state"),
-            PduError::SwapState => write!(f, "failed to swap frame state"),
+            PduError::InvalidFrameState => f.write_str("invalid PDU frame state"),
+            PduError::SwapState => f.write_str("failed to swap frame state"),
         }
     }
 }
@@ -265,7 +265,7 @@ impl core::fmt::Display for MailboxError {
                 "{:#06x}:{} returned data is too long",
                 address, sub_index
             ),
-            MailboxError::NoMailbox => write!(f, "device has no mailbox"),
+            MailboxError::NoMailbox => f.write_str("device has no mailbox"),
             MailboxError::SdoResponseInvalid { address, sub_index } => write!(
                 f,
                 "{:#06x}:{} invalid response from device",
@@ -323,7 +323,7 @@ impl core::fmt::Display for VisibleStringError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             VisibleStringError::Decode(e) => write!(f, "failed to decode string: {}", e),
-            VisibleStringError::TooLong => write!(f, "string is too long"),
+            VisibleStringError::TooLong => f.write_str("string is too long"),
         }
     }
 }

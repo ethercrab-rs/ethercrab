@@ -4,7 +4,7 @@ use crate::pdu_data::PduRead;
 /// AL (Application Layer) Status Code.
 ///
 /// Defined in ETG1000.6 Table 11.
-#[derive(Debug, Default, Copy, Clone, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
+#[derive(Debug, Copy, Clone, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum AlStatusCode {
@@ -117,8 +117,8 @@ pub enum AlStatusCode {
     // NOTE: Other codes < 0x8000 are reserved.
     // NOTE: Codes 0x8000 - 0xffff are vendor specific.
     /// Unknown status code.
-    #[default]
-    Unknown,
+    #[num_enum(catch_all)]
+    Unknown(u16),
 }
 
 impl PduRead for AlStatusCode {
@@ -135,67 +135,66 @@ impl PduRead for AlStatusCode {
 
 impl core::fmt::Display for AlStatusCode {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let num = u16::from(*self);
+
+        f.write_fmt(format_args!("{:#06x}", num))?;
+        f.write_str(": ")?;
+
         let s = match self {
-            AlStatusCode::NoError => "0x0000: No error",
-            AlStatusCode::UnspecifiedError => "0x0001: Unspecified error",
-            AlStatusCode::NoMemory => "0x0002: No Memory",
-            AlStatusCode::InvalidDeviceSetup => "0x0003: Invalid Device Setup",
-            AlStatusCode::CompatibilityReserved => "0x0005: Reserved due to compatibility reasons",
-            AlStatusCode::InvalidRequestedStateChange => "0x0011: Invalid requested state change",
-            AlStatusCode::UnknownRequestedState => "0x0012: Unknown requested state",
-            AlStatusCode::BootstrapNotSupported => "0x0013: Bootstrap not supported",
-            AlStatusCode::NoValidFirmware => "0x0014: No valid firmware",
-            AlStatusCode::InvalidMailboxConfiguration => "0x0015: Invalid mailbox configuration",
-            AlStatusCode::InvalidMailboxConfiguration2 => "0x0016: Invalid mailbox configuration",
-            AlStatusCode::InvalidSyncManagerConfiguration => {
-                "0x0017: Invalid sync manager configuration"
-            }
-            AlStatusCode::NoValidInputsAvailable => "0x0018: No valid inputs available",
-            AlStatusCode::NoValidOutputs => "0x0019: No valid outputs",
-            AlStatusCode::SynchronizationError => "0x001A: Synchronization error",
-            AlStatusCode::SyncManagerWatchdog => "0x001B: Sync manager watchdog",
-            AlStatusCode::InvalidSyncManagerTypes => "0x001C: Invalid Sync Manager Types",
-            AlStatusCode::InvalidOutputConfiguration => "0x001D: Invalid Output Configuration",
-            AlStatusCode::InvalidInputConfiguration => "0x001E: Invalid Input Configuration",
-            AlStatusCode::InvalidWatchdogConfiguration => "0x001F: Invalid Watchdog Configuration",
-            AlStatusCode::SlaveNeedsColdStart => "0x0020: Slave needs cold start",
-            AlStatusCode::SlaveNeedsInit => "0x0021: Slave needs INIT",
-            AlStatusCode::SlaveNeedsPreop => "0x0022: Slave needs PREOP",
-            AlStatusCode::SlaveNeedsSafeop => "0x0023: Slave needs SAFEOP",
-            AlStatusCode::InvalidInputMapping => "0x0024: Invalid Input Mapping",
-            AlStatusCode::InvalidOutputMapping => "0x0025: Invalid Output Mapping",
-            AlStatusCode::InconsistentSettings => "0x0026: Inconsistent Settings",
-            AlStatusCode::FreeRunNotSupported => "0x0027: FreeRun not supported",
-            AlStatusCode::SyncModeNotSupported => "0x0028: SyncMode not supported",
-            AlStatusCode::FreeRunNeeds3BufferMode => "0x0029: FreeRun needs 3 Buffer Mode",
-            AlStatusCode::BackgroundWatchdog => "0x002A: Background Watchdog",
-            AlStatusCode::NoValidInputsAndOutputs => "0x002B: No Valid Inputs and Outputs",
-            AlStatusCode::FatalSyncError => "0x002C: Fatal Sync Error",
-            AlStatusCode::NoSyncError => "0x002D: No Sync Error",
-            AlStatusCode::InvalidDcSyncConfiguration => "0x0030: Invalid DC SYNC Configuration",
-            AlStatusCode::InvalidDcLatchConfiguration => "0x0031: Invalid DC Latch Configuration",
-            AlStatusCode::PllError => "0x0032: PLL Error",
-            AlStatusCode::DcSyncIoError => "0x0033: DC Sync IO Error",
-            AlStatusCode::DcSyncTimeoutError => "0x0034: DC Sync Timeout Error",
-            AlStatusCode::DcInvalidSyncCycleTime => "0x0035: DC Invalid Sync Cycle Time",
-            AlStatusCode::DcSync0CycleTime => "0x0036: DC Sync0 Cycle Time",
-            AlStatusCode::DcSync1CycleTime => "0x0037: DC Sync1 Cycle Time",
-            AlStatusCode::MbxAoe => "0x0041: Mailbox AoE",
-            AlStatusCode::MbxEoe => "0x0042: Mailbox EoE",
-            AlStatusCode::MbxCoe => "0x0043: Mailbox CoE",
-            AlStatusCode::MbxFoe => "0x0044: Mailbox FoE",
-            AlStatusCode::MbxSoe => "0x0045: Mailbox SoE",
-            AlStatusCode::MbxVoe => "0x004F: Mailbox VoE",
-            AlStatusCode::EepromNoAccess => "0x0050: EEPROM no access",
-            AlStatusCode::EepromError => "0x0051: EEPROM Error",
-            AlStatusCode::SlaveRestartedLocally => "0x0060: Slave restarted locally",
-            AlStatusCode::DeviceIdentificationValueUpdated => {
-                "0x0061: Device Identification value updated"
-            }
-            AlStatusCode::ApplicationControllerAvailableI => {
-                "0x00F0: Application controller available"
-            }
-            AlStatusCode::Unknown => "(unknown)",
+            AlStatusCode::NoError => "No error",
+            AlStatusCode::UnspecifiedError => "Unspecified error",
+            AlStatusCode::NoMemory => "No Memory",
+            AlStatusCode::InvalidDeviceSetup => "Invalid Device Setup",
+            AlStatusCode::CompatibilityReserved => "Reserved due to compatibility reasons",
+            AlStatusCode::InvalidRequestedStateChange => "Invalid requested state change",
+            AlStatusCode::UnknownRequestedState => "Unknown requested state",
+            AlStatusCode::BootstrapNotSupported => "Bootstrap not supported",
+            AlStatusCode::NoValidFirmware => "No valid firmware",
+            AlStatusCode::InvalidMailboxConfiguration => "Invalid mailbox configuration",
+            AlStatusCode::InvalidMailboxConfiguration2 => "Invalid mailbox configuration",
+            AlStatusCode::InvalidSyncManagerConfiguration => "Invalid sync manager configuration",
+            AlStatusCode::NoValidInputsAvailable => "No valid inputs available",
+            AlStatusCode::NoValidOutputs => "No valid outputs",
+            AlStatusCode::SynchronizationError => "Synchronization error",
+            AlStatusCode::SyncManagerWatchdog => "Sync manager watchdog",
+            AlStatusCode::InvalidSyncManagerTypes => "Invalid Sync Manager Types",
+            AlStatusCode::InvalidOutputConfiguration => "Invalid Output Configuration",
+            AlStatusCode::InvalidInputConfiguration => "Invalid Input Configuration",
+            AlStatusCode::InvalidWatchdogConfiguration => "Invalid Watchdog Configuration",
+            AlStatusCode::SlaveNeedsColdStart => "Slave needs cold start",
+            AlStatusCode::SlaveNeedsInit => "Slave needs INIT",
+            AlStatusCode::SlaveNeedsPreop => "Slave needs PREOP",
+            AlStatusCode::SlaveNeedsSafeop => "Slave needs SAFEOP",
+            AlStatusCode::InvalidInputMapping => "Invalid Input Mapping",
+            AlStatusCode::InvalidOutputMapping => "Invalid Output Mapping",
+            AlStatusCode::InconsistentSettings => "Inconsistent Settings",
+            AlStatusCode::FreeRunNotSupported => "FreeRun not supported",
+            AlStatusCode::SyncModeNotSupported => "SyncMode not supported",
+            AlStatusCode::FreeRunNeeds3BufferMode => "FreeRun needs 3 Buffer Mode",
+            AlStatusCode::BackgroundWatchdog => "Background Watchdog",
+            AlStatusCode::NoValidInputsAndOutputs => "No Valid Inputs and Outputs",
+            AlStatusCode::FatalSyncError => "Fatal Sync Error",
+            AlStatusCode::NoSyncError => "No Sync Error",
+            AlStatusCode::InvalidDcSyncConfiguration => "Invalid DC SYNC Configuration",
+            AlStatusCode::InvalidDcLatchConfiguration => "Invalid DC Latch Configuration",
+            AlStatusCode::PllError => "PLL Error",
+            AlStatusCode::DcSyncIoError => "DC Sync IO Error",
+            AlStatusCode::DcSyncTimeoutError => "DC Sync Timeout Error",
+            AlStatusCode::DcInvalidSyncCycleTime => "DC Invalid Sync Cycle Time",
+            AlStatusCode::DcSync0CycleTime => "DC Sync0 Cycle Time",
+            AlStatusCode::DcSync1CycleTime => "DC Sync1 Cycle Time",
+            AlStatusCode::MbxAoe => "Mailbox AoE",
+            AlStatusCode::MbxEoe => "Mailbox EoE",
+            AlStatusCode::MbxCoe => "Mailbox CoE",
+            AlStatusCode::MbxFoe => "Mailbox FoE",
+            AlStatusCode::MbxSoe => "Mailbox SoE",
+            AlStatusCode::MbxVoe => "Mailbox VoE",
+            AlStatusCode::EepromNoAccess => "EEPROM no access",
+            AlStatusCode::EepromError => "EEPROM Error",
+            AlStatusCode::SlaveRestartedLocally => "Slave restarted locally",
+            AlStatusCode::DeviceIdentificationValueUpdated => "Device Identification value updated",
+            AlStatusCode::ApplicationControllerAvailableI => "Application controller available",
+            AlStatusCode::Unknown(_) => "(unknown)",
         };
 
         f.write_str(s)
