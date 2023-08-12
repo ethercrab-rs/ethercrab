@@ -441,7 +441,6 @@ where
     ) -> Result<(), Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         let sub_index = sub_index.into();
 
@@ -570,7 +569,6 @@ where
     pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         let sub_index = sub_index.into();
 
@@ -629,7 +627,6 @@ impl<'a, S> SlaveRef<'a, S> {
     pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: Debug,
     {
         self.read_ignore_wkc(register).await?.wkc(1, "raw read")
     }
@@ -641,7 +638,6 @@ impl<'a, S> SlaveRef<'a, S> {
     pub async fn register_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.write_ignore_wkc(register, value)
             .await?
@@ -654,7 +650,6 @@ impl<'a, S> SlaveRef<'a, S> {
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: Debug,
     {
         self.client.fprd(self.configured_address, register).await
     }
@@ -667,7 +662,6 @@ impl<'a, S> SlaveRef<'a, S> {
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.client
             .fpwr(self.configured_address, register, value)
@@ -681,7 +675,6 @@ impl<'a, S> SlaveRef<'a, S> {
     ) -> Result<T, Error>
     where
         T: PduRead,
-        <T as PduRead>::Error: Debug,
     {
         self.read_ignore_wkc(register.into()).await?.wkc(1, context)
     }
@@ -695,7 +688,6 @@ impl<'a, S> SlaveRef<'a, S> {
     ) -> Result<T, Error>
     where
         T: PduData,
-        <T as PduRead>::Error: Debug,
     {
         self.write_ignore_wkc(register, value)
             .await?
