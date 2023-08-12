@@ -178,9 +178,7 @@ impl Command {
             }
         }
     }
-}
 
-impl Command {
     /// Parse a command from a code and address data (e.g. `(u16, u16)` or `u32`), producing a [`Command`].
     pub fn parse(command_code: u8, i: &[u8]) -> IResult<&[u8], Self> {
         use nom::number::complete::{le_u16, le_u32};
