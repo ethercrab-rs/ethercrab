@@ -14,6 +14,7 @@ use crate::{
         abort_code::AbortCode,
         services::{CoeServiceRequest, CoeServiceResponse},
     },
+    command::Command,
     dl_status::DlStatus,
     eeprom::types::SiiOwner,
     error::{Error, MailboxError, PduError},
@@ -263,12 +264,16 @@ where
 
             // If flag is set, read entire mailbox to clear it
             if sm.status.mailbox_full {
-                self.client
-                    .fprd_raw(
-                        self.state.configured_address,
-                        read_mailbox.address,
-                        read_mailbox.len,
-                    )
+                // self.client
+                //     .fprd_raw(
+                //         self.state.configured_address,
+                //         read_mailbox.address,
+                //         read_mailbox.len,
+                //     )
+                //     .await?;
+
+                Command::fprd(self.state.configured_address, read_mailbox.address)
+                    .receive_slice(&self.client, read_mailbox.len)
                     .await?;
             }
         }
@@ -331,13 +336,8 @@ where
         })?;
 
         // Read acknowledgement from slave OUT mailbox
-        let response = self
-            .client
-            .fprd_raw(
-                self.state.configured_address,
-                read_mailbox.address,
-                read_mailbox.len,
-            )
+        let response = Command::fprd(self.state.configured_address, read_mailbox.address)
+            .receive_slice(&self.client, read_mailbox.len)
             .await?
             .wkc(1, "read OUT mailbox after write")?;
 
@@ -361,10 +361,9 @@ where
         let counter = request.counter();
 
         // Send data to slave IN mailbox
-        self.client
-            .fpwr_raw(
-                self.state.configured_address,
-                write_mailbox.address,
+        Command::fpwr(self.state.configured_address, write_mailbox.address)
+            .send_receive_slice_len(
+                &self.client,
                 fmt::unwrap!(request
                     .pack()
                     .map_err(crate::error::WrappedPackingError::from))
@@ -374,6 +373,20 @@ where
             )
             .await?
             .wkc(1, "SDO upload request")?;
+
+        // self.client
+        //     .fpwr_raw(
+        //         self.state.configured_address,
+        //         write_mailbox.address,
+        //         fmt::unwrap!(request
+        //             .pack()
+        //             .map_err(crate::error::WrappedPackingError::from))
+        //         .as_ref(),
+        //         // Need to write entire mailbox to latch it
+        //         write_mailbox.len,
+        //     )
+        //     .await?
+        //     .wkc(1, "SDO upload request")?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
 
@@ -628,7 +641,9 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: PduRead,
     {
-        self.read_ignore_wkc(register).await?.wkc(1, "raw read")
+        self.read_ignore_wkc(register.into())
+            .await?
+            .wkc(1, "raw read")
     }
 
     /// Write a register.
@@ -639,19 +654,18 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: PduData,
     {
-        self.write_ignore_wkc(register, value)
+        self.write_ignore_wkc(register.into(), value)
             .await?
             .wkc(1, "raw write")
     }
 
-    pub(crate) async fn read_ignore_wkc<T>(
-        &self,
-        register: impl Into<u16>,
-    ) -> Result<PduResponse<T>, Error>
+    pub(crate) async fn read_ignore_wkc<T>(&self, register: u16) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
     {
-        self.client.fprd(self.configured_address, register).await
+        Command::fprd(self.configured_address, register)
+            .receive(&self.client)
+            .await
     }
 
     /// A wrapper around an FPWR service to this slave's configured address.
@@ -663,8 +677,8 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: PduData,
     {
-        self.client
-            .fpwr(self.configured_address, register, value)
+        Command::fpwr(self.configured_address, register.into())
+            .send_receive(&self.client, value)
             .await
     }
 
@@ -676,8 +690,8 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: PduRead,
     {
-        self.client
-            .fprd(self.configured_address, register)
+        Command::fprd(self.configured_address, register.into())
+            .receive(&self.client)
             .await?
             .wkc(1, context)
     }
@@ -692,8 +706,8 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: PduData,
     {
-        self.client
-            .fpwr(self.configured_address, register, value)
+        Command::fpwr(self.configured_address, register.into())
+            .send_receive(&self.client, value)
             .await?
             .wkc(1, context)
     }
@@ -702,7 +716,7 @@ impl<'a, S> SlaveRef<'a, S> {
         crate::timer_factory::timeout(self.client.timeouts.state_transition, async {
             loop {
                 let (status, _working_counter) = self
-                    .read_ignore_wkc::<AlControl>(RegisterAddress::AlStatus)
+                    .read_ignore_wkc::<AlControl>(RegisterAddress::AlStatus.into())
                     .await?;
 
                 if status.state == desired_state {

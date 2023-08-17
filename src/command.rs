@@ -73,16 +73,42 @@ impl Writes {
         client.write_service_inner(self, value).await
     }
 
+    /// Send a slice but override the length parameter
+    pub async fn send_receive_slice_len<'client, 'data>(
+        self,
+        client: &'client Client<'client>,
+        value: &'data [u8],
+        len: u16,
+    ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
+        client.write_service_len(self, value, len).await
+    }
+
     /// Send a value.
     pub async fn send_receive<'client, 'data, T>(
         self,
         client: &'client Client<'client>,
         value: T,
-    ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error>
+    ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
     {
-        client.write_service_inner(self, value.as_slice()).await
+        client
+            .write_service_inner(self, value.as_slice())
+            .await
+            .and_then(|(data, working_counter)| {
+                let res = T::try_from_slice(&*data).map_err(|e| {
+                    fmt::error!(
+                        "PDU data decode: {:?}, T: {} data {:?}",
+                        e,
+                        type_name::<T>(),
+                        data
+                    );
+
+                    PduError::Decode
+                })?;
+
+                Ok((res, working_counter))
+            })
     }
 
     pub async fn send_receive_slice_mut<'client, 'buf>(
@@ -270,6 +296,11 @@ impl Command {
         Reads::Fprd { address, register }
     }
 
+    /// FPWR.
+    pub fn fpwr(address: u16, register: u16) -> Writes {
+        Writes::Fpwr { address, register }
+    }
+
     /// APWR.
     pub fn apwr(address: u16, register: u16) -> Writes {
         Writes::Apwr { address, register }
@@ -286,6 +317,11 @@ impl Command {
     /// Logical Read Write (LRD), used mainly for sending and receiving PDI.
     pub fn lrw(address: u32) -> Writes {
         Writes::Lrw { address }
+    }
+
+    /// Logical Write (LWR).
+    pub fn lwr(address: u32) -> Writes {
+        Writes::Lwr { address }
     }
 
     /// Get just the command code for a command.

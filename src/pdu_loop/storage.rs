@@ -224,13 +224,7 @@ mod tests {
         let s = storage.as_ref();
 
         let mut frame = s
-            .alloc_frame(
-                Command::Brd {
-                    address: 0x1234,
-                    register: 0x5678,
-                },
-                4,
-            )
+            .alloc_frame(Command::Write(Command::fpwr(0x1234, 0x5678)), 4)
             .unwrap();
 
         frame.buf_mut().copy_from_slice(&[0xaa, 0xbb, 0xcc, 0xdd]);
@@ -239,13 +233,7 @@ mod tests {
         unsafe { FrameElement::set_state(frame.inner.frame, FrameState::None) };
 
         let mut frame = s
-            .alloc_frame(
-                Command::Brd {
-                    address: 0x1234,
-                    register: 0x5678,
-                },
-                8,
-            )
+            .alloc_frame(Command::Write(Command::fpwr(0x1234, 0x5678)), 8)
             .unwrap();
 
         assert_eq!(frame.buf_mut(), &[0u8; 8]);
@@ -261,11 +249,13 @@ mod tests {
         let s = storage.as_ref();
 
         for _ in 0..NUM_FRAMES {
-            assert!(s.alloc_frame(Command::Lwr { address: 0x1234 }, 128).is_ok());
+            assert!(s
+                .alloc_frame(Command::Write(Command::lwr(0x1234)), 128)
+                .is_ok());
         }
 
         assert!(s
-            .alloc_frame(Command::Lwr { address: 0x1234 }, 128)
+            .alloc_frame(Command::Write(Command::lwr(0x1234)), 128)
             .is_err());
     }
 
@@ -279,7 +269,7 @@ mod tests {
         let s = storage.as_ref();
 
         assert!(s
-            .alloc_frame(Command::Lwr { address: 0x1234 }, 129)
+            .alloc_frame(Command::Write(Command::lwr(0x1234)), 129)
             .is_err());
     }
 }

@@ -513,6 +513,27 @@ impl<'sto> Client<'sto> {
         .map(|response| response.into_data())
     }
 
+    pub(crate) async fn write_service_len(
+        &self,
+        command: Writes,
+        value: &[u8],
+        len: u16,
+    ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
+        timeout(
+            self.timeouts.pdu,
+            // TODO: Bit weird to re-wrap the write in a `Command` but whatever
+            self.pdu_loop
+                .pdu_tx_readwrite_len(Command::Write(command), value, len),
+        )
+        .await
+        .map_err(|e| {
+            fmt::error!("Write service timeout, command {:?}", command);
+
+            e
+        })
+        .map(|response| response.into_data())
+    }
+
     pub(crate) fn max_frame_data(&self) -> usize {
         self.pdu_loop.max_frame_data()
     }

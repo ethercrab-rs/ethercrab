@@ -31,7 +31,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
         // TODO: Remember why this is i64 here. SOEM uses i64 I think, and I seem to remember things
         // breaking/being weird if it wasn't i64? Was it something to do with wraparound/overflow?
         let (dc_receive_time, _wkc) = sl
-            .read_ignore_wkc::<i64>(RegisterAddress::DcReceiveTime)
+            .read_ignore_wkc::<i64>(RegisterAddress::DcReceiveTime.into())
             .await?;
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
