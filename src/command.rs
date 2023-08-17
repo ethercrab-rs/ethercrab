@@ -301,9 +301,20 @@ impl Command {
         Writes::Fpwr { address, register }
     }
 
+    /// APRD.
+    pub fn aprd(address: u16, register: u16) -> Reads {
+        Reads::Aprd {
+            address: 0u16.wrapping_sub(address),
+            register,
+        }
+    }
+
     /// APWR.
     pub fn apwr(address: u16, register: u16) -> Writes {
-        Writes::Apwr { address, register }
+        Writes::Apwr {
+            address: 0u16.wrapping_sub(address),
+            register,
+        }
     }
 
     /// Configured address read, multiple write (FRMW).
