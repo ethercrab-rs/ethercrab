@@ -1,3 +1,5 @@
+//! Raw EtherCAT commands, e.g. `LRW`, `BRD`, `APWR`, etc.
+
 use core::any::type_name;
 
 use crate::{
@@ -74,7 +76,7 @@ impl Writes {
     }
 
     /// Send a slice but override the length parameter
-    pub async fn send_receive_slice_len<'client, 'data>(
+    pub(crate) async fn send_receive_slice_len<'client, 'data>(
         self,
         client: &'client Client<'client>,
         value: &'data [u8],
@@ -111,7 +113,7 @@ impl Writes {
             })
     }
 
-    pub async fn send_receive_slice_mut<'client, 'buf>(
+    pub(crate) async fn send_receive_slice_mut<'client, 'buf>(
         self,
         client: &'client Client<'client>,
         value: &'buf mut [u8],
