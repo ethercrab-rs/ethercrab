@@ -14,6 +14,11 @@ An EtherCAT master written in Rust.
 
 - [#92] If no slave devices are detected, `Client::init` will no longer exit with an error.
 
+### Removed
+
+- [#99] All PDU methods on `Client` (`Client::bwr`, `Client::fprd`) have been removed. Instead, use
+  the same methods on `Command` like `Command::bwr`, `Command::fprd` etc.
+
 ## [0.2.1] - 2023-07-31
 
 ### Fixed

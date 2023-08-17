@@ -116,13 +116,9 @@ impl<'sto> PduLoop<'sto> {
         register: u16,
         payload_length: u16,
     ) -> Result<ReceivedFrame<'_>, Error> {
-        let frame = self.storage.alloc_frame(
-            Command::Bwr {
-                address: 0,
-                register,
-            },
-            payload_length,
-        )?;
+        let frame = self
+            .storage
+            .alloc_frame(Command::Write(Command::bwr(register)), payload_length)?;
 
         let frame = frame.mark_sendable();
 
@@ -202,10 +198,7 @@ mod tests {
         let mut frame = pdu_loop
             .storage
             .alloc_frame(
-                Command::Fpwr {
-                    address: 0x5678,
-                    register: 0x1234,
-                },
+                Command::Write(Command::fpwr(0x5678, 0x1234)),
                 data.len() as u16,
             )
             .unwrap();
@@ -259,13 +252,9 @@ mod tests {
             let mut written_packet = Vec::new();
             written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
-            let mut frame_fut = pin!(pdu_loop.pdu_tx_readwrite(
-                Command::Fpwr {
-                    address: 0x5678,
-                    register: 0x1234,
-                },
-                &data,
-            ));
+            let mut frame_fut =
+                pin!(pdu_loop
+                    .pdu_tx_readwrite(Command::Write(Command::fpwr(0x5678, 0x1234)), &data,));
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -343,10 +332,7 @@ mod tests {
         let mut frame = pdu_loop
             .storage
             .alloc_frame(
-                Command::Fpwr {
-                    address: 0x5678,
-                    register: 0x1234,
-                },
+                Command::Write(Command::fpwr(0x5678, 0x1234)),
                 data.len() as u16,
             )
             .unwrap();
@@ -370,10 +356,7 @@ mod tests {
         let mut frame = pdu_loop
             .storage
             .alloc_frame(
-                Command::Fpwr {
-                    address: 0x6789,
-                    register: 0x1234,
-                },
+                Command::Write(Command::fpwr(0x6789, 0x1234)),
                 data.len() as u16,
             )
             .unwrap();
@@ -469,13 +452,7 @@ mod tests {
             fmt::info!("Send PDU {i}");
 
             let result = pdu_loop
-                .pdu_tx_readwrite(
-                    Command::Fpwr {
-                        address: 0x1000,
-                        register: 0x0980,
-                    },
-                    &data,
-                )
+                .pdu_tx_readwrite(Command::Write(Command::fpwr(0x1000, 0x980)), &data)
                 .await
                 .unwrap()
                 .wkc(0, "testing")

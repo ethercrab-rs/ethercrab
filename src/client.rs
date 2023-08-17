@@ -1,12 +1,11 @@
 use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
-    command::Command,
+    command::{self, Command, Writes},
     dc,
-    error::{Error, Item, PduError},
+    error::{Error, Item},
     fmt,
     pdi::PdiOffset,
-    pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse, RxFrameDataBuf},
     register::RegisterAddress,
     slave::Slave,
@@ -16,7 +15,6 @@ use crate::{
     ClientConfig, SlaveGroup, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
-    any::type_name,
     ops::Range,
     sync::atomic::{AtomicU16, AtomicU8, Ordering},
 };
@@ -96,13 +94,14 @@ impl<'sto> Client<'sto> {
         fmt::debug!("Beginning reset");
 
         // Reset slaves to init
-        self.bwr(
-            RegisterAddress::AlControl,
-            fmt::unwrap!(AlControl::reset()
-                .pack()
-                .map_err(crate::error::WrappedPackingError::from)),
-        )
-        .await?;
+        Command::bwr(RegisterAddress::AlControl.into())
+            .send_slice(
+                self,
+                &fmt::unwrap!(AlControl::reset()
+                    .pack()
+                    .map_err(crate::error::WrappedPackingError::from)),
+            )
+            .await?;
 
         // Clear FMMUs. FMMU memory section is 0xff (255) bytes long - see ETG1000.4 Table 57
         self.blank_memory(RegisterAddress::Fmmu0, 0xff).await?;
@@ -132,10 +131,12 @@ impl<'sto> Client<'sto> {
         //
         // According to ETG1020, we'll use the mode where the DC reference clock is adjusted to the
         // master clock.
-        self.bwr(RegisterAddress::DcControlLoopParam3, 0x0c00u16)
+        Command::bwr(RegisterAddress::DcControlLoopParam3.into())
+            .send(self, 0x0c00u16)
             .await?;
         // Must be after param 3 so DC control unit is reset
-        self.bwr(RegisterAddress::DcControlLoopParam1, 0x1000u16)
+        Command::bwr(RegisterAddress::DcControlLoopParam1.into())
+            .send(self, 0x1000u16)
             .await?;
 
         fmt::debug!("--> Reset complete");
@@ -236,13 +237,10 @@ impl<'sto> Client<'sto> {
         for slave_idx in 0..num_slaves {
             let configured_address = BASE_SLAVE_ADDR.wrapping_add(slave_idx);
 
-            self.apwr(
-                slave_idx,
-                RegisterAddress::ConfiguredStationAddress,
-                configured_address,
-            )
-            .await?
-            .wkc(1, "set station address")?;
+            Command::apwr(slave_idx, RegisterAddress::ConfiguredStationAddress.into())
+                .send(self, configured_address)
+                .await?
+                .wkc(1, "set station address")?;
 
             let slave = Slave::new(self, usize::from(slave_idx), configured_address).await?;
 
@@ -379,18 +377,12 @@ impl<'sto> Client<'sto> {
 
     /// Count the number of slaves on the network.
     async fn count_slaves(&self) -> Result<u16, Error> {
-        let future = self.pdu_loop.pdu_tx_readonly(
-            Command::Brd {
-                address: 0,
-                register: RegisterAddress::Type.into(),
-            },
-            u8::len(),
-        );
+        let future = Command::brd(RegisterAddress::Type.into()).receive::<u8>(self);
 
         let future = core::pin::pin!(future);
 
         match select(future, timer(self.timeouts.pdu)).await {
-            Either::First(res) => res.map(|res| res.working_counter()),
+            Either::First(res) => res.map(|(_, working_counter)| working_counter),
             // Timeout implies nothing was discovered
             Either::Second(_timeout) => Ok(0),
         }
@@ -410,8 +402,11 @@ impl<'sto> Client<'sto> {
 
         timeout(self.timeouts.state_transition, async {
             loop {
-                let status = self
-                    .brd::<AlControl>(RegisterAddress::AlStatus)
+                // let status = self
+                //     .brd::<AlControl>(RegisterAddress::AlStatus)
+
+                let status = Command::brd(RegisterAddress::AlStatus.into())
+                    .receive::<AlControl>(self)
                     .await?
                     .wkc(num_slaves, "read all slaves state")?;
 
@@ -425,9 +420,10 @@ impl<'sto> Client<'sto> {
 
                     for slave_addr in BASE_SLAVE_ADDR..(BASE_SLAVE_ADDR + self.num_slaves() as u16)
                     {
-                        let (slave_status, _wkc) = self
-                            .fprd::<AlStatusCode>(slave_addr, RegisterAddress::AlStatusCode)
-                            .await?;
+                        let (slave_status, _wkc) =
+                            Command::fprd(slave_addr, RegisterAddress::AlStatusCode.into())
+                                .receive::<AlStatusCode>(self)
+                                .await?;
 
                         fmt::error!("--> Slave {:#06x} status code {}", slave_addr, slave_status);
                     }
@@ -445,47 +441,30 @@ impl<'sto> Client<'sto> {
         .await
     }
 
-    async fn read_service_inner(
+    pub(crate) async fn read_service(
         &self,
-        command: Command,
+        command: command::Reads,
         len: u16,
-    ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
+    ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
         timeout(
             self.timeouts.pdu,
-            self.pdu_loop.pdu_tx_readonly(command, len),
+            // TODO: Bit weird to re-wrap the read in a `Command` but whatever
+            self.pdu_loop.pdu_tx_readonly(Command::Read(command), len),
         )
         .await
         .map(|response| response.into_data())
     }
 
-    async fn read_service<T>(&self, command: Command) -> Result<PduResponse<T>, Error>
-    where
-        T: PduRead,
-    {
-        let (data, working_counter) = self.read_service_inner(command, T::len()).await?;
-
-        let res = T::try_from_slice(&*data).map_err(|e| {
-            fmt::error!(
-                "PDU data decode: {:?}, T: {} data {:?}",
-                e,
-                type_name::<T>(),
-                data
-            );
-
-            PduError::Decode
-        })?;
-
-        Ok((res, working_counter))
-    }
-
-    async fn write_service_inner(
+    pub(crate) async fn write_service(
         &self,
-        command: Command,
+        command: Writes,
         value: &[u8],
     ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
         timeout(
             self.timeouts.pdu,
-            self.pdu_loop.pdu_tx_readwrite(command, value),
+            // TODO: Bit weird to re-wrap the write in a `Command` but whatever
+            self.pdu_loop
+                .pdu_tx_readwrite(Command::Write(command), value),
         )
         .await
         .map_err(|e| {
@@ -496,250 +475,29 @@ impl<'sto> Client<'sto> {
         .map(|response| response.into_data())
     }
 
-    async fn write_service<T>(&self, command: Command, value: T) -> Result<PduResponse<T>, Error>
-    where
-        T: PduData,
-    {
-        let (data, working_counter) = self.write_service_inner(command, value.as_slice()).await?;
-
-        let res = T::try_from_slice(&*data).map_err(|e| {
-            fmt::error!(
-                "PDU data decode: {:?}, T: {} data {:?}",
-                e,
-                type_name::<T>(),
-                data
-            );
-
-            PduError::Decode
-        })?;
-
-        Ok((res, working_counter))
-    }
-
-    /// Send a `BRD` (Broadcast Read).
-    pub async fn brd<T>(&self, register: RegisterAddress) -> Result<PduResponse<T>, Error>
-    where
-        T: PduRead,
-    {
-        self.read_service(Command::Brd {
-            // Address is always zero when sent from master
-            address: 0,
-            register: register.into(),
-        })
-        .await
-    }
-
-    /// Broadcast write.
-    pub async fn bwr<T>(
+    pub(crate) async fn write_service_len(
         &self,
-        register: RegisterAddress,
-        value: T,
-    ) -> Result<PduResponse<()>, Error>
-    where
-        T: PduData,
-    {
-        self.write_service(
-            Command::Bwr {
-                address: 0,
-                register: register.into(),
-            },
-            value,
-        )
-        .await
-        .map(|(_, wkc)| ((), wkc))
-    }
-
-    /// Auto Increment Physical Read.
-    pub async fn aprd<T>(
-        &self,
-        address: u16,
-        register: RegisterAddress,
-    ) -> Result<PduResponse<T>, Error>
-    where
-        T: PduRead,
-    {
-        self.read_service(Command::Aprd {
-            address: 0u16.wrapping_sub(address),
-            register: register.into(),
-        })
-        .await
-    }
-
-    /// Auto Increment Physical Write.
-    pub async fn apwr<T>(
-        &self,
-        address: u16,
-        register: RegisterAddress,
-        value: T,
-    ) -> Result<PduResponse<T>, Error>
-    where
-        T: PduData,
-    {
-        self.write_service(
-            Command::Apwr {
-                address: 0u16.wrapping_sub(address),
-                register: register.into(),
-            },
-            value,
-        )
-        .await
-    }
-
-    /// Configured address read.
-    pub async fn fprd<T>(
-        &self,
-        address: u16,
-        register: impl Into<u16>,
-    ) -> Result<PduResponse<T>, Error>
-    where
-        T: PduRead,
-    {
-        self.read_service(Command::Fprd {
-            address,
-            register: register.into(),
-        })
-        .await
-    }
-
-    /// Configured address read with configured length that returns a raw slice.
-    pub(crate) async fn fprd_raw(
-        &self,
-        address: u16,
-        register: impl Into<u16>,
-        len: u16,
-    ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
-        self.pdu_loop
-            .pdu_tx_readonly(
-                Command::Fprd {
-                    address,
-                    register: register.into(),
-                },
-                len,
-            )
-            .await
-            .map(|res| res.into_data())
-    }
-
-    /// Configured address write.
-    pub async fn fpwr<T>(
-        &self,
-        address: u16,
-        register: impl Into<u16>,
-        value: T,
-    ) -> Result<PduResponse<T>, Error>
-    where
-        T: PduData,
-    {
-        self.write_service(
-            Command::Fpwr {
-                address,
-                register: register.into(),
-            },
-            value,
-        )
-        .await
-    }
-
-    /// Configured address write with configured length that writes and returns a raw slice.
-    pub(crate) async fn fpwr_raw(
-        &self,
-        address: u16,
-        register: impl Into<u16>,
+        command: Writes,
         value: &[u8],
         len: u16,
-    ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
-        self.pdu_loop
-            .pdu_tx_readwrite_len(
-                Command::Fpwr {
-                    address,
-                    register: register.into(),
-                },
-                value,
-                len,
-            )
-            .await
-            .map(|res| res.into_data())
-    }
-
-    /// Configured address read, multiple write.
-    ///
-    /// This can be used to distributed a value from one slave to all others on the network, e.g.
-    /// with distributed clocks.
-    pub async fn frmw<T>(
-        &self,
-        address: u16,
-        register: RegisterAddress,
-    ) -> Result<PduResponse<T>, Error>
-    where
-        T: PduRead,
-    {
-        self.read_service(Command::Frmw {
-            address,
-            register: register.into(),
-        })
-        .await
-    }
-
-    /// Logical write.
-    pub async fn lwr<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
-    where
-        T: PduData,
-    {
-        self.write_service(Command::Lwr { address }, value).await
-    }
-
-    /// Logical read/write.
-    pub async fn lrw<T>(&self, address: u32, value: T) -> Result<PduResponse<T>, Error>
-    where
-        T: PduData,
-    {
-        self.write_service(Command::Lrw { address }, value).await
-    }
-
-    /// Logical read/write, but direct from/to a mutable slice.
-    ///
-    /// Using the given `read_back_len = N`, only the first _N_ bytes will be read back into the
-    /// buffer, leaving the rest of the buffer as-transmitted.
-    ///
-    /// This is useful for only changing input data from slaves. If the passed buffer structure is
-    /// e.g. `IIIIOOOO` and a length of `4` is given, only the `I` parts will have data written into
-    /// them.
-    // TODO: Chunked sends if buffer is too long for MAX_PDU_DATA
-    // TODO: DC sync FRMW
-    pub async fn lrw_buf<'buf>(
-        &self,
-        address: u32,
-        value: &'buf mut [u8],
-        read_back_len: usize,
-    ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
-        assert!(value.len() <= self.pdu_loop.max_frame_data(), "Chunked LRW not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), self.pdu_loop.max_frame_data());
-
-        let response = timeout(
+    ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
+        timeout(
             self.timeouts.pdu,
+            // TODO: Bit weird to re-wrap the write in a `Command` but whatever
             self.pdu_loop
-                .pdu_tx_readwrite(Command::Lrw { address }, value),
+                .pdu_tx_readwrite_len(Command::Write(command), value, len),
         )
         .await
         .map_err(|e| {
-            fmt::error!("LRW timeout, max time {} ms", self.timeouts.pdu.as_millis());
+            fmt::error!("Write service timeout, command {:?}", command);
 
             e
-        })?;
+        })
+        .map(|response| response.into_data())
+    }
 
-        let (data, working_counter) = response.into_data();
-
-        if data.len() != value.len() {
-            fmt::error!(
-                "Data length {} does not match value length {}",
-                data.len(),
-                value.len()
-            );
-            return Err(Error::Pdu(PduError::Decode));
-        }
-
-        value[0..read_back_len].copy_from_slice(&data[0..read_back_len]);
-
-        Ok((value, working_counter))
+    pub(crate) fn max_frame_data(&self) -> usize {
+        self.pdu_loop.max_frame_data()
     }
 }
 

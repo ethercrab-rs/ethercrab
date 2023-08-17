@@ -615,3 +615,63 @@ Pretty darn good. To summarise, this is with:
   <https://infosys.beckhoff.com/english.php?content=../content/1033/ethercatsystem/2469118347.html&id=>
 - Sync modes:
   <https://infosys.beckhoff.com/english.php?content=../content/1033/ethercatsystem/2469122443.html&id=>
+
+# A different way of sending commands
+
+The target here is reducing code size hopefully with less monomorphisation when sending/receiving
+slices. We'll see.
+
+```rust
+enum Writes {
+    Brw,
+    Lrw,
+}
+
+enum Reads {
+    Brd,
+    Lrd,
+}
+
+enum Command {
+    Read(Reads),
+    Write(Writes),
+}
+
+impl Command {
+    pub fn brd() -> Self {
+        Self::Read(Reads::Brd)
+    }
+
+    // etc...
+}
+
+impl Writes {
+    /// Send data and ignore the response
+    pub fn send<T>(client: u8, value: T) -> Result<(), Error> {
+        // ...
+    }
+
+    /// Send a slice and ignore the response
+    pub fn send_slice(client: u8, value: &[u8]) -> Result<(), Error> {
+        // ...
+    }
+
+    pub fn send_receive<T>(client: u8, value: T) -> Result<T, Error> {
+        // ...
+    }
+
+    pub fn send_receive_slice<T>(client: u8, value: &[u8]) -> Result<RxFrameDataBuf, Error> {
+        // ...
+    }
+}
+
+impl Reads {
+    pub fn receive<T>(client: u8) -> Result<T, Error> {
+        // ...
+    }
+
+    pub fn receive_slice(client: u8, len: u16) -> Result<RxFrameDataBuf, Error> {
+        // ...
+    }
+}
+```

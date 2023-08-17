@@ -2,7 +2,8 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, RegisterAddress, Timeouts,
+    error::Error, std::tx_rx_task, Client, ClientConfig, Command, PduStorage, RegisterAddress,
+    Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -103,8 +104,8 @@ async fn main() -> Result<(), Error> {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Dynamic drift compensation
-        let (_reference_time, _wkc) = client
-            .frmw::<u64>(0x1000, RegisterAddress::DcSystemTime)
+        let (_reference_time, _wkc) = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
+            .receive::<u64>(&client)
             .await?;
 
         for slave in group.iter(&client) {
