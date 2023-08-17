@@ -3,10 +3,9 @@ use crate::{
     al_status_code::AlStatusCode,
     command::{self, Command, Writes},
     dc,
-    error::{Error, Item, PduError},
+    error::{Error, Item},
     fmt,
     pdi::PdiOffset,
-    pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduLoop, PduResponse, RxFrameDataBuf},
     register::RegisterAddress,
     slave::Slave,
@@ -16,7 +15,6 @@ use crate::{
     ClientConfig, SlaveGroup, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
-    any::type_name,
     ops::Range,
     sync::atomic::{AtomicU16, AtomicU8, Ordering},
 };
