@@ -417,10 +417,6 @@ pub(crate) async fn run_dc_static_sync(
             RegisterAddress::DcSystemTime.into(),
         )
         .receive::<u64>(&client)
-        // .frmw::<u64>(
-        //     dc_reference_slave.configured_address,
-        //     RegisterAddress::DcSystemTime,
-        // )
         .await?;
     }
 

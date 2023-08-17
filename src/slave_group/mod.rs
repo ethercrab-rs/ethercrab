@@ -535,14 +535,6 @@ where
             .send_receive_slice_mut(client, self.pdi_mut(), self.read_pdi_len)
             .await?;
 
-        // let (_res, wkc) = client
-        //     .lrw_buf(
-        //         self.inner().pdi_start.start_address,
-        //         self.pdi_mut(),
-        //         self.read_pdi_len,
-        //     )
-        //     .await?;
-
         Ok(wkc)
     }
 }

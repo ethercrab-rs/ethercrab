@@ -264,14 +264,6 @@ where
 
             // If flag is set, read entire mailbox to clear it
             if sm.status.mailbox_full {
-                // self.client
-                //     .fprd_raw(
-                //         self.state.configured_address,
-                //         read_mailbox.address,
-                //         read_mailbox.len,
-                //     )
-                //     .await?;
-
                 Command::fprd(self.state.configured_address, read_mailbox.address)
                     .receive_slice(&self.client, read_mailbox.len)
                     .await?;
@@ -373,20 +365,6 @@ where
             )
             .await?
             .wkc(1, "SDO upload request")?;
-
-        // self.client
-        //     .fpwr_raw(
-        //         self.state.configured_address,
-        //         write_mailbox.address,
-        //         fmt::unwrap!(request
-        //             .pack()
-        //             .map_err(crate::error::WrappedPackingError::from))
-        //         .as_ref(),
-        //         // Need to write entire mailbox to latch it
-        //         write_mailbox.len,
-        //     )
-        //     .await?
-        //     .wkc(1, "SDO upload request")?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
 
