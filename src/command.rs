@@ -248,6 +248,9 @@ impl Reads {
 /// A command can be used in various different ways, to e.g. read a number or write a raw slice to a
 /// slave device on the network.
 ///
+/// Many different operations can be performed on the data for a command - see the methods on
+/// [`Reads`] and [`Writes`] for more.
+///
 /// # Examples
 ///
 /// ## Read a `u32` from a slave by address
