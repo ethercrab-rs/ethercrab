@@ -698,18 +698,18 @@ impl<'a, S> SlaveRef<'a, S> {
             .wkc(1, context)
     }
 
-    /// A wrapper around an FPWR service to this slave's configured address.
+    /// A wrapper around an FPWR service to this slave's configured address, ignoring any response.
     pub(crate) async fn write<T>(
         &self,
         register: impl Into<u16>,
         value: T,
         context: &'static str,
-    ) -> Result<T, Error>
+    ) -> Result<(), Error>
     where
         T: PduData,
     {
         Command::fpwr(self.configured_address, register.into())
-            .send_receive(&self.client, value)
+            .send(&self.client, value)
             .await?
             .wkc(1, context)
     }

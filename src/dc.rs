@@ -80,18 +80,18 @@ async fn write_dc_parameters(
     dc_receive_time: i64,
     now_nanos: i64,
 ) -> Result<(), Error> {
-    let sl = SlaveRef::new(client, slave.configured_address, ());
-
-    sl.write_ignore_wkc::<i64>(
-        RegisterAddress::DcSystemTimeOffset,
-        -dc_receive_time + now_nanos,
+    Command::fpwr(
+        slave.configured_address,
+        RegisterAddress::DcSystemTimeOffset.into(),
     )
+    .send::<i64>(client, -dc_receive_time + now_nanos)
     .await?;
 
-    sl.write_ignore_wkc::<u32>(
-        RegisterAddress::DcSystemTimeTransmissionDelay,
-        slave.propagation_delay,
+    Command::fpwr(
+        slave.configured_address,
+        RegisterAddress::DcSystemTimeTransmissionDelay.into(),
     )
+    .send::<u32>(client, slave.propagation_delay)
     .await?;
 
     Ok(())

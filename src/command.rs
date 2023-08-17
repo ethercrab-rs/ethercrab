@@ -75,6 +75,18 @@ impl Writes {
         client.write_service_inner(self, value).await
     }
 
+    /// Send a slice of data, ignoring any response.
+    pub async fn send_slice<'client, 'data>(
+        self,
+        client: &'client Client<'client>,
+        value: &'data [u8],
+    ) -> Result<PduResponse<()>, Error> {
+        client
+            .write_service_inner(self, value)
+            .await
+            .map(|(_, wkc)| ((), wkc))
+    }
+
     /// Send a slice but override the length parameter
     pub(crate) async fn send_receive_slice_len<'client, 'data>(
         self,
@@ -85,7 +97,22 @@ impl Writes {
         client.write_service_len(self, value, len).await
     }
 
-    /// Send a value.
+    /// Send a value, ignoring any response from the network.
+    pub async fn send<'client, 'data, T>(
+        self,
+        client: &'client Client<'client>,
+        value: T,
+    ) -> Result<PduResponse<()>, Error>
+    where
+        T: PduData,
+    {
+        client
+            .write_service_inner(self, value.as_slice())
+            .await
+            .map(|(_, wkc)| ((), wkc))
+    }
+
+    /// Send a value, returning the response sent by the slave network.
     pub async fn send_receive<'client, 'data, T>(
         self,
         client: &'client Client<'client>,

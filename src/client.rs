@@ -95,7 +95,7 @@ impl<'sto> Client<'sto> {
 
         // Reset slaves to init
         Command::bwr(RegisterAddress::AlControl.into())
-            .send_receive_slice(
+            .send_slice(
                 self,
                 &fmt::unwrap!(AlControl::reset()
                     .pack()
@@ -132,11 +132,11 @@ impl<'sto> Client<'sto> {
         // According to ETG1020, we'll use the mode where the DC reference clock is adjusted to the
         // master clock.
         Command::bwr(RegisterAddress::DcControlLoopParam3.into())
-            .send_receive(self, 0x0c00u16)
+            .send(self, 0x0c00u16)
             .await?;
         // Must be after param 3 so DC control unit is reset
         Command::bwr(RegisterAddress::DcControlLoopParam1.into())
-            .send_receive(self, 0x1000u16)
+            .send(self, 0x1000u16)
             .await?;
 
         fmt::debug!("--> Reset complete");
@@ -238,7 +238,7 @@ impl<'sto> Client<'sto> {
             let configured_address = BASE_SLAVE_ADDR.wrapping_add(slave_idx);
 
             Command::apwr(slave_idx, RegisterAddress::ConfiguredStationAddress.into())
-                .send_receive(self, configured_address)
+                .send(self, configured_address)
                 .await?
                 .wkc(1, "set station address")?;
 
