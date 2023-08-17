@@ -244,6 +244,54 @@ impl Reads {
 }
 
 /// PDU command.
+///
+/// A command can be used in various different ways, to e.g. read a number or write a raw slice to a
+/// slave device on the network.
+///
+/// # Examples
+///
+/// ## Read a `u32` from a slave by address
+///
+/// ```rust
+/// # use ethercrab::{ std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts };
+/// use ethercrab::{ Command, RegisterAddress };
+/// # static PDU_STORAGE: PduStorage<16, 1100> = PduStorage::new();
+/// # let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+/// let client = /* ... */
+/// # Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+///
+/// let slave_configured_address = 0x1001u16;
+///
+/// # async {
+/// let value = Command::fprd(slave_configured_address, RegisterAddress::SiiData.into())
+///     .receive::<u32>(&client)
+///     .await?;
+/// # Result::<(), ethercrab::error::Error>::Ok(())
+/// # };
+/// ```
+///
+/// ## Write a slice to a given slave address and register
+///
+/// ```rust
+/// # use ethercrab::{ std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts };
+/// use ethercrab::{ Command, RegisterAddress };
+/// # static PDU_STORAGE: PduStorage<16, 1100> = PduStorage::new();
+/// # let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+/// let client = /* ... */
+/// # Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+///
+/// let slave_configured_address = 0x1001u16;
+/// let register = 0x1234u16;
+///
+/// let data = [ 0xaau8, 0xbb, 0xcc, 0xdd ];
+///
+/// # async {
+/// Command::fpwr(slave_configured_address, register)
+///     .send_slice(&client, &data)
+///     .await?;
+/// # Result::<(), ethercrab::error::Error>::Ok(())
+/// # };
+/// ```
 #[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Command {
