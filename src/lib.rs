@@ -176,9 +176,6 @@ mod sync_manager_channel;
 mod timer_factory;
 mod vendors;
 
-#[doc(hidden)]
-pub mod internals;
-
 #[cfg(feature = "std")]
 pub mod std;
 
@@ -189,6 +186,7 @@ pub use al_status_code::AlStatusCode;
 pub use client::Client;
 pub use client_config::ClientConfig;
 pub use coe::SubIndex;
+pub use command::{Command, Reads, Writes};
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::RegisterAddress;
 pub use slave::{Slave, SlaveIdentity, SlavePdi, SlaveRef};

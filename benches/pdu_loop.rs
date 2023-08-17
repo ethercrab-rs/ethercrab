@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Bencher, Criterion, Throughput};
-use ethercrab::{internals::Command, PduStorage};
+use ethercrab::{Command, PduStorage};
 
 const DATA: [u8; 8] = [0x11u8, 0x22, 0x33, 0x44, 0xaa, 0xbb, 0xcc, 0xdd];
 
@@ -18,13 +18,8 @@ fn do_bench(b: &mut Bencher) {
     b.iter(|| {
         //  --- Prepare frame
 
-        let frame_fut = pdu_loop.pdu_tx_readwrite(
-            Command::Fpwr {
-                address: 0x5678,
-                register: 0x1234,
-            },
-            &DATA,
-        );
+        let frame_fut =
+            pdu_loop.pdu_tx_readwrite(Command::Write(Command::fpwr(0x5678, 0x1234)), &DATA);
 
         // --- Send frame
 

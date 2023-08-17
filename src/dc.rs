@@ -1,6 +1,7 @@
 //! Distributed Clocks (DC).
 
 use crate::{
+    command::Command,
     error::Error,
     fmt,
     pdu_loop::CheckWorkingCounter,
@@ -17,8 +18,8 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
         .count();
 
     // Latch receive times into all ports of all slaves.
-    client
-        .bwr(RegisterAddress::DcTimePort0, 0u32)
+    Command::bwr(RegisterAddress::DcTimePort0.into())
+        .send_receive(&client, 0u32)
         .await?
         .wkc(num_slaves_with_dc as u16, "Broadcast time")?;
 
@@ -30,12 +31,28 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
         // TODO: Remember why this is i64 here. SOEM uses i64 I think, and I seem to remember things
         // breaking/being weird if it wasn't i64? Was it something to do with wraparound/overflow?
         let (dc_receive_time, _wkc) = sl
-            .read_ignore_wkc::<i64>(RegisterAddress::DcReceiveTime)
+            .read_ignore_wkc::<i64>(RegisterAddress::DcReceiveTime.into())
             .await?;
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
-            .read::<[u32; 4]>(RegisterAddress::DcTimePort0, "Port receive times")
+            .read_slice(
+                RegisterAddress::DcTimePort0.into(),
+                // 4 u32
+                4 * 4,
+                "Port receive times",
+            )
             .await
+            .map(|slice| {
+                let chunks = slice.chunks_exact(4);
+
+                let mut res = [0u32; 4];
+
+                for (i, chunk) in chunks.enumerate() {
+                    res[i] = u32::from_le_bytes(fmt::unwrap!(chunk.try_into()));
+                }
+
+                res
+            })
             .map_err(|e| {
                 fmt::error!(
                     "Failed to read DC times for slave {:#06x}: {}",
@@ -63,18 +80,18 @@ async fn write_dc_parameters(
     dc_receive_time: i64,
     now_nanos: i64,
 ) -> Result<(), Error> {
-    let sl = SlaveRef::new(client, slave.configured_address, ());
-
-    sl.write_ignore_wkc::<i64>(
-        RegisterAddress::DcSystemTimeOffset,
-        -dc_receive_time + now_nanos,
+    Command::fpwr(
+        slave.configured_address,
+        RegisterAddress::DcSystemTimeOffset.into(),
     )
+    .send::<i64>(client, -dc_receive_time + now_nanos)
     .await?;
 
-    sl.write_ignore_wkc::<u32>(
-        RegisterAddress::DcSystemTimeTransmissionDelay,
-        slave.propagation_delay,
+    Command::fpwr(
+        slave.configured_address,
+        RegisterAddress::DcSystemTimeTransmissionDelay.into(),
     )
+    .send::<u32>(client, slave.propagation_delay)
     .await?;
 
     Ok(())
@@ -411,12 +428,12 @@ pub(crate) async fn run_dc_static_sync(
     // Static drift compensation - distribute reference clock through network until slave clocks
     // settle
     for _ in 0..iterations {
-        let (_reference_time, _wkc) = client
-            .frmw::<u64>(
-                dc_reference_slave.configured_address,
-                RegisterAddress::DcSystemTime,
-            )
-            .await?;
+        let (_reference_time, _wkc) = Command::frmw(
+            dc_reference_slave.configured_address,
+            RegisterAddress::DcSystemTime.into(),
+        )
+        .receive::<u64>(&client)
+        .await?;
     }
 
     fmt::debug!("Static drift compensation complete");

@@ -5,6 +5,7 @@ use crate::{
     register::RegisterAddress,
     slave::SlaveRef,
 };
+use core::ops::Deref;
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
 /// Table 2.
@@ -83,7 +84,7 @@ impl EepromSectionReader {
         eeprom_address: u16,
     ) -> Result<[u8; 8], Error> {
         let status = slave
-            .read::<SiiControl>(RegisterAddress::SiiControl, "Read SII control")
+            .read::<SiiControl>(RegisterAddress::SiiControl.into(), "Read SII control")
             .await?;
 
         // Clear errors
@@ -91,9 +92,9 @@ impl EepromSectionReader {
             fmt::trace!("Resetting EEPROM error flags");
 
             slave
-                .write(
-                    RegisterAddress::SiiControl,
-                    status.error_reset().as_array(),
+                .write_slice(
+                    RegisterAddress::SiiControl.into(),
+                    &status.error_reset().as_array(),
                     "Reset errors",
                 )
                 .await?;
@@ -103,9 +104,9 @@ impl EepromSectionReader {
         // TODO: Consider either removing context strings or using defmt or something to avoid
         // bloat.
         slave
-            .write(
-                RegisterAddress::SiiControl,
-                SiiRequest::read(eeprom_address).as_array(),
+            .write_slice(
+                RegisterAddress::SiiControl.into(),
+                &SiiRequest::read(eeprom_address).as_array(),
                 "SII read setup",
             )
             .await?;
@@ -116,7 +117,7 @@ impl EepromSectionReader {
             // If slave uses 4 octet reads, do two reads so we can always return a chunk of 8 bytes
             SiiReadSize::Octets4 => {
                 let chunk1 = slave
-                    .read::<[u8; 4]>(RegisterAddress::SiiData, "Read SII data")
+                    .read_slice(RegisterAddress::SiiData.into(), 4, "Read SII data")
                     .await?;
 
                 // Move on to next chunk
@@ -125,9 +126,9 @@ impl EepromSectionReader {
                     let setup = SiiRequest::read(eeprom_address + (chunk1.len() / 2) as u16);
 
                     slave
-                        .write(
-                            RegisterAddress::SiiControl,
-                            setup.as_array(),
+                        .write_slice(
+                            RegisterAddress::SiiControl.into(),
+                            &setup.as_array(),
                             "SII read setup",
                         )
                         .await?;
@@ -136,7 +137,7 @@ impl EepromSectionReader {
                 }
 
                 let chunk2 = slave
-                    .read::<[u8; 4]>(RegisterAddress::SiiData, "SII data 2")
+                    .read_slice(RegisterAddress::SiiData.into(), 4, "SII data 2")
                     .await?;
 
                 let mut data = [0u8; 8];
@@ -146,11 +147,10 @@ impl EepromSectionReader {
 
                 data
             }
-            SiiReadSize::Octets8 => {
-                slave
-                    .read::<[u8; 8]>(RegisterAddress::SiiData, "SII data")
-                    .await?
-            }
+            SiiReadSize::Octets8 => slave
+                .read_slice(RegisterAddress::SiiData.into(), 8, "SII data")
+                .await
+                .and_then(|sl| sl.deref().try_into().map_err(|_| Error::Internal))?,
         };
 
         #[cfg(not(feature = "defmt"))]
@@ -166,7 +166,7 @@ impl EepromSectionReader {
         crate::timer_factory::timeout(slave.timeouts().eeprom, async {
             loop {
                 let control = slave
-                    .read::<SiiControl>(RegisterAddress::SiiControl, "SII busy wait")
+                    .read::<SiiControl>(RegisterAddress::SiiControl.into(), "SII busy wait")
                     .await?;
 
                 if !control.busy {
