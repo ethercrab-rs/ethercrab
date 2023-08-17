@@ -116,14 +116,15 @@ impl EepromSectionReader {
         let data = match status.read_size {
             // If slave uses 4 octet reads, do two reads so we can always return a chunk of 8 bytes
             SiiReadSize::Octets4 => {
-                let chunk1 = slave
+                let mut data = slave
                     .read_slice(RegisterAddress::SiiData.into(), 4, "Read SII data")
-                    .await?;
+                    .await
+                    .map(|sl| fmt::unwrap!(heapless::Vec::<u8, 8>::from_slice(sl.deref())))?;
 
                 // Move on to next chunk
                 {
                     // NOTE: We must compute offset in 16 bit words, not bytes, hence the divide by 2
-                    let setup = SiiRequest::read(eeprom_address + (chunk1.len() / 2) as u16);
+                    let setup = SiiRequest::read(eeprom_address + (data.len() / 2) as u16);
 
                     slave
                         .write_slice(
@@ -140,17 +141,14 @@ impl EepromSectionReader {
                     .read_slice(RegisterAddress::SiiData.into(), 4, "SII data 2")
                     .await?;
 
-                let mut data = [0u8; 8];
-
-                data[0..4].copy_from_slice(&chunk1);
-                data[4..8].copy_from_slice(&chunk2);
+                fmt::unwrap!(data.extend_from_slice(&chunk2));
 
                 data
             }
             SiiReadSize::Octets8 => slave
                 .read_slice(RegisterAddress::SiiData.into(), 8, "SII data")
                 .await
-                .and_then(|sl| sl.deref().try_into().map_err(|_| Error::Internal))?,
+                .map(|sl| fmt::unwrap!(heapless::Vec::<u8, 8>::from_slice(&sl)))?,
         };
 
         #[cfg(not(feature = "defmt"))]
@@ -158,7 +156,8 @@ impl EepromSectionReader {
         #[cfg(feature = "defmt")]
         fmt::trace!("Read {:#04x} {=[u8]}", eeprom_address, data);
 
-        Ok(data)
+        data.into_array()
+            .map_err(|_| Error::Eeprom(EepromError::SectionUnderrun))
     }
 
     /// Wait for EEPROM read or write operation to finish and clear the busy flag.
@@ -191,11 +190,12 @@ impl EepromSectionReader {
             self.read_length = slice.len();
 
             for byte in slice.iter() {
-                self.read.push_back(*byte).map_err(|_| {
-                    fmt::error!("EEPROM read queue is full");
-
-                    Error::Eeprom(EepromError::SectionOverrun)
-                })?;
+                // SAFETY:
+                // - The queue is empty at this point
+                // - The read chunk is 8 bytes long
+                // - So is the queue
+                // - So all 8 bytes will push into the 8 byte queue successfully
+                unsafe { self.read.push_back_unchecked(*byte) };
             }
 
             self.start += (self.read.len() / 2) as u16;
@@ -226,10 +226,9 @@ impl EepromSectionReader {
 
     /// Try reading the next chunk in the current section.
     pub async fn try_next(&mut self, slave: &SlaveClient<'_>) -> Result<u8, Error> {
-        match self.next(slave).await {
-            Ok(Some(value)) => Ok(value),
-            Ok(None) => Err(Error::Eeprom(EepromError::SectionOverrun)),
-            Err(e) => Err(e),
+        match self.next(slave).await? {
+            Some(value) => Ok(value),
+            None => Err(Error::Eeprom(EepromError::SectionOverrun)),
         }
     }
 
