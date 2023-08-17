@@ -119,11 +119,11 @@ impl Slave {
         });
 
         let flags = slave_ref
-            .read::<SupportFlags>(RegisterAddress::SupportFlags, "support flags")
+            .read::<SupportFlags>(RegisterAddress::SupportFlags.into(), "support flags")
             .await?;
 
         let ports = slave_ref
-            .read::<DlStatus>(RegisterAddress::DlStatus, "DL status")
+            .read::<DlStatus>(RegisterAddress::DlStatus.into(), "DL status")
             .await
             .map(|dl_status| {
                 // NOTE: dc_receive_times are populated during DC initialisation
@@ -253,8 +253,8 @@ where
                 e
             })?;
 
-        let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
-        let mailbox_write_sm = RegisterAddress::sync_manager(write_mailbox.sync_manager);
+        let mailbox_read_sm = u16::from(RegisterAddress::sync_manager(read_mailbox.sync_manager));
+        let mailbox_write_sm = u16::from(RegisterAddress::sync_manager(write_mailbox.sync_manager));
 
         // Ensure slave OUT (master IN) mailbox is empty
         {
@@ -300,7 +300,7 @@ where
 
     /// Wait for a mailbox response
     async fn coe_response(&self, read_mailbox: &Mailbox) -> Result<RxFrameDataBuf<'_>, Error> {
-        let mailbox_read_sm = RegisterAddress::sync_manager(read_mailbox.sync_manager);
+        let mailbox_read_sm = u16::from(RegisterAddress::sync_manager(read_mailbox.sync_manager));
 
         // Wait for slave OUT mailbox to be ready
         crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
@@ -600,12 +600,12 @@ impl<'a, S> SlaveRef<'a, S> {
     /// Get the EtherCAT state machine state of the slave.
     pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
         let status = self
-            .read::<AlControl>(RegisterAddress::AlStatus, "AL Status")
+            .read::<AlControl>(RegisterAddress::AlStatus.into(), "AL Status")
             .await
             .map(|ctl| ctl.state)?;
 
         let code = self
-            .read::<AlStatusCode>(RegisterAddress::AlStatusCode, "AL Status Code")
+            .read::<AlStatusCode>(RegisterAddress::AlStatusCode.into(), "AL Status Code")
             .await?;
 
         Ok((status, code))
@@ -649,26 +649,22 @@ impl<'a, S> SlaveRef<'a, S> {
     /// A wrapper around an FPWR service to this slave's configured address.
     pub(crate) async fn write_ignore_wkc<T>(
         &self,
-        register: impl Into<u16>,
+        register: u16,
         value: T,
     ) -> Result<PduResponse<T>, Error>
     where
         T: PduData,
     {
-        Command::fpwr(self.configured_address, register.into())
+        Command::fpwr(self.configured_address, register)
             .send_receive(&self.client, value)
             .await
     }
 
-    pub(crate) async fn read<T>(
-        &self,
-        register: impl Into<u16>,
-        context: &'static str,
-    ) -> Result<T, Error>
+    pub(crate) async fn read<T>(&self, register: u16, context: &'static str) -> Result<T, Error>
     where
         T: PduRead,
     {
-        Command::fprd(self.configured_address, register.into())
+        Command::fprd(self.configured_address, register)
             .receive(&self.client)
             .await?
             .wkc(1, context)
@@ -676,11 +672,11 @@ impl<'a, S> SlaveRef<'a, S> {
 
     pub(crate) async fn read_slice(
         &self,
-        register: impl Into<u16>,
+        register: u16,
         len: u16,
         context: &'static str,
     ) -> Result<RxFrameDataBuf<'_>, Error> {
-        Command::fprd(self.configured_address, register.into())
+        Command::fprd(self.configured_address, register)
             .receive_slice(&self.client, len)
             .await?
             .wkc(1, context)
@@ -688,11 +684,11 @@ impl<'a, S> SlaveRef<'a, S> {
 
     pub(crate) async fn write_slice(
         &self,
-        register: impl Into<u16>,
+        register: u16,
         value: &[u8],
         context: &'static str,
     ) -> Result<RxFrameDataBuf<'_>, Error> {
-        Command::fpwr(self.configured_address, register.into())
+        Command::fpwr(self.configured_address, register)
             .send_receive_slice(&self.client, value)
             .await?
             .wkc(1, context)
@@ -701,14 +697,14 @@ impl<'a, S> SlaveRef<'a, S> {
     /// A wrapper around an FPWR service to this slave's configured address, ignoring any response.
     pub(crate) async fn write<T>(
         &self,
-        register: impl Into<u16>,
+        register: u16,
         value: T,
         context: &'static str,
     ) -> Result<(), Error>
     where
         T: PduData,
     {
-        Command::fpwr(self.configured_address, register.into())
+        Command::fpwr(self.configured_address, register)
             .send(&self.client, value)
             .await?
             .wkc(1, context)
@@ -744,7 +740,7 @@ impl<'a, S> SlaveRef<'a, S> {
         // Send state request
         let response = self
             .write_slice(
-                RegisterAddress::AlControl,
+                RegisterAddress::AlControl.into(),
                 &fmt::unwrap!(AlControl::new(desired_state)
                     .pack()
                     .map_err(crate::error::WrappedPackingError::from)),
@@ -756,7 +752,9 @@ impl<'a, S> SlaveRef<'a, S> {
             })?;
 
         if response.error {
-            let error: AlStatusCode = self.read(RegisterAddress::AlStatus, "AL status").await?;
+            let error: AlStatusCode = self
+                .read(RegisterAddress::AlStatus.into(), "AL status")
+                .await?;
 
             fmt::error!(
                 "Error occurred transitioning slave {:#06x} to {:?}: {}",
@@ -780,10 +778,14 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
         // ETG1000.4 Table 48 – Slave information interface access
         // A value of 2 sets owner to Master (not PDI) and cancels access
-        self.write::<u16>(RegisterAddress::SiiConfig, 2, "Write SII config literal")
-            .await?;
         self.write::<u16>(
-            RegisterAddress::SiiConfig,
+            RegisterAddress::SiiConfig.into(),
+            2,
+            "Write SII config literal",
+        )
+        .await?;
+        self.write::<u16>(
+            RegisterAddress::SiiConfig.into(),
             mode as u16,
             "Write SII config mode",
         )

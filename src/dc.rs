@@ -36,7 +36,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
             .read_slice(
-                RegisterAddress::DcTimePort0,
+                RegisterAddress::DcTimePort0.into(),
                 // 4 u32
                 4 * 4,
                 "Port receive times",

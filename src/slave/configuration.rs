@@ -240,7 +240,7 @@ where
         };
 
         self.write_slice(
-            RegisterAddress::sync_manager(sync_manager_index),
+            RegisterAddress::sync_manager(sync_manager_index).into(),
             &fmt::unwrap!(sm_config
                 .pack()
                 .map_err(crate::error::WrappedPackingError::from)),
@@ -478,7 +478,7 @@ where
         // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
         let mut fmmu_config = self
             .read_slice(
-                RegisterAddress::fmmu(fmmu_index as u8),
+                RegisterAddress::fmmu(fmmu_index as u8).into(),
                 16,
                 "read FMMU config",
             )
@@ -508,7 +508,7 @@ where
         };
 
         self.write_slice(
-            RegisterAddress::fmmu(fmmu_index as u8),
+            RegisterAddress::fmmu(fmmu_index as u8).into(),
             &fmt::unwrap!(fmmu_config
                 .pack()
                 .map_err(crate::error::WrappedPackingError::from)),
