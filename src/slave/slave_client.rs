@@ -12,6 +12,7 @@ pub struct SlaveClient<'client> {
 }
 
 impl<'client> SlaveClient<'client> {
+    #[inline(always)]
     pub(crate) fn new(client: &'client Client<'client>, configured_address: u16) -> Self {
         Self {
             configured_address,
@@ -19,10 +20,12 @@ impl<'client> SlaveClient<'client> {
         }
     }
 
+    #[inline(always)]
     pub fn timeouts(&self) -> &Timeouts {
         &self.client.timeouts
     }
 
+    #[inline(always)]
     pub(crate) async fn read_ignore_wkc<T>(&self, register: u16) -> Result<PduResponse<T>, Error>
     where
         T: PduRead,
@@ -33,6 +36,7 @@ impl<'client> SlaveClient<'client> {
     }
 
     /// A wrapper around an FPWR service to this slave's configured address.
+    #[inline(always)]
     pub(crate) async fn write_ignore_wkc<T>(
         &self,
         register: u16,
@@ -46,6 +50,7 @@ impl<'client> SlaveClient<'client> {
             .await
     }
 
+    #[inline(always)]
     pub(crate) async fn read<T>(&self, register: u16, context: &'static str) -> Result<T, Error>
     where
         T: PduRead,
@@ -56,6 +61,7 @@ impl<'client> SlaveClient<'client> {
             .wkc(1, context)
     }
 
+    #[inline(always)]
     pub(crate) async fn read_slice(
         &self,
         register: u16,
@@ -68,6 +74,7 @@ impl<'client> SlaveClient<'client> {
             .wkc(1, context)
     }
 
+    #[inline(always)]
     pub(crate) async fn write_slice(
         &self,
         register: u16,
@@ -81,6 +88,7 @@ impl<'client> SlaveClient<'client> {
     }
 
     /// A wrapper around an FPWR service to this slave's configured address, ignoring any response.
+    #[inline(always)]
     pub(crate) async fn write<T>(
         &self,
         register: u16,

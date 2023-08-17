@@ -22,13 +22,12 @@ use crate::{
     fmt,
     mailbox::MailboxType,
     pdu_data::{PduData, PduRead},
-    pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
+    pdu_loop::{CheckWorkingCounter, RxFrameDataBuf},
     register::RegisterAddress,
     register::SupportFlags,
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
     sync_manager_channel::SyncManagerChannel,
-    Timeouts,
 };
 use core::{
     any::type_name,
