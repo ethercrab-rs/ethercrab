@@ -6,7 +6,7 @@ use crate::{
     fmt,
     pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
-    slave::{ports::Topology, Slave, SlaveRef},
+    slave::{ports::Topology, slave_client::SlaveClient, Slave},
     Client,
 };
 
@@ -25,7 +25,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
     // Read receive times for all slaves and store on slave structs
     for slave in slaves.iter_mut().filter(|slave| slave.flags.dc_supported) {
-        let sl = SlaveRef::new(client, slave.configured_address, ());
+        let sl = SlaveClient::new(client, slave.configured_address);
 
         // NOTE: Defined as a u64, not i64, in the spec
         // TODO: Remember why this is i64 here. SOEM uses i64 I think, and I seem to remember things
