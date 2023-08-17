@@ -16,8 +16,8 @@ An EtherCAT master written in Rust.
 
 ### Removed
 
-- [#99] All PDU methods on `Client` (`Client::bwr`, `Client::fprd`) have been removed. Instead, use
-  the same methods on `Command` like `Command::bwr`, `Command::fprd` etc.
+- **(breaking)** [#99] All PDU methods on `Client` (`Client::bwr`, `Client::fprd`) have been
+  removed. Instead, use the same methods on `Command` like `Command::bwr`, `Command::fprd` etc.
 
 ## [0.2.1] - 2023-07-31
 
@@ -179,5 +179,6 @@ An EtherCAT master written in Rust.
 [#86]: https://github.com/ethercrab-rs/ethercrab/pull/86
 [#91]: https://github.com/ethercrab-rs/ethercrab/pull/91
 [#92]: https://github.com/ethercrab-rs/ethercrab/pull/92
+[#99]: https://github.com/ethercrab-rs/ethercrab/pull/99
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
