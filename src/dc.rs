@@ -1,6 +1,7 @@
 //! Distributed Clocks (DC).
 
 use crate::{
+    command::Command,
     error::Error,
     fmt,
     pdu_loop::CheckWorkingCounter,
@@ -17,8 +18,8 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
         .count();
 
     // Latch receive times into all ports of all slaves.
-    client
-        .bwr(RegisterAddress::DcTimePort0, 0u32)
+    Command::bwr(RegisterAddress::DcTimePort0.into())
+        .send_receive(&client, 0u32)
         .await?
         .wkc(num_slaves_with_dc as u16, "Broadcast time")?;
 
@@ -411,12 +412,16 @@ pub(crate) async fn run_dc_static_sync(
     // Static drift compensation - distribute reference clock through network until slave clocks
     // settle
     for _ in 0..iterations {
-        let (_reference_time, _wkc) = client
-            .frmw::<u64>(
-                dc_reference_slave.configured_address,
-                RegisterAddress::DcSystemTime,
-            )
-            .await?;
+        let (_reference_time, _wkc) = Command::frmw(
+            dc_reference_slave.configured_address,
+            RegisterAddress::DcSystemTime.into(),
+        )
+        .receive::<u64>(&client)
+        // .frmw::<u64>(
+        //     dc_reference_slave.configured_address,
+        //     RegisterAddress::DcSystemTime,
+        // )
+        .await?;
     }
 
     fmt::debug!("Static drift compensation complete");

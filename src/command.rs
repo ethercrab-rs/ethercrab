@@ -1,4 +1,13 @@
-use crate::{fmt, generate::le_u16};
+use core::any::type_name;
+
+use crate::{
+    error::{Error, PduError},
+    fmt,
+    generate::le_u16,
+    pdu_data::{PduData, PduRead},
+    pdu_loop::{PduResponse, RxFrameDataBuf},
+    Client,
+};
 use nom::{combinator::map, sequence::pair, IResult};
 
 const NOP: u8 = 0x00;
@@ -41,14 +50,6 @@ pub enum Writes {
         /// Memory location to read from.
         register: u16,
     },
-    /// FRMW.
-    Frmw {
-        /// Configured station address.
-        address: u16,
-
-        /// Memory location to read from.
-        register: u16,
-    },
     /// LWR.
     Lwr {
         /// Logical address.
@@ -60,6 +61,53 @@ pub enum Writes {
         /// Logical address.
         address: u32,
     },
+}
+
+impl Writes {
+    /// Send a slice of data, returning the raw response.
+    pub async fn send_receive_slice<'client, 'data>(
+        self,
+        client: &'client Client<'client>,
+        value: &'data [u8],
+    ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
+        client.write_service_inner(self, value).await
+    }
+
+    /// Send a value.
+    pub async fn send_receive<'client, 'data, T>(
+        self,
+        client: &'client Client<'client>,
+        value: T,
+    ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error>
+    where
+        T: PduData,
+    {
+        client.write_service_inner(self, value.as_slice()).await
+    }
+
+    pub async fn send_receive_slice_mut<'client, 'buf>(
+        self,
+        client: &'client Client<'client>,
+        value: &'buf mut [u8],
+        read_back_len: usize,
+    ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
+        assert!(value.len() <= client.max_frame_data(), "Chunked sends not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), client.max_frame_data());
+
+        let (data, working_counter) = client.write_service_inner(self, value).await?;
+
+        if data.len() != value.len() {
+            fmt::error!(
+                "Data length {} does not match value length {}",
+                data.len(),
+                value.len()
+            );
+            return Err(Error::Pdu(PduError::Decode));
+        }
+
+        value[0..read_back_len].copy_from_slice(&data[0..read_back_len]);
+
+        Ok((value, working_counter))
+    }
 }
 
 /// Read commands that send no data.
@@ -82,7 +130,7 @@ pub enum Reads {
         /// Memory location to read from.
         register: u16,
     },
-    /// BRD.
+    /// Broadcast Read (BRD).
     Brd {
         /// Autoincremented by each slave visited.
         address: u16,
@@ -95,6 +143,49 @@ pub enum Reads {
         /// Logical address.
         address: u32,
     },
+    /// FRMW.
+    Frmw {
+        /// Configured station address.
+        address: u16,
+
+        /// Memory location to read from.
+        register: u16,
+    },
+}
+
+impl Reads {
+    /// Receive data and decode into a `T`.
+    pub async fn receive<T>(self, client: &Client<'_>) -> Result<PduResponse<T>, Error>
+    where
+        T: PduRead,
+    {
+        client
+            .read_service_inner(self, T::LEN)
+            .await
+            .and_then(|(data, working_counter)| {
+                let res = T::try_from_slice(&*data).map_err(|e| {
+                    fmt::error!(
+                        "PDU data decode: {:?}, T: {} data {:?}",
+                        e,
+                        type_name::<T>(),
+                        data
+                    );
+
+                    PduError::Decode
+                })?;
+
+                Ok((res, working_counter))
+            })
+    }
+
+    /// Receive a given number of bytes and return it as a slice.
+    pub async fn receive_slice<'client>(
+        self,
+        client: &'client Client<'client>,
+        len: u16,
+    ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
+        client.read_service_inner(self, len).await
+    }
 }
 
 /// PDU command.
@@ -128,6 +219,9 @@ impl core::fmt::Display for Command {
                     write!(f, "BRD(addr {}, reg {}", address, register)
                 }
                 Reads::Lrd { address } => write!(f, "LRD(addr {})", address),
+                Reads::Frmw { address, register } => {
+                    write!(f, "FRMW(addr {}, reg {}", address, register)
+                }
             },
 
             Command::Write(write) => match write {
@@ -140,9 +234,7 @@ impl core::fmt::Display for Command {
                 Writes::Fpwr { address, register } => {
                     write!(f, "FPWR(addr {}, reg {}", address, register)
                 }
-                Writes::Frmw { address, register } => {
-                    write!(f, "FRMW(addr {}, reg {}", address, register)
-                }
+
                 Writes::Lwr { address } => write!(f, "LWR(addr {})", address),
                 Writes::Lrw { address } => write!(f, "LRW(addr {})", address),
             },
@@ -151,6 +243,51 @@ impl core::fmt::Display for Command {
 }
 
 impl Command {
+    /// Create a broadcast read (BRD) command to the given register address.
+    ///
+    /// The configured station address is always zero when transmitted from the master.
+    pub fn brd(register: u16) -> Reads {
+        Reads::Brd {
+            // This is a broadcast, so the address is always zero when sent from the master
+            address: 0,
+            register,
+        }
+    }
+
+    /// Create a broadcast write (BWR) command to the given register address.
+    ///
+    /// The configured station address is always zero when transmitted from the master.
+    pub fn bwr(register: u16) -> Writes {
+        Writes::Bwr {
+            // This is a broadcast, so the address is always zero when sent from the master
+            address: 0,
+            register,
+        }
+    }
+
+    /// FPRD.
+    pub fn fprd(address: u16, register: u16) -> Reads {
+        Reads::Fprd { address, register }
+    }
+
+    /// APWR.
+    pub fn apwr(address: u16, register: u16) -> Writes {
+        Writes::Apwr { address, register }
+    }
+
+    /// Configured address read, multiple write (FRMW).
+    ///
+    /// This can be used to distribute a value from one slave to all others on the network, e.g.
+    /// with distributed clocks.
+    pub fn frmw(address: u16, register: u16) -> Reads {
+        Reads::Frmw { address, register }
+    }
+
+    /// Logical Read Write (LRD), used mainly for sending and receiving PDI.
+    pub fn lrw(address: u32) -> Writes {
+        Writes::Lrw { address }
+    }
+
     /// Get just the command code for a command.
     pub const fn code(&self) -> u8 {
         match self {
@@ -161,13 +298,13 @@ impl Command {
                 Reads::Fprd { .. } => FPRD,
                 Reads::Brd { .. } => BRD,
                 Reads::Lrd { .. } => LRD,
+                Reads::Frmw { .. } => FRMW,
             },
 
             Self::Write(write) => match write {
                 Writes::Bwr { .. } => BWR,
                 Writes::Apwr { .. } => APWR,
                 Writes::Fpwr { .. } => FPWR,
-                Writes::Frmw { .. } => FRMW,
                 Writes::Lwr { .. } => LWR,
                 Writes::Lrw { .. } => LRW,
             },
@@ -186,9 +323,9 @@ impl Command {
             Command::Read(Reads::Aprd { address, register })
             | Command::Read(Reads::Brd { address, register })
             | Command::Read(Reads::Fprd { address, register })
+            | Command::Read(Reads::Frmw { address, register })
             | Command::Write(Writes::Apwr { address, register })
             | Command::Write(Writes::Fpwr { address, register })
-            | Command::Write(Writes::Frmw { address, register })
             | Command::Write(Writes::Bwr { address, register }) => {
                 let buf = le_u16(address, buf);
                 let _buf = le_u16(register, buf);
@@ -229,7 +366,7 @@ impl Command {
                 Command::Write(Writes::Fpwr { address, register })
             })(i),
             FRMW => map(pair(le_u16, le_u16), |(address, register)| {
-                Command::Write(Writes::Frmw { address, register })
+                Command::Read(Reads::Frmw { address, register })
             })(i),
             LWR => map(le_u32, |address| Command::Write(Writes::Lwr { address }))(i),
 
