@@ -45,7 +45,7 @@ where
 
         fmt::debug!(
             "Slave {:#06x} mailbox SMs configured. Transitioning to PRE-OP",
-            self.configured_address
+            self.client.configured_address
         );
 
         self.request_slave_state(SlaveState::PreOp).await?;
@@ -94,7 +94,7 @@ where
 
             fmt::debug!(
                 "Slave {:#06x} found sync managers {:?}",
-                self.configured_address,
+                self.client.configured_address,
                 sms
             );
 
@@ -239,14 +239,15 @@ where
             },
         };
 
-        self.write_slice(
-            RegisterAddress::sync_manager(sync_manager_index).into(),
-            &fmt::unwrap!(sm_config
-                .pack()
-                .map_err(crate::error::WrappedPackingError::from)),
-            "SM config",
-        )
-        .await?;
+        self.client
+            .write_slice(
+                RegisterAddress::sync_manager(sync_manager_index).into(),
+                &fmt::unwrap!(sm_config
+                    .pack()
+                    .map_err(crate::error::WrappedPackingError::from)),
+                "SM config",
+            )
+            .await?;
 
         fmt::debug!(
             "Slave {:#06x} SM{}: {}",
@@ -477,6 +478,7 @@ where
     ) -> Result<(), Error> {
         // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
         let mut fmmu_config = self
+            .client
             .read_slice(
                 RegisterAddress::fmmu(fmmu_index as u8).into(),
                 16,
@@ -507,14 +509,15 @@ where
             }
         };
 
-        self.write_slice(
-            RegisterAddress::fmmu(fmmu_index as u8).into(),
-            &fmt::unwrap!(fmmu_config
-                .pack()
-                .map_err(crate::error::WrappedPackingError::from)),
-            "PDI FMMU",
-        )
-        .await?;
+        self.client
+            .write_slice(
+                RegisterAddress::fmmu(fmmu_index as u8).into(),
+                &fmt::unwrap!(fmmu_config
+                    .pack()
+                    .map_err(crate::error::WrappedPackingError::from)),
+                "PDI FMMU",
+            )
+            .await?;
         fmt::debug!(
             "Slave {:#06x} FMMU{}: {}",
             self.state.configured_address,
