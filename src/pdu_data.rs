@@ -60,12 +60,6 @@ impl_pdudata!(i16);
 impl_pdudata!(i32);
 impl_pdudata!(i64);
 
-impl<const N: usize> PduData for [u8; N] {
-    fn as_slice(&self) -> &[u8] {
-        self
-    }
-}
-
 impl PduRead for () {
     const LEN: u16 = 0;
 
@@ -79,28 +73,6 @@ impl PduRead for () {
 impl PduData for () {
     fn as_slice(&self) -> &[u8] {
         &[]
-    }
-}
-
-impl<const N: usize, T> PduRead for [T; N]
-where
-    T: PduRead,
-{
-    const LEN: u16 = T::LEN * N as u16;
-
-    type Error = ();
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let chunks = slice.chunks_exact(usize::from(T::LEN));
-
-        let mut res = heapless::Vec::<T, N>::new();
-
-        for chunk in chunks {
-            res.push(T::try_from_slice(chunk).map_err(|_| ())?)
-                .map_err(|_| ())?;
-        }
-
-        res.into_array().map_err(|_| ())
     }
 }
 
@@ -129,25 +101,6 @@ impl<const N: usize> PduData for heapless::String<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn fuzz_pdu_data_array() {
-        heckcheck::check(|data: [u8; 8]| {
-            let parsed = <[[u8; 2]; 4]>::try_from_slice(&data);
-
-            let expected = [
-                [data[0], data[1]],
-                [data[2], data[3]],
-                [data[4], data[5]],
-                [data[6], data[7]],
-            ];
-
-            assert_eq!(parsed, Ok(expected));
-
-            Ok(())
-        });
-    }
 
     #[test]
     #[cfg_attr(miri, ignore)]

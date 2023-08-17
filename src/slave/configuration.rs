@@ -18,7 +18,7 @@ use crate::{
 };
 use core::ops::DerefMut;
 use num_enum::FromPrimitive;
-use packed_struct::PackedStruct;
+use packed_struct::{PackedStruct, PackedStructSlice};
 
 /// Configuation from EEPROM methods.
 impl<'a, S> SlaveRef<'a, S>
@@ -239,9 +239,9 @@ where
             },
         };
 
-        self.write(
+        self.write_slice(
             RegisterAddress::sync_manager(sync_manager_index),
-            fmt::unwrap!(sm_config
+            &fmt::unwrap!(sm_config
                 .pack()
                 .map_err(crate::error::WrappedPackingError::from)),
             "SM config",
@@ -477,9 +477,13 @@ where
     ) -> Result<(), Error> {
         // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
         let mut fmmu_config = self
-            .read::<[u8; 16]>(RegisterAddress::fmmu(fmmu_index as u8), "read FMMU config")
+            .read_slice(
+                RegisterAddress::fmmu(fmmu_index as u8),
+                16,
+                "read FMMU config",
+            )
             .await
-            .and_then(|raw| Fmmu::unpack(&raw).map_err(|_| Error::Internal))?;
+            .and_then(|raw| Fmmu::unpack_from_slice(&raw).map_err(|_| Error::Internal))?;
 
         // We can use the enable flag as a sentinel for existing config because EtherCrab inits
         // FMMUs to all zeroes on startup.
@@ -503,9 +507,9 @@ where
             }
         };
 
-        self.write(
+        self.write_slice(
             RegisterAddress::fmmu(fmmu_index as u8),
-            fmt::unwrap!(fmmu_config
+            &fmt::unwrap!(fmmu_config
                 .pack()
                 .map_err(crate::error::WrappedPackingError::from)),
             "PDI FMMU",

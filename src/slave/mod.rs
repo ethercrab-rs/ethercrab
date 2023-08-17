@@ -674,6 +674,30 @@ impl<'a, S> SlaveRef<'a, S> {
             .wkc(1, context)
     }
 
+    pub(crate) async fn read_slice(
+        &self,
+        register: impl Into<u16>,
+        len: u16,
+        context: &'static str,
+    ) -> Result<RxFrameDataBuf<'_>, Error> {
+        Command::fprd(self.configured_address, register.into())
+            .receive_slice(&self.client, len)
+            .await?
+            .wkc(1, context)
+    }
+
+    pub(crate) async fn write_slice(
+        &self,
+        register: impl Into<u16>,
+        value: &[u8],
+        context: &'static str,
+    ) -> Result<RxFrameDataBuf<'_>, Error> {
+        Command::fpwr(self.configured_address, register.into())
+            .send_receive_slice(&self.client, value)
+            .await?
+            .wkc(1, context)
+    }
+
     /// A wrapper around an FPWR service to this slave's configured address.
     pub(crate) async fn write<T>(
         &self,
@@ -719,15 +743,17 @@ impl<'a, S> SlaveRef<'a, S> {
 
         // Send state request
         let response = self
-            .write(
+            .write_slice(
                 RegisterAddress::AlControl,
-                fmt::unwrap!(AlControl::new(desired_state)
+                &fmt::unwrap!(AlControl::new(desired_state)
                     .pack()
                     .map_err(crate::error::WrappedPackingError::from)),
                 "AL control",
             )
             .await
-            .and_then(|raw: [u8; 2]| AlControl::unpack(&raw).map_err(|_| Error::StateTransition))?;
+            .and_then(|raw| {
+                AlControl::unpack_from_slice(&raw).map_err(|_| Error::StateTransition)
+            })?;
 
         if response.error {
             let error: AlStatusCode = self.read(RegisterAddress::AlStatus, "AL status").await?;

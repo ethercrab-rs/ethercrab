@@ -22,7 +22,7 @@ fn main() {
     fn do_bench(b: &mut Bencher, rt: &tokio::runtime::Runtime, client: &Client) {
         b.to_async(rt).iter(|| async {
             let _ = Command::lwr(0x1234_5678)
-                .send_receive(client, DATA)
+                .send_receive_slice(client, &DATA)
                 .await
                 .expect("write");
         })

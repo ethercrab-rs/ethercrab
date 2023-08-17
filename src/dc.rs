@@ -35,8 +35,24 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
             .await?;
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
-            .read::<[u32; 4]>(RegisterAddress::DcTimePort0, "Port receive times")
+            .read_slice(
+                RegisterAddress::DcTimePort0,
+                // 4 u32
+                4 * 4,
+                "Port receive times",
+            )
             .await
+            .map(|slice| {
+                let chunks = slice.chunks_exact(4);
+
+                let mut res = [0u32; 4];
+
+                for (i, chunk) in chunks.enumerate() {
+                    res[i] = u32::from_le_bytes(fmt::unwrap!(chunk.try_into()));
+                }
+
+                res
+            })
             .map_err(|e| {
                 fmt::error!(
                     "Failed to read DC times for slave {:#06x}: {}",
