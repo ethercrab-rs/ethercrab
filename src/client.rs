@@ -441,7 +441,7 @@ impl<'sto> Client<'sto> {
         .await
     }
 
-    pub(crate) async fn read_service_inner(
+    pub(crate) async fn read_service(
         &self,
         command: command::Reads,
         len: u16,
@@ -455,7 +455,7 @@ impl<'sto> Client<'sto> {
         .map(|response| response.into_data())
     }
 
-    pub(crate) async fn write_service_inner(
+    pub(crate) async fn write_service(
         &self,
         command: Writes,
         value: &[u8],

@@ -72,7 +72,7 @@ impl Writes {
         client: &'client Client<'client>,
         value: &'data [u8],
     ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
-        client.write_service_inner(self, value).await
+        client.write_service(self, value).await
     }
 
     /// Send a slice of data, ignoring any response.
@@ -82,7 +82,7 @@ impl Writes {
         value: &'data [u8],
     ) -> Result<PduResponse<()>, Error> {
         client
-            .write_service_inner(self, value)
+            .write_service(self, value)
             .await
             .map(|(_, wkc)| ((), wkc))
     }
@@ -107,7 +107,7 @@ impl Writes {
         T: PduData,
     {
         client
-            .write_service_inner(self, value.as_slice())
+            .write_service(self, value.as_slice())
             .await
             .map(|(_, wkc)| ((), wkc))
     }
@@ -122,7 +122,7 @@ impl Writes {
         T: PduData,
     {
         client
-            .write_service_inner(self, value.as_slice())
+            .write_service(self, value.as_slice())
             .await
             .and_then(|(data, working_counter)| {
                 let res = T::try_from_slice(&*data).map_err(|e| {
@@ -148,7 +148,7 @@ impl Writes {
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
         assert!(value.len() <= client.max_frame_data(), "Chunked sends not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), client.max_frame_data());
 
-        let (data, working_counter) = client.write_service_inner(self, value).await?;
+        let (data, working_counter) = client.write_service(self, value).await?;
 
         if data.len() != value.len() {
             fmt::error!(
@@ -215,7 +215,7 @@ impl Reads {
         T: PduRead,
     {
         client
-            .read_service_inner(self, T::LEN)
+            .read_service(self, T::LEN)
             .await
             .and_then(|(data, working_counter)| {
                 let res = T::try_from_slice(&*data).map_err(|e| {
@@ -239,7 +239,7 @@ impl Reads {
         client: &'client Client<'client>,
         len: u16,
     ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
-        client.read_service_inner(self, len).await
+        client.read_service(self, len).await
     }
 }
 
