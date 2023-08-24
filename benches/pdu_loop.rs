@@ -30,7 +30,7 @@ fn do_bench(b: &mut Bencher) {
                 .send(&mut packet_buf, |bytes| async {
                     written_packet.copy_from_slice(bytes);
 
-                    Ok(())
+                    Ok(bytes.len())
                 })
                 .await
                 .unwrap();

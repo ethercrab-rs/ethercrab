@@ -13,6 +13,10 @@ An EtherCAT master written in Rust.
 ### Changed
 
 - [#92] If no slave devices are detected, `Client::init` will no longer exit with an error.
+- **(breaking)** [#TODO] `SendableFrame::send_blocking` and `SendableFrame::send` must now return
+  the number of bytes sent over the network.
+- **(breaking)** [#TODO] `SendableFrame::write_ethernet_packet` is no longer `pub`. Instead, use
+  `SendableFrame::send_blocking` or `SendableFrame::send`.
 
 ### Removed
 
@@ -180,5 +184,6 @@ An EtherCAT master written in Rust.
 [#91]: https://github.com/ethercrab-rs/ethercrab/pull/91
 [#92]: https://github.com/ethercrab-rs/ethercrab/pull/92
 [#99]: https://github.com/ethercrab-rs/ethercrab/pull/99
+[#TODO]: https://github.com/ethercrab-rs/ethercrab/pull/TODO
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
