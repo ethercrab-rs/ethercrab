@@ -89,7 +89,11 @@ impl Future for TxRxFut<'_> {
             Poll::Ready(Err(e)) => {
                 fmt::error!("Receive PDU failed: {}", e);
 
-                return Poll::Ready(Err(Error::ReceiveFrame));
+                // Try again - hopefully the network will be back
+                // TODO: Filter only on errors that we can recover from
+                // TODO: Retry counter/timeout?
+                // FIXME: Wake after a delay. I think this deadlocks the tx/rx loop
+                // ctx.waker().wake_by_ref();
             }
             Poll::Pending => (),
         }

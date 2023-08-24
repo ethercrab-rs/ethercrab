@@ -9,8 +9,10 @@ pub mod storage;
 use crate::{
     command::Command,
     error::{Error, PduError},
+    fmt,
     pdu_loop::storage::PduStorageRef,
 };
+use core::time::Duration;
 
 pub use frame_element::received_frame::RxFrameDataBuf;
 pub use frame_element::sendable_frame::SendableFrame;
@@ -144,11 +146,14 @@ impl<'sto> PduLoop<'sto> {
         command: Command,
         send_data: &[u8],
         data_length: u16,
+        timeout: Option<Duration>,
     ) -> Result<ReceivedFrame<'_>, Error> {
         let send_data_len = send_data.len();
         let payload_length = u16::try_from(send_data.len())?.max(data_length);
 
         let mut frame = self.storage.alloc_frame(command, data_length)?;
+
+        let frame_idx = frame.index();
 
         let payload = frame
             .buf_mut()
@@ -161,7 +166,21 @@ impl<'sto> PduLoop<'sto> {
 
         self.wake_sender();
 
-        frame.await
+        if let Some(timeout) = timeout {
+            crate::timer_factory::timeout(timeout, frame)
+                .await
+                .map_err(|e| {
+                    if e == Error::Timeout {
+                        fmt::error!("Frame {} timed out, releasing", frame_idx);
+
+                        self.storage.release_frame(frame_idx);
+                    }
+
+                    e
+                })
+        } else {
+            frame.await
+        }
     }
 
     /// Send data to and read data back from multiple slaves.
@@ -169,8 +188,9 @@ impl<'sto> PduLoop<'sto> {
         &'a self,
         command: Command,
         send_data: &[u8],
+        timeout: Option<Duration>,
     ) -> Result<ReceivedFrame<'_>, Error> {
-        self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?)
+        self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?, timeout)
             .await
     }
 }
@@ -252,9 +272,11 @@ mod tests {
             let mut written_packet = Vec::new();
             written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
-            let mut frame_fut =
-                pin!(pdu_loop
-                    .pdu_tx_readwrite(Command::Write(Command::fpwr(0x5678, 0x1234)), &data,));
+            let mut frame_fut = pin!(pdu_loop.pdu_tx_readwrite(
+                Command::Write(Command::fpwr(0x5678, 0x1234)),
+                &data,
+                None
+            ));
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -452,7 +474,7 @@ mod tests {
             fmt::info!("Send PDU {i}");
 
             let result = pdu_loop
-                .pdu_tx_readwrite(Command::Write(Command::fpwr(0x1000, 0x980)), &data)
+                .pdu_tx_readwrite(Command::Write(Command::fpwr(0x1000, 0x980)), &data, None)
                 .await
                 .unwrap()
                 .wkc(0, "testing")

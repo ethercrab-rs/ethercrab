@@ -28,6 +28,10 @@ impl<'sto> CreatedFrame<'sto> {
     pub fn buf_mut(&mut self) -> &mut [u8] {
         unsafe { self.inner.buf_mut() }
     }
+
+    pub fn index(&self) -> u8 {
+        unsafe { self.inner.frame() }.index
+    }
 }
 
 // SAFETY: This unsafe impl is required due to `FrameBox` containing a `NonNull`, however this impl

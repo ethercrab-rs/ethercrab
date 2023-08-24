@@ -21,7 +21,7 @@ use core::{
 };
 use spin::RwLock;
 
-use super::{pdu_rx::PduRx, pdu_tx::PduTx};
+use super::{frame_element::FrameState, pdu_rx::PduRx, pdu_tx::PduTx};
 
 /// Stores PDU frames that are currently being prepared to send, in flight, or being received and
 /// processed.
@@ -166,6 +166,16 @@ impl<'sto> PduStorageRef<'sto> {
                 _lifetime: PhantomData,
             },
         })
+    }
+
+    pub(in crate::pdu_loop) fn release_frame(&self, idx: u8) {
+        let idx = usize::from(idx);
+
+        if idx < self.num_frames {
+            let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(idx)) };
+
+            unsafe { FrameElement::set_state(frame, FrameState::None) };
+        }
     }
 
     /// Updates state from SENDING -> RX_BUSY

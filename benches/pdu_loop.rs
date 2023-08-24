@@ -19,7 +19,7 @@ fn do_bench(b: &mut Bencher) {
         //  --- Prepare frame
 
         let frame_fut =
-            pdu_loop.pdu_tx_readwrite(Command::Write(Command::fpwr(0x5678, 0x1234)), &DATA);
+            pdu_loop.pdu_tx_readwrite(Command::Write(Command::fpwr(0x5678, 0x1234)), &DATA, None);
 
         // --- Send frame
 

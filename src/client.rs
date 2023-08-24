@@ -460,19 +460,10 @@ impl<'sto> Client<'sto> {
         command: Writes,
         value: &[u8],
     ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
-        timeout(
-            self.timeouts.pdu,
-            // TODO: Bit weird to re-wrap the write in a `Command` but whatever
-            self.pdu_loop
-                .pdu_tx_readwrite(Command::Write(command), value),
-        )
-        .await
-        .map_err(|e| {
-            fmt::error!("Write service timeout, command {:?}", command);
-
-            e
-        })
-        .map(|response| response.into_data())
+        self.pdu_loop
+            .pdu_tx_readwrite(Command::Write(command), value, Some(self.timeouts.pdu))
+            .await
+            .map(|response| response.into_data())
     }
 
     pub(crate) async fn write_service_len(
@@ -481,19 +472,10 @@ impl<'sto> Client<'sto> {
         value: &[u8],
         len: u16,
     ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
-        timeout(
-            self.timeouts.pdu,
-            // TODO: Bit weird to re-wrap the write in a `Command` but whatever
-            self.pdu_loop
-                .pdu_tx_readwrite_len(Command::Write(command), value, len),
-        )
-        .await
-        .map_err(|e| {
-            fmt::error!("Write service timeout, command {:?}", command);
-
-            e
-        })
-        .map(|response| response.into_data())
+        self.pdu_loop
+            .pdu_tx_readwrite_len(Command::Write(command), value, len, Some(self.timeouts.pdu))
+            .await
+            .map(|response| response.into_data())
     }
 
     pub(crate) fn max_frame_data(&self) -> usize {
