@@ -120,7 +120,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
         };
 
         match was {
-            FrameState::Sendable | FrameState::Sending | FrameState::RxBusy => {
+            FrameState::Sendable | FrameState::Sending | FrameState::Sent | FrameState::RxBusy => {
                 unsafe { rxin.replace_waker(cx.waker().clone()) };
 
                 self.frame = Some(rxin);

@@ -57,7 +57,7 @@ impl<'sto> SendableFrame<'sto> {
     /// The frame has been sent by the network driver.
     pub(crate) fn mark_sent(self) {
         unsafe {
-            FrameElement::set_state(self.inner.frame, FrameState::Sending);
+            FrameElement::set_state(self.inner.frame, FrameState::Sent);
         }
     }
 
