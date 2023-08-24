@@ -28,47 +28,50 @@ impl Future for TxRxFut<'_> {
         let mut waker = self.tx.waker();
 
         while let Some(frame) = self.tx.next_sendable_frame() {
-            // FIXME: Release frame on failure
-            let data = frame.write_ethernet_packet(&mut buf)?;
+            let res = frame.send_blocking(&mut buf, |data| {
+                #[cfg(feature = "bench-hacks")]
+                {
+                    // Epic hack to make data writable
+                    let data: &mut [u8] = unsafe {
+                        core::slice::from_raw_parts_mut(data.as_ptr() as *mut u8, data.len())
+                    };
 
-            #[cfg(feature = "bench-hacks")]
-            {
-                // Epic hack to make data writable
-                let data: &mut [u8] = unsafe {
-                    core::slice::from_raw_parts_mut(data.as_ptr() as *mut u8, data.len())
-                };
+                    let mut frame = smoltcp::wire::EthernetFrame::new_unchecked(data);
 
-                let mut frame = smoltcp::wire::EthernetFrame::new_unchecked(data);
+                    // For benchmarks, change the first octet of the source MAC address so the packet
+                    // isn't filtered out as a sent frame but is treated as a received frame instead.
+                    frame.set_src_addr(smoltcp::wire::EthernetAddress([
+                        0x12, 0x10, 0x10, 0x10, 0x10, 0x10,
+                    ]))
+                }
 
-                // For benchmarks, change the first octet of the source MAC address so the packet
-                // isn't filtered out as a sent frame but is treated as a received frame instead.
-                frame.set_src_addr(smoltcp::wire::EthernetAddress([
-                    0x12, 0x10, 0x10, 0x10, 0x10, 0x10,
-                ]))
-            }
+                match Pin::new(&mut self.socket).poll_write(ctx, data) {
+                    Poll::Ready(Ok(bytes_written)) => {
+                        if bytes_written != data.len() {
+                            fmt::error!("Only wrote {} of {} bytes", bytes_written, data.len());
 
-            match Pin::new(&mut self.socket).poll_write(ctx, data) {
-                Poll::Ready(Ok(bytes_written)) => {
-                    if bytes_written != data.len() {
-                        fmt::error!("Only wrote {} of {} bytes", bytes_written, data.len());
-
-                        // FIXME: Release frame
-
-                        return Poll::Ready(Err(Error::PartialSend {
-                            len: data.len(),
-                            sent: bytes_written,
-                        }));
+                            Err(Error::PartialSend {
+                                len: data.len(),
+                                sent: bytes_written,
+                            })
+                        } else {
+                            Ok(bytes_written)
+                        }
                     }
 
-                    frame.mark_sent();
-                }
-                // FIXME: Release frame on failure
-                Poll::Ready(Err(e)) => {
-                    fmt::error!("Send PDU failed: {}", e);
+                    Poll::Ready(Err(e)) => {
+                        fmt::error!("Send PDU failed: {}", e);
 
-                    return Poll::Ready(Err(Error::SendFrame));
+                        Err(Error::SendFrame)
+                    }
+                    Poll::Pending => Ok(0),
                 }
-                Poll::Pending => (),
+            });
+
+            if let Err(e) = res {
+                fmt::error!("Send PDU failed: {}", e);
+
+                return Poll::Ready(Err(e));
             }
         }
 
@@ -83,7 +86,6 @@ impl Future for TxRxFut<'_> {
                     return Poll::Ready(Err(Error::ReceiveFrame));
                 }
             }
-            // FIXME: Release frame on failure
             Poll::Ready(Err(e)) => {
                 fmt::error!("Receive PDU failed: {}", e);
 

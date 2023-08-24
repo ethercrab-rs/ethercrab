@@ -169,7 +169,7 @@ impl<'sto> PduStorageRef<'sto> {
     }
 
     /// Updates state from SENDING -> RX_BUSY
-    pub(in crate::pdu_loop) fn get_receiving(&self, idx: u8) -> Option<ReceivingFrame<'sto>> {
+    pub(in crate::pdu_loop) fn claim_receiving(&self, idx: u8) -> Option<ReceivingFrame<'sto>> {
         let idx = usize::from(idx);
 
         if idx >= self.num_frames {

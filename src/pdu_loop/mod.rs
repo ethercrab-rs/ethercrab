@@ -273,7 +273,7 @@ mod tests {
                     .send(&mut packet_buf, |bytes| async {
                         written_packet.copy_from_slice(bytes);
 
-                        Ok(())
+                        Ok(bytes.len())
                     })
                     .await
                     .expect("send");
@@ -414,7 +414,7 @@ mod tests {
                             .send(&mut packet_buf, |bytes| async {
                                 s.send(bytes.to_vec()).unwrap();
 
-                                Ok(())
+                                Ok(bytes.len())
                             })
                             .await
                             .unwrap();

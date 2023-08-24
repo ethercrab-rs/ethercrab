@@ -104,7 +104,7 @@ impl Future for DummyTxRxFut<'_> {
                 .send_blocking(&mut buf, |got| {
                     assert_eq!(expected.as_ref(), got, "TX line {}", self.packet_number);
 
-                    Ok(())
+                    Ok(got.len())
                 })
                 .expect("Failed to send");
 
