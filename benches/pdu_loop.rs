@@ -19,11 +19,8 @@ fn do_bench(b: &mut Bencher) {
     b.iter(|| {
         //  --- Prepare frame
 
-        let frame_fut = pdu_loop.pdu_tx_readwrite(
-            Command::Write(Command::fpwr(0x5678, 0x1234)),
-            &DATA,
-            Duration::from_secs(1),
-        );
+        let frame_fut =
+            pdu_loop.pdu_tx_readwrite(Command::fpwr(0x5678, 0x1234), &DATA, Duration::from_secs(1));
 
         // --- Send frame
 
