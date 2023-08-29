@@ -79,7 +79,10 @@ impl Future for TxRxFut<'_> {
             Poll::Ready(Ok(n)) => {
                 let packet = &buf[0..n];
 
-                // FIXME: Release frame on failure
+                if n == 0 {
+                    fmt::warn!("Received zero bytes");
+                }
+
                 if let Err(e) = self.rx.receive_frame(packet) {
                     fmt::error!("Failed to receive frame: {}", e);
 
@@ -89,11 +92,7 @@ impl Future for TxRxFut<'_> {
             Poll::Ready(Err(e)) => {
                 fmt::error!("Receive PDU failed: {}", e);
 
-                // Try again - hopefully the network will be back
-                // TODO: Filter only on errors that we can recover from
-                // TODO: Retry counter/timeout?
-                // FIXME: Wake after a delay. I think this deadlocks the tx/rx loop
-                // ctx.waker().wake_by_ref();
+                return Poll::Ready(Err(Error::ReceiveFrame));
             }
             Poll::Pending => (),
         }
