@@ -1,3 +1,4 @@
+use core::time::Duration;
 use criterion::{criterion_group, criterion_main, Bencher, Criterion, Throughput};
 use ethercrab::{Command, PduStorage};
 
@@ -19,7 +20,7 @@ fn do_bench(b: &mut Bencher) {
         //  --- Prepare frame
 
         let frame_fut =
-            pdu_loop.pdu_tx_readwrite(Command::Write(Command::fpwr(0x5678, 0x1234)), &DATA);
+            pdu_loop.pdu_tx_readwrite(Command::fpwr(0x5678, 0x1234), &DATA, Duration::from_secs(1));
 
         // --- Send frame
 
@@ -30,7 +31,7 @@ fn do_bench(b: &mut Bencher) {
                 .send(&mut packet_buf, |bytes| async {
                     written_packet.copy_from_slice(bytes);
 
-                    Ok(())
+                    Ok(bytes.len())
                 })
                 .await
                 .unwrap();
@@ -46,7 +47,7 @@ fn do_bench(b: &mut Bencher) {
 }
 
 pub fn tx_rx(c: &mut Criterion) {
-    let mut group = c.benchmark_group("pdu-loop");
+    let mut group = c.benchmark_group("pdu_loop");
 
     group.throughput(Throughput::Elements(1));
 

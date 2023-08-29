@@ -27,9 +27,16 @@ use smoltcp::wire::{EthernetAddress, EthernetFrame};
 /// # static PDU_STORAGE: PduStorage<2, 2> = PduStorage::new();
 /// let (mut pdu_tx, _pdu_rx, _pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 ///
+/// let mut buf = [0u8; 1530];
+///
 /// poll_fn(|ctx| {
-///     if let Some(packet) = pdu_tx.next_sendable_frame() {
-///         // Send packet over the network interface here
+///     if let Some(frame) = pdu_tx.next_sendable_frame() {
+///         frame.send_blocking(&mut buf, |data| {
+///             // Send packet over the network interface here
+///
+///             // Return the number of bytes sent over the network
+///             Ok(data.len())
+///         });
 ///
 ///         // Wake the future so it's polled again in case there are more frames to send
 ///         ctx.waker().wake_by_ref();
@@ -57,7 +64,15 @@ impl<'sto> SendableFrame<'sto> {
     /// The frame has been sent by the network driver.
     pub(crate) fn mark_sent(self) {
         unsafe {
-            FrameElement::set_state(self.inner.frame, FrameState::Sending);
+            FrameElement::set_state(self.inner.frame, FrameState::Sent);
+        }
+    }
+
+    /// Used on send failure to release the frame sending claim so the frame can attempt to be sent
+    /// again, or reclaimed for reuse.
+    fn release_sending_claim(self) {
+        unsafe {
+            FrameElement::set_state(self.inner.frame, FrameState::Sendable);
         }
     }
 
@@ -118,7 +133,10 @@ impl<'sto> SendableFrame<'sto> {
     /// The consumed part of the buffer is returned on success, ready for passing to the network
     /// device. If the buffer is not large enough to hold the full frame, this method will return
     /// [`Error::Pdu(PduError::TooLong)`](PduError::TooLong).
-    pub fn write_ethernet_packet<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], PduError> {
+    pub(crate) fn write_ethernet_packet<'buf>(
+        &self,
+        buf: &'buf mut [u8],
+    ) -> Result<&'buf [u8], PduError> {
         let ethernet_len = self.len();
 
         let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
@@ -137,36 +155,68 @@ impl<'sto> SendableFrame<'sto> {
     }
 
     /// Send the frame using a callback returning a future.
-    pub async fn send<'buf, F, O>(self, packet_buf: &'buf mut [u8], send: F) -> Result<(), Error>
+    ///
+    /// The closure must return the number of bytes sent over the network interface. If this does
+    /// not match the length of the packet passed to the closure, this method will return an error.
+    pub async fn send<'buf, F, O>(self, packet_buf: &'buf mut [u8], send: F) -> Result<usize, Error>
     where
         F: FnOnce(&'buf [u8]) -> O,
-        O: Future<Output = Result<(), Error>>,
+        O: Future<Output = Result<usize, Error>>,
     {
         let bytes = self.write_ethernet_packet(packet_buf)?;
 
-        send(bytes).await?;
+        match send(bytes).await {
+            Ok(bytes_sent) if bytes_sent == bytes.len() => {
+                self.mark_sent();
 
-        // FIXME: Release frame on failure
+                Ok(bytes_sent)
+            }
+            Ok(bytes_sent) => {
+                self.release_sending_claim();
 
-        self.mark_sent();
+                Err(Error::PartialSend {
+                    len: bytes.len(),
+                    sent: bytes_sent,
+                })
+            }
+            Err(res) => {
+                self.release_sending_claim();
 
-        Ok(())
+                Err(res)
+            }
+        }
     }
 
     /// Send the frame using a blocking callback.
+    ///
+    /// The closure must return the number of bytes sent over the network interface. If this does
+    /// not match the length of the packet passed to the closure, this method will return an error.
     pub fn send_blocking<'buf>(
         self,
         packet_buf: &'buf mut [u8],
-        send: impl FnOnce(&'buf [u8]) -> Result<(), Error>,
-    ) -> Result<(), Error> {
+        send: impl FnOnce(&'buf [u8]) -> Result<usize, Error>,
+    ) -> Result<usize, Error> {
         let bytes = self.write_ethernet_packet(packet_buf)?;
 
-        send(bytes)?;
+        match send(bytes) {
+            Ok(bytes_sent) if bytes_sent == bytes.len() => {
+                self.mark_sent();
 
-        // FIXME: Release frame on failure
+                Ok(bytes_sent)
+            }
+            Ok(bytes_sent) => {
+                self.release_sending_claim();
 
-        self.mark_sent();
+                Err(Error::PartialSend {
+                    len: bytes.len(),
+                    sent: bytes_sent,
+                })
+            }
+            Err(res) => {
+                self.release_sending_claim();
 
-        Ok(())
+                Err(res)
+            }
+        }
     }
 }

@@ -1,7 +1,7 @@
 target_steps: &target_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.71
+    - image: cimg/rust:1.72
   steps:
     - checkout
     - restore_cache:
@@ -42,7 +42,7 @@ target_steps: &target_steps
 miri_steps: &miri_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.71
+    - image: cimg/rust:1.72
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
@@ -65,7 +65,7 @@ miri_steps: &miri_steps
 target_steps_no_std: &target_steps_no_std
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.71
+    - image: cimg/rust:1.72
   steps:
     - checkout
     - restore_cache:
@@ -82,18 +82,20 @@ target_steps_no_std: &target_steps_no_std
           - /home/circleci/.cargo/registry
 
 target_steps_embassy: &target_steps_embassy
-  working_directory: ~/project/examples/embassy-stm32
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.71
+    - image: cimg/rust:1.72
   steps:
     - checkout
     - restore_cache:
-        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
-    - run: cargo build --release
+        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+    - run: |
+        cd examples/embassy-stm32
+
+        cargo build --release
 
     - save_cache:
-        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
@@ -102,7 +104,7 @@ macos_steps: &macos_steps
   resource_class: large
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.71
+    - image: cimg/rust:1.72
   steps:
     - checkout
     - restore_cache:
@@ -137,7 +139,7 @@ jobs:
     resource_class: large
     docker:
       # NOTE: Exact version is overridden in `rust-toolchain.toml`
-      - image: cimg/rust:1.71
+      - image: cimg/rust:1.72
     steps:
       - checkout
       - restore_cache:

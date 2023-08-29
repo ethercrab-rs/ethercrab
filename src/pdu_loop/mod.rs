@@ -9,8 +9,11 @@ pub mod storage;
 use crate::{
     command::Command,
     error::{Error, PduError},
+    fmt,
     pdu_loop::storage::PduStorageRef,
+    Reads, Writes,
 };
+use core::time::Duration;
 
 pub use frame_element::received_frame::RxFrameDataBuf;
 pub use frame_element::sendable_frame::SendableFrame;
@@ -84,23 +87,6 @@ impl<'sto> PduLoop<'sto> {
         self.storage.frame_data_len
     }
 
-    /// Send a PDU to read data back from one or more slave devices.
-    pub async fn pdu_tx_readonly(
-        &self,
-        command: Command,
-        data_length: u16,
-    ) -> Result<ReceivedFrame<'_>, Error> {
-        let frame = self.storage.alloc_frame(command, data_length)?;
-
-        let frame = frame.mark_sendable();
-
-        self.wake_sender();
-
-        let res = frame.await?;
-
-        Ok(res)
-    }
-
     /// Tell the packet sender there are PDUs ready to send.
     fn wake_sender(&self) {
         let waker = self.storage.tx_waker.read();
@@ -144,11 +130,14 @@ impl<'sto> PduLoop<'sto> {
         command: Command,
         send_data: &[u8],
         data_length: u16,
+        timeout: Duration,
     ) -> Result<ReceivedFrame<'_>, Error> {
         let send_data_len = send_data.len();
         let payload_length = u16::try_from(send_data.len())?.max(data_length);
 
         let mut frame = self.storage.alloc_frame(command, data_length)?;
+
+        let frame_idx = frame.index();
 
         let payload = frame
             .buf_mut()
@@ -161,16 +150,43 @@ impl<'sto> PduLoop<'sto> {
 
         self.wake_sender();
 
-        frame.await
+        crate::timer_factory::timeout(timeout, frame)
+            .await
+            .map_err(|e| {
+                if e == Error::Timeout {
+                    fmt::error!("Frame {} timed out, releasing", frame_idx);
+
+                    self.storage.release_frame(frame_idx);
+                }
+
+                e
+            })
     }
 
     /// Send data to and read data back from multiple slaves.
     pub async fn pdu_tx_readwrite<'a>(
         &'a self,
-        command: Command,
+        command: Writes,
         send_data: &[u8],
+        timeout: Duration,
     ) -> Result<ReceivedFrame<'_>, Error> {
-        self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?)
+        self.pdu_tx_readwrite_len(
+            Command::Write(command),
+            send_data,
+            send_data.len().try_into()?,
+            timeout,
+        )
+        .await
+    }
+
+    /// Send a PDU to read data back from one or more slave devices.
+    pub async fn pdu_tx_readonly(
+        &self,
+        command: Reads,
+        data_length: u16,
+        timeout: Duration,
+    ) -> Result<ReceivedFrame<'_>, Error> {
+        self.pdu_tx_readwrite_len(Command::Read(command), &[], data_length, timeout)
             .await
     }
 }
@@ -181,12 +197,47 @@ mod tests {
     use crate::{
         fmt,
         pdu_loop::frame_element::{
-            sendable_frame::SendableFrame, FrameBox, FrameElement, FrameState,
+            created_frame::CreatedFrame, sendable_frame::SendableFrame, FrameBox, FrameElement,
+            FrameState,
         },
     };
     use core::{future::poll_fn, marker::PhantomData, ops::Deref, pin::pin, task::Poll};
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
+
+    #[tokio::test]
+    // MIRI doesn't like this test as it leaks memory
+    #[cfg_attr(miri, ignore)]
+    async fn timed_out_frame_is_reallocatable() {
+        // One 16 byte frame
+        static STORAGE: PduStorage<1, 16> = PduStorage::new();
+        let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
+
+        let send_result = pdu_loop
+            .pdu_tx_readonly(
+                Reads::Brd {
+                    address: 0,
+                    register: 0,
+                },
+                16,
+                Duration::from_secs(0),
+            )
+            .await;
+
+        // Just make sure the read timed out
+        assert_eq!(send_result.unwrap_err(), Error::Timeout);
+
+        // We should be able to reuse the frame slot now
+        assert!(matches!(
+            pdu_loop.storage.alloc_frame(
+                Command::Read(Reads::Lrd {
+                    address: 0x1234_5678,
+                }),
+                16,
+            ),
+            Ok(CreatedFrame { .. })
+        ));
+    }
 
     #[test]
     fn write_frame() {
@@ -252,9 +303,11 @@ mod tests {
             let mut written_packet = Vec::new();
             written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
-            let mut frame_fut =
-                pin!(pdu_loop
-                    .pdu_tx_readwrite(Command::Write(Command::fpwr(0x5678, 0x1234)), &data,));
+            let mut frame_fut = pin!(pdu_loop.pdu_tx_readwrite(
+                Command::fpwr(0x5678, 0x1234),
+                &data,
+                Duration::from_secs(1)
+            ));
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -273,7 +326,7 @@ mod tests {
                     .send(&mut packet_buf, |bytes| async {
                         written_packet.copy_from_slice(bytes);
 
-                        Ok(())
+                        Ok(bytes.len())
                     })
                     .await
                     .expect("send");
@@ -414,7 +467,7 @@ mod tests {
                             .send(&mut packet_buf, |bytes| async {
                                 s.send(bytes.to_vec()).unwrap();
 
-                                Ok(())
+                                Ok(bytes.len())
                             })
                             .await
                             .unwrap();
@@ -452,7 +505,7 @@ mod tests {
             fmt::info!("Send PDU {i}");
 
             let result = pdu_loop
-                .pdu_tx_readwrite(Command::Write(Command::fpwr(0x1000, 0x980)), &data)
+                .pdu_tx_readwrite(Command::fpwr(0x1000, 0x980), &data, Duration::from_secs(1))
                 .await
                 .unwrap()
                 .wkc(0, "testing")

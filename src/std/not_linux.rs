@@ -70,7 +70,7 @@ pub fn tx_rx_task(
                                 })
                                 .expect("TX");
 
-                            Ok(())
+                            Ok(frame_bytes.len())
                         })
                         .await
                         .expect("TX");
