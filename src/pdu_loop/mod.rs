@@ -86,23 +86,6 @@ impl<'sto> PduLoop<'sto> {
         self.storage.frame_data_len
     }
 
-    /// Send a PDU to read data back from one or more slave devices.
-    pub async fn pdu_tx_readonly(
-        &self,
-        command: Command,
-        data_length: u16,
-    ) -> Result<ReceivedFrame<'_>, Error> {
-        let frame = self.storage.alloc_frame(command, data_length)?;
-
-        let frame = frame.mark_sendable();
-
-        self.wake_sender();
-
-        let res = frame.await?;
-
-        Ok(res)
-    }
-
     /// Tell the packet sender there are PDUs ready to send.
     fn wake_sender(&self) {
         let waker = self.storage.tx_waker.read();
@@ -188,6 +171,34 @@ impl<'sto> PduLoop<'sto> {
     ) -> Result<ReceivedFrame<'_>, Error> {
         self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?, timeout)
             .await
+    }
+
+    /// Send a PDU to read data back from one or more slave devices.
+    pub async fn pdu_tx_readonly(
+        &self,
+        command: Command,
+        data_length: u16,
+        timeout: Duration,
+    ) -> Result<ReceivedFrame<'_>, Error> {
+        let frame = self.storage.alloc_frame(command, data_length)?;
+
+        let frame_idx = frame.index();
+
+        let frame = frame.mark_sendable();
+
+        self.wake_sender();
+
+        crate::timer_factory::timeout(timeout, frame)
+            .await
+            .map_err(|e| {
+                if e == Error::Timeout {
+                    fmt::error!("RX only frame {} timed out, releasing", frame_idx);
+
+                    self.storage.release_frame(frame_idx);
+                }
+
+                e
+            })
     }
 }
 

@@ -449,7 +449,8 @@ impl<'sto> Client<'sto> {
         timeout(
             self.timeouts.pdu,
             // TODO: Bit weird to re-wrap the read in a `Command` but whatever
-            self.pdu_loop.pdu_tx_readonly(Command::Read(command), len),
+            self.pdu_loop
+                .pdu_tx_readonly(Command::Read(command), len, self.timeouts.pdu),
         )
         .await
         .map(|response| response.into_data())
