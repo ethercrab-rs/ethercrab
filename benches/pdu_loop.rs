@@ -50,7 +50,7 @@ fn do_bench(b: &mut Bencher) {
 }
 
 pub fn tx_rx(c: &mut Criterion) {
-    let mut group = c.benchmark_group("pdu-loop");
+    let mut group = c.benchmark_group("pdu_loop");
 
     group.throughput(Throughput::Elements(1));
 
