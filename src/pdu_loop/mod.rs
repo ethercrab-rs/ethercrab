@@ -206,6 +206,8 @@ mod tests {
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
     #[tokio::test]
+    // MIRI doesn't like this test as it leaks memory
+    #[cfg_attr(miri, ignore)]
     async fn timed_out_frame_is_reallocatable() {
         // One 16 byte frame
         static STORAGE: PduStorage<1, 16> = PduStorage::new();
