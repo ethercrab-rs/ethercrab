@@ -52,53 +52,58 @@ impl<'sto> PduRx<'sto> {
 
         let mut frame = self
             .storage
-            .get_receiving(index)
+            .claim_receiving(index)
             .ok_or_else(|| PduError::InvalidIndex(usize::from(index)))?;
 
-        if frame.index() != index {
-            return Err(Error::Pdu(PduError::Validation(
-                PduValidationError::IndexMismatch {
-                    sent: frame.index(),
-                    received: index,
-                },
-            )));
-        }
+        (|| {
+            if frame.index() != index {
+                return Err(Error::Pdu(PduError::Validation(
+                    PduValidationError::IndexMismatch {
+                        sent: frame.index(),
+                        received: index,
+                    },
+                )));
+            }
 
-        let (i, command) = Command::parse(command_code, i)?;
+            let (i, command) = Command::parse(command_code, i)?;
 
-        // Check for weird bugs where a slave might return a different command than the one sent for
-        // this PDU index.
-        if command.code() != frame.command().code() {
-            return Err(Error::Pdu(PduError::Validation(
-                PduValidationError::CommandMismatch {
-                    sent: command,
-                    received: frame.command(),
-                },
-            )));
-        }
+            // Check for weird bugs where a slave might return a different command than the one sent for
+            // this PDU index.
+            if command.code() != frame.command().code() {
+                return Err(Error::Pdu(PduError::Validation(
+                    PduValidationError::CommandMismatch {
+                        sent: command,
+                        received: frame.command(),
+                    },
+                )));
+            }
 
-        let (i, flags) = map_res(take(2usize), PduFlags::unpack_from_slice)(i)?;
-        let (i, irq) = le_u16(i)?;
-        let (i, data) = take(flags.length)(i)?;
-        let (i, working_counter) = le_u16(i)?;
+            let (i, flags) = map_res(take(2usize), PduFlags::unpack_from_slice)(i)?;
+            let (i, irq) = le_u16(i)?;
+            let (i, data) = take(flags.length)(i)?;
+            let (i, working_counter) = le_u16(i)?;
 
-        fmt::trace!(
-            "Received frame with index {:#04x}, WKC {}",
-            index,
-            working_counter,
-        );
+            fmt::trace!(
+                "Received frame with index {:#04x}, WKC {}",
+                index,
+                working_counter,
+            );
 
-        // `_i` should be empty as we `take()`d an exact amount above.
-        debug_assert_eq!(i.len(), 0, "trailing data in received frame");
+            // `_i` should be empty as we `take()`d an exact amount above.
+            debug_assert_eq!(i.len(), 0, "trailing data in received frame");
 
-        let frame_data = frame.buf_mut();
+            let frame_data = frame.buf_mut();
 
-        frame_data[0..usize::from(flags.len())].copy_from_slice(data);
+            frame_data[0..usize::from(flags.len())].copy_from_slice(data);
 
-        // FIXME: Release frame if any of this method fails
+            frame.mark_received(flags, irq, working_counter)?;
 
-        frame.mark_received(flags, irq, working_counter)?;
+            Ok(())
+        })()
+        .map_err(|e| {
+            frame.release_receiving_claim();
 
-        Ok(())
+            e
+        })
     }
 }

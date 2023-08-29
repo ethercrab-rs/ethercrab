@@ -27,9 +27,10 @@ pub enum FrameState {
     Created = 1,
     /// The frame has been populated with data and is ready to send when the TX loop next runs.
     Sendable = 2,
-    /// The frame has been sent over the network interface and we are waiting for a response from
-    /// the network.
+    /// The frame is being sent over the network interface.
     Sending = 3,
+    /// The frame was successfully sent, and is now waiting for a response from the network.
+    Sent = 4,
     /// A frame response has been received and validation/parsing is in progress.
     RxBusy = 5,
     /// Frame response parsing is complete and the returned data is now stored in the frame. The
@@ -155,7 +156,7 @@ impl<const N: usize> FrameElement<N> {
     pub unsafe fn claim_receiving(
         this: NonNull<FrameElement<N>>,
     ) -> Option<NonNull<FrameElement<N>>> {
-        Self::swap_state(this, FrameState::Sending, FrameState::RxBusy).ok()
+        Self::swap_state(this, FrameState::Sent, FrameState::RxBusy).ok()
     }
 }
 

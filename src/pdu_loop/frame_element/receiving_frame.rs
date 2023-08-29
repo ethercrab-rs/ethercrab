@@ -29,7 +29,7 @@ impl<'sto> ReceivingFrame<'sto> {
     /// This method may only be called once the frame response (header and data) has been validated
     /// and stored in the frame element.
     pub fn mark_received(
-        self,
+        &self,
         flags: PduFlags,
         irq: u16,
         working_counter: u16,
@@ -77,6 +77,11 @@ impl<'sto> ReceivingFrame<'sto> {
     pub fn command(&self) -> Command {
         unsafe { self.inner.frame() }.command
     }
+
+    /// Set frame state back to `Sent` from `Receiving`.
+    pub(crate) fn release_receiving_claim(&self) {
+        unsafe { FrameElement::set_state(self.inner.frame, FrameState::Sent) };
+    }
 }
 
 pub struct ReceiveFrameFut<'sto> {
@@ -120,7 +125,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
         };
 
         match was {
-            FrameState::Sendable | FrameState::Sending | FrameState::RxBusy => {
+            FrameState::Sendable | FrameState::Sending | FrameState::Sent | FrameState::RxBusy => {
                 unsafe { rxin.replace_waker(cx.waker().clone()) };
 
                 self.frame = Some(rxin);
