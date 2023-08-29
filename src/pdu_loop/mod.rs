@@ -146,7 +146,7 @@ impl<'sto> PduLoop<'sto> {
         command: Command,
         send_data: &[u8],
         data_length: u16,
-        timeout: Option<Duration>,
+        timeout: Duration,
     ) -> Result<ReceivedFrame<'_>, Error> {
         let send_data_len = send_data.len();
         let payload_length = u16::try_from(send_data.len())?.max(data_length);
@@ -166,21 +166,17 @@ impl<'sto> PduLoop<'sto> {
 
         self.wake_sender();
 
-        if let Some(timeout) = timeout {
-            crate::timer_factory::timeout(timeout, frame)
-                .await
-                .map_err(|e| {
-                    if e == Error::Timeout {
-                        fmt::error!("Frame {} timed out, releasing", frame_idx);
+        crate::timer_factory::timeout(timeout, frame)
+            .await
+            .map_err(|e| {
+                if e == Error::Timeout {
+                    fmt::error!("Frame {} timed out, releasing", frame_idx);
 
-                        self.storage.release_frame(frame_idx);
-                    }
+                    self.storage.release_frame(frame_idx);
+                }
 
-                    e
-                })
-        } else {
-            frame.await
-        }
+                e
+            })
     }
 
     /// Send data to and read data back from multiple slaves.
@@ -188,7 +184,7 @@ impl<'sto> PduLoop<'sto> {
         &'a self,
         command: Command,
         send_data: &[u8],
-        timeout: Option<Duration>,
+        timeout: Duration,
     ) -> Result<ReceivedFrame<'_>, Error> {
         self.pdu_tx_readwrite_len(command, send_data, send_data.len().try_into()?, timeout)
             .await
@@ -275,7 +271,7 @@ mod tests {
             let mut frame_fut = pin!(pdu_loop.pdu_tx_readwrite(
                 Command::Write(Command::fpwr(0x5678, 0x1234)),
                 &data,
-                None
+                Duration::from_secs(1)
             ));
 
             // Poll future up to first await point. This gets the frame ready and marks it as
@@ -474,7 +470,11 @@ mod tests {
             fmt::info!("Send PDU {i}");
 
             let result = pdu_loop
-                .pdu_tx_readwrite(Command::Write(Command::fpwr(0x1000, 0x980)), &data, None)
+                .pdu_tx_readwrite(
+                    Command::Write(Command::fpwr(0x1000, 0x980)),
+                    &data,
+                    Duration::from_secs(1),
+                )
                 .await
                 .unwrap()
                 .wkc(0, "testing")
