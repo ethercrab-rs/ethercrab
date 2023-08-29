@@ -197,12 +197,45 @@ mod tests {
     use crate::{
         fmt,
         pdu_loop::frame_element::{
-            sendable_frame::SendableFrame, FrameBox, FrameElement, FrameState,
+            created_frame::CreatedFrame, sendable_frame::SendableFrame, FrameBox, FrameElement,
+            FrameState,
         },
     };
     use core::{future::poll_fn, marker::PhantomData, ops::Deref, pin::pin, task::Poll};
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
+
+    #[tokio::test]
+    async fn timed_out_frame_is_reallocatable() {
+        // One 16 byte frame
+        static STORAGE: PduStorage<1, 16> = PduStorage::new();
+        let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
+
+        let send_result = pdu_loop
+            .pdu_tx_readonly(
+                Reads::Brd {
+                    address: 0,
+                    register: 0,
+                },
+                16,
+                Duration::from_secs(0),
+            )
+            .await;
+
+        // Just make sure the read timed out
+        assert_eq!(send_result.unwrap_err(), Error::Timeout);
+
+        // We should be able to reuse the frame slot now
+        assert!(matches!(
+            pdu_loop.storage.alloc_frame(
+                Command::Read(Reads::Lrd {
+                    address: 0x1234_5678,
+                }),
+                16,
+            ),
+            Ok(CreatedFrame { .. })
+        ));
+    }
 
     #[test]
     fn write_frame() {
