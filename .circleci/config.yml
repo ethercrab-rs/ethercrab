@@ -1,7 +1,7 @@
 target_steps: &target_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.71
+    - image: cimg/rust:1.72
   steps:
     - checkout
     - restore_cache:
@@ -42,7 +42,7 @@ target_steps: &target_steps
 miri_steps: &miri_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.71
+    - image: cimg/rust:1.72
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
@@ -65,7 +65,7 @@ miri_steps: &miri_steps
 target_steps_no_std: &target_steps_no_std
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.71
+    - image: cimg/rust:1.72
   steps:
     - checkout
     - restore_cache:
@@ -85,7 +85,7 @@ target_steps_embassy: &target_steps_embassy
   working_directory: ~/project/examples/embassy-stm32
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.71
+    - image: cimg/rust:1.72
   steps:
     - checkout
     - restore_cache:
@@ -102,7 +102,7 @@ macos_steps: &macos_steps
   resource_class: large
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.71
+    - image: cimg/rust:1.72
   steps:
     - checkout
     - restore_cache:
@@ -137,7 +137,7 @@ jobs:
     resource_class: large
     docker:
       # NOTE: Exact version is overridden in `rust-toolchain.toml`
-      - image: cimg/rust:1.71
+      - image: cimg/rust:1.72
     steps:
       - checkout
       - restore_cache:

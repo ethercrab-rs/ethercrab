@@ -217,9 +217,7 @@ impl Ports {
             .windows(2)
             .map(|window| {
                 // Silly Rust
-                let [a, b] = window else {
-                    return 0
-                };
+                let [a, b] = window else { return 0 };
 
                 // Stop iterating as we've summed everything before the target port
                 if a.index() >= port.index() {
