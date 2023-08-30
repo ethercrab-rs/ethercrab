@@ -92,8 +92,6 @@ impl Future for TxRxFut<'_> {
             Poll::Ready(Err(e)) => {
                 fmt::error!("Receive PDU failed: {}", e);
 
-                // PDU failed but don't exit future - it will either be timed out or retried from
-                // elsewhere in the EtherCrab code.
                 ()
             }
             Poll::Pending => (),
