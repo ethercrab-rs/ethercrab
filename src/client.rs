@@ -445,8 +445,12 @@ impl<'sto> Client<'sto> {
     ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
         timeout(
             self.timeouts.pdu,
-            self.pdu_loop
-                .pdu_tx_readonly(command, len, self.timeouts.pdu),
+            self.pdu_loop.pdu_tx_readonly(
+                command,
+                len,
+                self.timeouts.pdu,
+                self.config.retry_behaviour,
+            ),
         )
         .await
         .map(|response| response.into_data())
@@ -458,7 +462,12 @@ impl<'sto> Client<'sto> {
         value: &[u8],
     ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
         self.pdu_loop
-            .pdu_tx_readwrite(command, value, self.timeouts.pdu)
+            .pdu_tx_readwrite(
+                command,
+                value,
+                self.timeouts.pdu,
+                self.config.retry_behaviour,
+            )
             .await
             .map(|response| response.into_data())
     }
@@ -470,7 +479,13 @@ impl<'sto> Client<'sto> {
         len: u16,
     ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
         self.pdu_loop
-            .pdu_tx_readwrite_len(Command::Write(command), value, len, self.timeouts.pdu)
+            .pdu_tx_readwrite_len(
+                Command::Write(command),
+                value,
+                len,
+                self.timeouts.pdu,
+                self.config.retry_behaviour,
+            )
             .await
             .map(|response| response.into_data())
     }
