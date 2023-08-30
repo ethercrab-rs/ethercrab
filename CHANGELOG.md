@@ -9,6 +9,8 @@ An EtherCAT master written in Rust.
 ### Added
 
 - [#91] Add support for "cross" topologies, e.g. with EK1122.
+- [#102] PDU retry behaviour is now configurable between no retries, a limited count, or retrying
+  forever with the `RetryBehaviour` struct and associated `ClientConfig.retry_behaviour` option.
 
 ### Changed
 
@@ -185,5 +187,6 @@ An EtherCAT master written in Rust.
 [#92]: https://github.com/ethercrab-rs/ethercrab/pull/92
 [#99]: https://github.com/ethercrab-rs/ethercrab/pull/99
 [#101]: https://github.com/ethercrab-rs/ethercrab/pull/101
+[#102]: https://github.com/ethercrab-rs/ethercrab/pull/102
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
