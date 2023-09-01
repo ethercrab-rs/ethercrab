@@ -11,6 +11,7 @@ An EtherCAT master written in Rust.
 - [#91] Add support for "cross" topologies, e.g. with EK1122.
 - [#102] PDU retry behaviour is now configurable between no retries, a limited count, or retrying
   forever with the `RetryBehaviour` struct and associated `ClientConfig.retry_behaviour` option.
+- [#103] Added optional `serde` feature to enable ser/de of some EtherCrab items.
 
 ### Changed
 
@@ -19,6 +20,8 @@ An EtherCAT master written in Rust.
   number of bytes sent over the network.
 - **(breaking)** [#101] `SendableFrame::write_ethernet_packet` is no longer `pub`. Instead, use
   `SendableFrame::send_blocking` or `SendableFrame::send`.
+- [#103] Removed inner `smoltcp::error::Error` from `PduError::Ethernet` and `PduError::CreateFrame`
+  as these don't add much meaning to the variant.
 
 ### Removed
 
@@ -188,5 +191,6 @@ An EtherCAT master written in Rust.
 [#99]: https://github.com/ethercrab-rs/ethercrab/pull/99
 [#101]: https://github.com/ethercrab-rs/ethercrab/pull/101
 [#102]: https://github.com/ethercrab-rs/ethercrab/pull/102
+[#103]: https://github.com/ethercrab-rs/ethercrab/pull/103
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

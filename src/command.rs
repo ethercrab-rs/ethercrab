@@ -27,6 +27,7 @@ const LRW: u8 = 0x0c;
 /// Write commands.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Writes {
     /// BWR.
     Bwr {
@@ -168,6 +169,7 @@ impl Writes {
 /// Read commands that send no data.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Reads {
     /// APRD.
     Aprd {
@@ -297,6 +299,7 @@ impl Reads {
 /// ```
 #[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Command {
     /// No operation.
     #[default]
