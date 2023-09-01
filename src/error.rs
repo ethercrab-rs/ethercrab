@@ -185,11 +185,11 @@ pub enum PduError {
     /// Failed to decode raw PDU data into a given data type.
     Decode,
     /// Something went wrong when encoding/decoding the raw Ethernet II frame.
-    Ethernet(smoltcp::wire::Error),
+    Ethernet,
     /// PDU data is too long to fit in the given buffer.
     TooLong,
     /// Failed to create an Ethernet II frame.
-    CreateFrame(smoltcp::wire::Error),
+    CreateFrame,
     /// A frame index was given that does not point to a frame.
     InvalidIndex(usize),
     /// A received frame is invalid.
@@ -210,9 +210,9 @@ impl core::fmt::Display for PduError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             PduError::Decode => f.write_str("failed to decode raw PDU data into type"),
-            PduError::Ethernet(e) => write!(f, "network: {}", e),
+            PduError::Ethernet => f.write_str("network"),
             PduError::TooLong => f.write_str("data is too long to fit in given buffer"),
-            PduError::CreateFrame(e) => write!(f, "failed to create frame: {}", e),
+            PduError::CreateFrame => f.write_str("failed to create frame"),
             PduError::InvalidIndex(index) => write!(f, "invalid PDU index {}", index),
             PduError::Validation(e) => write!(f, "received PDU validation failed: {}", e),
             PduError::InvalidFrameState => f.write_str("invalid PDU frame state"),
@@ -382,8 +382,8 @@ impl From<PduValidationError> for PduError {
 }
 
 impl From<smoltcp::wire::Error> for PduError {
-    fn from(e: smoltcp::wire::Error) -> Self {
-        Self::Ethernet(e)
+    fn from(_: smoltcp::wire::Error) -> Self {
+        Self::Ethernet
     }
 }
 
