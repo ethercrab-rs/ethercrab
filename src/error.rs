@@ -7,6 +7,7 @@ use packed_struct::PackingError;
 /// An EtherCrab error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Error {
     /// A low level error occurred when producing or consuming a PDU.
     Pdu(PduError),
@@ -161,6 +162,7 @@ impl From<BorrowError> for Error {
 /// The kind of item being looked for.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Item {
     /// An EtherCAT slave device.
     Slave,
@@ -181,15 +183,16 @@ pub enum Item {
 /// Low-level PDU (Process Data Unit) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum PduError {
     /// Failed to decode raw PDU data into a given data type.
     Decode,
     /// Something went wrong when encoding/decoding the raw Ethernet II frame.
-    Ethernet(smoltcp::wire::Error),
+    Ethernet,
     /// PDU data is too long to fit in the given buffer.
     TooLong,
     /// Failed to create an Ethernet II frame.
-    CreateFrame(smoltcp::wire::Error),
+    CreateFrame,
     /// A frame index was given that does not point to a frame.
     InvalidIndex(usize),
     /// A received frame is invalid.
@@ -210,9 +213,9 @@ impl core::fmt::Display for PduError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             PduError::Decode => f.write_str("failed to decode raw PDU data into type"),
-            PduError::Ethernet(e) => write!(f, "network: {}", e),
+            PduError::Ethernet => f.write_str("network"),
             PduError::TooLong => f.write_str("data is too long to fit in given buffer"),
-            PduError::CreateFrame(e) => write!(f, "failed to create frame: {}", e),
+            PduError::CreateFrame => f.write_str("failed to create frame"),
             PduError::InvalidIndex(index) => write!(f, "invalid PDU index {}", index),
             PduError::Validation(e) => write!(f, "received PDU validation failed: {}", e),
             PduError::InvalidFrameState => f.write_str("invalid PDU frame state"),
@@ -224,6 +227,7 @@ impl core::fmt::Display for PduError {
 /// CoE mailbox error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum MailboxError {
     /// The mailbox operation was aborted.
     Aborted {
@@ -278,6 +282,7 @@ impl core::fmt::Display for MailboxError {
 /// EEPROM (SII) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum EepromError {
     /// Failed to decode data from EEPROM.
     Decode,
@@ -331,6 +336,7 @@ impl core::fmt::Display for VisibleStringError {
 /// A PDU response failed to validate.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum PduValidationError {
     /// The index of the received PDU does not match that of the sent one.
     IndexMismatch {
@@ -382,8 +388,8 @@ impl From<PduValidationError> for PduError {
 }
 
 impl From<smoltcp::wire::Error> for PduError {
-    fn from(e: smoltcp::wire::Error) -> Self {
-        Self::Ethernet(e)
+    fn from(_: smoltcp::wire::Error) -> Self {
+        Self::Ethernet
     }
 }
 

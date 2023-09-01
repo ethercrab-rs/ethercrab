@@ -141,7 +141,8 @@ impl<'sto> SendableFrame<'sto> {
 
         let buf = buf.get_mut(0..ethernet_len).ok_or(PduError::TooLong)?;
 
-        let mut ethernet_frame = EthernetFrame::new_checked(buf).map_err(PduError::CreateFrame)?;
+        let mut ethernet_frame =
+            EthernetFrame::new_checked(buf).map_err(|_| PduError::CreateFrame)?;
 
         ethernet_frame.set_src_addr(MASTER_ADDR);
         ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);

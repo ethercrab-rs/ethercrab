@@ -14,6 +14,7 @@ An EtherCAT master written in pure Rust.
 - `defmt` - enable logging with the [`defmt`](https://docs.rs/defmt) crate.
 - `log` - enable logging with the [`log`](https://docs.rs/log) crate. This is enabled by default
   when the `std` feature is enabled.
+- `serde` - enable `serde` impls for some public items.
 
 For `no_std` targets, it is recommended to add this crate with
 
