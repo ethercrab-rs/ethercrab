@@ -7,6 +7,7 @@ use packed_struct::PackingError;
 /// An EtherCrab error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Error {
     /// A low level error occurred when producing or consuming a PDU.
     Pdu(PduError),
@@ -161,6 +162,7 @@ impl From<BorrowError> for Error {
 /// The kind of item being looked for.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Item {
     /// An EtherCAT slave device.
     Slave,
@@ -181,6 +183,7 @@ pub enum Item {
 /// Low-level PDU (Process Data Unit) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum PduError {
     /// Failed to decode raw PDU data into a given data type.
     Decode,
@@ -224,6 +227,7 @@ impl core::fmt::Display for PduError {
 /// CoE mailbox error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum MailboxError {
     /// The mailbox operation was aborted.
     Aborted {
@@ -278,6 +282,7 @@ impl core::fmt::Display for MailboxError {
 /// EEPROM (SII) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum EepromError {
     /// Failed to decode data from EEPROM.
     Decode,
@@ -331,6 +336,7 @@ impl core::fmt::Display for VisibleStringError {
 /// A PDU response failed to validate.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum PduValidationError {
     /// The index of the received PDU does not match that of the sent one.
     IndexMismatch {

@@ -1,6 +1,7 @@
 /// Defined in ETG1000.6 Table 41 – SDO Abort Codes
 #[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[repr(u32)]
 pub enum AbortCode {
     /// Toggle bit not changed
