@@ -12,6 +12,8 @@ An EtherCAT master written in Rust.
 - [#102] PDU retry behaviour is now configurable between no retries, a limited count, or retrying
   forever with the `RetryBehaviour` struct and associated `ClientConfig.retry_behaviour` option.
 - [#103] Added optional `serde` feature to enable ser/de of some EtherCrab items.
+- [#104] Implement `std::error::Error` for `ethercrab::error::Error` when the `std` feature is
+  enabled.
 
 ### Changed
 
@@ -192,5 +194,6 @@ An EtherCAT master written in Rust.
 [#101]: https://github.com/ethercrab-rs/ethercrab/pull/101
 [#102]: https://github.com/ethercrab-rs/ethercrab/pull/102
 [#103]: https://github.com/ethercrab-rs/ethercrab/pull/103
+[#104]: https://github.com/ethercrab-rs/ethercrab/pull/104
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
