@@ -147,6 +147,8 @@ impl<'sto> Client<'sto> {
     /// Detect slaves, set their configured station addresses, assign to groups, configure slave
     /// devices from EEPROM.
     ///
+    /// This method will request and wait for all slaves to be in `PRE-OP` before returning.
+    ///
     /// The `group_filter` closure should return a [`&dyn
     /// SlaveGroupHandle`](crate::slave_group::SlaveGroupHandle) to add the slave to. All slaves
     /// must be assigned to a group even if they are unused.
@@ -298,6 +300,8 @@ impl<'sto> Client<'sto> {
     /// A convenience method to allow the quicker creation of a single group containing all
     /// discovered slave devices.
     ///
+    /// This method will request and wait for all slaves to be in `PRE-OP` before returning.
+    ///
     /// For multiple groups, see [`Client::init`].
     ///
     /// # Examples
@@ -366,6 +370,8 @@ impl<'sto> Client<'sto> {
     ///         slave.sdo_write(0x1c13, 0, 4u8).await?;
     ///     }
     /// }
+    ///
+    /// let mut group = group.into_safe_op(&client).await.expect("PRE-OP -> SAFE-OP");
     /// # Ok::<(), ethercrab::error::Error>(())
     /// # };
     /// ```
