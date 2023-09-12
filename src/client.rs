@@ -149,6 +149,9 @@ impl<'sto> Client<'sto> {
     ///
     /// This method will request and wait for all slaves to be in `PRE-OP` before returning.
     ///
+    /// To transition groups into different states, see [`SlaveGroup::into_safe_op`] or
+    /// [`SlaveGroup::into_op`].
+    ///
     /// The `group_filter` closure should return a [`&dyn
     /// SlaveGroupHandle`](crate::slave_group::SlaveGroupHandle) to add the slave to. All slaves
     /// must be assigned to a group even if they are unused.
@@ -301,6 +304,9 @@ impl<'sto> Client<'sto> {
     /// discovered slave devices.
     ///
     /// This method will request and wait for all slaves to be in `PRE-OP` before returning.
+    ///
+    /// To transition groups into different states, see [`SlaveGroup::into_safe_op`] or
+    /// [`SlaveGroup::into_op`].
     ///
     /// For multiple groups, see [`Client::init`].
     ///
