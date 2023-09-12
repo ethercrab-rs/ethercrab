@@ -302,7 +302,7 @@ impl<'sto> Client<'sto> {
     ///
     /// # Examples
     ///
-    /// ## Create a single slave group with no `PREOP -> SAFEOP` hook.
+    /// ## Create a single slave group with no `PREOP -> SAFEOP` configuration
     ///
     /// ```rust,no_run
     /// use ethercrab::{
