@@ -55,6 +55,32 @@ pub enum RegisterAddress {
     AlStatusCode = 0x0134,
 
     // u16
+    /// Watchdog divider.
+    ///
+    /// See ETG1000.4 section 6.3 Watchdogs.
+    WatchdogDivider = 0x0400,
+
+    // u16
+    /// PDI watchdog timeout.
+    PdiWatchdog = 0x0410,
+
+    // u16
+    /// Sync manager watchdog timeout.
+    SyncManagerWatchdog = 0x0420,
+
+    // u16, only one bit used
+    /// Sync manager watchdog status (1 bit).
+    SyncManagerWatchdogStatus = 0x0440,
+
+    // u8
+    /// Sync manager watchdog counter.
+    SyncManagerWatchdogCounter = 0x0442,
+
+    // u8
+    /// PDI watchdog counter.
+    PdiWatchdogCounter = 0x0443,
+
+    // u16
     /// EEPROM (SII) config register.
     SiiConfig = 0x0500,
 
