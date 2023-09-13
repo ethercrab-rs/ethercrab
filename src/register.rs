@@ -12,7 +12,7 @@ use packed_struct::{prelude::*, PackingError};
 #[derive(Copy, Clone, Debug)]
 #[repr(u16)]
 pub enum RegisterAddress {
-    /// Type.
+    /// Type, `u8`.
     Type = 0x0000u16,
     /// EtherCAT revision.
     Revision = 0x0001,
@@ -24,76 +24,58 @@ pub enum RegisterAddress {
     SyncManagerChannels = 0x0005,
     /// RAM size in kilo-octets (1024 octets)
     RamSize = 0x0006,
-    // u8
-    /// EtherCAT port descriptors 0-3
+    /// EtherCAT port descriptors 0-3, `u8`.
     PortDescriptors = 0x0007,
-    // u16
-    /// Different EtherCAT features supported by the slave.
+    /// Different EtherCAT features supported by the slave, `u16`.
     SupportFlags = 0x0008,
-    // u16
-    /// The slave's configured station address.
+    /// The slave's configured station address, `u16`.
     ConfiguredStationAddress = 0x0010,
-    // u16
-    /// The slave's address alias.
+    /// The slave's address alias, `u16`.
     ConfiguredStationAlias = 0x0012,
 
-    // u16
-    /// Defined in ETG1000.4 Table 34 - DL status.
+    /// Defined in ETG1000.4 Table 34 - DL status, `u16`.
     DlStatus = 0x0110,
 
-    // u8
-    // AKA DLS-user R1
+    // AKA DLS-user R1, `u8`.
     /// Application Layer (AL) control register.
     AlControl = 0x0120,
-    // u8
-    // AKA DLS-user R3
+    // AKA DLS-user R3, `u8`.
     /// Application Layer (AL) status register.
     AlStatus = 0x0130,
-    // u16
-    // AKA DLS-user R6
+    // AKA DLS-user R6, `u16`.
     /// Application Layer (AL) status code register.
     AlStatusCode = 0x0134,
 
-    // u16
-    /// Watchdog divider.
+    /// Watchdog divider, `u16`.
     ///
     /// See ETG1000.4 section 6.3 Watchdogs.
     WatchdogDivider = 0x0400,
 
-    // u16
-    /// PDI watchdog timeout.
+    /// PDI watchdog timeout, `u16`.
     PdiWatchdog = 0x0410,
 
-    // u16
-    /// Sync manager watchdog timeout.
+    /// Sync manager watchdog timeout, `u16`.
     SyncManagerWatchdog = 0x0420,
 
-    // u16, only one bit used
-    /// Sync manager watchdog status (1 bit).
+    /// Sync manager watchdog status (1 bit), `u16`.
     SyncManagerWatchdogStatus = 0x0440,
 
-    // u8
-    /// Sync manager watchdog counter.
+    /// Sync manager watchdog counter, `u8`.
     SyncManagerWatchdogCounter = 0x0442,
 
-    // u8
-    /// PDI watchdog counter.
+    /// PDI watchdog counter, `u8`.
     PdiWatchdogCounter = 0x0443,
 
-    // u16
-    /// EEPROM (SII) config register.
+    /// EEPROM (SII) config register, `u16`.
     SiiConfig = 0x0500,
 
-    // u16
-    /// EEPROM (SII) control register.
+    /// EEPROM (SII) control register, `u16`.
     SiiControl = 0x0502,
 
-    // u16
-    /// EEPROM (SII) control address.
+    /// EEPROM (SII) control address, `u16`.
     SiiAddress = 0x0504,
 
-    // u32 when reading, u16 when writing
-    /// The start of 4 bytes (read) or 2 bytes (write) of data used by the EEPROM read/write
+    /// The start of 4 bytes (read) or 2 bytes (write) of data used by the EEPROM read/write `writing`.
     /// interface.
     SiiData = 0x0508,
 
@@ -181,25 +163,19 @@ pub enum RegisterAddress {
     DcReceiveTime = 0x0918,
     /// DC system time.
     DcSystemTime = 0x0910,
-    // u64
-    /// DC system time offset.
+    /// DC system time offset, `u64`.
     DcSystemTimeOffset = 0x0920,
-    // u32
-    /// Transmission delay.
+    /// Transmission delay, `u32`.
     DcSystemTimeTransmissionDelay = 0x0928,
 
-    // u16
-    /// DC control loop parameter.
+    /// DC control loop parameter, `u16`.
     DcControlLoopParam1 = 0x0930,
-    // u16
-    /// DC control loop parameter.
+    /// DC control loop parameter, `u16`.
     DcControlLoopParam2 = 0x0932,
-    // u16
-    /// DC control loop parameter.
+    /// DC control loop parameter, `u16`.
     DcControlLoopParam3 = 0x0934,
 
-    // u32
-    /// DC system time difference.
+    /// DC system time difference, `u32`.
     DcSystemTimeDifference = 0x092C,
 
     /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u8`.
