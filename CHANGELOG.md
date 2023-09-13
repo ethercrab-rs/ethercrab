@@ -14,6 +14,9 @@ An EtherCAT master written in Rust.
 - [#103] Added optional `serde` feature to enable ser/de of some EtherCrab items.
 - [#104] Implement `std::error::Error` for `ethercrab::error::Error` when the `std` feature is
   enabled.
+- [#107] Add watchdog fields to `Register` enum: `WatchdogDivider`, `PdiWatchdog`
+  `SyncManagerWatchdog`, `SyncManagerWatchdogStatus` `SyncManagerWatchdogCounter`,
+  `PdiWatchdogCounter`.
 
 ### Changed
 
@@ -195,5 +198,6 @@ An EtherCAT master written in Rust.
 [#102]: https://github.com/ethercrab-rs/ethercrab/pull/102
 [#103]: https://github.com/ethercrab-rs/ethercrab/pull/103
 [#104]: https://github.com/ethercrab-rs/ethercrab/pull/104
+[#107]: https://github.com/ethercrab-rs/ethercrab/pull/107
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
