@@ -41,6 +41,10 @@ pub enum RetryBehaviour {
     Count(usize),
 
     /// Attempt to resend the PDU forever.
+    ///
+    /// Note that this can soft-lock a program if for example the EtherCAT network cable is removed
+    /// as EtherCrab will attempt to resend the packet forever. It may be preferable to use
+    /// [`RetryBehaviour::Count`] to set an upper bound on retries.
     Forever,
 }
 
