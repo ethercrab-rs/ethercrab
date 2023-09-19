@@ -267,7 +267,7 @@ where
             // If flag is set, read entire mailbox to clear it
             if sm.status.mailbox_full {
                 Command::fprd(self.state.configured_address, read_mailbox.address)
-                    .receive_slice(&self.client.client, read_mailbox.len)
+                    .receive_slice(self.client.client, read_mailbox.len)
                     .await?;
             }
         }
@@ -333,7 +333,7 @@ where
 
         // Read acknowledgement from slave OUT mailbox
         let response = Command::fprd(self.state.configured_address, read_mailbox.address)
-            .receive_slice(&self.client.client, read_mailbox.len)
+            .receive_slice(self.client.client, read_mailbox.len)
             .await?
             .wkc(1, "read OUT mailbox after write")?;
 
@@ -359,7 +359,7 @@ where
         // Send data to slave IN mailbox
         Command::fpwr(self.state.configured_address, write_mailbox.address)
             .send_receive_slice_len(
-                &self.client.client,
+                self.client.client,
                 fmt::unwrap!(request
                     .pack()
                     .map_err(crate::error::WrappedPackingError::from))
