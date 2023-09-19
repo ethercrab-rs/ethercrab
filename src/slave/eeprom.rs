@@ -53,7 +53,6 @@ impl<'a, S> SlaveRef<'a, S> {
         DefaultMailbox::parse(&buf)
     }
 
-    #[allow(unused)]
     pub(crate) async fn eeprom_general(&self) -> Result<SiiGeneral, Error> {
         let mut reader = EepromSectionReader::new(&self.client, CategoryType::General)
             .await?

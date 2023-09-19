@@ -19,7 +19,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
     // Latch receive times into all ports of all slaves.
     Command::bwr(RegisterAddress::DcTimePort0.into())
-        .send_receive(&client, 0u32)
+        .send_receive(client, 0u32)
         .await?
         .wkc(num_slaves_with_dc as u16, "Broadcast time")?;
 
@@ -432,7 +432,7 @@ pub(crate) async fn run_dc_static_sync(
             dc_reference_slave.configured_address,
             RegisterAddress::DcSystemTime.into(),
         )
-        .receive::<u64>(&client)
+        .receive::<u64>(client)
         .await?;
     }
 

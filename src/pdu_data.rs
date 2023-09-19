@@ -40,7 +40,7 @@ macro_rules! impl_pdudata {
                     #[allow(trivial_casts)]
                     core::slice::from_raw_parts(
                         self as *const _ as *const u8,
-                        core::mem::size_of::<$ty>(),
+                        (<$ty>::BITS / 8) as usize,
                     )
                 }
 
