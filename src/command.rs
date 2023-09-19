@@ -126,7 +126,7 @@ impl Writes {
             .write_service(self, value.as_slice())
             .await
             .and_then(|(data, working_counter)| {
-                let res = T::try_from_slice(&*data).map_err(|e| {
+                let res = T::try_from_slice(&data).map_err(|e| {
                     fmt::error!(
                         "PDU data decode: {:?}, T: {} data {:?}",
                         e,
@@ -220,7 +220,7 @@ impl Reads {
             .read_service(self, T::LEN)
             .await
             .and_then(|(data, working_counter)| {
-                let res = T::try_from_slice(&*data).map_err(|e| {
+                let res = T::try_from_slice(&data).map_err(|e| {
                     fmt::error!(
                         "PDU data decode: {:?}, T: {} data {:?}",
                         e,

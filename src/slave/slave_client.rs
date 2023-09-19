@@ -31,7 +31,7 @@ impl<'client> SlaveClient<'client> {
         T: PduRead,
     {
         Command::fprd(self.configured_address, register)
-            .receive(&self.client)
+            .receive(self.client)
             .await
     }
 
@@ -46,7 +46,7 @@ impl<'client> SlaveClient<'client> {
         T: PduData,
     {
         Command::fpwr(self.configured_address, register)
-            .send_receive(&self.client, value)
+            .send_receive(self.client, value)
             .await
     }
 
@@ -56,7 +56,7 @@ impl<'client> SlaveClient<'client> {
         T: PduRead,
     {
         Command::fprd(self.configured_address, register)
-            .receive(&self.client)
+            .receive(self.client)
             .await?
             .wkc(1, context)
     }
@@ -69,7 +69,7 @@ impl<'client> SlaveClient<'client> {
         context: &'static str,
     ) -> Result<RxFrameDataBuf<'_>, Error> {
         Command::fprd(self.configured_address, register)
-            .receive_slice(&self.client, len)
+            .receive_slice(self.client, len)
             .await?
             .wkc(1, context)
     }
@@ -82,7 +82,7 @@ impl<'client> SlaveClient<'client> {
         context: &'static str,
     ) -> Result<RxFrameDataBuf<'_>, Error> {
         Command::fpwr(self.configured_address, register)
-            .send_receive_slice(&self.client, value)
+            .send_receive_slice(self.client, value)
             .await?
             .wkc(1, context)
     }
@@ -99,7 +99,7 @@ impl<'client> SlaveClient<'client> {
         T: PduData,
     {
         Command::fpwr(self.configured_address, register)
-            .send(&self.client, value)
+            .send(self.client, value)
             .await?
             .wkc(1, context)
     }
