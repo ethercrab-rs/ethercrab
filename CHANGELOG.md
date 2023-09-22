@@ -27,6 +27,7 @@ An EtherCAT master written in Rust.
   `SendableFrame::send_blocking` or `SendableFrame::send`.
 - [#103] Removed inner `smoltcp::error::Error` from `PduError::Ethernet` and `PduError::CreateFrame`
   as these don't add much meaning to the variant.
+- **(breaking)** [#109] Make all methods on `PduLoop` private.
 
 ### Removed
 
@@ -199,5 +200,6 @@ An EtherCAT master written in Rust.
 [#103]: https://github.com/ethercrab-rs/ethercrab/pull/103
 [#104]: https://github.com/ethercrab-rs/ethercrab/pull/104
 [#107]: https://github.com/ethercrab-rs/ethercrab/pull/107
+[#109]: https://github.com/ethercrab-rs/ethercrab/pull/109
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
