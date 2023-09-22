@@ -98,7 +98,7 @@ impl<'sto> PduLoop<'sto> {
     }
 
     /// Broadcast (BWR) a packet full of zeroes, up to `payload_length`.
-    pub async fn pdu_broadcast_zeros(
+    pub(crate) async fn pdu_broadcast_zeros(
         &self,
         register: u16,
         payload_length: u16,
@@ -126,7 +126,7 @@ impl<'sto> PduLoop<'sto> {
     /// case, `send_data` will be a slice of length `4` containing the outputs to send, and
     /// `data_length` will be `10`. This makes the latter 6 bytes available for writing the PDU
     /// response into.
-    pub async fn pdu_tx_readwrite_len(
+    pub(crate) async fn pdu_tx_readwrite_len(
         &self,
         command: Command,
         send_data: &[u8],
@@ -171,6 +171,9 @@ impl<'sto> PduLoop<'sto> {
     }
 
     /// Send data to and read data back from multiple slaves.
+    // NOTE: Should be `pub(crate)` but the benchmarks need this internal method so we'll just hide
+    // it instead.
+    #[doc(hidden)]
     pub async fn pdu_tx_readwrite<'a>(
         &'a self,
         command: Writes,
@@ -189,7 +192,7 @@ impl<'sto> PduLoop<'sto> {
     }
 
     /// Send a PDU to read data back from one or more slave devices.
-    pub async fn pdu_tx_readonly(
+    pub(crate) async fn pdu_tx_readonly(
         &self,
         command: Reads,
         data_length: u16,
