@@ -49,6 +49,8 @@ An EtherCAT master written in Rust.
 
 - [#84] `GroupSlave::iter` will now panic instead of completing early if a slave device is already
   borrowed.
+- [#114] The `std` TX/RX future now consumes any queued packets, not just the first one. This fixes
+  PDU timeout issues with `zip`/`join`ed futures.
 
 ### Added
 
@@ -211,5 +213,6 @@ An EtherCAT master written in Rust.
 [#107]: https://github.com/ethercrab-rs/ethercrab/pull/107
 [#109]: https://github.com/ethercrab-rs/ethercrab/pull/109
 [#113]: https://github.com/ethercrab-rs/ethercrab/pull/113
+[#114]: https://github.com/ethercrab-rs/ethercrab/pull/114
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
