@@ -1,5 +1,5 @@
-use crate::pdu_data::PduRead;
-use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
+use crate::{fmt, pdu_data::PduRead};
+use num_enum::TryFromPrimitive;
 use packed_struct::prelude::*;
 
 /// AL (application layer) device state.
@@ -58,9 +58,13 @@ impl core::fmt::Display for SlaveState {
 impl PduRead for SlaveState {
     const LEN: u16 = u8::LEN;
 
-    type Error = TryFromPrimitiveError<Self>;
+    type Error = ();
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::try_from_primitive(slice[0])
+        Self::try_from_primitive(slice[0]).map_err(|e| {
+            fmt::error!("Failed to decide SlaveState from number {:?}", e.number);
+
+            ()
+        })
     }
 }
