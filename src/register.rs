@@ -37,10 +37,10 @@ pub enum RegisterAddress {
     DlStatus = 0x0110,
 
     // AKA DLS-user R1, `u8`.
-    /// Application Layer (AL) control register.
+    /// Application Layer (AL) control register. See ETG1000.4 Table 35.
     AlControl = 0x0120,
     // AKA DLS-user R3, `u8`.
-    /// Application Layer (AL) status register.
+    /// Application Layer (AL) status register. See ETG1000.4 Table 35.
     AlStatus = 0x0130,
     // AKA DLS-user R6, `u16`.
     /// Application Layer (AL) status code register.
