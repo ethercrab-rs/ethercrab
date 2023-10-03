@@ -4,7 +4,7 @@ use packed_struct::prelude::*;
 
 /// AL (application layer) device state.
 ///
-/// Read from register `0x0130` ([`RegisterAddress::AlControl`](crate::register::RegisterAddress::AlControl)).
+/// Read from register `0x0130` ([`RegisterAddress::AlStatus`](crate::register::RegisterAddress::AlStatus)).
 ///
 /// Defined in ETG1000.6 6.4.1
 #[derive(
