@@ -4,8 +4,11 @@ use packed_struct::prelude::*;
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct AlControl {
+    /// AL status.
     pub state: SlaveState,
+    /// Error flag.
     pub error: bool,
+    /// ID request flag.
     pub id_request: bool,
 }
 

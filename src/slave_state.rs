@@ -1,6 +1,10 @@
+use crate::pdu_data::PduRead;
+use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
 use packed_struct::prelude::*;
 
 /// AL (application layer) device state.
+///
+/// Read from register `0x0130` ([`RegisterAddress::AlControl`](crate::register::RegisterAddress::AlControl)).
 ///
 /// Defined in ETG1000.6 6.4.1
 #[derive(
@@ -48,5 +52,15 @@ impl core::fmt::Display for SlaveState {
         };
 
         f.write_str(s)
+    }
+}
+
+impl PduRead for SlaveState {
+    const LEN: u16 = u8::LEN;
+
+    type Error = TryFromPrimitiveError<Self>;
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        Self::try_from_primitive(slice[0])
     }
 }
