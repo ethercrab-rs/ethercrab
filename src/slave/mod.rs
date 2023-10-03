@@ -602,14 +602,16 @@ impl<'a, S> SlaveRef<'a, S> {
     pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
         let status = self
             .client
-            .read::<AlControl>(RegisterAddress::AlStatus.into(), "AL Status")
-            .await
-            .map(|ctl| ctl.state)?;
+            .read::<AlControl>(RegisterAddress::AlStatus.into(), "AL Status");
 
         let code = self
             .client
-            .read::<AlStatusCode>(RegisterAddress::AlStatusCode.into(), "AL Status Code")
-            .await?;
+            .read::<AlStatusCode>(RegisterAddress::AlStatusCode.into(), "AL Status Code");
+
+        let (status, code) = embassy_futures::join::join(status, code).await;
+
+        let status = status.map(|ctl| ctl.state)?;
+        let code = code?;
 
         Ok((status, code))
     }
