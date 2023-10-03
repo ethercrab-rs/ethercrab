@@ -17,6 +17,14 @@ An EtherCAT master written in Rust.
 - [#107] Add watchdog fields to `Register` enum: `WatchdogDivider`, `PdiWatchdog`
   `SyncManagerWatchdog`, `SyncManagerWatchdogStatus` `SyncManagerWatchdogCounter`,
   `PdiWatchdogCounter`.
+- [#113] `SlaveState` now implements `PduRead` so can now be read directly, e.g.
+
+  ```rust
+  let (status, _wkc) =
+      Command::fprd(slave.configured_address(), RegisterAddress::AlStatus.into())
+          .receive::<SlaveState>(&client)
+          .await?;
+  ```
 
 ### Changed
 
@@ -28,6 +36,7 @@ An EtherCAT master written in Rust.
 - [#103] Removed inner `smoltcp::error::Error` from `PduError::Ethernet` and `PduError::CreateFrame`
   as these don't add much meaning to the variant.
 - **(breaking)** [#109] Make all methods on `PduLoop` private.
+- **(breaking)** [#113] `Command::{code,address,parse}` are no longer `pub`.
 
 ### Removed
 
@@ -201,5 +210,6 @@ An EtherCAT master written in Rust.
 [#104]: https://github.com/ethercrab-rs/ethercrab/pull/104
 [#107]: https://github.com/ethercrab-rs/ethercrab/pull/107
 [#109]: https://github.com/ethercrab-rs/ethercrab/pull/109
+[#113]: https://github.com/ethercrab-rs/ethercrab/pull/113
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

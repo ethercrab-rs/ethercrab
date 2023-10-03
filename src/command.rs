@@ -419,7 +419,7 @@ impl Command {
     }
 
     /// Get just the command code for a command.
-    pub const fn code(&self) -> u8 {
+    pub(crate) const fn code(&self) -> u8 {
         match self {
             Self::Nop => NOP,
 
@@ -442,7 +442,7 @@ impl Command {
     }
 
     /// Get the address value for the command.
-    pub fn address(&self) -> [u8; 4] {
+    pub(crate) fn address(&self) -> [u8; 4] {
         let mut arr = [0x00u8; 4];
 
         let buf = arr.as_mut_slice();
@@ -469,7 +469,7 @@ impl Command {
     }
 
     /// Parse a command from a code and address data (e.g. `(u16, u16)` or `u32`), producing a [`Command`].
-    pub fn parse(command_code: u8, i: &[u8]) -> IResult<&[u8], Self> {
+    pub(crate) fn parse(command_code: u8, i: &[u8]) -> IResult<&[u8], Self> {
         use nom::number::complete::{le_u16, le_u32};
 
         match command_code {
