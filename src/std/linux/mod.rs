@@ -77,6 +77,9 @@ impl Future for TxRxFut<'_> {
 
         match Pin::new(&mut self.socket).poll_read(ctx, &mut buf) {
             Poll::Ready(Ok(n)) => {
+                // Wake again in case there are more frames to consume
+                ctx.waker().wake_by_ref();
+
                 let packet = &buf[0..n];
 
                 if n == 0 {
