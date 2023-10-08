@@ -322,26 +322,26 @@ impl core::fmt::Display for Command {
                     write!(f, "APRD(addr {}, reg {})", address, register)
                 }
                 Reads::Fprd { address, register } => {
-                    write!(f, "FPRD(addr {}, reg {}", address, register)
+                    write!(f, "FPRD(addr {}, reg {})", address, register)
                 }
                 Reads::Brd { address, register } => {
-                    write!(f, "BRD(addr {}, reg {}", address, register)
+                    write!(f, "BRD(addr {}, reg {})", address, register)
                 }
                 Reads::Lrd { address } => write!(f, "LRD(addr {})", address),
                 Reads::Frmw { address, register } => {
-                    write!(f, "FRMW(addr {}, reg {}", address, register)
+                    write!(f, "FRMW(addr {}, reg {})", address, register)
                 }
             },
 
             Command::Write(write) => match write {
                 Writes::Bwr { address, register } => {
-                    write!(f, "BWR(addr {}, reg {}", address, register)
+                    write!(f, "BWR(addr {}, reg {})", address, register)
                 }
                 Writes::Apwr { address, register } => {
-                    write!(f, "APWR(addr {}, reg {}", address, register)
+                    write!(f, "APWR(addr {}, reg {})", address, register)
                 }
                 Writes::Fpwr { address, register } => {
-                    write!(f, "FPWR(addr {}, reg {}", address, register)
+                    write!(f, "FPWR(addr {}, reg {})", address, register)
                 }
 
                 Writes::Lwr { address } => write!(f, "LWR(addr {})", address),
