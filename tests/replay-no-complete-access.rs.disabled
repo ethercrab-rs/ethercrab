@@ -6,7 +6,8 @@
 
 mod util;
 
-use ethercrab::{error::Error, Client, ClientConfig, PduStorage, Timeouts};
+use ethercrab::{error::Error, Client, ClientConfig, PduStorage, RetryBehaviour, Timeouts};
+use std::time::Duration;
 
 const MAX_SLAVES: usize = 16;
 const MAX_PDU_DATA: usize = 1100;
@@ -22,9 +23,13 @@ async fn replay_no_complete_access() -> Result<(), Error> {
 
     let client = Client::new(
         pdu_loop,
-        Timeouts::default(),
+        Timeouts {
+            wait_loop_delay: Duration::from_millis(5),
+            ..Timeouts::default()
+        },
         ClientConfig {
             dc_static_sync_iterations: 100,
+            retry_behaviour: RetryBehaviour::None,
             ..Default::default()
         },
     );
