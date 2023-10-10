@@ -16,13 +16,13 @@ cortex-m = { version = "0.7.6", features = [
 ] }
 cortex-m-rt = "0.7.0"
 embedded-hal = "0.2.6"
-embedded-io = "0.4.0"
+embedded-io = "0.6.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 static_cell = { version = "1.1", features = ["nightly"] }
 smoltcp = { version = "0.10.0", features = ["defmt"], default-features = false }
 
-embassy-sync = { version = "0.2.0", features = ["defmt"] }
-embassy-executor = { version = "0.2.0", features = [
+embassy-sync = { version = "0.3.0", features = ["defmt"] }
+embassy-executor = { version = "0.3.0", features = [
     "nightly",
     "arch-cortex-m",
     "executor-thread",
@@ -61,8 +61,8 @@ lto = true
 codegen-units = 1
 
 [patch.crates-io]
-embassy-sync = { git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22" }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22" }
-embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy.git", rev = "fcbfd22" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy.git", rev = "eff73d6dfa4c5920a55a5ee2bf5c0b2ef68fbae1" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "eff73d6dfa4c5920a55a5ee2bf5c0b2ef68fbae1" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy.git", rev = "eff73d6dfa4c5920a55a5ee2bf5c0b2ef68fbae1" }
+embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", rev = "eff73d6dfa4c5920a55a5ee2bf5c0b2ef68fbae1" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy.git", rev = "eff73d6dfa4c5920a55a5ee2bf5c0b2ef68fbae1" }
