@@ -7,9 +7,9 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/ethercrab-rs/ethercrab"
 documentation = "https://docs.rs/ethercrab"
-description = "An EtherCAT master in pure-Rust that is no_std compatible"
-keywords = ["no-std", "beckhoff", "ethercat", "igh", "soem"]
-exclude = ["dumps", "NOTES.md", "SPECNOTES.md"]
+description = "An EtherCAT master in pure Rust that is no_std compatible"
+keywords = ["no-std", "ethercat", "beckhoff", "igh", "soem"]
+exclude = ["dumps", "doc", "NOTES.md", "SPECNOTES.md"]
 resolver = "2"
 
 [package.metadata.docs.rs]
