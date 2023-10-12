@@ -5,7 +5,7 @@
 [![Docs.rs](https://docs.rs/ethercrab/badge.svg)](https://docs.rs/ethercrab)
 [![Matrix chat](https://img.shields.io/matrix/ethercrab:matrix.org)](https://matrix.to/#/#ethercrab:matrix.org)
 
-An EtherCAT master written in pure Rust.
+A performant, `async`-first EtherCAT master written in pure Rust.
 
 ## Crate features
 
