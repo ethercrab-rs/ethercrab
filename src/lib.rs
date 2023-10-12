@@ -192,7 +192,7 @@ pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::RegisterAddress;
 pub use slave::{Slave, SlaveIdentity, SlavePdi, SlaveRef};
 pub use slave_group::{GroupId, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle, SlaveGroupState};
-pub use slave_state::SlaveState;
+pub use slave_state::{SlaveState, SlaveStates};
 pub use timer_factory::Timeouts;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;

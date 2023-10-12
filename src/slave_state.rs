@@ -2,11 +2,11 @@ use crate::{fmt, pdu_data::PduRead};
 use num_enum::TryFromPrimitive;
 use packed_struct::prelude::*;
 
-/// AL (application layer) device state.
+/// AL (application layer) state for a single device.
 ///
 /// Read from register `0x0130` ([`RegisterAddress::AlStatus`](crate::register::RegisterAddress::AlStatus)).
 ///
-/// Defined in ETG1000.6 6.4.1
+/// Defined in ETG1000.6 6.4.1, ETG1000.6 Table 9.
 #[derive(
     Debug,
     Default,
@@ -66,5 +66,85 @@ impl PduRead for SlaveState {
 
             ()
         })
+    }
+}
+
+bitflags::bitflags! {
+    /// AL (application layer) state for one or more devices.
+    ///
+    /// Read from register `0x0130` ([`RegisterAddress::AlStatus`](crate::register::RegisterAddress::AlStatus)).
+    ///
+    /// Defined in ETG1000.6 6.4.1, ETG1000.6 Table 9.
+    #[derive(
+        Debug,
+        Default,
+        Copy,
+        Clone,
+        PartialEq,
+        Eq,
+    )]
+
+    pub struct SlaveStates: u8 {
+        /// No state recorded/read/known.
+        const NONE = 0x00;
+        /// EtherCAT `INIT` state.
+        const INIT = 0x01;
+        /// EtherCAT `PRE-OP` state.
+        const PRE_OP = 0x02;
+        /// EtherCAT `SAFE-OP` state.
+        const SAFE_OP = 0x04;
+        /// EtherCAT `OP` state.
+        const OP = 0x8;
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for SlaveStates {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(fmt, "SlaveStates({:02x})", self.bits());
+    }
+}
+
+impl PduRead for SlaveStates {
+    const LEN: u16 = u8::LEN;
+
+    type Error = core::convert::Infallible;
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        let res = Self::from_bits_truncate(slice[0]);
+
+        Ok(res)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_status() {
+        let expected = SlaveStates::PRE_OP | SlaveStates::SAFE_OP;
+
+        let res = SlaveStates::try_from_slice(&[0x02 | 0x04]);
+
+        assert_eq!(res, Ok(expected));
+    }
+
+    #[test]
+    fn unknown_status() {
+        let expected = SlaveStates::NONE;
+
+        let res = SlaveStates::try_from_slice(&[0xf0]);
+
+        assert_eq!(res, Ok(expected));
+    }
+
+    #[test]
+    fn unknown_status_and_op() {
+        let expected = SlaveStates::OP;
+
+        let res = SlaveStates::try_from_slice(&[0x08 | 0xf0]);
+
+        assert_eq!(res, Ok(expected));
     }
 }

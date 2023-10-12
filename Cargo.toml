@@ -76,7 +76,7 @@ default = ["std"]
 defmt = ["dep:defmt", "smoltcp/defmt"]
 log = ["dep:log"]
 std = ["pnet_datalink", "async-io", "smoltcp/phy-raw_socket", "log"]
-serde = ["dep:serde"]
+serde = ["dep:serde", "bitflags/serde"]
 # Development only - DO NOT USE
 bench-hacks = []
 
