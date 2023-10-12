@@ -124,7 +124,7 @@ pub enum AlStatusCode {
 impl PduRead for AlStatusCode {
     const LEN: u16 = u16::LEN;
 
-    type Error = ();
+    type Error = core::convert::Infallible;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         let data = u16::from_le_bytes(fmt::unwrap!(slice.try_into()));
