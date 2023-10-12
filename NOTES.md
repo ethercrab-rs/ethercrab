@@ -675,3 +675,21 @@ impl Reads {
     }
 }
 ```
+
+# Profiling
+
+To profile an example:
+
+```bash
+cargo build --example <example name> --profile profiling
+
+# Might need sudo sysctl kernel.perf_event_paranoid=-1
+# Might need sudo sysctl kernel.perf_event_mlock_kb=2048
+sudo setcap cap_net_raw=pe ./target/profiling/examples/<example name>
+sudo perf record ./target/profiling/examples/<example name> <example args>
+
+# Ctrl + C when you're done
+
+sudo chown $USER perf.data
+samply load perf.data
+```
