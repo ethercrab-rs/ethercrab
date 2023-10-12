@@ -66,7 +66,7 @@ impl PduRead for AlControl {
     type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
+        Ok(Self::unpack_from_slice(slice)?)
     }
 }
 
