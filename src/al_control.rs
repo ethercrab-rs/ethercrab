@@ -1,6 +1,7 @@
 use crate::{error::WrappedPackingError, fmt, pdu_data::PduRead, slave_state::SlaveState};
 use packed_struct::prelude::*;
 
+/// The AL control/status word for an individual slave device.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct AlControl {
@@ -28,7 +29,7 @@ impl PackedStruct for AlControl {
 
         fmt::trace!("AL raw byte {:#010b} (slice {:?})", byte, src);
 
-        let state = SlaveState::try_from(byte & 0x0f).unwrap_or(SlaveState::Unknown);
+        let state = SlaveState::from(byte & 0x0f);
         let error = (byte & (1 << 4)) > 0;
         let id_request = (byte & (1 << 5)) > 0;
 
@@ -65,16 +66,7 @@ impl PduRead for AlControl {
     type Error = WrappedPackingError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        match Self::unpack_from_slice(slice) {
-            Err(PackingError::InvalidValue) => Ok(Self {
-                state: SlaveState::Unknown,
-                ..Default::default()
-            }),
-            // Clippy: `WrappedPackingError` is not a no-op in no_std/`--features defmt` environments
-            #[allow(clippy::useless_conversion)]
-            Err(e) => Err(crate::error::WrappedPackingError::from(e)),
-            Ok(res) => Ok(res),
-        }
+        Ok(Self::unpack_from_slice(slice)?)
     }
 }
 

@@ -37,6 +37,8 @@ An EtherCAT master written in Rust.
   as these don't add much meaning to the variant.
 - **(breaking)** [#109] Make all methods on `PduLoop` private.
 - **(breaking)** [#113] `Command::{code,address,parse}` are no longer `pub`.
+- **(breaking)** [#119] Changed `SlaveState::Unknown` to `SlaveState::Other(u8)` to better represent
+  unknown or different states of multiple slaves (e.g. when sending a `BRD`).
 
 ### Removed
 
@@ -214,5 +216,6 @@ An EtherCAT master written in Rust.
 [#109]: https://github.com/ethercrab-rs/ethercrab/pull/109
 [#113]: https://github.com/ethercrab-rs/ethercrab/pull/113
 [#114]: https://github.com/ethercrab-rs/ethercrab/pull/114
+[#119]: https://github.com/ethercrab-rs/ethercrab/pull/119
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
