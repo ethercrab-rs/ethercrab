@@ -6,6 +6,8 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.3.0] - 2023-10-12
+
 ### Added
 
 - [#91] Add support for "cross" topologies, e.g. with EK1122.
@@ -178,8 +180,9 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.0...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.2.1...HEAD
+[0.3.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/ethercrab-rs/ethercrab/compare/v0.2.0...v0.2.1
 [#2]: https://github.com/ethercrab-rs/ethercrab/pull/2
 [#1]: https://github.com/ethercrab-rs/ethercrab/pull/1
