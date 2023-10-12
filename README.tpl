@@ -19,7 +19,7 @@
   - [ ] Tested with [RTIC](https://rtic.rs/2/book/en/)
 - [x] Autoconfigure slaves from their EEPROM (SII) data during startup
   - [x] Supports configuration using CoE data
-- [x] Safely usable in multi-threaded Linux systems with e.g. `tokio` or `std::thread` and
+- [x] Safely usable in multi-threaded Linux systems with e.g. `smol`, `tokio` or `std::thread` and
       `block_on`.
 - [x] Support for SDO read/writes to configure slave devices
 - [ ] Distributed clocks
@@ -30,26 +30,8 @@
   - [ ] A higher level DS402 API for torque, position and velocity control of common servo drives in
         a more abstract way.
 - [ ] Integration with LinuxCNC as a HAL component using
-      [the Rust `linuxcnc-hal`](https://github.com/jamwaffles/linuxcnc-hal-rs).
+      [the `linuxcnc-hal` crate](https://github.com/jamwaffles/linuxcnc-hal-rs).
 - [ ] Load slave configurations from ESI XML files
-
-### Profiling
-
-To profile an example:
-
-```bash
-cargo build --example <example name> --profile profiling
-
-# Might need sudo sysctl kernel.perf_event_paranoid=-1
-# Might need sudo sysctl kernel.perf_event_mlock_kb=2048
-sudo setcap cap_net_raw=pe ./target/profiling/examples/<example name>
-sudo perf record ./target/profiling/examples/<example name> <example args>
-
-# Ctrl + C when you're done
-
-sudo chown $USER perf.data
-samply load perf.data
-```
 
 ## Sponsors
 
