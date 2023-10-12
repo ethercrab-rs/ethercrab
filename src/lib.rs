@@ -1,4 +1,4 @@
-//! An EtherCAT master written in pure Rust.
+//! A performant, `async`-first EtherCAT master written in pure Rust.
 //!
 //! # Crate features
 //!
