@@ -107,11 +107,11 @@ impl Future for TxRxFut<'_> {
 }
 
 /// Spawn a TX and RX task.
-pub fn tx_rx_task(
+pub fn tx_rx_task<'sto>(
     interface: &str,
-    pdu_tx: PduTx<'static>,
-    pdu_rx: PduRx<'static>,
-) -> Result<impl Future<Output = Result<(), Error>>, std::io::Error> {
+    pdu_tx: PduTx<'sto>,
+    pdu_rx: PduRx<'sto>,
+) -> Result<impl Future<Output = Result<(), Error>> + 'sto, std::io::Error> {
     let socket = RawSocketDesc::new(interface)?;
 
     let async_socket = async_io::Async::new(socket)?;
