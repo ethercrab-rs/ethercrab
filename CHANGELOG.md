@@ -8,8 +8,8 @@ An EtherCAT master written in Rust.
 
 ### Fixed
 
-- [#121] Relax `'static` lifetime requirement on `std::tx_rx_task` to a named lifetime to allow
-  non-`'static` storage to be used.
+- [#121] **Linux only:** Relax `'static` lifetime requirement on `std::tx_rx_task` to a named
+  lifetime to allow non-`'static` storage to be used.
 
 ## [0.3.1] - 2023-10-16
 
