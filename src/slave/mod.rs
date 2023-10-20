@@ -171,6 +171,14 @@ impl Slave {
         self.identity
     }
 
+    /// Get the network propagation delay of this device in nanoseconds.
+    ///
+    /// Note that before [`Client::init`](crate::client::Client::init) is called, this method will
+    /// always return `0`.
+    pub fn propagation_delay(&self) -> u32 {
+        self.propagation_delay
+    }
+
     pub(crate) fn io_segments(&self) -> &IoRanges {
         &self.config.io
     }
@@ -229,6 +237,14 @@ where
     /// Get the configured station address of the slave device.
     pub fn configured_address(&self) -> u16 {
         self.state.configured_address
+    }
+
+    /// Get the network propagation delay of this device in nanoseconds.
+    ///
+    /// Note that before [`Client::init`](crate::client::Client::init) is called, this method will
+    /// always return `0`.
+    pub fn propagation_delay(&self) -> u32 {
+        self.state.propagation_delay
     }
 
     /// Get CoE read/write mailboxes.
