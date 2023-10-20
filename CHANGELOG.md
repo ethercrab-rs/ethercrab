@@ -6,6 +6,11 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- [#122] Added `Slave{Ref}::propagation_delay()` to get the EtherCAT propagation delay for a
+  specific device on the network.
+
 ### Fixed
 
 - [#121] **Linux only:** Relax `'static` lifetime requirement on `std::tx_rx_task` to a named
@@ -229,5 +234,6 @@ An EtherCAT master written in Rust.
 [#114]: https://github.com/ethercrab-rs/ethercrab/pull/114
 [#119]: https://github.com/ethercrab-rs/ethercrab/pull/119
 [#121]: https://github.com/ethercrab-rs/ethercrab/pull/121
+[#122]: https://github.com/ethercrab-rs/ethercrab/pull/122
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
