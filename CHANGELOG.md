@@ -15,6 +15,7 @@ An EtherCAT master written in Rust.
 
 - [#121] **Linux only:** Relax `'static` lifetime requirement on `std::tx_rx_task` to a named
   lifetime to allow non-`'static` storage to be used.
+- [#124] Fixed some spurious panics from race conditions by using atomic wakers.
 
 ### Changed
 
