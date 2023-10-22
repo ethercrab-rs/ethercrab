@@ -171,6 +171,9 @@ impl<'sto> Debug for FrameBox<'sto> {
         let (frame, data) = unsafe { self.frame_and_buf() };
 
         f.debug_struct("FrameBox")
+            .field("state", unsafe {
+                &(*addr_of!((*self.frame.as_ptr()).status))
+            })
             .field("frame", frame)
             .field("data_hex", &format_args!("{:02x?}", data))
             .finish()
