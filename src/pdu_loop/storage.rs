@@ -11,6 +11,7 @@ use crate::{
     },
     PduLoop,
 };
+use atomic_waker::AtomicWaker;
 use core::{
     cell::UnsafeCell,
     marker::PhantomData,
@@ -149,7 +150,7 @@ impl<'sto> PduStorageRef<'sto> {
         unsafe {
             addr_of_mut!((*frame.as_ptr()).frame).write(PduFrame {
                 index: idx_u8,
-                waker: spin::RwLock::new(None),
+                waker: AtomicWaker::new(),
                 command,
                 flags: PduFlags::with_len(data_length),
                 irq: 0,
