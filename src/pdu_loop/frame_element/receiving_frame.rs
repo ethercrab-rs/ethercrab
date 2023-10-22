@@ -49,8 +49,11 @@ impl<'sto> ReceivingFrame<'sto> {
         })?;
 
         // Frame state must be updated BEFORE the waker is awoken so the future impl returns
-        // `Poll::Ready`.
+        // `Poll::Ready`. The future will poll, see the `FrameState` as RxDone and return
+        // Poll::Ready.
         unsafe {
+            // NOTE: claim_receiving sets the state to `RxBusy` during parsing of the incoming frame
+            // so the previous state here should be RxBusy.
             FrameElement::set_state(self.inner.frame, FrameState::RxDone);
         }
 
@@ -114,6 +117,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
             }
         };
 
+        // RxDone is set by mark_received when the incoming packet has been parsed and stored
         let swappy = unsafe {
             FrameElement::swap_state(rxin.frame, FrameState::RxDone, FrameState::RxProcessing)
         };
