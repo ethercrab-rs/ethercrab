@@ -39,7 +39,6 @@ smoltcp = { version = "0.10.0", default-features = false, features = [
     "socket-raw",
     "medium-ethernet",
 ] }
-spin = { version = "0.9.8", default-features = false, features = ["rwlock"] }
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 pnet_datalink = { version = "0.34.0", features = ["std"], optional = true }
