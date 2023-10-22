@@ -1,4 +1,5 @@
 use crate::{command::Command, error::PduError, fmt, pdu_loop::pdu_flags::PduFlags};
+use atomic_waker::AtomicWaker;
 use core::{
     fmt::Debug,
     marker::PhantomData,
@@ -6,6 +7,7 @@ use core::{
     sync::atomic::Ordering,
     task::Waker,
 };
+
 pub mod created_frame;
 pub mod received_frame;
 pub mod receiving_frame;
@@ -48,7 +50,7 @@ pub struct PduFrame {
     pub irq: u16,
     pub working_counter: u16,
 
-    pub waker: spin::RwLock<Option<Waker>>,
+    pub waker: AtomicWaker,
 }
 
 /// An individual frame state, PDU header config, and data buffer.
@@ -171,6 +173,9 @@ impl<'sto> Debug for FrameBox<'sto> {
         let (frame, data) = unsafe { self.frame_and_buf() };
 
         f.debug_struct("FrameBox")
+            .field("state", unsafe {
+                &(*addr_of!((*self.frame.as_ptr()).status))
+            })
             .field("frame", frame)
             .field("data_hex", &format_args!("{:02x?}", data))
             .finish()
@@ -178,23 +183,12 @@ impl<'sto> Debug for FrameBox<'sto> {
 }
 
 impl<'sto> FrameBox<'sto> {
-    unsafe fn replace_waker(&self, waker: Waker) {
-        let current_waker_guard =
-            (*addr_of!((*self.frame.as_ptr()).frame.waker)).upgradeable_read();
-
-        if let Some(current_waker) = &*current_waker_guard {
-            if !waker.will_wake(current_waker) {
-                current_waker_guard.upgrade().replace(waker);
-            }
-        } else {
-            current_waker_guard.upgrade().replace(waker);
-        }
+    unsafe fn replace_waker(&self, waker: &Waker) {
+        (*addr_of!((*self.frame.as_ptr()).frame.waker)).register(waker);
     }
 
-    unsafe fn take_waker(&self) -> Option<Waker> {
-        (*addr_of!((*self.frame.as_ptr()).frame.waker))
-            .write()
-            .take()
+    unsafe fn wake(&self) {
+        (*addr_of!((*self.frame.as_ptr()).frame.waker)).wake()
     }
 
     unsafe fn frame(&self) -> &PduFrame {

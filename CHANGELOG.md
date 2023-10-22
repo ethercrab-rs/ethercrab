@@ -16,6 +16,12 @@ An EtherCAT master written in Rust.
 - [#121] **Linux only:** Relax `'static` lifetime requirement on `std::tx_rx_task` to a named
   lifetime to allow non-`'static` storage to be used.
 
+### Changed
+
+- **(breaking)** [#124] Changed `PduTx::waker()` to `PduTx::replace_waker()`. Instead of calling
+  e.g. `pdu_tx.waker().replace(ctx.waker().clone())`, now it should be
+  `pdu_tx.replace_waker(ctx.waker())`.
+
 ## [0.3.1] - 2023-10-16
 
 ## [0.3.0] - 2023-10-12
@@ -235,5 +241,6 @@ An EtherCAT master written in Rust.
 [#119]: https://github.com/ethercrab-rs/ethercrab/pull/119
 [#121]: https://github.com/ethercrab-rs/ethercrab/pull/121
 [#122]: https://github.com/ethercrab-rs/ethercrab/pull/122
+[#124]: https://github.com/ethercrab-rs/ethercrab/pull/124
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

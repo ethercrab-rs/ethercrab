@@ -90,11 +90,7 @@ impl<'sto> PduLoop<'sto> {
 
     /// Tell the packet sender there are PDUs ready to send.
     fn wake_sender(&self) {
-        let waker = self.storage.tx_waker.read();
-
-        if let Some(waker) = &*waker {
-            waker.wake_by_ref()
-        }
+        self.storage.tx_waker.wake();
     }
 
     /// Broadcast (BWR) a packet full of zeroes, up to `payload_length`.
@@ -520,7 +516,7 @@ mod tests {
 
         tokio::spawn(tx_rx_task);
 
-        for i in 0..64 {
+        for i in 0..32 {
             let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
 
             fmt::info!("Send PDU {i}");

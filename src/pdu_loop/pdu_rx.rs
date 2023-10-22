@@ -84,7 +84,8 @@ impl<'sto> PduRx<'sto> {
             let (i, working_counter) = le_u16(i)?;
 
             fmt::trace!(
-                "Received frame with index {:#04x}, WKC {}",
+                "Received frame with index {} ({:#04x}), WKC {}",
+                index,
                 index,
                 working_counter,
             );

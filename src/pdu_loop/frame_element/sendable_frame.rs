@@ -30,6 +30,10 @@ use smoltcp::wire::{EthernetAddress, EthernetFrame};
 /// let mut buf = [0u8; 1530];
 ///
 /// poll_fn(|ctx| {
+///     // Set the waker so this future is polled again when new EtherCAT frames are ready to
+///     // be sent.
+///     pdu_tx.replace_waker(ctx.waker());
+///
 ///     if let Some(frame) = pdu_tx.next_sendable_frame() {
 ///         frame.send_blocking(&mut buf, |data| {
 ///             // Send packet over the network interface here
@@ -41,10 +45,6 @@ use smoltcp::wire::{EthernetAddress, EthernetFrame};
 ///         // Wake the future so it's polled again in case there are more frames to send
 ///         ctx.waker().wake_by_ref();
 ///     }
-///
-///     // Set the waker so this future is polled again when new EtherCAT frames are ready to
-///     // be sent.
-///     pdu_tx.waker().replace(ctx.waker().clone());
 ///
 ///     Poll::<()>::Pending
 /// });
