@@ -36,25 +36,16 @@ impl<'sto> ReceivingFrame<'sto> {
     ) -> Result<(), Error> {
         unsafe { self.set_metadata(flags, irq, working_counter) };
 
-        let frame = unsafe { self.inner.frame() };
-
-        let waker = unsafe { self.inner.take_waker() }.ok_or_else(|| {
-            fmt::error!(
-                "Attempted to wake frame #{} ({:#04x}) with no waker, possibly caused by timeout",
-                frame.index,
-                frame.index
-            );
-
-            PduError::InvalidFrameState
-        })?;
-
         // Frame state must be updated BEFORE the waker is awoken so the future impl returns
-        // `Poll::Ready`.
+        // `Poll::Ready`. The future will poll, see the `FrameState` as RxDone and return
+        // Poll::Ready.
         unsafe {
+            // NOTE: claim_receiving sets the state to `RxBusy` during parsing of the incoming frame
+            // so the previous state here should be RxBusy.
             FrameElement::set_state(self.inner.frame, FrameState::RxDone);
         }
 
-        waker.wake();
+        unsafe { self.inner.wake() };
 
         Ok(())
     }
@@ -114,6 +105,9 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
             }
         };
 
+        unsafe { rxin.replace_waker(cx.waker()) };
+
+        // RxDone is set by mark_received when the incoming packet has been parsed and stored
         let swappy = unsafe {
             FrameElement::swap_state(rxin.frame, FrameState::RxDone, FrameState::RxProcessing)
         };
@@ -127,8 +121,6 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         match was {
             FrameState::Sendable | FrameState::Sending | FrameState::Sent | FrameState::RxBusy => {
-                unsafe { rxin.replace_waker(cx.waker().clone()) };
-
                 self.frame = Some(rxin);
 
                 Poll::Pending

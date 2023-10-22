@@ -3,7 +3,6 @@ use super::{
     storage::PduStorageRef,
 };
 use core::{marker::PhantomData, ptr::NonNull, task::Waker};
-use spin::RwLockWriteGuard;
 
 /// EtherCAT frame transmit adapter.
 pub struct PduTx<'sto> {
@@ -36,7 +35,7 @@ impl<'sto> PduTx<'sto> {
         None
     }
 
-    /// Get a handle to the internal PDU loop waker.
+    /// Set or replace the PDU loop waker.
     ///
     /// The waker must be set otherwise the future in charge of sending new packets will not be
     /// woken again, causing a timeout error.
@@ -52,11 +51,11 @@ impl<'sto> PduTx<'sto> {
     /// let (pdu_tx, _pdu_rx, _pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
     ///
     /// poll_fn(|ctx| {
-    ///     // Send and receive packets over the network interface here
-    ///
     ///     // Set the waker so this future is polled again when new EtherCAT frames are ready to
     ///     // be sent.
-    ///     pdu_tx.waker().replace(ctx.waker().clone());
+    ///     pdu_tx.replace_waker(ctx.waker());
+    ///
+    ///     // Send and receive packets over the network interface here
     ///
     ///     Poll::<()>::Pending
     /// });
@@ -65,10 +64,7 @@ impl<'sto> PduTx<'sto> {
         any(target_os = "windows", target_os = "macos", not(feature = "std")),
         allow(unused)
     )]
-    pub fn waker<'lock>(&self) -> RwLockWriteGuard<'lock, Option<Waker>>
-    where
-        'sto: 'lock,
-    {
-        self.storage.tx_waker.write()
+    pub fn replace_waker(&self, waker: &Waker) {
+        self.storage.tx_waker.register(waker);
     }
 }
