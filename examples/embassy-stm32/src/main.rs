@@ -58,7 +58,7 @@ async fn tx_rx_task(
     }
 
     poll_fn(|ctx| {
-        pdu_tx.waker().replace(ctx.waker().clone());
+        pdu_tx.replace_waker(ctx.waker());
 
         if let Some((rx, tx)) = device.receive(ctx) {
             rx.consume(|frame| {
