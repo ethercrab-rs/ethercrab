@@ -93,7 +93,7 @@ impl Future for DummyTxRxFut<'_> {
     type Output = Result<(), Error>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
-        let mut waker = self.tx.waker();
+        self.tx.replace_waker(ctx.waker());
 
         let mut buf = [0u8; 1536];
 
@@ -114,8 +114,6 @@ impl Future for DummyTxRxFut<'_> {
 
             self.rx.receive_frame(expected.as_ref()).expect("Frame RX")
         }
-
-        waker.replace(ctx.waker().clone());
 
         Poll::Pending
     }

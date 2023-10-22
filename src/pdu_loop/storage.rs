@@ -18,9 +18,7 @@ use core::{
     mem::MaybeUninit,
     ptr::{addr_of_mut, NonNull},
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
-    task::Waker,
 };
-use spin::RwLock;
 
 use super::{frame_element::FrameState, pdu_rx::PduRx, pdu_tx::PduTx};
 
@@ -33,7 +31,7 @@ pub struct PduStorage<const N: usize, const DATA: usize> {
     idx: AtomicU8,
     is_split: AtomicBool,
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
-    pub(in crate::pdu_loop) tx_waker: RwLock<Option<Waker>>,
+    pub(in crate::pdu_loop) tx_waker: AtomicWaker,
 }
 
 unsafe impl<const N: usize, const DATA: usize> Sync for PduStorage<N, DATA> {}
@@ -66,7 +64,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             frames,
             idx: AtomicU8::new(0),
             is_split: AtomicBool::new(false),
-            tx_waker: RwLock::new(None),
+            tx_waker: AtomicWaker::new(),
         }
     }
 
@@ -92,6 +90,8 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     }
 
     fn as_ref(&self) -> PduStorageRef {
+        // Zero out all memory backing the PDU storage list.
+        //
         // MSRV: Remove when `const_maybe_uninit_zeroed` is stabilised. Rely on
         // `MaybeUninit::zeroed` in `PduStorage::new()`. Tracking issue:
         // <https://github.com/rust-lang/rust/issues/91850>
@@ -117,7 +117,7 @@ pub(in crate::pdu_loop) struct PduStorageRef<'sto> {
     ///
     /// This is incremented atomically to allow simultaneous allocation of available frame elements.
     idx: &'sto AtomicU8,
-    pub tx_waker: &'sto RwLock<Option<Waker>>,
+    pub tx_waker: &'sto AtomicWaker,
     _lifetime: PhantomData<&'sto ()>,
 }
 

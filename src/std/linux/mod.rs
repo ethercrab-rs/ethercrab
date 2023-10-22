@@ -24,8 +24,8 @@ impl Future for TxRxFut<'_> {
     fn poll(mut self: Pin<&mut Self>, ctx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
         let mut buf = [0u8; 1536];
 
-        // Lock the waker so we don't poll concurrently. spin::RwLock does this atomically
-        let mut waker = self.tx.waker();
+        // Re-register waker to make sure this future is polled again
+        self.tx.replace_waker(ctx.waker());
 
         while let Some(frame) = self.tx.next_sendable_frame() {
             let res = frame.send_blocking(&mut buf, |data| {
@@ -99,8 +99,6 @@ impl Future for TxRxFut<'_> {
             }
             Poll::Pending => (),
         }
-
-        waker.replace(ctx.waker().clone());
 
         Poll::Pending
     }
