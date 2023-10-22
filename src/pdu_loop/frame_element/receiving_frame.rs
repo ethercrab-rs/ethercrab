@@ -40,7 +40,8 @@ impl<'sto> ReceivingFrame<'sto> {
 
         let waker = unsafe { self.inner.take_waker() }.ok_or_else(|| {
             fmt::error!(
-                "Attempted to wake frame #{} with no waker, possibly caused by timeout",
+                "Attempted to wake frame #{} ({:#04x}) with no waker, possibly caused by timeout",
+                frame.index,
                 frame.index
             );
 
