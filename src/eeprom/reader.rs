@@ -6,7 +6,6 @@ use crate::{
     register::RegisterAddress,
     slave::slave_client::SlaveClient,
 };
-use core::ops::Deref;
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
 /// Table 2.
@@ -163,14 +162,12 @@ impl EepromSectionReader {
         if self.read.is_empty() {
             let read = Self::read_eeprom_raw(slave, self.start).await?;
 
-            let slice = read.deref();
-
-            for byte in slice.iter() {
+            for byte in read.iter() {
                 // SAFETY:
                 // - The queue is empty at this point
-                // - The read chunk is 8 bytes long
-                // - So is the queue
-                // - So all 8 bytes will push into the 8 byte queue successfully
+                // - The read chunk is 4 or 8 bytes long
+                // - The queue has a capacity of 8 bytes
+                // - So all 4 or 8 bytes will push into the 8 byte queue successfully
                 unsafe { self.read.push_back_unchecked(*byte) };
             }
 
