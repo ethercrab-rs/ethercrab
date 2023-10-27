@@ -121,6 +121,15 @@ pub enum SiiReadSize {
     Octets8 = 0x01,
 }
 
+impl SiiReadSize {
+    pub fn chunk_len(&self) -> u16 {
+        match self {
+            SiiReadSize::Octets4 => 4,
+            SiiReadSize::Octets8 => 8,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
 pub enum SiiAddressSize {
     #[default]

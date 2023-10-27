@@ -1,7 +1,8 @@
 use crate::{
-    eeprom::types::{CategoryType, SiiControl, SiiReadSize, SiiRequest},
+    eeprom::types::{CategoryType, SiiControl, SiiRequest},
     error::{EepromError, Error},
     fmt,
+    pdu_loop::RxFrameDataBuf,
     register::RegisterAddress,
     slave::slave_client::SlaveClient,
 };
@@ -46,6 +47,7 @@ impl EepromSectionReader {
         loop {
             let chunk = Self::read_eeprom_raw(slave, start_word).await?;
 
+            // The chunk is either 4 or 8 bytes long, so these unwraps should never fire.
             let category_type =
                 CategoryType::from(u16::from_le_bytes(fmt::unwrap!(chunk[0..2].try_into())));
             let len_words = u16::from_le_bytes(fmt::unwrap!(chunk[2..4].try_into()));
@@ -82,14 +84,13 @@ impl EepromSectionReader {
             len: len_bytes,
             byte_count: 0,
             read: heapless::Deque::new(),
-            read_length: 0,
         }
     }
 
-    async fn read_eeprom_raw(
-        slave: &SlaveClient<'_>,
+    async fn read_eeprom_raw<'client>(
+        slave: &'client SlaveClient<'client>,
         eeprom_address: u16,
-    ) -> Result<[u8; 8], Error> {
+    ) -> Result<RxFrameDataBuf<'_>, Error> {
         let status = slave
             .read::<SiiControl>(RegisterAddress::SiiControl.into(), "Read SII control")
             .await?;
@@ -120,55 +121,21 @@ impl EepromSectionReader {
 
         Self::wait(slave).await?;
 
-        let data = match status.read_size {
-            // If slave uses 4 octet reads, do two reads so we can always return a chunk of 8 bytes
-            SiiReadSize::Octets4 => {
-                let mut data = [0u8; 8];
-
-                let chunk = slave
-                    .read_slice(RegisterAddress::SiiData.into(), 4, "Read SII data")
-                    .await?;
-
-                data[0..4].copy_from_slice(&chunk);
-
-                // Move on to next chunk
-                {
-                    // NOTE: We must compute offset in 16 bit words, not bytes, hence the divide by 2
-                    let setup = SiiRequest::read(eeprom_address + (data.len() / 2) as u16);
-
-                    slave
-                        .write_slice(
-                            RegisterAddress::SiiControl.into(),
-                            &setup.as_array(),
-                            "SII read setup",
-                        )
-                        .await?;
-
-                    Self::wait(slave).await?;
-                }
-
-                let chunk2 = slave
-                    .read_slice(RegisterAddress::SiiData.into(), 4, "SII data 2")
-                    .await?;
-
-                // fmt::unwrap!(data.extend_from_slice(&chunk2));
-                data[4..8].copy_from_slice(&chunk2);
+        slave
+            .read_slice(
+                RegisterAddress::SiiData.into(),
+                status.read_size.chunk_len(),
+                "SII data",
+            )
+            .await
+            .map(|data| {
+                #[cfg(not(feature = "defmt"))]
+                fmt::trace!("Read {:#04x} {:02x?}", eeprom_address, data);
+                #[cfg(feature = "defmt")]
+                fmt::trace!("Read {:#04x} {=[u8]}", eeprom_address, data);
 
                 data
-            }
-            SiiReadSize::Octets8 => {
-                slave
-                    .read(RegisterAddress::SiiData.into(), "SII data")
-                    .await?
-            }
-        };
-
-        #[cfg(not(feature = "defmt"))]
-        fmt::trace!("Read {:#04x} {:02x?}", eeprom_address, data);
-        #[cfg(feature = "defmt")]
-        fmt::trace!("Read {:#04x} {=[u8]}", eeprom_address, data);
-
-        Ok(data)
+            })
     }
 
     /// Wait for EEPROM read or write operation to finish and clear the busy flag.
@@ -196,7 +163,7 @@ impl EepromSectionReader {
         if self.read.is_empty() {
             let read = Self::read_eeprom_raw(slave, self.start).await?;
 
-            let slice = read.as_slice();
+            let slice = read.deref();
 
             for byte in slice.iter() {
                 // SAFETY:
