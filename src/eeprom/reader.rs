@@ -5,7 +5,7 @@ use crate::{
     register::RegisterAddress,
     slave::slave_client::SlaveClient,
 };
-use core::array::IntoIter;
+use core::ops::Deref;
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
 /// Table 2.
@@ -27,10 +27,7 @@ pub struct EepromSectionReader {
 
     /// Number of bytes read so far.
     byte_count: u16,
-
-    // MSRV: Get rid of Option when `array_into_iter_constructors` is stablised. Track here:
-    // <https://github.com/rust-lang/rust/issues/91583>.
-    read: Option<IntoIter<u8, 8>>,
+    read: heapless::Deque<u8, 8>,
 }
 
 impl EepromSectionReader {
@@ -81,10 +78,11 @@ impl EepromSectionReader {
     /// start address and length.
     pub fn start_at(address: u16, len_bytes: u16) -> Self {
         Self {
-            len: len_bytes,
-            read: None,
-            byte_count: 0,
             start: address,
+            len: len_bytes,
+            byte_count: 0,
+            read: heapless::Deque::new(),
+            read_length: 0,
         }
     }
 
@@ -110,6 +108,8 @@ impl EepromSectionReader {
         }
 
         // Set up an SII read. This writes the control word and the register word after it
+        // TODO: Consider either removing context strings or using defmt or something to avoid
+        // bloat.
         slave
             .write_slice(
                 RegisterAddress::SiiControl.into(),
@@ -193,31 +193,34 @@ impl EepromSectionReader {
     ///
     /// Internally, this method reads the EEPROM in chunks of 4 or 8 bytes (depending on the slave).
     pub async fn next(&mut self, slave: &SlaveClient<'_>) -> Result<Option<u8>, Error> {
-        // Reached end of section
-        if self.byte_count >= self.len {
-            return Ok(None);
-        }
-
-        let next = self.read.as_mut().and_then(|r| r.next());
-
-        let next = if let Some(next) = next {
-            next
-        } else {
+        if self.read.is_empty() {
             let read = Self::read_eeprom_raw(slave, self.start).await?;
 
-            self.read = Some(read.into_iter());
+            let slice = read.as_slice();
 
-            // Step ahead to next address. Addresses are in words, so we divide the read length by
-            // 2.
-            self.start += (read.len() / 2) as u16;
+            for byte in slice.iter() {
+                // SAFETY:
+                // - The queue is empty at this point
+                // - The read chunk is 8 bytes long
+                // - So is the queue
+                // - So all 8 bytes will push into the 8 byte queue successfully
+                unsafe { self.read.push_back_unchecked(*byte) };
+            }
 
-            // This won't panic as we just filled the iterator
-            fmt::unwrap_opt!(self.read.as_mut().and_then(|r| r.next()))
-        };
+            self.start += (self.read.len() / 2) as u16;
+        }
 
-        self.byte_count += 1;
+        let result = self
+            .read
+            .pop_front()
+            .filter(|_| self.byte_count < self.len)
+            .map(|byte| {
+                self.byte_count += 1;
 
-        Ok(Some(next))
+                byte
+            });
+
+        Ok(result)
     }
 
     /// Skip a given number of addresses (note: not bytes).
