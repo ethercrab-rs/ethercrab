@@ -1,11 +1,11 @@
 use crate::{
-    eeprom::types::{CategoryType, SiiControl, SiiReadSize, SiiRequest},
+    eeprom::types::{CategoryType, SiiControl, SiiRequest},
     error::{EepromError, Error},
     fmt,
+    pdu_loop::RxFrameDataBuf,
     register::RegisterAddress,
     slave::slave_client::SlaveClient,
 };
-use core::ops::Deref;
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
 /// Table 2.
@@ -15,12 +15,19 @@ const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 ///
 /// Controls an internal pointer to sequentially read data from a section in a slave's EEPROM.
 pub struct EepromSectionReader {
+    /// Start address.
+    ///
+    /// EEPROM is structured as 16 bit words, so address strides must be halved to step correctly.
     start: u16,
+
     /// Category length in bytes.
+    ///
+    /// This is the maximum number of bytes this `Reader` instance will return.
     len: u16,
+
+    /// Number of bytes read so far.
     byte_count: u16,
     read: heapless::Deque<u8, 8>,
-    read_length: usize,
 }
 
 impl EepromSectionReader {
@@ -39,6 +46,7 @@ impl EepromSectionReader {
         loop {
             let chunk = Self::read_eeprom_raw(slave, start_word).await?;
 
+            // The chunk is either 4 or 8 bytes long, so these unwraps should never fire.
             let category_type =
                 CategoryType::from(u16::from_le_bytes(fmt::unwrap!(chunk[0..2].try_into())));
             let len_words = u16::from_le_bytes(fmt::unwrap!(chunk[2..4].try_into()));
@@ -75,14 +83,13 @@ impl EepromSectionReader {
             len: len_bytes,
             byte_count: 0,
             read: heapless::Deque::new(),
-            read_length: 0,
         }
     }
 
-    async fn read_eeprom_raw(
-        slave: &SlaveClient<'_>,
+    async fn read_eeprom_raw<'client>(
+        slave: &'client SlaveClient<'client>,
         eeprom_address: u16,
-    ) -> Result<[u8; 8], Error> {
+    ) -> Result<RxFrameDataBuf<'_>, Error> {
         let status = slave
             .read::<SiiControl>(RegisterAddress::SiiControl.into(), "Read SII control")
             .await?;
@@ -113,51 +120,21 @@ impl EepromSectionReader {
 
         Self::wait(slave).await?;
 
-        let data = match status.read_size {
-            // If slave uses 4 octet reads, do two reads so we can always return a chunk of 8 bytes
-            SiiReadSize::Octets4 => {
-                let mut data = slave
-                    .read_slice(RegisterAddress::SiiData.into(), 4, "Read SII data")
-                    .await
-                    .map(|sl| fmt::unwrap!(heapless::Vec::<u8, 8>::from_slice(sl.deref())))?;
-
-                // Move on to next chunk
-                {
-                    // NOTE: We must compute offset in 16 bit words, not bytes, hence the divide by 2
-                    let setup = SiiRequest::read(eeprom_address + (data.len() / 2) as u16);
-
-                    slave
-                        .write_slice(
-                            RegisterAddress::SiiControl.into(),
-                            &setup.as_array(),
-                            "SII read setup",
-                        )
-                        .await?;
-
-                    Self::wait(slave).await?;
-                }
-
-                let chunk2 = slave
-                    .read_slice(RegisterAddress::SiiData.into(), 4, "SII data 2")
-                    .await?;
-
-                fmt::unwrap!(data.extend_from_slice(&chunk2));
+        slave
+            .read_slice(
+                RegisterAddress::SiiData.into(),
+                status.read_size.chunk_len(),
+                "SII data",
+            )
+            .await
+            .map(|data| {
+                #[cfg(not(feature = "defmt"))]
+                fmt::trace!("Read {:#04x} {:02x?}", eeprom_address, data);
+                #[cfg(feature = "defmt")]
+                fmt::trace!("Read {:#04x} {=[u8]}", eeprom_address, data);
 
                 data
-            }
-            SiiReadSize::Octets8 => slave
-                .read_slice(RegisterAddress::SiiData.into(), 8, "SII data")
-                .await
-                .map(|sl| fmt::unwrap!(heapless::Vec::<u8, 8>::from_slice(&sl)))?,
-        };
-
-        #[cfg(not(feature = "defmt"))]
-        fmt::trace!("Read {:#04x} {:02x?}", eeprom_address, data);
-        #[cfg(feature = "defmt")]
-        fmt::trace!("Read {:#04x} {=[u8]}", eeprom_address, data);
-
-        data.into_array()
-            .map_err(|_| Error::Eeprom(EepromError::SectionUnderrun))
+            })
     }
 
     /// Wait for EEPROM read or write operation to finish and clear the busy flag.
@@ -185,16 +162,12 @@ impl EepromSectionReader {
         if self.read.is_empty() {
             let read = Self::read_eeprom_raw(slave, self.start).await?;
 
-            let slice = read.as_slice();
-
-            self.read_length = slice.len();
-
-            for byte in slice.iter() {
+            for byte in read.iter() {
                 // SAFETY:
                 // - The queue is empty at this point
-                // - The read chunk is 8 bytes long
-                // - So is the queue
-                // - So all 8 bytes will push into the 8 byte queue successfully
+                // - The read chunk is 4 or 8 bytes long
+                // - The queue has a capacity of 8 bytes
+                // - So all 4 or 8 bytes will push into the 8 byte queue successfully
                 unsafe { self.read.push_back_unchecked(*byte) };
             }
 

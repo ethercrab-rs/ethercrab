@@ -121,6 +121,15 @@ pub enum SiiReadSize {
     Octets8 = 0x01,
 }
 
+impl SiiReadSize {
+    pub fn chunk_len(&self) -> u16 {
+        match self {
+            SiiReadSize::Octets4 => 4,
+            SiiReadSize::Octets8 => 8,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
 pub enum SiiAddressSize {
     #[default]
@@ -159,7 +168,6 @@ impl SiiRequest {
             .map_err(crate::error::WrappedPackingError::from));
 
         buf[2..4].copy_from_slice(&self.address.to_le_bytes());
-        buf[4..6].copy_from_slice(&[0, 0]);
 
         buf
     }
