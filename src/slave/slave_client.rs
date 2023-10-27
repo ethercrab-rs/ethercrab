@@ -67,7 +67,7 @@ impl<'client> SlaveClient<'client> {
         register: u16,
         len: u16,
         context: &'static str,
-    ) -> Result<RxFrameDataBuf<'_>, Error> {
+    ) -> Result<RxFrameDataBuf<'client>, Error> {
         Command::fprd(self.configured_address, register)
             .receive_slice(self.client, len)
             .await?

@@ -10,6 +10,7 @@ An EtherCAT master written in Rust.
 
 - [#122] Added `Slave{Ref}::propagation_delay()` to get the EtherCAT propagation delay for a
   specific device on the network.
+- [#126] Implement `PduRead` and `PduData` for `[u8; N]`.
 
 ### Fixed
 
@@ -246,5 +247,6 @@ An EtherCAT master written in Rust.
 [#122]: https://github.com/ethercrab-rs/ethercrab/pull/122
 [#124]: https://github.com/ethercrab-rs/ethercrab/pull/124
 [#125]: https://github.com/ethercrab-rs/ethercrab/pull/125
+[#126]: https://github.com/ethercrab-rs/ethercrab/pull/126
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

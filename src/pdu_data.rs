@@ -98,6 +98,26 @@ impl<const N: usize> PduData for heapless::String<N> {
     }
 }
 
+// NOTE: It is usually preferable to work with slices instead of fixed size arrays as no copies are
+// required.
+impl<const N: usize> PduRead for [u8; N] {
+    const LEN: u16 = N as u16;
+
+    type Error = TryFromSliceError;
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        slice.try_into()
+    }
+}
+
+// NOTE: It is usually preferable to work with slices instead of fixed size arrays as no copies are
+// required.
+impl<const N: usize> PduData for [u8; N] {
+    fn as_slice(&self) -> &[u8] {
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
