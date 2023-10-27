@@ -159,7 +159,6 @@ impl SiiRequest {
             .map_err(crate::error::WrappedPackingError::from));
 
         buf[2..4].copy_from_slice(&self.address.to_le_bytes());
-        buf[4..6].copy_from_slice(&[0, 0]);
 
         buf
     }
