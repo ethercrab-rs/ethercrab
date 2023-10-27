@@ -10,7 +10,7 @@ use crate::{
 };
 use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
-use futures_lite::io::{AsyncRead, AsyncWrite};
+use futures_lite::{AsyncRead, AsyncWrite};
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
@@ -94,8 +94,6 @@ impl Future for TxRxFut<'_> {
             }
             Poll::Ready(Err(e)) => {
                 fmt::error!("Receive PDU failed: {}", e);
-
-                ()
             }
             Poll::Pending => (),
         }
