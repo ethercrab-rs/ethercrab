@@ -94,8 +94,6 @@ impl Future for TxRxFut<'_> {
             }
             Poll::Ready(Err(e)) => {
                 fmt::error!("Receive PDU failed: {}", e);
-
-                ()
             }
             Poll::Pending => (),
         }

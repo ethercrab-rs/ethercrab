@@ -65,6 +65,8 @@ impl PduRead for AlControl {
 
     type Error = WrappedPackingError;
 
+    // Clippy: allow this because it's required in no_std
+    #[allow(clippy::needless_question_mark)]
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self::unpack_from_slice(slice)?)
     }
