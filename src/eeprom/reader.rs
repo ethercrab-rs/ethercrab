@@ -15,12 +15,19 @@ const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 ///
 /// Controls an internal pointer to sequentially read data from a section in a slave's EEPROM.
 pub struct EepromSectionReader {
+    /// Start address.
+    ///
+    /// EEPROM is structured as 16 bit words, so address strides must be halved to step correctly.
     start: u16,
+
     /// Category length in bytes.
+    ///
+    /// This is the maximum number of bytes this `Reader` instance will return.
     len: u16,
+
+    /// Number of bytes read so far.
     byte_count: u16,
     read: heapless::Deque<u8, 8>,
-    read_length: usize,
 }
 
 impl EepromSectionReader {
@@ -116,10 +123,13 @@ impl EepromSectionReader {
         let data = match status.read_size {
             // If slave uses 4 octet reads, do two reads so we can always return a chunk of 8 bytes
             SiiReadSize::Octets4 => {
-                let mut data = slave
+                let mut data = [0u8; 8];
+
+                let chunk = slave
                     .read_slice(RegisterAddress::SiiData.into(), 4, "Read SII data")
-                    .await
-                    .map(|sl| fmt::unwrap!(heapless::Vec::<u8, 8>::from_slice(sl.deref())))?;
+                    .await?;
+
+                data[0..4].copy_from_slice(&chunk);
 
                 // Move on to next chunk
                 {
@@ -141,14 +151,16 @@ impl EepromSectionReader {
                     .read_slice(RegisterAddress::SiiData.into(), 4, "SII data 2")
                     .await?;
 
-                fmt::unwrap!(data.extend_from_slice(&chunk2));
+                // fmt::unwrap!(data.extend_from_slice(&chunk2));
+                data[4..8].copy_from_slice(&chunk2);
 
                 data
             }
-            SiiReadSize::Octets8 => slave
-                .read_slice(RegisterAddress::SiiData.into(), 8, "SII data")
-                .await
-                .map(|sl| fmt::unwrap!(heapless::Vec::<u8, 8>::from_slice(&sl)))?,
+            SiiReadSize::Octets8 => {
+                slave
+                    .read(RegisterAddress::SiiData.into(), "SII data")
+                    .await?
+            }
         };
 
         #[cfg(not(feature = "defmt"))]
@@ -156,8 +168,7 @@ impl EepromSectionReader {
         #[cfg(feature = "defmt")]
         fmt::trace!("Read {:#04x} {=[u8]}", eeprom_address, data);
 
-        data.into_array()
-            .map_err(|_| Error::Eeprom(EepromError::SectionUnderrun))
+        Ok(data)
     }
 
     /// Wait for EEPROM read or write operation to finish and clear the busy flag.
@@ -186,8 +197,6 @@ impl EepromSectionReader {
             let read = Self::read_eeprom_raw(slave, self.start).await?;
 
             let slice = read.as_slice();
-
-            self.read_length = slice.len();
 
             for byte in slice.iter() {
                 // SAFETY:
