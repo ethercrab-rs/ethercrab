@@ -12,7 +12,6 @@ use embassy_stm32::{
     eth::{self, generic_smi::GenericSMI, Ethernet, PacketQueue},
     gpio::{Level, Output, Speed},
     peripherals::{ETH, PB7},
-    time::mhz,
     Config,
 };
 use embassy_time::{Duration, Instant, Timer};
@@ -99,8 +98,25 @@ async fn blinky(mut led: Output<'static, PB7>) -> ! {
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let mut config = Config::default();
-    config.rcc.pll48 = true;
-    config.rcc.sys_ck = Some(mhz(96));
+
+    // Configure for STM32F429 Nucelo with 16MHz HSI and 180MHz sysclk.
+    {
+        use embassy_stm32::rcc::*;
+
+        config.rcc.hsi = true;
+        config.rcc.pll_src = PllSource::HSI;
+        config.rcc.pll = Some(Pll {
+            prediv: PllPreDiv::DIV8,
+            mul: PllMul::MUL180,
+            divp: Some(Pllp::DIV2), // 16mhz / 8 * 180 / 2 = 180Mhz.
+            divq: None,
+            divr: None,
+        });
+        config.rcc.ahb_pre = AHBPrescaler::DIV1;
+        config.rcc.apb1_pre = APBPrescaler::DIV4;
+        config.rcc.apb2_pre = APBPrescaler::DIV2;
+        config.rcc.sys = Sysclk::PLL1_P;
+    }
 
     let p = embassy_stm32::init(config);
 
