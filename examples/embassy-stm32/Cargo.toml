@@ -46,13 +46,14 @@ embassy-stm32 = { version = "0.1.0", features = [
     "memory-x",
     "time-driver-any",
 ] }
-embassy-net = { version = "0.1.0", features = [
+embassy-net = { version = "0.2.0", features = [
     "defmt",
     "tcp",
     "dhcpv4",
     "medium-ethernet",
     "nightly",
 ] }
+embassy-net-driver = { version = "0.2.0", features = ["defmt"] }
 
 [profile.release]
 debug = 2
@@ -61,8 +62,9 @@ lto = true
 codegen-units = 1
 
 [patch.crates-io]
-embassy-sync = { git = "https://github.com/embassy-rs/embassy.git", rev = "eff73d6dfa4c5920a55a5ee2bf5c0b2ef68fbae1" }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "eff73d6dfa4c5920a55a5ee2bf5c0b2ef68fbae1" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy.git", rev = "eff73d6dfa4c5920a55a5ee2bf5c0b2ef68fbae1" }
-embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", rev = "eff73d6dfa4c5920a55a5ee2bf5c0b2ef68fbae1" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy.git", rev = "eff73d6dfa4c5920a55a5ee2bf5c0b2ef68fbae1" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
+embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
+embassy-net-driver = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }

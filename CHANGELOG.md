@@ -22,6 +22,8 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#124] Changed `PduTx::waker()` to `PduTx::replace_waker()`. Instead of calling
   e.g. `pdu_tx.waker().replace(ctx.waker().clone())`, now it should be
   `pdu_tx.replace_waker(ctx.waker())`.
+- (potentially breaking) [#125] Package upgrades, notably `async_io` and `futures_lite` from 1.x to
+  2.0.
 
 ## [0.3.1] - 2023-10-16
 
@@ -243,5 +245,6 @@ An EtherCAT master written in Rust.
 [#121]: https://github.com/ethercrab-rs/ethercrab/pull/121
 [#122]: https://github.com/ethercrab-rs/ethercrab/pull/122
 [#124]: https://github.com/ethercrab-rs/ethercrab/pull/124
+[#125]: https://github.com/ethercrab-rs/ethercrab/pull/125
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0

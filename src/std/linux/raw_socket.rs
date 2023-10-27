@@ -1,9 +1,16 @@
 //! Copied from SmolTCP's RawSocketDesc, with inspiration from
 //! [https://github.com/embassy-rs/embassy](https://github.com/embassy-rs/embassy/blob/master/examples/std/src/tuntap.rs).
 
+use async_io::IoSafe;
+
 use crate::ETHERCAT_ETHERTYPE_RAW;
-use std::os::unix::io::{AsRawFd, RawFd};
-use std::{io, mem};
+use std::{
+    io, mem,
+    os::{
+        fd::{AsFd, BorrowedFd},
+        unix::io::{AsRawFd, RawFd},
+    },
+};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -119,6 +126,17 @@ impl AsRawFd for RawSocketDesc {
         self.lower
     }
 }
+
+impl AsFd for RawSocketDesc {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        unsafe { BorrowedFd::borrow_raw(self.lower) }
+    }
+}
+
+// SAFETY: Implementing this trait pledges that the underlying socket resource will not be dropped
+// by `Read` or `Write` impls. More information can be read
+// [here](https://docs.rs/async-io/latest/async_io/trait.IoSafe.html).
+unsafe impl IoSafe for RawSocketDesc {}
 
 impl Drop for RawSocketDesc {
     fn drop(&mut self) {
