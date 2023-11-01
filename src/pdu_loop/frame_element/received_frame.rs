@@ -70,7 +70,16 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
     fn drop(&mut self) {
         fmt::trace!("Drop frame element idx {}", self.frame().index);
 
-        unsafe { FrameElement::set_state(self.inner.frame, FrameState::None) }
+        unsafe {
+            // Invariant: the frame can only be in `RxProcessing` at this point, so if this swap
+            // fails there's either a logic bug, or we should panic anyway because the hardware
+            // failed.
+            fmt::unwrap!(FrameElement::swap_state(
+                self.inner.frame,
+                FrameState::RxProcessing,
+                FrameState::None
+            ));
+        }
     }
 }
 
