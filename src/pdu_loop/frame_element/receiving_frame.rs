@@ -42,7 +42,9 @@ impl<'sto> ReceivingFrame<'sto> {
         unsafe {
             // NOTE: claim_receiving sets the state to `RxBusy` during parsing of the incoming frame
             // so the previous state here should be RxBusy.
-            FrameElement::set_state(self.inner.frame, FrameState::RxDone);
+            FrameElement::swap_state(self.inner.frame, FrameState::RxBusy, FrameState::RxDone)
+                .map(|_| ())
+                .map_err(|_| Error::Pdu(PduError::InvalidFrameState))?;
         }
 
         unsafe { self.inner.wake() };
@@ -88,6 +90,22 @@ pub struct ReceiveFrameFut<'sto> {
 // not, the associated lifetime will prevent the framebox from being used in anything that requires
 // a 'static bound.
 unsafe impl<'sto> Send for ReceiveFrameFut<'sto> {}
+
+// If this impl is removed, timed out frames will never be reclaimed, clogging up the PDU loop and
+// crashing the program.
+impl<'sto> Drop for ReceiveFrameFut<'sto> {
+    fn drop(&mut self) {
+        match self.frame.take() {
+            Some(r) => {
+                fmt::debug!("Dropping in-flight future, possibly caused by timeout");
+
+                // Make frame available for reuse if this future is dropped.
+                unsafe { FrameElement::set_state(r.frame, FrameState::None) };
+            }
+            None => (),
+        }
+    }
+}
 
 impl<'sto> Future for ReceiveFrameFut<'sto> {
     type Output = Result<ReceivedFrame<'sto>, Error>;
