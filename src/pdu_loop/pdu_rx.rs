@@ -102,6 +102,8 @@ impl<'sto> PduRx<'sto> {
             Ok(())
         })()
         .map_err(|e| {
+            fmt::error!("Parse frame failed: {}", e);
+
             frame.release_receiving_claim();
 
             e
