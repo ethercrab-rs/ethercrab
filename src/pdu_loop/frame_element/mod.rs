@@ -158,7 +158,15 @@ impl<const N: usize> FrameElement<N> {
     pub unsafe fn claim_receiving(
         this: NonNull<FrameElement<N>>,
     ) -> Option<NonNull<FrameElement<N>>> {
-        Self::swap_state(this, FrameState::Sent, FrameState::RxBusy).ok()
+        Self::swap_state(this, FrameState::Sent, FrameState::RxBusy)
+            .map_err(|actual_state| {
+                fmt::error!(
+                    "Failed to claim receiving frame: expected state {:?}, but got {:?}",
+                    FrameState::Sent,
+                    actual_state
+                );
+            })
+            .ok()
     }
 }
 
