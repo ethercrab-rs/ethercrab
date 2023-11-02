@@ -139,7 +139,7 @@ impl<const N: usize> FrameElement<N> {
         // matters slightly less for all other state transitions because once we have a created
         // frame nothing else is able to take it unless it is put back into the `None` state.
         Self::swap_state(this, FrameState::None, FrameState::Created).map_err(|e| {
-            fmt::error!(
+            fmt::debug!(
                 "Failed to claim frame: status is {:?}, expected {:?}",
                 e,
                 FrameState::None
@@ -158,7 +158,15 @@ impl<const N: usize> FrameElement<N> {
     pub unsafe fn claim_receiving(
         this: NonNull<FrameElement<N>>,
     ) -> Option<NonNull<FrameElement<N>>> {
-        Self::swap_state(this, FrameState::Sent, FrameState::RxBusy).ok()
+        Self::swap_state(this, FrameState::Sent, FrameState::RxBusy)
+            .map_err(|actual_state| {
+                fmt::error!(
+                    "Failed to claim receiving frame: expected state {:?}, but got {:?}",
+                    FrameState::Sent,
+                    actual_state
+                );
+            })
+            .ok()
     }
 }
 

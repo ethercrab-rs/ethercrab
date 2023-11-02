@@ -152,12 +152,10 @@ impl<'sto> PduLoop<'sto> {
             match crate::timer_factory::timeout(timeout, frame).await {
                 Ok(result) => return Ok(result),
                 Err(Error::Timeout) => {
-                    fmt::error!("Frame {} timed out, releasing", frame_idx);
+                    fmt::error!("Frame {} timed out", frame_idx);
 
-                    // If we're retrying, this frees up the frame slot for reclamation, either by
-                    // this loop or other things that want to send stuff. If we're timing out on
-                    // first failure, this frees the frame up for reuse elsewhere.
-                    self.storage.release_frame(frame_idx);
+                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
+                    // state to `None`, ready for reuse.
                 }
                 Err(e) => return Err(e),
             }

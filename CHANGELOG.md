@@ -17,6 +17,7 @@ An EtherCAT master written in Rust.
 - [#121] **Linux only:** Relax `'static` lifetime requirement on `std::tx_rx_task` to a named
   lifetime to allow non-`'static` storage to be used.
 - [#124] Fixed some spurious panics from race conditions by using atomic wakers.
+- [#127] Improve frame allocation reliability when contention is high.
 
 ### Changed
 
@@ -248,5 +249,6 @@ An EtherCAT master written in Rust.
 [#124]: https://github.com/ethercrab-rs/ethercrab/pull/124
 [#125]: https://github.com/ethercrab-rs/ethercrab/pull/125
 [#126]: https://github.com/ethercrab-rs/ethercrab/pull/126
+[#127]: https://github.com/ethercrab-rs/ethercrab/pull/127
 [0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/fb37346...v0.1.0
