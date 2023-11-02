@@ -133,17 +133,43 @@ impl<'sto> PduStorageRef<'sto> {
             return Err(PduError::TooLong.into());
         }
 
-        let idx_u8 = self.idx.fetch_add(1, Ordering::Relaxed) % self.num_frames as u8;
+        let mut search = 0;
 
-        let idx = usize::from(idx_u8);
+        // Find next frame that is not currently in use.
+        let (frame, idx_u8) = loop {
+            let idx_u8 = self.idx.fetch_add(1, Ordering::Relaxed) % self.num_frames as u8;
 
-        fmt::trace!("Try to allocate frame #{}", idx);
+            let idx = usize::from(idx_u8);
 
-        // Claim frame so it is no longer free and can be used. It must be claimed before
-        // initialisation to avoid race conditions with other threads potentially claiming the same
-        // frame.
-        let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(idx)) };
-        let frame = unsafe { FrameElement::claim_created(frame) }?;
+            fmt::trace!("Try to allocate frame #{}", idx);
+
+            // Claim frame so it is no longer free and can be used. It must be claimed before
+            // initialisation to avoid race conditions with other threads potentially claiming the
+            // same frame.
+            let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(idx)) };
+            let frame = unsafe { FrameElement::claim_created(frame) };
+
+            if let Ok(f) = frame {
+                break (f, idx_u8);
+            }
+
+            search += 1;
+
+            // Escape hatch: we'll only loop through the frame storage array twice to put an upper
+            // bound on the number of times this loop can execute. It could be allowed to execute
+            // indefinitely and rely on PDU future timeouts to cancel, but that seems brittle hence
+            // this safety check.
+            //
+            // This can be mitigated by using a `RetryBehaviour` of `Count` or `Forever`.
+            if search > self.num_frames * 2 {
+                // We've searched twice and found no free slots. This means the application should
+                // either slow down its packet sends, or increase `N` in `PduStorage` as there
+                // aren't enough slots to hold all in-flight packets.
+                fmt::error!("No available frames in {} slots", self.num_frames);
+
+                return Err(PduError::SwapState.into());
+            }
+        };
 
         // Initialise frame with EtherCAT header and zeroed data buffer.
         unsafe {

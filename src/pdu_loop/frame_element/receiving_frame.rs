@@ -43,8 +43,12 @@ impl<'sto> ReceivingFrame<'sto> {
             // NOTE: claim_receiving sets the state to `RxBusy` during parsing of the incoming frame
             // so the previous state here should be RxBusy.
             FrameElement::swap_state(self.inner.frame, FrameState::RxBusy, FrameState::RxDone)
-                .map(|_| ())
-                .map_err(|_| Error::Pdu(PduError::InvalidFrameState))?;
+                .map(|_| {})
+                .map_err(|_| {
+                    fmt::error!("Failed to set frame state from RxBusy -> RxDone");
+
+                    Error::Pdu(PduError::InvalidFrameState)
+                })?;
         }
 
         unsafe { self.inner.wake() };
@@ -91,22 +95,6 @@ pub struct ReceiveFrameFut<'sto> {
 // a 'static bound.
 unsafe impl<'sto> Send for ReceiveFrameFut<'sto> {}
 
-// If this impl is removed, timed out frames will never be reclaimed, clogging up the PDU loop and
-// crashing the program.
-impl<'sto> Drop for ReceiveFrameFut<'sto> {
-    fn drop(&mut self) {
-        match self.frame.take() {
-            Some(r) => {
-                fmt::debug!("Dropping in-flight future, possibly caused by timeout");
-
-                // Make frame available for reuse if this future is dropped.
-                unsafe { FrameElement::set_state(r.frame, FrameState::None) };
-            }
-            None => (),
-        }
-    }
-}
-
 impl<'sto> Future for ReceiveFrameFut<'sto> {
     type Output = Result<ReceivedFrame<'sto>, Error>;
 
@@ -148,6 +136,22 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
                 Poll::Ready(Err(PduError::InvalidFrameState.into()))
             }
+        }
+    }
+}
+
+// If this impl is removed, timed out frames will never be reclaimed, clogging up the PDU loop and
+// crashing the program.
+impl<'sto> Drop for ReceiveFrameFut<'sto> {
+    fn drop(&mut self) {
+        match self.frame.take() {
+            Some(r) => {
+                fmt::debug!("Dropping in-flight future, possibly caused by timeout");
+
+                // Make frame available for reuse if this future is dropped.
+                unsafe { FrameElement::set_state(r.frame, FrameState::None) };
+            }
+            None => (),
         }
     }
 }
