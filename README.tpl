@@ -45,6 +45,7 @@ you like to be in this list? Then please consider
   testing with.
 - [Trisk Bio](https://triskbio.com/) generously donated some additional Beckhoff modules and some
   optical ethernet gear.
+- Smark sent a $200 one time donation. Thank you!
 
 ## License
 
