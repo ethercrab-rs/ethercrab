@@ -87,6 +87,7 @@ pub struct Slave {
 // Only required for tests, also doesn't make much sense - consumers of EtherCrab should be
 // comparing e.g. `slave.identity()`, names, configured address or something other than the whole
 // struct.
+#[cfg(test)]
 impl PartialEq for Slave {
     fn eq(&self, other: &Self) -> bool {
         self.configured_address == other.configured_address
@@ -397,8 +398,6 @@ where
                     .client
                     .read::<SyncManagerChannel>(mailbox_read_sm, "Master reply read mailbox")
                     .await?;
-
-                dbg!(sm.status);
 
                 if sm.status.mailbox_full {
                     break Ok(());
