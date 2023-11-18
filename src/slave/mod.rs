@@ -492,7 +492,7 @@ where
             }))
         }
         // Validate that the mailbox response is to the request we just sent
-        else if headers.mailbox_type() != MailboxType::Coe {
+        else if headers.mailbox_type() != MailboxType::Coe || headers.counter() != counter {
             fmt::error!(
                 "Invalid SDO response. Type: {:?} (expected {:?}), counter {} (expected {})",
                 headers.mailbox_type(),
