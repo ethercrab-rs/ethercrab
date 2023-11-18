@@ -31,9 +31,9 @@ use crate::{
 };
 use core::{
     any::type_name,
-    cell::Cell,
     fmt::{Debug, Write},
     ops::Deref,
+    sync::atomic::{AtomicU8, Ordering},
 };
 use nom::{bytes::complete::take, number::complete::le_u32};
 use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
@@ -44,7 +44,7 @@ pub use self::types::SlaveIdentity;
 use self::{slave_client::SlaveClient, types::Mailbox};
 
 /// Slave device metadata. See [`SlaveRef`] for richer behaviour.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 // Gated by test feature so we can easily create test cases, but not expose a `Default`-ed `Slave`
 // to the user as this is an invalid state.
 #[cfg_attr(test, derive(Default))]
@@ -81,7 +81,47 @@ pub struct Slave {
     pub(crate) propagation_delay: u32,
 
     /// The 1-7 cyclic counter used when working with mailbox requests.
-    mailbox_counter: Cell<u8>,
+    pub(crate) mailbox_counter: AtomicU8,
+}
+
+// Only required for tests, also doesn't make much sense - consumers of EtherCrab should be
+// comparing e.g. `slave.identity()`, names, configured address or something other than the whole
+// struct.
+impl PartialEq for Slave {
+    fn eq(&self, other: &Self) -> bool {
+        self.configured_address == other.configured_address
+            && self.config == other.config
+            && self.identity == other.identity
+            && self.name == other.name
+            && self.flags == other.flags
+            && self.ports == other.ports
+            && self.dc_receive_time == other.dc_receive_time
+            && self.index == other.index
+            && self.parent_index == other.parent_index
+            && self.propagation_delay == other.propagation_delay
+        // NOTE: No mailbox_counter
+    }
+}
+
+// Slaves shouldn't really be clonable (IMO), but the tests need them to be, so this impl is feature
+// gated.
+#[cfg(test)]
+impl Clone for Slave {
+    fn clone(&self) -> Self {
+        Self {
+            configured_address: self.configured_address.clone(),
+            config: self.config.clone(),
+            identity: self.identity.clone(),
+            name: self.name.clone(),
+            flags: self.flags.clone(),
+            ports: self.ports.clone(),
+            dc_receive_time: self.dc_receive_time.clone(),
+            index: self.index.clone(),
+            parent_index: self.parent_index.clone(),
+            propagation_delay: self.propagation_delay.clone(),
+            mailbox_counter: AtomicU8::new(self.mailbox_counter.load(Ordering::Acquire)),
+        }
+    }
 }
 
 impl Slave {
@@ -163,7 +203,7 @@ impl Slave {
             flags,
             ports,
             // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
-            mailbox_counter: Cell::new(1),
+            mailbox_counter: AtomicU8::new(1),
         })
     }
 
@@ -258,13 +298,17 @@ where
     /// Calling this method internally increments the counter, so subequent calls will produce a new
     /// value.
     fn mailbox_counter(&self) -> u8 {
-        let n = self.state.mailbox_counter.get();
-
-        self.state
-            .mailbox_counter
-            .set(if n >= 7 { 1 } else { n + 1 });
-
-        n
+        fmt::unwrap!(self.state.mailbox_counter.fetch_update(
+            Ordering::Release,
+            Ordering::Acquire,
+            |n| {
+                if n >= 7 {
+                    Some(1)
+                } else {
+                    Some(n + 1)
+                }
+            }
+        ))
     }
 
     /// Get CoE read/write mailboxes.
@@ -353,6 +397,8 @@ where
                     .client
                     .read::<SyncManagerChannel>(mailbox_read_sm, "Master reply read mailbox")
                     .await?;
+
+                dbg!(sm.status);
 
                 if sm.status.mailbox_full {
                     break Ok(());
