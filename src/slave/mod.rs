@@ -31,6 +31,7 @@ use crate::{
 };
 use core::{
     any::type_name,
+    cell::Cell,
     fmt::{Debug, Write},
     ops::Deref,
 };
@@ -78,6 +79,9 @@ pub struct Slave {
     /// `u32::MAX` gives a maximum propagation delay of ~4.2 seconds for the last slave in the
     /// network.
     pub(crate) propagation_delay: u32,
+
+    /// The 1-7 cyclic counter used when working with mailbox requests.
+    mailbox_counter: Cell<u8>,
 }
 
 impl Slave {
@@ -158,6 +162,8 @@ impl Slave {
             name,
             flags,
             ports,
+            // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
+            mailbox_counter: Cell::new(1),
         })
     }
 
@@ -247,6 +253,20 @@ where
         self.state.propagation_delay
     }
 
+    /// Return the current cyclic mailbox counter value, from 0-7.
+    ///
+    /// Calling this method internally increments the counter, so subequent calls will produce a new
+    /// value.
+    fn mailbox_counter(&self) -> u8 {
+        let n = self.state.mailbox_counter.get();
+
+        self.state
+            .mailbox_counter
+            .set(if n >= 7 { 1 } else { n + 1 });
+
+        n
+    }
+
     /// Get CoE read/write mailboxes.
     async fn coe_mailboxes(&self) -> Result<(Mailbox, Mailbox), Error> {
         let write_mailbox = self
@@ -282,6 +302,11 @@ where
 
             // If flag is set, read entire mailbox to clear it
             if sm.status.mailbox_full {
+                fmt::debug!(
+                    "Slave {:#06x} OUT mailbox not empty. Clearing.",
+                    self.configured_address()
+                );
+
                 Command::fprd(self.state.configured_address, read_mailbox.address)
                     .receive_slice(self.client.client, read_mailbox.len)
                     .await?;
@@ -455,7 +480,7 @@ where
     {
         let sub_index = sub_index.into();
 
-        let counter = self.client.client.mailbox_counter();
+        let counter = self.mailbox_counter();
 
         if T::len() > 4 {
             fmt::error!("Only 4 byte SDO writes or smaller are supported currently.");
@@ -489,7 +514,7 @@ where
     ) -> Result<&'buf [u8], Error> {
         let sub_index = sub_index.into();
 
-        let request = coe::services::upload(self.client.client.mailbox_counter(), index, sub_index);
+        let request = coe::services::upload(self.mailbox_counter(), index, sub_index);
 
         fmt::trace!("CoE upload {:#06x} {:?}", index, sub_index);
 
@@ -539,10 +564,7 @@ where
                 let mut total_len = 0usize;
 
                 loop {
-                    let request = coe::services::upload_segmented(
-                        self.client.client.mailbox_counter(),
-                        toggle,
-                    );
+                    let request = coe::services::upload_segmented(self.mailbox_counter(), toggle);
 
                     fmt::trace!("CoE upload segmented");
 
