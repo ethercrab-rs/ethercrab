@@ -1,13 +1,12 @@
 use num_enum::TryFromPrimitive;
 
 use crate::{
-    eeprom::types::{FmmuEx, FmmuUsage, Pdo, SyncManager},
+    eeprom::types::{
+        CategoryType, DefaultMailbox, FromEeprom, PdoEntry, SiiGeneral, RX_PDO_RANGE, TX_PDO_RANGE,
+    },
     eeprom::{
-        reader::{EepromBlock, EepromDataProvider},
-        types::{
-            CategoryType, DefaultMailbox, FromEeprom, PdoEntry, SiiGeneral, RX_PDO_RANGE,
-            TX_PDO_RANGE,
-        },
+        types::{FmmuEx, FmmuUsage, Pdo, SyncManager},
+        EepromBlock, EepromDataProvider,
     },
     error::{EepromError, Error, Item},
     fmt,
