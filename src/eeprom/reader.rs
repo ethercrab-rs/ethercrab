@@ -14,7 +14,7 @@ const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 /// EEPROM section reader.
 ///
 /// Controls an internal pointer to sequentially read data from a section in a slave's EEPROM.
-pub struct EepromSectionReader {
+pub struct EepromSectionReader<'slave> {
     /// Start address.
     ///
     /// EEPROM is structured as 16 bit words, so address strides must be halved to step correctly.
@@ -28,9 +28,10 @@ pub struct EepromSectionReader {
     /// Number of bytes read so far.
     byte_count: u16,
     read: heapless::Deque<u8, 8>,
+    slave: &'slave SlaveClient<'slave>,
 }
 
-impl EepromSectionReader {
+impl<'slave> EepromSectionReader<'slave> {
     /// Create a new EEPROM section reader.
     ///
     /// This is used to read data from individual sections in a slave's EEPROM. Many methods on
@@ -38,7 +39,7 @@ impl EepromSectionReader {
     /// [`EepromError::SectionUnderrun`] errors if the section cannot be completely read as this is
     /// often an indicator of a bug in either the slave's EEPROM or EtherCrab.
     pub async fn new(
-        slave: &SlaveClient<'_>,
+        slave: &'slave SlaveClient<'_>,
         category: CategoryType,
     ) -> Result<Option<Self>, Error> {
         let mut start_word = SII_FIRST_CATEGORY_START;
@@ -64,7 +65,7 @@ impl EepromSectionReader {
 
             match category_type {
                 cat if cat == category => {
-                    break Ok(Some(Self::start_at(start_word, len_words * 2)));
+                    break Ok(Some(Self::start_at(slave, start_word, len_words * 2)));
                 }
                 CategoryType::End => break Ok(None),
                 _ => (),
@@ -77,19 +78,20 @@ impl EepromSectionReader {
 
     /// Read an arbitrary chunk of the EEPROM instead of using an EEPROM section configu to define
     /// start address and length.
-    pub fn start_at(address: u16, len_bytes: u16) -> Self {
+    pub fn start_at(slave: &'slave SlaveClient<'_>, address: u16, len_bytes: u16) -> Self {
         Self {
             start: address,
             len: len_bytes,
             byte_count: 0,
             read: heapless::Deque::new(),
+            slave,
         }
     }
 
     async fn read_eeprom_raw<'client>(
         slave: &'client SlaveClient<'client>,
         eeprom_address: u16,
-    ) -> Result<RxFrameDataBuf<'_>, Error> {
+    ) -> Result<RxFrameDataBuf<'client>, Error> {
         let status = slave
             .read::<SiiControl>(RegisterAddress::SiiControl.into(), "Read SII control")
             .await?;
@@ -118,7 +120,7 @@ impl EepromSectionReader {
             )
             .await?;
 
-        Self::wait(slave).await?;
+        wait(slave).await?;
 
         slave
             .read_slice(
@@ -137,30 +139,12 @@ impl EepromSectionReader {
             })
     }
 
-    /// Wait for EEPROM read or write operation to finish and clear the busy flag.
-    async fn wait(slave: &SlaveClient<'_>) -> Result<(), Error> {
-        crate::timer_factory::timeout(slave.timeouts().eeprom, async {
-            loop {
-                let control = slave
-                    .read::<SiiControl>(RegisterAddress::SiiControl.into(), "SII busy wait")
-                    .await?;
-
-                if !control.busy {
-                    break Ok(());
-                }
-
-                slave.timeouts().loop_tick().await;
-            }
-        })
-        .await
-    }
-
     /// Read the next byte from the EEPROM.
     ///
     /// Internally, this method reads the EEPROM in chunks of 4 or 8 bytes (depending on the slave).
-    pub async fn next(&mut self, slave: &SlaveClient<'_>) -> Result<Option<u8>, Error> {
+    pub async fn next(&mut self) -> Result<Option<u8>, Error> {
         if self.read.is_empty() {
-            let read = Self::read_eeprom_raw(slave, self.start).await?;
+            let read = Self::read_eeprom_raw(&self.slave, self.start).await?;
 
             for byte in read.iter() {
                 // SAFETY:
@@ -188,18 +172,18 @@ impl EepromSectionReader {
     }
 
     /// Skip a given number of addresses (note: not bytes).
-    pub async fn skip(&mut self, slave: &SlaveClient<'_>, skip: u16) -> Result<(), Error> {
+    pub async fn skip(&mut self, skip: u16) -> Result<(), Error> {
         // TODO: Optimise by calculating new skip address instead of just iterating through chunks
         for _ in 0..skip {
-            self.next(slave).await?;
+            self.next().await?;
         }
 
         Ok(())
     }
 
     /// Try reading the next chunk in the current section.
-    pub async fn try_next(&mut self, slave: &SlaveClient<'_>) -> Result<u8, Error> {
-        match self.next(slave).await? {
+    pub async fn try_next(&mut self) -> Result<u8, Error> {
+        match self.next().await? {
             Some(value) => Ok(value),
             None => Err(Error::Eeprom(EepromError::SectionOverrun)),
         }
@@ -207,11 +191,8 @@ impl EepromSectionReader {
 
     /// Attempt to read exactly `N` bytes. If not enough data could be read, this method returns an
     /// error.
-    pub async fn take_vec_exact<const N: usize>(
-        &mut self,
-        slave: &SlaveClient<'_>,
-    ) -> Result<heapless::Vec<u8, N>, Error> {
-        self.take_vec(slave)
+    pub async fn take_vec_exact<const N: usize>(&mut self) -> Result<heapless::Vec<u8, N>, Error> {
+        self.take_vec()
             .await?
             .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
     }
@@ -219,9 +200,8 @@ impl EepromSectionReader {
     /// Read up to `N` bytes. If not enough data could be read, this method will return `Ok(None)`.
     pub async fn take_vec<const N: usize>(
         &mut self,
-        slave: &SlaveClient<'_>,
     ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
-        self.take_vec_len(slave, N).await
+        self.take_vec_len(N).await
     }
 
     /// Try to take `len` bytes, returning an error if the buffer length `N` is too small.
@@ -229,10 +209,9 @@ impl EepromSectionReader {
     /// If not enough data could be read, this method returns an error.
     pub async fn take_vec_len_exact<const N: usize>(
         &mut self,
-        slave: &SlaveClient<'_>,
         len: usize,
     ) -> Result<heapless::Vec<u8, N>, Error> {
-        self.take_vec_len(slave, len)
+        self.take_vec_len(len)
             .await?
             .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
     }
@@ -242,7 +221,6 @@ impl EepromSectionReader {
     /// If not enough data can be read to fill the buffer, this method will return `Ok(None)`.
     pub async fn take_vec_len<const N: usize>(
         &mut self,
-        slave: &SlaveClient<'_>,
         len: usize,
     ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
         let mut buf = heapless::Vec::new();
@@ -269,7 +247,7 @@ impl EepromSectionReader {
                 break Err(Error::Eeprom(EepromError::SectionOverrun));
             }
 
-            if let Some(byte) = self.next(slave).await? {
+            if let Some(byte) = self.next().await? {
                 // SAFETY: We check for buffer space using is_full above
                 unsafe { buf.push_unchecked(byte) };
 
@@ -280,4 +258,22 @@ impl EepromSectionReader {
             }
         }
     }
+}
+
+/// Wait for EEPROM read or write operation to finish and clear the busy flag.
+async fn wait(slave: &SlaveClient<'_>) -> Result<(), Error> {
+    crate::timer_factory::timeout(slave.timeouts().eeprom, async {
+        loop {
+            let control = slave
+                .read::<SiiControl>(RegisterAddress::SiiControl.into(), "SII busy wait")
+                .await?;
+
+            if !control.busy {
+                break Ok(());
+            }
+
+            slave.timeouts().loop_tick().await;
+        }
+    })
+    .await
 }

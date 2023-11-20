@@ -42,12 +42,16 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn eeprom_mailbox_config(&self) -> Result<DefaultMailbox, Error> {
         // Start reading standard mailbox config. Raw start address defined in ETG2010 Table 2.
         // Mailbox config is 10 bytes long.
-        let mut reader = EepromSectionReader::start_at(0x0018, DefaultMailbox::STORAGE_SIZE as u16);
+        let mut reader = EepromSectionReader::start_at(
+            &self.client,
+            0x0018,
+            DefaultMailbox::STORAGE_SIZE as u16,
+        );
 
         fmt::trace!("Get mailbox config");
 
         let buf = reader
-            .take_vec_exact::<{ DefaultMailbox::STORAGE_SIZE }>(&self.client)
+            .take_vec_exact::<{ DefaultMailbox::STORAGE_SIZE }>()
             .await?;
 
         DefaultMailbox::parse(&buf)
@@ -59,19 +63,20 @@ impl<'a, S> SlaveRef<'a, S> {
             .ok_or(Error::Eeprom(EepromError::NoCategory))?;
 
         let buf = reader
-            .take_vec_exact::<{ SiiGeneral::STORAGE_SIZE }>(&self.client)
+            .take_vec_exact::<{ SiiGeneral::STORAGE_SIZE }>()
             .await?;
 
         SiiGeneral::parse(&buf)
     }
 
     pub(crate) async fn eeprom_identity(&self) -> Result<SlaveIdentity, Error> {
-        let mut reader = EepromSectionReader::start_at(0x0008, SlaveIdentity::STORAGE_SIZE as u16);
+        let mut reader =
+            EepromSectionReader::start_at(&self.client, 0x0008, SlaveIdentity::STORAGE_SIZE as u16);
 
         fmt::trace!("Get identity");
 
         reader
-            .take_vec_exact::<{ SlaveIdentity::STORAGE_SIZE }>(&self.client)
+            .take_vec_exact::<{ SlaveIdentity::STORAGE_SIZE }>()
             .await
             .and_then(|buf| SlaveIdentity::parse(&buf))
     }
@@ -86,10 +91,7 @@ impl<'a, S> SlaveRef<'a, S> {
         if let Some(mut reader) =
             EepromSectionReader::new(&self.client, CategoryType::SyncManager).await?
         {
-            while let Some(bytes) = reader
-                .take_vec::<{ SyncManager::STORAGE_SIZE }>(&self.client)
-                .await?
-            {
+            while let Some(bytes) = reader.take_vec::<{ SyncManager::STORAGE_SIZE }>().await? {
                 let sm = SyncManager::parse(&bytes)?;
 
                 sync_managers
@@ -112,7 +114,7 @@ impl<'a, S> SlaveRef<'a, S> {
         let mut fmmus = heapless::Vec::<_, 16>::new();
 
         if let Some(mut reader) = category {
-            while let Some(byte) = reader.next(&self.client).await? {
+            while let Some(byte) = reader.next().await? {
                 let fmmu = FmmuUsage::try_from_primitive(byte)
                     .map_err(|_| Error::Eeprom(EepromError::Decode))?;
 
@@ -133,10 +135,7 @@ impl<'a, S> SlaveRef<'a, S> {
         if let Some(mut reader) =
             EepromSectionReader::new(&self.client, CategoryType::FmmuExtended).await?
         {
-            while let Some(bytes) = reader
-                .take_vec::<{ FmmuEx::STORAGE_SIZE }>(&self.client)
-                .await?
-            {
+            while let Some(bytes) = reader.take_vec::<{ FmmuEx::STORAGE_SIZE }>().await? {
                 let fmmu = FmmuEx::parse(&bytes)?;
 
                 mappings
@@ -160,10 +159,7 @@ impl<'a, S> SlaveRef<'a, S> {
         fmt::trace!("Get {:?} PDUs", category);
 
         if let Some(mut reader) = EepromSectionReader::new(&self.client, category).await? {
-            while let Some(pdo) = reader
-                .take_vec::<{ Pdo::STORAGE_SIZE }>(&self.client)
-                .await?
-            {
+            while let Some(pdo) = reader.take_vec::<{ Pdo::STORAGE_SIZE }>().await? {
                 let mut pdo = Pdo::parse(&pdo).map_err(|e| {
                     fmt::error!("PDO: {:?}", e);
 
@@ -178,7 +174,7 @@ impl<'a, S> SlaveRef<'a, S> {
 
                 for _ in 0..pdo.num_entries {
                     let entry = reader
-                        .take_vec_exact::<{ PdoEntry::STORAGE_SIZE }>(&self.client)
+                        .take_vec_exact::<{ PdoEntry::STORAGE_SIZE }>()
                         .await
                         .and_then(|bytes| {
                             let entry = PdoEntry::parse(&bytes).map_err(|e| {
@@ -231,7 +227,7 @@ impl<'a, S> SlaveRef<'a, S> {
         if let Some(mut reader) =
             EepromSectionReader::new(&self.client, CategoryType::Strings).await?
         {
-            let num_strings = reader.try_next(&self.client).await?;
+            let num_strings = reader.try_next().await?;
 
             fmt::trace!("--> Slave has {} strings", num_strings);
 
@@ -240,15 +236,15 @@ impl<'a, S> SlaveRef<'a, S> {
             }
 
             for _ in 0..search_index {
-                let string_len = reader.try_next(&self.client).await?;
+                let string_len = reader.try_next().await?;
 
-                reader.skip(&self.client, u16::from(string_len)).await?;
+                reader.skip(u16::from(string_len)).await?;
             }
 
-            let string_len = usize::from(reader.try_next(&self.client).await?);
+            let string_len = usize::from(reader.try_next().await?);
 
             let bytes = reader
-                .take_vec_len_exact::<N>(&self.client, string_len)
+                .take_vec_len_exact::<N>(string_len)
                 .await
                 .map_err(|_| Error::StringTooLong {
                     max_length: N,
