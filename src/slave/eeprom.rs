@@ -3,7 +3,7 @@ use num_enum::TryFromPrimitive;
 use crate::{
     eeprom::types::{FmmuEx, FmmuUsage, Pdo, SyncManager},
     eeprom::{
-        reader::EepromFactory,
+        reader::{EepromBlock, EepromDataProvider},
         types::{
             CategoryType, DefaultMailbox, FromEeprom, PdoEntry, SiiGeneral, RX_PDO_RANGE,
             TX_PDO_RANGE,
@@ -15,14 +15,16 @@ use crate::{
 };
 use core::{ops::RangeInclusive, str::FromStr};
 
-pub struct SlaveEeprom<'slave> {
-    // TODO: Make this generic
-    provider: EepromFactory<'slave>,
+pub struct SlaveEeprom<P> {
+    provider: P,
 }
 
 /// EEPROM methods.
-impl<'a> SlaveEeprom<'a> {
-    pub(crate) fn new(provider: EepromFactory<'a>) -> SlaveEeprom<'a> {
+impl<P> SlaveEeprom<P>
+where
+    P: EepromDataProvider,
+{
+    pub(crate) fn new(provider: P) -> Self {
         Self { provider }
     }
 

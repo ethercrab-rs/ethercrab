@@ -700,7 +700,7 @@ impl<'a, S> SlaveRef<'a, S> {
         Ok((status, code))
     }
 
-    fn eeprom(&self) -> SlaveEeprom {
+    fn eeprom(&self) -> SlaveEeprom<EepromFactory> {
         SlaveEeprom::new(EepromFactory::new(&self.client))
     }
 
