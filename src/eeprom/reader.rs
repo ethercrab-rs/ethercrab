@@ -31,6 +31,29 @@ pub struct EepromSectionReader<'slave> {
     slave: &'slave SlaveClient<'slave>,
 }
 
+pub struct EepromFactory<'slave> {
+    slave: &'slave SlaveClient<'slave>,
+}
+
+impl<'slave> EepromFactory<'slave> {
+    pub fn new(slave: &'slave SlaveClient<'slave>) -> Self {
+        Self { slave }
+    }
+
+    /// Find a category and place the cursor at the beginning of its contents.
+    pub async fn category(
+        &self,
+        category: CategoryType,
+    ) -> Result<Option<EepromSectionReader<'_>>, Error> {
+        EepromSectionReader::new(self.slave, category).await
+    }
+
+    /// Start reading from the given address.
+    pub fn address(&self, address: u16, len: u16) -> EepromSectionReader<'_> {
+        EepromSectionReader::start_at(self.slave, address, len)
+    }
+}
+
 impl<'slave> EepromSectionReader<'slave> {
     /// Create a new EEPROM section reader.
     ///
@@ -38,7 +61,7 @@ impl<'slave> EepromSectionReader<'slave> {
     /// `EepromSectionReader` will either return [`EepromError::SectionOverrun`] or
     /// [`EepromError::SectionUnderrun`] errors if the section cannot be completely read as this is
     /// often an indicator of a bug in either the slave's EEPROM or EtherCrab.
-    pub async fn new(
+    async fn new(
         slave: &'slave SlaveClient<'_>,
         category: CategoryType,
     ) -> Result<Option<Self>, Error> {
@@ -78,7 +101,7 @@ impl<'slave> EepromSectionReader<'slave> {
 
     /// Read an arbitrary chunk of the EEPROM instead of using an EEPROM section configu to define
     /// start address and length.
-    pub fn start_at(slave: &'slave SlaveClient<'_>, address: u16, len_bytes: u16) -> Self {
+    fn start_at(slave: &'slave SlaveClient<'_>, address: u16, len_bytes: u16) -> Self {
         Self {
             start: address,
             len: len_bytes,

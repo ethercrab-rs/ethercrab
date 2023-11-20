@@ -1,10 +1,9 @@
 use num_enum::TryFromPrimitive;
 
-use super::SlaveRef;
 use crate::{
     eeprom::types::{FmmuEx, FmmuUsage, Pdo, SyncManager},
     eeprom::{
-        reader::EepromSectionReader,
+        reader::EepromFactory,
         types::{
             CategoryType, DefaultMailbox, FromEeprom, PdoEntry, SiiGeneral, RX_PDO_RANGE,
             TX_PDO_RANGE,
@@ -16,13 +15,22 @@ use crate::{
 };
 use core::{ops::RangeInclusive, str::FromStr};
 
+pub struct SlaveEeprom<'slave> {
+    // TODO: Make this generic
+    provider: EepromFactory<'slave>,
+}
+
 /// EEPROM methods.
-impl<'a, S> SlaveRef<'a, S> {
+impl<'a> SlaveEeprom<'a> {
+    pub(crate) fn new(provider: EepromFactory<'a>) -> SlaveEeprom<'a> {
+        Self { provider }
+    }
+
     /// Get the device name.
     ///
     /// Note that the string index is hard coded to `1` instead of reading the string index from the
     /// EEPROM `General` section.
-    pub(crate) async fn eeprom_device_name<const N: usize>(
+    pub(crate) async fn device_name<const N: usize>(
         &self,
     ) -> Result<Option<heapless::String<N>>, Error> {
         // Uncomment to read longer, but correct, name string from EEPROM
@@ -36,17 +44,15 @@ impl<'a, S> SlaveRef<'a, S> {
         // longer.
         let name_idx = 1;
 
-        self.eeprom_find_string(name_idx).await
+        self.find_string(name_idx).await
     }
 
-    pub(crate) async fn eeprom_mailbox_config(&self) -> Result<DefaultMailbox, Error> {
+    pub(crate) async fn mailbox_config(&self) -> Result<DefaultMailbox, Error> {
         // Start reading standard mailbox config. Raw start address defined in ETG2010 Table 2.
         // Mailbox config is 10 bytes long.
-        let mut reader = EepromSectionReader::start_at(
-            &self.client,
-            0x0018,
-            DefaultMailbox::STORAGE_SIZE as u16,
-        );
+        let mut reader = self
+            .provider
+            .address(0x0018, DefaultMailbox::STORAGE_SIZE as u16);
 
         fmt::trace!("Get mailbox config");
 
@@ -57,8 +63,10 @@ impl<'a, S> SlaveRef<'a, S> {
         DefaultMailbox::parse(&buf)
     }
 
-    pub(crate) async fn eeprom_general(&self) -> Result<SiiGeneral, Error> {
-        let mut reader = EepromSectionReader::new(&self.client, CategoryType::General)
+    pub(crate) async fn general(&self) -> Result<SiiGeneral, Error> {
+        let mut reader = self
+            .provider
+            .category(CategoryType::General)
             .await?
             .ok_or(Error::Eeprom(EepromError::NoCategory))?;
 
@@ -69,9 +77,10 @@ impl<'a, S> SlaveRef<'a, S> {
         SiiGeneral::parse(&buf)
     }
 
-    pub(crate) async fn eeprom_identity(&self) -> Result<SlaveIdentity, Error> {
-        let mut reader =
-            EepromSectionReader::start_at(&self.client, 0x0008, SlaveIdentity::STORAGE_SIZE as u16);
+    pub(crate) async fn identity(&self) -> Result<SlaveIdentity, Error> {
+        let mut reader = self
+            .provider
+            .address(0x0008, SlaveIdentity::STORAGE_SIZE as u16);
 
         fmt::trace!("Get identity");
 
@@ -81,16 +90,12 @@ impl<'a, S> SlaveRef<'a, S> {
             .and_then(|buf| SlaveIdentity::parse(&buf))
     }
 
-    pub(crate) async fn eeprom_sync_managers(
-        &self,
-    ) -> Result<heapless::Vec<SyncManager, 8>, Error> {
+    pub(crate) async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
         let mut sync_managers = heapless::Vec::<_, 8>::new();
 
         fmt::trace!("Get sync managers");
 
-        if let Some(mut reader) =
-            EepromSectionReader::new(&self.client, CategoryType::SyncManager).await?
-        {
+        if let Some(mut reader) = self.provider.category(CategoryType::SyncManager).await? {
             while let Some(bytes) = reader.take_vec::<{ SyncManager::STORAGE_SIZE }>().await? {
                 let sm = SyncManager::parse(&bytes)?;
 
@@ -105,8 +110,8 @@ impl<'a, S> SlaveRef<'a, S> {
         Ok(sync_managers)
     }
 
-    pub(crate) async fn eeprom_fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
-        let category = EepromSectionReader::new(&self.client, CategoryType::Fmmu).await?;
+    pub(crate) async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
+        let category = self.provider.category(CategoryType::Fmmu).await?;
 
         fmt::trace!("Get FMMUs");
 
@@ -127,14 +132,12 @@ impl<'a, S> SlaveRef<'a, S> {
         Ok(fmmus)
     }
 
-    pub(crate) async fn eeprom_fmmu_mappings(&self) -> Result<heapless::Vec<FmmuEx, 16>, Error> {
+    pub(crate) async fn fmmu_mappings(&self) -> Result<heapless::Vec<FmmuEx, 16>, Error> {
         let mut mappings = heapless::Vec::<_, 16>::new();
 
         fmt::trace!("Get FMMU mappings");
 
-        if let Some(mut reader) =
-            EepromSectionReader::new(&self.client, CategoryType::FmmuExtended).await?
-        {
+        if let Some(mut reader) = self.provider.category(CategoryType::FmmuExtended).await? {
             while let Some(bytes) = reader.take_vec::<{ FmmuEx::STORAGE_SIZE }>().await? {
                 let fmmu = FmmuEx::parse(&bytes)?;
 
@@ -149,7 +152,7 @@ impl<'a, S> SlaveRef<'a, S> {
         Ok(mappings)
     }
 
-    async fn eeprom_pdos(
+    async fn pdos(
         &self,
         category: CategoryType,
         valid_range: RangeInclusive<u16>,
@@ -158,7 +161,7 @@ impl<'a, S> SlaveRef<'a, S> {
 
         fmt::trace!("Get {:?} PDUs", category);
 
-        if let Some(mut reader) = EepromSectionReader::new(&self.client, category).await? {
+        if let Some(mut reader) = self.provider.category(category).await? {
             while let Some(pdo) = reader.take_vec::<{ Pdo::STORAGE_SIZE }>().await? {
                 let mut pdo = Pdo::parse(&pdo).map_err(|e| {
                     fmt::error!("PDO: {:?}", e);
@@ -201,16 +204,16 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     /// Transmit PDOs (from device's perspective) - inputs
-    pub(crate) async fn eeprom_master_read_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
-        self.eeprom_pdos(CategoryType::TxPdo, TX_PDO_RANGE).await
+    pub(crate) async fn master_read_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
+        self.pdos(CategoryType::TxPdo, TX_PDO_RANGE).await
     }
 
     /// Receive PDOs (from device's perspective) - outputs
-    pub(crate) async fn eeprom_master_write_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
-        self.eeprom_pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
+    pub(crate) async fn master_write_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
+        self.pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
     }
 
-    pub(crate) async fn eeprom_find_string<const N: usize>(
+    pub(crate) async fn find_string<const N: usize>(
         &self,
         search_index: u8,
     ) -> Result<Option<heapless::String<N>>, Error> {
@@ -224,9 +227,7 @@ impl<'a, S> SlaveRef<'a, S> {
         // Turn 1-based EtherCAT string indexing into normal 0-based.
         let search_index = search_index - 1;
 
-        if let Some(mut reader) =
-            EepromSectionReader::new(&self.client, CategoryType::Strings).await?
-        {
+        if let Some(mut reader) = self.provider.category(CategoryType::Strings).await? {
             let num_strings = reader.try_next().await?;
 
             fmt::trace!("--> Slave has {} strings", num_strings);
