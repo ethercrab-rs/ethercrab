@@ -16,7 +16,7 @@ use crate::{
 };
 use core::{
     ops::Range,
-    sync::atomic::{AtomicU16, AtomicU8, Ordering},
+    sync::atomic::{AtomicU16, Ordering},
 };
 use embassy_futures::select::{select, Either};
 use heapless::FnvIndexMap;
@@ -35,8 +35,7 @@ pub struct Client<'sto> {
     /// once so its safety is largely unused.
     num_slaves: AtomicU16,
     pub(crate) timeouts: Timeouts,
-    /// The 1-7 cyclic counter used when working with mailbox requests.
-    mailbox_counter: AtomicU8,
+
     config: ClientConfig,
 }
 
@@ -49,26 +48,8 @@ impl<'sto> Client<'sto> {
             pdu_loop,
             num_slaves: AtomicU16::new(0),
             timeouts,
-            // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
-            mailbox_counter: AtomicU8::new(1),
             config,
         }
-    }
-
-    /// Return the current cyclic mailbox counter value, from 0-7.
-    ///
-    /// Calling this method internally increments the counter, so subequent calls will produce a new
-    /// value.
-    pub(crate) fn mailbox_counter(&self) -> u8 {
-        fmt::unwrap!(self
-            .mailbox_counter
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
-                if n >= 7 {
-                    Some(1)
-                } else {
-                    Some(n + 1)
-                }
-            }))
     }
 
     /// Write zeroes to every slave's memory in chunks.
