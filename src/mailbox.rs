@@ -53,14 +53,6 @@ pub struct MailboxHeader {
     pub mailbox_type: MailboxType,
     /// Mailbox counter from 1 to 7 inclusive. Wraps around to 1 when count exceeds 7. 0 is
     /// reserved.
-    ///
-    /// Described in ETG1000.4, Section 5.6, Table 29 - Mailbox:
-    ///
-    /// > The Slave shall increment the Cnt value for each new mailbox service, the Master shall
-    /// > check this for detection of lost mailbox services. The Master shall change (should
-    /// > increment) the Cnt value. The slave shall check this for detection of a write repeat
-    /// > service. The Slave shall not check the sequence of the Cnt value. The master and the slave
-    /// > Cnt values are independent
     #[packed_field(bits = "41..=43")]
     pub counter: u8,
     // _reserved1: u8
