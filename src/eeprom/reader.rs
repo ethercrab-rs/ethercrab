@@ -1,7 +1,7 @@
 use crate::{
     eeprom::{
         types::{CategoryType, SiiControl, SiiRequest},
-        EepromBlock, EepromDataProvider,
+        CategoryWrapper, EepromBlock, EepromDataProvider,
     },
     error::Error,
     fmt,
@@ -47,12 +47,19 @@ impl<'slave> EepromFactory<'slave> {
 impl<'slave> EepromDataProvider for EepromFactory<'slave> {
     type Handle = EepromSectionReader<'slave>;
 
-    async fn category(&self, category: CategoryType) -> Result<Option<Self::Handle>, Error> {
-        EepromSectionReader::new(self.slave, category).await
+    async fn category(
+        &self,
+        category: CategoryType,
+    ) -> Result<Option<CategoryWrapper<Self::Handle>>, Error> {
+        let r = EepromSectionReader::new(self.slave, category).await?;
+
+        Ok(r.map(CategoryWrapper::new))
     }
 
-    fn address(&self, address: u16, len_bytes: u16) -> Self::Handle {
-        EepromSectionReader::start_at(self.slave, address, len_bytes)
+    fn address(&self, address: u16, len_bytes: u16) -> CategoryWrapper<Self::Handle> {
+        CategoryWrapper::new(EepromSectionReader::start_at(
+            self.slave, address, len_bytes,
+        ))
     }
 }
 
@@ -167,9 +174,8 @@ impl<'slave> EepromSectionReader<'slave> {
                 data
             })
     }
-}
 
-impl<'slave> EepromBlock for EepromSectionReader<'slave> {
+    // TODO: Get rid of this and read chunks directly into buffer
     async fn next(&mut self) -> Result<Option<u8>, Error> {
         if self.read.is_empty() {
             let read = Self::read_eeprom_raw(&self.slave, self.start).await?;
@@ -197,6 +203,34 @@ impl<'slave> EepromBlock for EepromSectionReader<'slave> {
             });
 
         Ok(result)
+    }
+}
+
+impl<'slave> embedded_io_async::ErrorType for EepromSectionReader<'slave> {
+    type Error = Error;
+}
+
+// TODO: Move to error.rs
+impl embedded_io_async::Error for Error {
+    fn kind(&self) -> embedded_io_async::ErrorKind {
+        // TODO: match()?
+        embedded_io_async::ErrorKind::Other
+    }
+}
+
+impl<'slave> embedded_io_async::Read for EepromSectionReader<'slave> {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        // TODO: Read chunks instead of individual bytes
+
+        let mut len = 0;
+
+        while let Some(next) = self.next().await? {
+            buf[len] = next;
+
+            len += 1;
+        }
+
+        Ok(len)
     }
 }
 

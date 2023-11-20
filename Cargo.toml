@@ -25,6 +25,7 @@ bitflags = "2.4.1"
 defmt = { version = "0.3.5", optional = true }
 embassy-futures = "0.1.0"
 embassy-time = "0.1.5"
+embedded-io-async = { version = "0.6.0", default-features = false }
 futures-lite = { version = "2.0.0", default-features = false }
 heapless = "0.7.16"
 log = { version = "0.4.20", optional = true, default-features = false }
@@ -78,7 +79,7 @@ thread-priority = "0.13.1"
 
 [features]
 default = ["std"]
-defmt = ["dep:defmt", "smoltcp/defmt"]
+defmt = ["dep:defmt", "smoltcp/defmt", "embedded-io-async/defmt-03"]
 log = ["dep:log"]
 std = [
     "pnet_datalink",

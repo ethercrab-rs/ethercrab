@@ -6,7 +6,7 @@ use crate::{
     },
     eeprom::{
         types::{FmmuEx, FmmuUsage, Pdo, SyncManager},
-        EepromBlock, EepromDataProvider,
+        EepromDataProvider,
     },
     error::{EepromError, Error, Item},
     fmt,
