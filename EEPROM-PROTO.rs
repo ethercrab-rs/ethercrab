@@ -1,8 +1,11 @@
 //! Just an idea for now
 
 struct Eeprom {
-    data: impl DataProvider
+    data: impl DataProvider;
 
+    // The DataProvider impl here is a SlaveEepromIrl during normal operation, but could be a
+    // file-backed EEPROM for unit testing. This allows the usage of the complete `Eeprom` struct
+    // logic to e.g. parse types and stuff.
     pub fn new(data: impl DataProvider) {
         Self { data }
     }
@@ -13,8 +16,17 @@ struct Eeprom {
         reader.take_vec_whatever();
     }
 
+    fn start_at(&self, addr: u16, len: u16) {
+        let mut r = self.data.reader();
+
+        r.seek(addr);
+
+        ChunkReader::new(r, len)
+    }
+
+    // Category search logic is moved here to reduce duplication in each impl.
     fn category(&self, cat: Category) {
-        let mut reader = self.data.reader()
+        let mut reader = self.data.reader();
 
         reader.seek(SII_FIRST_CATEGORY_START);
 
@@ -42,7 +54,8 @@ struct Eeprom {
 
             match category_type {
                 cat if cat == category => {
-                    break Ok(Some(reader));
+                    // break Ok(Some(reader.set_len(len_words * 2)));
+                    break Ok(Some(ChunkReader::new(reader, len_words * 2)));
                 }
                 CategoryType::End => break Ok(None),
                 _ => (),
@@ -56,31 +69,51 @@ struct Eeprom {
 
 // ---
 
-trait DataProvider {
-    type Reader: DataProviderInstance;
+/// A sequential reader with a set length starting from a given address, allowing the reading of a
+/// category.
+///
+/// Maybe AKA `CategoryReader`?
+///
+/// The internal `reader` handles partial chunk caching etc. This struct handles length limiting.
+struct ChunkReader {
+    reader: impl embedded_io_async::Read,
+    len: u16,
+    byte_count: usize,
+    // etc - this is almost the current EepromSectionReader
 
-    // fn category(impl embedded_io_async::Read);
-    // fn start_at(impl embedded_io_async::Read);
-    fn reader() -> Self::Reader
-}
-
-// ---
-
-// Extra trait on top of async::Read so we can have things like take_vec_exact, etc.
-trait DataProviderInstance: embedded_io_async::Read {
-    async fn take_vec_exact(&mut self) {
-        // These can all be direct impls because all we need is async::Read methods
-
+    fn new(reader: impl Read, len_bytes: u16) -> Self {
         todo!()
     }
 
-    // etc
+    // TODO: Is this actually needed as an API?
+    // async fn next(&mut Self) -> u8 {
+    //     todo!()
+    // }
+
+    async fn take_vec_exact(&mut self) {
+        todo!()
+    }
+
+    // And all the other take_* methods
 }
 
 // ---
 
+/// Holds e.g. a file path, or a slaveclient. Can create ChunkReader handles to allow "concurrent"
+/// EEPROM reads.
+///
+/// This is only required so we can get multiple copies of e.g. the file path, or the slave client,
+/// whilst abstracting over what exactly we're asking for.
+trait DataProvider {
+    fn reader(&self) -> ChunkReader;
+}
+
+// ---
+
+// Handles reading of chunks, storing intermediate slices that haven't been asked, for, but does not
+// handle e.g. category length limiting.
 struct SlaveEepromIrl {
-    client: SlaveClient
+    client: SlaveClient,
     buf: heapless::Deque,
     // etc
 }
@@ -91,11 +124,10 @@ impl embedded_io_async::Read for SlaveEepromIrl {
     }
 }
 
-// Could be blanket, but better to constrain to actual desired types
-impl DataProviderInstance for SlaveEepromIrl {}
-
 // ---
 
+// Handles reading of chunks, storing intermediate slices that haven't been asked, for, but does not
+// handle e.g. category length limiting.
 struct MockEeprom {
     path: PathBuf
 }
@@ -105,6 +137,3 @@ impl embedded_io_async::Read for MockEeprom {
         // buf, next, dequeue, etc
     }
 }
-
-// Could be blanket, but better to constrain to actual desired types
-impl DataProviderInstance for SlaveEepromIrl {}
