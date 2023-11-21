@@ -77,9 +77,10 @@ struct Eeprom {
 /// The internal `reader` handles partial chunk caching etc. This struct handles length limiting.
 struct ChunkReader {
     reader: impl embedded_io_async::Read,
+    /// Max number of bytes we're allowed to read
     len: u16,
+    /// Current number of bytes we've read
     byte_count: usize,
-    // etc - this is almost the current EepromSectionReader
 
     fn new(reader: impl Read, len_bytes: u16) -> Self {
         todo!()
