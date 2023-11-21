@@ -75,8 +75,8 @@ struct Eeprom {
 /// Maybe AKA `CategoryReader`?
 ///
 /// The internal `reader` handles partial chunk caching etc. This struct handles length limiting.
-struct ChunkReader {
-    reader: impl embedded_io_async::Read,
+struct ChunkReader<P: embedded_io_async::Read> {
+    reader: P,
     /// Max number of bytes we're allowed to read
     len: u16,
     /// Current number of bytes we've read
@@ -85,11 +85,6 @@ struct ChunkReader {
     fn new(reader: impl Read, len_bytes: u16) -> Self {
         todo!()
     }
-
-    // TODO: Is this actually needed as an API?
-    // async fn next(&mut Self) -> u8 {
-    //     todo!()
-    // }
 
     async fn take_vec_exact(&mut self) {
         todo!()
@@ -100,26 +95,49 @@ struct ChunkReader {
 
 // ---
 
-/// Holds e.g. a file path, or a slaveclient. Can create ChunkReader handles to allow "concurrent"
-/// EEPROM reads.
+/// Holds e.g. a file path, or a slaveclient. Can create multiple instances that can read from the
+/// EEPROM simultaneously.
 ///
 /// This is only required so we can get multiple copies of e.g. the file path, or the slave client,
 /// whilst abstracting over what exactly we're asking for.
 trait DataProvider {
-    fn reader(&self) -> ChunkReader;
+    /// Provides bytes, e.g. from IRL EEPROM or a file.
+    type Provider: embedded_io_async::Read;
+
+    fn reader(&self) -> Self::Provider;
 }
+
+// Normal code would look like
+fn eeprom(&self) -> Eeprom<IrlEeprom> {
+    Eeprom::new(IrlEeprom::new(self.client))
+}
+
+// Mock code
+let eep = Eeprom::new(MockEeprom::new(PathBuf::from("./dump.bin")));
 
 // ---
 
-// Handles reading of chunks, storing intermediate slices that haven't been asked, for, but does not
-// handle e.g. category length limiting.
+// Handles reading of chunks, storing intermediate slices that haven't been asked for yet, but does
+// not handle category length limiting.
 struct SlaveEepromIrl {
+    client: SlaveClient,
+}
+
+impl DataProvider for SlaveEepromIrl {
+    type Provider = SlaveEepromIrlHandle;
+
+    fn reader(&self) -> Self::Provider {
+        SlaveEepromIrlHandle { client: &self.client }
+    }
+}
+
+struct SlaveEepromIrlHandle {
     client: SlaveClient,
     buf: heapless::Deque,
     // etc
 }
 
-impl embedded_io_async::Read for SlaveEepromIrl {
+impl embedded_io_async::Read for SlaveEepromIrlHandle {
     fn read() {
         // buf, next, dequeue, etc
     }
@@ -127,14 +145,28 @@ impl embedded_io_async::Read for SlaveEepromIrl {
 
 // ---
 
-// Handles reading of chunks, storing intermediate slices that haven't been asked, for, but does not
-// handle e.g. category length limiting.
 struct MockEeprom {
     path: PathBuf
 }
 
-impl embedded_io_async::Read for MockEeprom {
+impl DataProvider for MockEeprom {
+    type Provider = MockEepromHandle;
+
+    fn reader(&self) -> Self::Provider {
+        let file = fs::open(self.path);
+
+        MockEepromHandle { file }
+    }
+}
+
+// Handles reading of chunks, storing intermediate slices that haven't been asked for, but does not
+// handle e.g. category length limiting.
+struct MockEepromHandle {
+    file: FileReaderWhatever
+}
+
+impl embedded_io_async::Read for MockEepromHandle {
     fn read() {
-        // buf, next, dequeue, etc
+        // grab some bytes out of the file, etc
     }
 }
