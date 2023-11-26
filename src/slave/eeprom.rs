@@ -1,3 +1,4 @@
+use embedded_io_async::{Read, Seek, SeekFrom};
 use num_enum::TryFromPrimitive;
 
 use crate::{
@@ -5,8 +6,9 @@ use crate::{
         CategoryType, DefaultMailbox, FromEeprom, PdoEntry, SiiGeneral, RX_PDO_RANGE, TX_PDO_RANGE,
     },
     eeprom::{
+        reader::SII_FIRST_CATEGORY_START,
         types::{FmmuEx, FmmuUsage, Pdo, SyncManager},
-        EepromDataProvider,
+        ChunkReader, EepromDataProvider,
     },
     error::{EepromError, Error, Item},
     fmt,
@@ -25,6 +27,55 @@ where
 {
     pub(crate) fn new(provider: P) -> Self {
         Self { provider }
+    }
+
+    fn start_at(&self, addr: u16, len: u16) -> ChunkReader<P::Provider> {
+        let mut r = self.provider.reader();
+
+        r.seek(SeekFrom::Start(addr.into()));
+
+        ChunkReader::new(r, len)
+    }
+
+    // Category search logic is moved here to reduce duplication in each impl.
+    fn category(&self, category: CategoryType) -> Result<Option<ChunkReader<P::Provider>>, Error> {
+        let mut reader = self.provider.reader();
+
+        reader.seek(SeekFrom::Current(SII_FIRST_CATEGORY_START.into()));
+
+        loop {
+            let mut header = [0u8; 4];
+
+            reader.read_exact(&mut header);
+
+            // The chunk is either 4 or 8 bytes long, so these unwraps should never fire.
+            let category_type =
+                CategoryType::from(u16::from_le_bytes(fmt::unwrap!(header[0..2].try_into())));
+            let len_words = u16::from_le_bytes(fmt::unwrap!(header[2..4].try_into()));
+
+            // Position after header
+            // Done inside read_exact
+            // start_word += 2;
+
+            fmt::trace!(
+                "Found category {:?}, length {:#04x} ({}) bytes",
+                category_type,
+                len_words,
+                len_words
+            );
+
+            match category_type {
+                cat if cat == category => {
+                    // break Ok(Some(reader.set_len(len_words * 2)));
+                    break Ok(Some(ChunkReader::new(reader, len_words * 2)));
+                }
+                CategoryType::End => break Ok(None),
+                _ => (),
+            }
+
+            // Next category starts after the current category's data
+            reader.seek(SeekFrom::Current((len_words * 2).into()));
+        }
     }
 
     /// Get the device name.
@@ -51,9 +102,7 @@ where
     pub(crate) async fn mailbox_config(&self) -> Result<DefaultMailbox, Error> {
         // Start reading standard mailbox config. Raw start address defined in ETG2010 Table 2.
         // Mailbox config is 10 bytes long.
-        let mut reader = self
-            .provider
-            .address(0x0018, DefaultMailbox::STORAGE_SIZE as u16);
+        let mut reader = self.start_at(0x0018, DefaultMailbox::STORAGE_SIZE as u16);
 
         fmt::trace!("Get mailbox config");
 
@@ -66,7 +115,6 @@ where
 
     pub(crate) async fn general(&self) -> Result<SiiGeneral, Error> {
         let mut reader = self
-            .provider
             .category(CategoryType::General)
             .await?
             .ok_or(Error::Eeprom(EepromError::NoCategory))?;
@@ -79,9 +127,7 @@ where
     }
 
     pub(crate) async fn identity(&self) -> Result<SlaveIdentity, Error> {
-        let mut reader = self
-            .provider
-            .address(0x0008, SlaveIdentity::STORAGE_SIZE as u16);
+        let mut reader = self.start_at(0x0008, SlaveIdentity::STORAGE_SIZE as u16);
 
         fmt::trace!("Get identity");
 
@@ -96,7 +142,7 @@ where
 
         fmt::trace!("Get sync managers");
 
-        if let Some(mut reader) = self.provider.category(CategoryType::SyncManager).await? {
+        if let Some(mut reader) = self.category(CategoryType::SyncManager).await? {
             while let Some(bytes) = reader.take_vec::<{ SyncManager::STORAGE_SIZE }>().await? {
                 let sm = SyncManager::parse(&bytes)?;
 
@@ -138,7 +184,7 @@ where
 
         fmt::trace!("Get FMMU mappings");
 
-        if let Some(mut reader) = self.provider.category(CategoryType::FmmuExtended).await? {
+        if let Some(mut reader) = self.category(CategoryType::FmmuExtended).await? {
             while let Some(bytes) = reader.take_vec::<{ FmmuEx::STORAGE_SIZE }>().await? {
                 let fmmu = FmmuEx::parse(&bytes)?;
 
@@ -162,7 +208,7 @@ where
 
         fmt::trace!("Get {:?} PDUs", category);
 
-        if let Some(mut reader) = self.provider.category(category).await? {
+        if let Some(mut reader) = self.category(category).await? {
             while let Some(pdo) = reader.take_vec::<{ Pdo::STORAGE_SIZE }>().await? {
                 let mut pdo = Pdo::parse(&pdo).map_err(|e| {
                     fmt::error!("PDO: {:?}", e);
@@ -228,7 +274,7 @@ where
         // Turn 1-based EtherCAT string indexing into normal 0-based.
         let search_index = search_index - 1;
 
-        if let Some(mut reader) = self.provider.category(CategoryType::Strings).await? {
+        if let Some(mut reader) = self.category(CategoryType::Strings).await? {
             let num_strings = reader.try_next().await?;
 
             fmt::trace!("--> Slave has {} strings", num_strings);
