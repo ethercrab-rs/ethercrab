@@ -74,45 +74,9 @@ impl RawSocketDesc {
         Ok(())
     }
 
-    // NOTE: Leave these around in case we need them in the future.
-
-    // pub fn interface_mtu(&mut self) -> io::Result<usize> {
-    //     ifreq_ioctl(self.lower, &mut self.ifreq, libc::SIOCGIFMTU).map(|mtu| mtu as usize)
-    // }
-
-    // pub fn recv(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-    //     unsafe {
-    //         let len = libc::recv(
-    //             self.lower,
-    //             buffer.as_mut_ptr() as *mut libc::c_void,
-    //             buffer.len(),
-    //             0,
-    //         );
-
-    //         if len == -1 {
-    //             return Err(io::Error::last_os_error());
-    //         }
-
-    //         Ok(len as usize)
-    //     }
-    // }
-
-    // pub fn send(&mut self, buffer: &[u8]) -> io::Result<usize> {
-    //     unsafe {
-    //         let len = libc::send(
-    //             self.lower,
-    //             buffer.as_ptr() as *const libc::c_void,
-    //             buffer.len(),
-    //             0,
-    //         );
-
-    //         if len == -1 {
-    //             return Err(io::Error::last_os_error());
-    //         }
-
-    //         Ok(len as usize)
-    //     }
-    // }
+    pub fn interface_mtu(&mut self) -> io::Result<usize> {
+        ifreq_ioctl(self.lower, &mut self.ifreq, libc::SIOCGIFMTU).map(|mtu| mtu as usize)
+    }
 }
 
 impl AsRawFd for RawSocketDesc {

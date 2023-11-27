@@ -21,6 +21,7 @@ use futures_lite::{AsyncRead, AsyncWrite};
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
+    mtu: usize,
     tx: PduTx<'a>,
     rx: PduRx<'a>,
 }
@@ -82,6 +83,8 @@ impl Future for TxRxFut<'_> {
             }
         }
 
+        let mut buf = vec![0; self.mtu];
+
         match Pin::new(&mut self.socket).poll_read(ctx, &mut buf) {
             Poll::Ready(Ok(n)) => {
                 // Wake again in case there are more frames to consume
@@ -115,12 +118,17 @@ pub fn tx_rx_task<'sto>(
     pdu_tx: PduTx<'sto>,
     pdu_rx: PduRx<'sto>,
 ) -> Result<impl Future<Output = Result<(), Error>> + 'sto, std::io::Error> {
-    let socket = RawSocketDesc::new(interface)?;
+    let mut socket = RawSocketDesc::new(interface)?;
+
+    let mtu = socket.interface_mtu()?;
+
+    fmt::debug!("Opening {} with MTU {}", interface, mtu);
 
     let async_socket = async_io::Async::new(socket)?;
 
     let task = TxRxFut {
         socket: async_socket,
+        mtu,
         tx: pdu_tx,
         rx: pdu_rx,
     };
