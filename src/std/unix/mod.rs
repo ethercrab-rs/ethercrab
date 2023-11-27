@@ -18,6 +18,7 @@ use crate::{
 use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
 use futures_lite::{AsyncRead, AsyncWrite};
+use std::os::fd::AsRawFd;
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
@@ -119,6 +120,17 @@ pub fn tx_rx_task<'sto>(
     pdu_rx: PduRx<'sto>,
 ) -> Result<impl Future<Output = Result<(), Error>> + 'sto, std::io::Error> {
     let mut socket = RawSocketDesc::new(interface)?;
+
+    // Wait up to 5 seconds for device to become ready
+    smoltcp::phy::wait(
+        socket.as_raw_fd(),
+        Some(smoltcp::time::Duration::from_millis(5000)),
+    )
+    .map_err(|e| {
+        fmt::error!("Device did not become ready before timeout elapsed: {}", e);
+
+        e
+    })?;
 
     let mtu = socket.interface_mtu()?;
 
