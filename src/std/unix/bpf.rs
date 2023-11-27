@@ -120,6 +120,7 @@ impl BpfDevice {
     /// The reason I said this should work better is because you might see some unexpected behavior,
     /// truncated/unaligned packets, I/O errors on read()
     /// if you change the buffer size to the actual MTU of the interface.
+    #[allow(trivial_casts)]
     pub fn interface_mtu(&mut self) -> io::Result<usize> {
         let mut bufsize: libc::c_int = 1;
         try_ioctl!(self.fd, BIOCIMMEDIATE, &mut bufsize as *mut libc::c_int);
