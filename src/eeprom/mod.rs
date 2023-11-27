@@ -1,10 +1,8 @@
 use embedded_io_async::{ErrorType, ReadExactError};
 
 use crate::{
-    eeprom::types::CategoryType,
     error::{EepromError, Error},
     fmt,
-    slave::slave_client::SlaveClient,
 };
 
 pub mod reader;
@@ -77,8 +75,14 @@ where
     pub async fn next(&mut self) -> Result<Option<u8>, Error> {
         let mut buf = [0u8; 1];
 
-        // self.block.next().await
+        // We've read the entire category. We're finished now.
+        if self.byte_count >= usize::from(self.len) {
+            return Ok(None);
+        }
+
         self.reader.read_exact(&mut buf).await?;
+
+        self.byte_count += 1;
 
         Ok(Some(buf[0]))
     }
@@ -154,97 +158,3 @@ where
         }
     }
 }
-
-// impl<B> CategoryWrapper<B>
-// where
-//     B: embedded_io_async::Read,
-// {
-//     pub fn new(block: B) -> Self {
-//         Self { block }
-//     }
-
-//     /// Skip a given number of addresses (note: not bytes).
-//     pub async fn skip(&mut self, skip: u16) -> Result<(), Error> {
-//         // TODO: Optimise by calculating new skip address instead of just iterating through chunks
-//         for _ in 0..skip {
-//             self.block.next().await?;
-//         }
-
-//         Ok(())
-//     }
-
-//     pub async fn next(&mut self) -> Result<Option<u8>, Error> {
-//         self.block.next().await
-//     }
-
-//     /// Try reading the next chunk in the current section.
-//     pub async fn try_next(&mut self) -> Result<u8, Error> {
-//         match self.block.next().await? {
-//             Some(value) => Ok(value),
-//             None => Err(Error::Eeprom(EepromError::SectionOverrun)),
-//         }
-//     }
-
-//     /// Attempt to read exactly `N` bytes. If not enough data could be read, this method returns an
-//     /// error.
-//     pub async fn take_vec_exact<const N: usize>(&mut self) -> Result<heapless::Vec<u8, N>, Error> {
-//         self.take_vec()
-//             .await?
-//             .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
-//     }
-
-//     /// Read up to `N` bytes. If not enough data could be read, this method will return `Ok(None)`.
-//     pub async fn take_vec<const N: usize>(
-//         &mut self,
-//     ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
-//         self.take_vec_len(N).await
-//     }
-
-//     /// Try to take `len` bytes, returning an error if the buffer length `N` is too small.
-//     ///
-//     /// If not enough data could be read, this method returns an error.
-//     pub async fn take_vec_len_exact<const N: usize>(
-//         &mut self,
-//         len: usize,
-//     ) -> Result<heapless::Vec<u8, N>, Error> {
-//         self.take_vec_len(len)
-//             .await?
-//             .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
-//     }
-
-//     /// Try to take `len` bytes, returning an error if the buffer length `N` is too small.
-//     ///
-//     /// If not enough data can be read to fill the buffer, this method will return `Ok(None)`.
-//     async fn take_vec_len<const N: usize>(
-//         &mut self,
-//         len: usize,
-//     ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
-//         let mut buf = heapless::Vec::new();
-
-//         let mut count = 0;
-
-//         loop {
-//             // We've collected the requested number of bytes
-//             if count >= len {
-//                 break Ok(Some(buf));
-//             }
-
-//             // If buffer is full, we'd end up with truncated data, so error out.
-//             if buf.is_full() {
-//                 fmt::error!("take_vec_len output buffer is full");
-
-//                 break Err(Error::Eeprom(EepromError::SectionOverrun));
-//             }
-
-//             if let Some(byte) = self.next().await? {
-//                 // SAFETY: We check for buffer space using is_full above
-//                 unsafe { buf.push_unchecked(byte) };
-
-//                 count += 1;
-//             } else {
-//                 // Not enough data to fill the buffer
-//                 break Ok(None);
-//             }
-//         }
-//     }
-// }

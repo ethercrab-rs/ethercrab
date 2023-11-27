@@ -1,4 +1,4 @@
-use embedded_io_async::{ErrorType, Read, Seek, SeekFrom};
+use embedded_io_async::{Read, Seek, SeekFrom};
 use num_enum::TryFromPrimitive;
 
 use crate::{
@@ -63,7 +63,7 @@ where
             // start_word += 2;
 
             fmt::trace!(
-                "Found category {:?}, length {:#04x} ({}) bytes",
+                "Found category {:?}, length {:#04x} ({}) words",
                 category_type,
                 len_words,
                 len_words
@@ -153,6 +153,7 @@ where
 
         if let Some(mut reader) = self.category(CategoryType::SyncManager).await? {
             while let Some(bytes) = reader.take_vec::<{ SyncManager::STORAGE_SIZE }>().await? {
+                fmt::debug!("{:#04x?}", &bytes);
                 let sm = SyncManager::parse(&bytes)?;
 
                 sync_managers

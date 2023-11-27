@@ -1,7 +1,3 @@
-use core::ops::Deref;
-
-use embedded_io_async::SeekFrom;
-
 use crate::{
     eeprom::{
         types::{SiiControl, SiiRequest},
@@ -13,6 +9,7 @@ use crate::{
     register::RegisterAddress,
     slave::slave_client::SlaveClient,
 };
+use embedded_io_async::SeekFrom;
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
 /// Table 2.
@@ -161,10 +158,6 @@ impl<'slave> embedded_io_async::Read for SiiDataProviderHandle<'slave> {
 impl<'slave> embedded_io_async::Seek for SiiDataProviderHandle<'slave> {
     /// Seek to a WORD address (NOT bytes).
     async fn seek(&mut self, offset: SeekFrom) -> Result<u64, Self::Error> {
-        // let SeekFrom::Start(pos) = pos else {
-        //     panic!("Only support from start atm");
-        // };
-
         // Target WORD position
         let pos = match offset {
             SeekFrom::Start(addr) => addr,
@@ -176,7 +169,8 @@ impl<'slave> embedded_io_async::Seek for SiiDataProviderHandle<'slave> {
                 // of it is used.
                 u64::from(self.word_pos)
                     + fmt::unwrap!(u64::try_from(offset), "Negative offsets not supported")
-                    - (self.read.len() / 2) as u64
+                    // FIXME: What happens when the buffer is an odd length?
+                    - (self.read.len()as u64  + 1) / 2
             }
         };
 
@@ -189,19 +183,9 @@ impl<'slave> embedded_io_async::Seek for SiiDataProviderHandle<'slave> {
 
         debug_assert!(pos <= u64::from(u16::MAX));
 
-        // let pos = pos as u16;
-
         // Reset state so next read picks up from the new position we just calculated.
         self.word_pos = pos as u16;
         self.read.clear();
-
-        // // TODO: Calculate offset instead of looping reads until we get to where we want to be.
-
-        // while self.word_pos * 2 < pos {
-        //     //
-        // }
-
-        // todo!()
 
         Ok(pos)
     }
@@ -210,22 +194,6 @@ impl<'slave> embedded_io_async::Seek for SiiDataProviderHandle<'slave> {
 impl<'slave> embedded_io_async::ErrorType for SiiDataProviderHandle<'slave> {
     type Error = Error;
 }
-
-// impl<'slave> embedded_io_async::Read for EepromSectionReader<'slave> {
-//     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-//         // TODO: Read chunks instead of individual bytes
-
-//         let mut len = 0;
-
-//         while let Some(next) = self.next().await? {
-//             buf[len] = next;
-
-//             len += 1;
-//         }
-
-//         Ok(len)
-//     }
-// }
 
 /// Wait for EEPROM read or write operation to finish and clear the busy flag.
 async fn wait(slave: &SlaveClient<'_>) -> Result<(), Error> {
