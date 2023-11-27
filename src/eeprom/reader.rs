@@ -2,7 +2,7 @@ use embedded_io_async::SeekFrom;
 
 use crate::{
     eeprom::{
-        types::{CategoryType, SiiControl, SiiRequest},
+        types::{SiiControl, SiiRequest},
         EepromDataProvider,
     },
     error::Error,
@@ -36,7 +36,7 @@ impl<'slave> EepromDataProvider for SiiDataProvider<'slave> {
 }
 
 /// A sequential reader that reads bytes from a device's EEPROM.
-struct SiiDataProviderHandle<'slave> {
+pub struct SiiDataProviderHandle<'slave> {
     client: &'slave SlaveClient<'slave>,
 
     /// Current EEPROM address in WORDs.
@@ -120,15 +120,15 @@ impl<'slave> SiiDataProviderHandle<'slave> {
     }
 }
 
-impl<'slave> SiiDataProviderHandle<'slave> {
-    pub(in crate::eeprom) async fn new(client: &'slave SlaveClient<'slave>) -> Self {
-        Self {
-            client,
-            read: heapless::Deque::new(),
-            word_pos: 0,
-        }
-    }
-}
+// impl<'slave> SiiDataProviderHandle<'slave> {
+//     pub(in crate::eeprom) async fn new(client: &'slave SlaveClient<'slave>) -> Self {
+//         Self {
+//             client,
+//             read: heapless::Deque::new(),
+//             word_pos: 0,
+//         }
+//     }
+// }
 
 impl<'slave> embedded_io_async::Read for SiiDataProviderHandle<'slave> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
@@ -170,14 +170,6 @@ impl<'slave> embedded_io_async::Seek for SiiDataProviderHandle<'slave> {
 impl<'slave> embedded_io_async::ErrorType for SiiDataProviderHandle<'slave> {
     type Error = Error;
 }
-
-// // TODO: Move to error.rs
-// impl embedded_io_async::Error for Error {
-//     fn kind(&self) -> embedded_io_async::ErrorKind {
-//         // TODO: match()?
-//         embedded_io_async::ErrorKind::Other
-//     }
-// }
 
 // impl<'slave> embedded_io_async::Read for EepromSectionReader<'slave> {
 //     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {

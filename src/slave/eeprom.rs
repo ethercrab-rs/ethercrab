@@ -1,4 +1,4 @@
-use embedded_io_async::{Read, Seek, SeekFrom};
+use embedded_io_async::{ErrorType, Read, Seek, SeekFrom};
 use num_enum::TryFromPrimitive;
 
 use crate::{
@@ -38,10 +38,16 @@ where
     }
 
     // Category search logic is moved here to reduce duplication in each impl.
-    fn category(&self, category: CategoryType) -> Result<Option<ChunkReader<P::Provider>>, Error> {
+    async fn category(
+        &self,
+        category: CategoryType,
+    ) -> Result<Option<ChunkReader<P::Provider>>, Error> {
         let mut reader = self.provider.reader();
 
-        reader.seek(SeekFrom::Current(SII_FIRST_CATEGORY_START.into()));
+        reader
+            .seek(SeekFrom::Current(SII_FIRST_CATEGORY_START.into()))
+            .await
+            .map_err(|_| Error::Eeprom(EepromError::NoCategory))?;
 
         loop {
             let mut header = [0u8; 4];
@@ -74,7 +80,10 @@ where
             }
 
             // Next category starts after the current category's data
-            reader.seek(SeekFrom::Current((len_words * 2).into()));
+            reader
+                .seek(SeekFrom::Current((len_words * 2).into()))
+                .await
+                .map_err(|_| Error::Eeprom(EepromError::SectionOverrun))?;
         }
     }
 
@@ -158,7 +167,7 @@ where
     }
 
     pub(crate) async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
-        let category = self.provider.category(CategoryType::Fmmu).await?;
+        let category = self.category(CategoryType::Fmmu).await?;
 
         fmt::trace!("Get FMMUs");
 
