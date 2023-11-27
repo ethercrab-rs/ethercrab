@@ -29,12 +29,12 @@ where
         Self { provider }
     }
 
-    fn start_at(&self, addr: u16, len: u16) -> ChunkReader<P::Provider> {
+    async fn start_at(&self, addr: u16, len: u16) -> Result<ChunkReader<P::Provider>, Error> {
         let mut r = self.provider.reader();
 
-        r.seek(SeekFrom::Start(addr.into()));
+        r.seek(SeekFrom::Start(addr.into())).await?;
 
-        ChunkReader::new(r, len)
+        Ok(ChunkReader::new(r, len))
     }
 
     // Category search logic is moved here to reduce duplication in each impl.
@@ -46,13 +46,12 @@ where
 
         reader
             .seek(SeekFrom::Start(SII_FIRST_CATEGORY_START.into()))
-            .await
-            .map_err(|_| Error::Eeprom(EepromError::NoCategory))?;
+            .await?;
 
         loop {
             let mut header = [0u8; 4];
 
-            reader.read_exact(&mut header);
+            reader.read_exact(&mut header).await?;
 
             // The chunk is either 4 or 8 bytes long, so these unwraps should never fire.
             let category_type =
@@ -80,10 +79,7 @@ where
             }
 
             // Next category starts after the current category's data. Seek takes a WORD address
-            reader
-                .seek(SeekFrom::Current(len_words.into()))
-                .await
-                .map_err(|_| Error::Eeprom(EepromError::SectionOverrun))?;
+            reader.seek(SeekFrom::Current(len_words.into())).await?;
         }
     }
 
@@ -111,7 +107,9 @@ where
     pub(crate) async fn mailbox_config(&self) -> Result<DefaultMailbox, Error> {
         // Start reading standard mailbox config. Raw start address defined in ETG2010 Table 2.
         // Mailbox config is 10 bytes long.
-        let mut reader = self.start_at(0x0018, DefaultMailbox::STORAGE_SIZE as u16);
+        let mut reader = self
+            .start_at(0x0018, DefaultMailbox::STORAGE_SIZE as u16)
+            .await?;
 
         fmt::trace!("Get mailbox config");
 
@@ -136,7 +134,9 @@ where
     }
 
     pub(crate) async fn identity(&self) -> Result<SlaveIdentity, Error> {
-        let mut reader = self.start_at(0x0008, SlaveIdentity::STORAGE_SIZE as u16);
+        let mut reader = self
+            .start_at(0x0008, SlaveIdentity::STORAGE_SIZE as u16)
+            .await?;
 
         fmt::trace!("Get identity");
 

@@ -18,7 +18,10 @@ pub mod types;
 /// This provides a method `reader` which creates handles into the underlying storage.
 pub trait EepromDataProvider {
     /// A reader instance that returns bytes from the underlying data source.
-    type Provider: embedded_io_async::Read + embedded_io_async::Seek + ErrorType<Error = Error>;
+    type Provider: embedded_io_async::Read
+        + embedded_io_async::Seek
+        + ErrorType<Error = Error>
+        + core::fmt::Debug;
 
     /// Get an instance of a reader.
     fn reader(&self) -> Self::Provider;
@@ -40,6 +43,7 @@ impl From<ReadExactError<Error>> for Error {
     }
 }
 
+#[derive(Debug)]
 pub struct ChunkReader<P> {
     reader: P,
     /// Max number of bytes we're allowed to read

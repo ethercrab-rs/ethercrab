@@ -1,3 +1,5 @@
+use core::ops::Deref;
+
 use embedded_io_async::SeekFrom;
 
 use crate::{
@@ -46,7 +48,24 @@ pub struct SiiDataProviderHandle<'slave> {
     read: heapless::Deque<u8, 8>,
 }
 
+impl<'slave> core::fmt::Debug for SiiDataProviderHandle<'slave> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SiiDataProviderHandle")
+            .field("word_pos", &self.word_pos)
+            .field("read", &self.read)
+            .finish()
+    }
+}
+
 impl<'slave> SiiDataProviderHandle<'slave> {
+    pub(in crate::eeprom) fn new(client: &'slave SlaveClient<'slave>) -> Self {
+        Self {
+            client,
+            read: heapless::Deque::new(),
+            word_pos: 0,
+        }
+    }
+
     async fn read_eeprom_raw<'client>(
         slave: &'client SlaveClient<'client>,
         eeprom_address: u16,
@@ -90,9 +109,9 @@ impl<'slave> SiiDataProviderHandle<'slave> {
             .await
             .map(|data| {
                 #[cfg(not(feature = "defmt"))]
-                fmt::trace!("Read {:#04x} {:02x?}", eeprom_address, data);
+                fmt::trace!("Read addr {:#06x}: {:02x?}", eeprom_address, data);
                 #[cfg(feature = "defmt")]
-                fmt::trace!("Read {:#04x} {=[u8]}", eeprom_address, data);
+                fmt::trace!("Read addr {:#06x}: {=[u8]}", eeprom_address, data);
 
                 data
             })
@@ -120,16 +139,6 @@ impl<'slave> SiiDataProviderHandle<'slave> {
     }
 }
 
-impl<'slave> SiiDataProviderHandle<'slave> {
-    pub(in crate::eeprom) fn new(client: &'slave SlaveClient<'slave>) -> Self {
-        Self {
-            client,
-            read: heapless::Deque::new(),
-            word_pos: 0,
-        }
-    }
-}
-
 impl<'slave> embedded_io_async::Read for SiiDataProviderHandle<'slave> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
         let mut count = 0;
@@ -151,19 +160,32 @@ impl<'slave> embedded_io_async::Read for SiiDataProviderHandle<'slave> {
 
 impl<'slave> embedded_io_async::Seek for SiiDataProviderHandle<'slave> {
     /// Seek to a WORD address (NOT bytes).
-    async fn seek(&mut self, pos: SeekFrom) -> Result<u64, Self::Error> {
+    async fn seek(&mut self, offset: SeekFrom) -> Result<u64, Self::Error> {
         // let SeekFrom::Start(pos) = pos else {
         //     panic!("Only support from start atm");
         // };
 
         // Target WORD position
-        let pos = match pos {
+        let pos = match offset {
             SeekFrom::Start(addr) => addr,
             SeekFrom::End(_) => panic!("From end not supported"),
             SeekFrom::Current(offset) => {
-                fmt::unwrap!(u64::try_from(offset), "Negative offsets not supported")
+                // Current position + desired offset - anything left in the buffer (/ 2 to get word
+                // count from bytes). The subtraction of the buffer length is required because a
+                // read increments the address pointer by the returned data length, even if not all
+                // of it is used.
+                u64::from(self.word_pos)
+                    + fmt::unwrap!(u64::try_from(offset), "Negative offsets not supported")
+                    - (self.read.len() / 2) as u64
             }
         };
+
+        fmt::trace!(
+            "Seek {:?}, current pos {:#06x}, to {:#06x}",
+            offset,
+            self.word_pos,
+            pos
+        );
 
         debug_assert!(pos <= u64::from(u16::MAX));
 
