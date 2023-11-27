@@ -176,8 +176,11 @@ where
 
         if let Some(mut reader) = category {
             while let Some(byte) = reader.next().await? {
-                let fmmu = FmmuUsage::try_from_primitive(byte)
-                    .map_err(|_| Error::Eeprom(EepromError::Decode))?;
+                let fmmu = FmmuUsage::try_from_primitive(byte).map_err(|e| {
+                    fmt::error!("Failed to decode FmmuUsage: {}", e);
+
+                    Error::Eeprom(EepromError::Decode)
+                })?;
 
                 fmmus.push(fmmu).map_err(|_| Error::Capacity(Item::Fmmu))?;
             }
@@ -228,6 +231,8 @@ where
                 fmt::trace!("Range {:?} value {}", valid_range, pdo.index);
 
                 if !valid_range.contains(&pdo.index) {
+                    fmt::error!("Invalid PDO range");
+
                     return Err(Error::Eeprom(EepromError::Decode));
                 }
 
@@ -310,14 +315,21 @@ where
 
             fmt::trace!("--> Raw string bytes {:?}", bytes);
 
-            let s = core::str::from_utf8(&bytes).map_err(|_| Error::Eeprom(EepromError::Decode))?;
+            let s = core::str::from_utf8(&bytes).map_err(|e| {
+                fmt::error!("Invalid UTF8: {}", e);
+
+                Error::Eeprom(EepromError::Decode)
+            })?;
 
             // Strip trailing null bytes from string.
             // TODO: Unit test this when an EEPROM shim is added
             let s = s.trim_end_matches('\0');
 
-            let s = heapless::String::<N>::from_str(s)
-                .map_err(|_| Error::Eeprom(EepromError::Decode))?;
+            let s = heapless::String::<N>::from_str(s).map_err(|_| {
+                fmt::error!("String too long");
+
+                Error::Eeprom(EepromError::Decode)
+            })?;
 
             fmt::trace!(
                 "--> String at search index {} with length {}: {}",
