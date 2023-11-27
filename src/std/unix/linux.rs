@@ -1,9 +1,11 @@
 //! Copied from SmolTCP's RawSocketDesc, with inspiration from
 //! [https://github.com/embassy-rs/embassy](https://github.com/embassy-rs/embassy/blob/master/examples/std/src/tuntap.rs).
 
+use crate::{
+    std::unix::{ifreq, ifreq_for},
+    ETHERCAT_ETHERTYPE_RAW,
+};
 use async_io::IoSafe;
-
-use crate::ETHERCAT_ETHERTYPE_RAW;
 use std::{
     io, mem,
     os::{
@@ -12,14 +14,6 @@ use std::{
     },
 };
 
-#[repr(C)]
-#[derive(Debug)]
-struct ifreq {
-    ifr_name: [libc::c_char; libc::IF_NAMESIZE],
-    ifr_data: libc::c_int, /* ifr_ifindex or ifr_mtu */
-}
-
-#[derive(Debug)]
 pub struct RawSocketDesc {
     protocol: libc::c_short,
     lower: libc::c_int,
@@ -27,7 +21,7 @@ pub struct RawSocketDesc {
 }
 
 impl RawSocketDesc {
-    pub fn new(name: &str) -> io::Result<RawSocketDesc> {
+    pub fn new(name: &str) -> io::Result<Self> {
         let protocol = ETHERCAT_ETHERTYPE_RAW as i16;
 
         let lower = unsafe {
@@ -199,15 +193,4 @@ fn ifreq_ioctl(
     }
 
     Ok(ifreq.ifr_data)
-}
-
-fn ifreq_for(name: &str) -> ifreq {
-    let mut ifreq = ifreq {
-        ifr_name: [0; libc::IF_NAMESIZE],
-        ifr_data: 0,
-    };
-    for (i, byte) in name.as_bytes().iter().enumerate() {
-        ifreq.ifr_name[i] = *byte as libc::c_char
-    }
-    ifreq
 }
