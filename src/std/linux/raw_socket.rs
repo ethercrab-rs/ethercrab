@@ -2,8 +2,10 @@
 //! [https://github.com/embassy-rs/embassy](https://github.com/embassy-rs/embassy/blob/master/examples/std/src/tuntap.rs).
 
 use async_io::IoSafe;
+use rustix::net::{AddressFamily, Protocol, RawProtocol, SocketFlags, SocketType};
 
-use crate::ETHERCAT_ETHERTYPE_RAW;
+use crate::{ETHERCAT_ETHERTYPE, ETHERCAT_ETHERTYPE_RAW};
+use core::num::NonZeroU32;
 use std::{
     io, mem,
     os::{
@@ -21,32 +23,24 @@ struct ifreq {
 
 #[derive(Debug)]
 pub struct RawSocketDesc {
-    protocol: libc::c_short,
-    lower: libc::c_int,
     ifreq: ifreq,
+    sock: rustix::fd::OwnedFd,
 }
 
 impl RawSocketDesc {
-    pub fn new(name: &str) -> io::Result<RawSocketDesc> {
-        let protocol = ETHERCAT_ETHERTYPE_RAW as i16;
+    pub fn new(name: &str) -> io::Result<Self> {
+        let sock = rustix::net::socket_with(
+            AddressFamily::PACKET,
+            SocketType::RAW,
+            SocketFlags::NONBLOCK,
+            Some(Protocol::from_raw(
+                RawProtocol::try_from(ETHERCAT_ETHERTYPE_RAW).unwrap(),
+            )),
+        )?;
 
-        let lower = unsafe {
-            let lower = libc::socket(
-                // Ethernet II frames
-                libc::AF_PACKET,
-                libc::SOCK_RAW | libc::SOCK_NONBLOCK,
-                protocol.to_be() as i32,
-            );
-            if lower == -1 {
-                return Err(io::Error::last_os_error());
-            }
-            lower
-        };
-
-        let mut self_ = RawSocketDesc {
-            protocol,
-            lower,
+        let mut self_ = Self {
             ifreq: ifreq_for(name),
+            sock,
         };
 
         self_.bind_interface()?;
@@ -57,8 +51,8 @@ impl RawSocketDesc {
     fn bind_interface(&mut self) -> io::Result<()> {
         let sockaddr = libc::sockaddr_ll {
             sll_family: libc::AF_PACKET as u16,
-            sll_protocol: self.protocol.to_be() as u16,
-            sll_ifindex: ifreq_ioctl(self.lower, &mut self.ifreq, libc::SIOCGIFINDEX)?,
+            sll_protocol: ETHERCAT_ETHERTYPE_RAW.get().to_be(),
+            sll_ifindex: ifreq_ioctl(self.sock.as_raw_fd(), &mut self.ifreq, libc::SIOCGIFINDEX)?,
             sll_hatype: 1,
             sll_pkttype: 0,
             sll_halen: 6,
@@ -68,7 +62,7 @@ impl RawSocketDesc {
         unsafe {
             #[allow(trivial_casts)]
             let res = libc::bind(
-                self.lower,
+                self.sock.as_raw_fd(),
                 &sockaddr as *const libc::sockaddr_ll as *const libc::sockaddr,
                 mem::size_of::<libc::sockaddr_ll>() as libc::socklen_t,
             );
@@ -123,13 +117,14 @@ impl RawSocketDesc {
 
 impl AsRawFd for RawSocketDesc {
     fn as_raw_fd(&self) -> RawFd {
-        self.lower
+        self.sock.as_raw_fd()
     }
 }
 
 impl AsFd for RawSocketDesc {
     fn as_fd(&self) -> BorrowedFd<'_> {
-        unsafe { BorrowedFd::borrow_raw(self.lower) }
+        // unsafe { BorrowedFd::borrow_raw(self.lower) }
+        self.sock.as_fd()
     }
 }
 
@@ -137,14 +132,6 @@ impl AsFd for RawSocketDesc {
 // by `Read` or `Write` impls. More information can be read
 // [here](https://docs.rs/async-io/latest/async_io/trait.IoSafe.html).
 unsafe impl IoSafe for RawSocketDesc {}
-
-impl Drop for RawSocketDesc {
-    fn drop(&mut self) {
-        unsafe {
-            libc::close(self.lower);
-        }
-    }
-}
 
 impl io::Read for RawSocketDesc {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
