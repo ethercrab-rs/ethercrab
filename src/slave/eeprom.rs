@@ -45,7 +45,7 @@ where
         let mut reader = self.provider.reader();
 
         reader
-            .seek(SeekFrom::Current(SII_FIRST_CATEGORY_START.into()))
+            .seek(SeekFrom::Start(SII_FIRST_CATEGORY_START.into()))
             .await
             .map_err(|_| Error::Eeprom(EepromError::NoCategory))?;
 
@@ -79,9 +79,9 @@ where
                 _ => (),
             }
 
-            // Next category starts after the current category's data
+            // Next category starts after the current category's data. Seek takes a WORD address
             reader
-                .seek(SeekFrom::Current((len_words * 2).into()))
+                .seek(SeekFrom::Current(len_words.into()))
                 .await
                 .map_err(|_| Error::Eeprom(EepromError::SectionOverrun))?;
         }

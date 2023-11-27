@@ -31,7 +31,7 @@ impl<'slave> EepromDataProvider for SiiDataProvider<'slave> {
     type Provider = SiiDataProviderHandle<'slave>;
 
     fn reader(&self) -> Self::Provider {
-        todo!()
+        SiiDataProviderHandle::new(self.client)
     }
 }
 
@@ -120,15 +120,15 @@ impl<'slave> SiiDataProviderHandle<'slave> {
     }
 }
 
-// impl<'slave> SiiDataProviderHandle<'slave> {
-//     pub(in crate::eeprom) async fn new(client: &'slave SlaveClient<'slave>) -> Self {
-//         Self {
-//             client,
-//             read: heapless::Deque::new(),
-//             word_pos: 0,
-//         }
-//     }
-// }
+impl<'slave> SiiDataProviderHandle<'slave> {
+    pub(in crate::eeprom) fn new(client: &'slave SlaveClient<'slave>) -> Self {
+        Self {
+            client,
+            read: heapless::Deque::new(),
+            word_pos: 0,
+        }
+    }
+}
 
 impl<'slave> embedded_io_async::Read for SiiDataProviderHandle<'slave> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
@@ -150,20 +150,38 @@ impl<'slave> embedded_io_async::Read for SiiDataProviderHandle<'slave> {
 }
 
 impl<'slave> embedded_io_async::Seek for SiiDataProviderHandle<'slave> {
+    /// Seek to a WORD address (NOT bytes).
     async fn seek(&mut self, pos: SeekFrom) -> Result<u64, Self::Error> {
-        let SeekFrom::Start(pos) = pos else {
-            panic!("Only support from start atm");
+        // let SeekFrom::Start(pos) = pos else {
+        //     panic!("Only support from start atm");
+        // };
+
+        // Target WORD position
+        let pos = match pos {
+            SeekFrom::Start(addr) => addr,
+            SeekFrom::End(_) => panic!("From end not supported"),
+            SeekFrom::Current(offset) => {
+                fmt::unwrap!(u64::try_from(offset), "Negative offsets not supported")
+            }
         };
 
-        let pos = pos as u16;
+        debug_assert!(pos <= u64::from(u16::MAX));
 
-        // TODO: Calculate offset instead of looping reads until we get to where we want to be.
+        // let pos = pos as u16;
 
-        while self.word_pos * 2 < pos {
-            //
-        }
+        // Reset state so next read picks up from the new position we just calculated.
+        self.word_pos = pos as u16;
+        self.read.clear();
 
-        todo!()
+        // // TODO: Calculate offset instead of looping reads until we get to where we want to be.
+
+        // while self.word_pos * 2 < pos {
+        //     //
+        // }
+
+        // todo!()
+
+        Ok(pos)
     }
 }
 
