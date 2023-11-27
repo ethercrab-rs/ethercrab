@@ -29,6 +29,7 @@ where
         Self { provider }
     }
 
+    /// Start a reader at the given address, returning at most `len` bytes.
     async fn start_at(&self, addr: u16, len: u16) -> Result<ChunkReader<P::Provider>, Error> {
         let mut r = self.provider.reader();
 
@@ -37,7 +38,8 @@ where
         Ok(ChunkReader::new(r, len))
     }
 
-    // Category search logic is moved here to reduce duplication in each impl.
+    /// Search for a given category and return a reader over the bytes contained within the category
+    /// if it is found.
     async fn category(
         &self,
         category: CategoryType,
@@ -49,18 +51,14 @@ where
             .await?;
 
         loop {
-            let mut header = [0u8; 4];
+            let mut category_type = [0u8; 2];
+            let mut len_words = [0u8; 2];
 
-            reader.read_exact(&mut header).await?;
+            reader.read_exact(&mut category_type).await?;
+            reader.read_exact(&mut len_words).await?;
 
-            // The chunk is either 4 or 8 bytes long, so these unwraps should never fire.
-            let category_type =
-                CategoryType::from(u16::from_le_bytes(fmt::unwrap!(header[0..2].try_into())));
-            let len_words = u16::from_le_bytes(fmt::unwrap!(header[2..4].try_into()));
-
-            // Position after header
-            // Done inside read_exact
-            // start_word += 2;
+            let category_type = CategoryType::from(u16::from_le_bytes(category_type));
+            let len_words = u16::from_le_bytes(len_words);
 
             fmt::trace!(
                 "Found category {:?}, length {:#04x} ({}) words",
@@ -71,7 +69,6 @@ where
 
             match category_type {
                 cat if cat == category => {
-                    // break Ok(Some(reader.set_len(len_words * 2)));
                     break Ok(Some(ChunkReader::new(reader, len_words * 2)));
                 }
                 CategoryType::End => break Ok(None),
