@@ -5,7 +5,6 @@
 
 use crate::std::unix::{ifreq, ifreq_for};
 use async_io::IoSafe;
-use libc;
 use smoltcp::wire::{EthernetAddress, ETHERNET_HEADER_LEN};
 use std::{
     io, mem,
@@ -97,6 +96,8 @@ impl BpfDevice {
     }
 
     pub fn bind_interface(&mut self) -> io::Result<()> {
+        let mut bufsize: libc::c_int = 1;
+        try_ioctl!(self.fd, BIOCIMMEDIATE, &mut bufsize as *mut libc::c_int);
         try_ioctl!(self.fd, BIOCSETIF, &mut self.ifreq);
 
         Ok(())
