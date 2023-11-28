@@ -30,7 +30,7 @@ impl Future for TxRxFut<'_> {
     type Output = Result<(), Error>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
-        let mut buf = [0u8; 1536];
+        let mut buf = vec![0; self.mtu];
 
         // Re-register waker to make sure this future is polled again
         self.tx.replace_waker(ctx.waker());
