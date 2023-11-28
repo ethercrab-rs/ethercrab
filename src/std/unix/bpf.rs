@@ -6,7 +6,7 @@
 use crate::std::unix::{ifreq, ifreq_for};
 use async_io::IoSafe;
 use libc;
-use smoltcp::wire::ETHERNET_HEADER_LEN;
+use smoltcp::wire::{EthernetAddress, ETHERNET_HEADER_LEN};
 use std::{
     io, mem,
     os::unix::io::{AsFd, AsRawFd, BorrowedFd, RawFd},
@@ -50,6 +50,8 @@ macro_rules! try_ioctl {
 pub struct BpfDevice {
     fd: libc::c_int,
     ifreq: ifreq,
+    /// Interface name like `en11`.
+    name: String,
 }
 
 impl AsRawFd for BpfDevice {
@@ -86,6 +88,7 @@ impl BpfDevice {
         let mut self_ = BpfDevice {
             fd: open_device()?,
             ifreq: ifreq_for(name),
+            name: name.to_string(),
         };
 
         self_.bind_interface()?;
@@ -127,6 +130,14 @@ impl BpfDevice {
         try_ioctl!(self.fd, BIOCGBLEN, &mut bufsize as *mut libc::c_int);
 
         Ok(bufsize as usize)
+    }
+
+    pub fn mac(&self) -> io::Result<Option<EthernetAddress>> {
+        Ok(nix::ifaddrs::getifaddrs()?
+            .find(|iface| iface.interface_name == self.name)
+            .and_then(|iface| iface.address)
+            .and_then(|addr| addr.as_link_addr().and_then(|link| link.addr()))
+            .map(|addr| EthernetAddress(addr)))
     }
 }
 

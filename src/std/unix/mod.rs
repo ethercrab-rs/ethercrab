@@ -116,9 +116,16 @@ impl Future for TxRxFut<'_> {
 pub fn tx_rx_task<'sto>(
     interface: &str,
     pdu_tx: PduTx<'sto>,
-    pdu_rx: PduRx<'sto>,
+    #[allow(unused_mut)] mut pdu_rx: PduRx<'sto>,
 ) -> Result<impl Future<Output = Result<(), Error>> + 'sto, std::io::Error> {
     let mut socket = RawSocketDesc::new(interface)?;
+
+    #[cfg(all(not(target_os = "linux"), unix))]
+    socket.mac().ok().flatten().map(|mac| {
+        fmt::debug!("Setting source MAC to {}", mac);
+
+        pdu_rx.set_source_mac(mac);
+    });
 
     let mtu = socket.interface_mtu()?;
 
