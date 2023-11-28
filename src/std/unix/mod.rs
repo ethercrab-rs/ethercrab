@@ -120,6 +120,8 @@ pub fn tx_rx_task<'sto>(
 ) -> Result<impl Future<Output = Result<(), Error>> + 'sto, std::io::Error> {
     let mut socket = RawSocketDesc::new(interface)?;
 
+    // macOS forcibly sets the source address to the NIC's MAC, so instead of using `MASTER_ADDR`
+    // for filtering returned packets, we must set the address to compare to the NIC MAC.
     #[cfg(all(not(target_os = "linux"), unix))]
     socket.mac().ok().flatten().map(|mac| {
         fmt::debug!("Setting source MAC to {}", mac);

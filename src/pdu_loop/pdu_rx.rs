@@ -31,8 +31,9 @@ impl<'sto> PduRx<'sto> {
 
     /// Set the source MAC address to the given value.
     ///
-    /// This is required on macOS as the interface's MAC address cannot be overridden at the packet
-    /// level for some reason.
+    /// This is required on macOS (and BSD I believe) as the interface's MAC address cannot be
+    /// overridden at the packet level for some reason.
+    #[cfg(all(not(target_os = "linux"), unix))]
     pub(crate) fn set_source_mac(&mut self, new: EthernetAddress) {
         self.source_mac = new
     }
