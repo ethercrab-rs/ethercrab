@@ -95,8 +95,10 @@ impl BpfDevice {
         Ok(self_)
     }
 
+    #[allow(trivial_casts)]
     pub fn bind_interface(&mut self) -> io::Result<()> {
         let mut bufsize: libc::c_int = 1;
+
         try_ioctl!(self.fd, BIOCIMMEDIATE, &mut bufsize as *mut libc::c_int);
         try_ioctl!(self.fd, BIOCSETIF, &mut self.ifreq);
 
