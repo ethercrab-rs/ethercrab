@@ -139,7 +139,7 @@ impl BpfDevice {
         Ok(nix::ifaddrs::getifaddrs()?
             .find(|iface| iface.interface_name == self.name)
             .and_then(|iface| iface.address)
-            .and_then(|addr| addr.as_link_addr().and_then(|link| link.addr()))
+            .and_then(|addr| addr.as_link_addr()?.addr())
             .map(|addr| EthernetAddress(addr)))
     }
 }
