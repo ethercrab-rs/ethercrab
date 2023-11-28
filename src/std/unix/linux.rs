@@ -15,8 +15,7 @@ use std::{
 };
 
 pub struct RawSocketDesc {
-    protocol: libc::c_short,
-    lower: libc::c_int,
+    lower: i32,
     ifreq: ifreq,
 }
 
@@ -38,7 +37,6 @@ impl RawSocketDesc {
         };
 
         let mut self_ = RawSocketDesc {
-            protocol,
             lower,
             ifreq: ifreq_for(name),
         };
@@ -49,9 +47,11 @@ impl RawSocketDesc {
     }
 
     fn bind_interface(&mut self) -> io::Result<()> {
+        let protocol = ETHERCAT_ETHERTYPE_RAW as i16;
+
         let sockaddr = libc::sockaddr_ll {
             sll_family: libc::AF_PACKET as u16,
-            sll_protocol: self.protocol.to_be() as u16,
+            sll_protocol: protocol.to_be() as u16,
             sll_ifindex: ifreq_ioctl(self.lower, &mut self.ifreq, libc::SIOCGIFINDEX)?,
             sll_hatype: 1,
             sll_pkttype: 0,
