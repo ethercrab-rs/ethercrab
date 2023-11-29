@@ -88,28 +88,17 @@ impl Future for TxRxFut<'_> {
 
         let mut buf = vec![0; self.mtu];
 
-        println!("---");
-
         loop {
             match Pin::new(&mut self.socket).poll_read(ctx, &mut buf) {
                 Poll::Ready(Ok(n)) => {
                     fmt::trace!("Poll ready");
-                    // Wake again in case there are more frames to consume
+                    // Wake again in case there are more frames to consume. This is additionally
+                    // important for macOS as multiple packets may be received for one `poll_read`
+                    // call, but will only be returned during the _next_ `poll_read`. If this line
+                    // is removed, PDU response frames are missed, causing timeout errors.
                     ctx.waker().wake_by_ref();
 
                     let packet = &buf[0..n];
-
-                    // println!("ADDR {:?}\nFRAME {:?}", self.rx.source_mac, packet);
-
-                    let f = smoltcp::wire::EthernetFrame::new_unchecked(&packet);
-
-                    // fmt::trace!(
-                    //     "Recv frame #{}, {} bytes, first frame buf len {}, payload len {}",
-                    //     packet[17],
-                    //     n,
-                    //     smoltcp::wire::EthernetFrame::<&[u8]>::buffer_len(f.payload().len()),
-                    //     f.payload().len()
-                    // );
 
                     if n == 0 {
                         fmt::warn!("Received zero bytes");

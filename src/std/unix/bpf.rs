@@ -6,10 +6,9 @@
 use crate::{
     fmt,
     std::unix::{ifreq, ifreq_for},
-    ETHERCAT_ETHERTYPE, ETHERCAT_ETHERTYPE_RAW,
 };
 use async_io::IoSafe;
-use smoltcp::wire::{EthernetAddress, EthernetFrame, ETHERNET_HEADER_LEN};
+use smoltcp::wire::{EthernetAddress, ETHERNET_HEADER_LEN};
 use std::{
     io, mem,
     os::unix::io::{AsFd, AsRawFd, BorrowedFd, RawFd},
@@ -165,18 +164,45 @@ unsafe impl IoSafe for BpfDevice {}
 
 impl io::Read for BpfDevice {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        let len = unsafe {
-            libc::read(
-                self.fd,
-                buffer.as_mut_ptr() as *mut libc::c_void,
-                buffer.len(),
-            )
+        // If more than one packet was returned in the previous call to `read`, the second and
+        // further packets will be present in our buffer. We'll read the rest of the buffer out for
+        // processing instead of reading the network interface.
+        let len = if !self.buf.is_empty() {
+            let len = self.buf.len().min(buffer.len());
+
+            debug_assert!(
+                len >= BPF_HDRLEN,
+                "not enough previous buffer {} B to hold BPF header {} B",
+                len,
+                BPF_HDRLEN
+            );
+
+            fmt::trace!("{} bytes left from previous read", len);
+
+            let (cached_chunk, rest) = self.buf.split_at(len);
+
+            buffer[0..len].copy_from_slice(&cached_chunk);
+
+            self.buf = rest.to_vec();
+
+            len
+        } else {
+            let len = unsafe {
+                libc::read(
+                    self.fd,
+                    buffer.as_mut_ptr() as *mut libc::c_void,
+                    buffer.len(),
+                )
+            };
+
+            if len == -1 || len < BPF_HDRLEN as isize {
+                return Err(io::Error::last_os_error());
+            }
+
+            len as usize
         };
 
-        if len == -1 || len < BPF_HDRLEN as isize {
-            return Err(io::Error::last_os_error());
-        }
-
+        // Get the Ethernet FRAME length (header, ethertype, payload) from the BPF header
         let frame_len = {
             let bpf_header = &buffer[0..BPF_HDRLEN];
 
@@ -191,75 +217,27 @@ impl io::Read for BpfDevice {
                 "not all frame data was read"
             );
 
-            // dbg!(bpf_header);
-
             bpf_header.bh_datalen as usize
         };
 
+        // Number of remaining bytes in the read after the first packet
         let remaining = len as u32 - BPF_HDRLEN as u32 - frame_len as u32;
-        dbg!(remaining, frame_len);
 
-        // dbg!(remaining, frame_len);
-        // dbg!(EthernetFrame::<&[u8]>::buffer_len(frame_len));
-        // println!("{:02x?}", &buffer[BPF_HDRLEN + frame_len..len as usize]);
+        // Returned data is aligned to bpf_hdr boundaries
+        let remaining = remaining.next_multiple_of(core::mem::align_of::<libc::bpf_hdr>() as u32);
 
-        {
-            let frame_len = EthernetFrame::<&[u8]>::buffer_len(frame_len);
-
-            let f = EthernetFrame::new_unchecked(&buffer[BPF_HDRLEN..][..frame_len]);
-
-            println!("Curr {} src {}", f.ethertype(), f.src_addr());
-
-            // if f.src_addr() == self.mac().unwrap().unwrap() {
-            //     println!("--> From master, skipping");
-            //     continue;
-            // }
-
-            // if f.ethertype() != ETHERCAT_ETHERTYPE {
-            //     println!("--> Not EtherCAT, skipping");
-            //     continue;
-            // }
-        };
-
+        // There is at least one more frame in the returned data. Store this in our buffer to return
+        // next time `read` is called.
         if remaining > 0 {
             let start =
                 (BPF_HDRLEN + frame_len).next_multiple_of(core::mem::align_of::<libc::bpf_hdr>());
 
-            let frame_len = {
-                // let bpf_header = &buffer[(BPF_HDRLEN + frame_len)..][..BPF_HDRLEN];
-                let bpf_header = &buffer[start..][..BPF_HDRLEN];
-
-                // println!("{:02x?}", &bpf_header);
-
-                let bpf_header = unsafe {
-                    core::ptr::NonNull::new(bpf_header.as_ptr() as *mut libc::bpf_hdr)
-                        .ok_or(io::Error::other("no BPF header"))?
-                        .as_ref()
-                };
-
-                // dbg!(
-                //     BPF_HDRLEN + frame_len,
-                //     (BPF_HDRLEN + frame_len).next_multiple_of(4)
-                // );
-
-                // println!(
-                //     "Next header align {}\n{:#?}",
-                //     core::mem::align_of::<libc::bpf_hdr>(),
-                //     bpf_header
-                // );
-
-                bpf_header.bh_datalen as usize
-            };
-
-            let frame_len = EthernetFrame::<&[u8]>::buffer_len(frame_len);
-
-            let f = EthernetFrame::new_unchecked(&buffer[(start + BPF_HDRLEN)..][..frame_len]);
-
-            println!("Next {} src {}", f.ethertype(), f.src_addr());
-
-            self.buf = buffer[(start + BPF_HDRLEN)..][..frame_len].to_vec();
+            // Store next chunk(s - there could be more than one packet waiting) of [BPF header,
+            // Ethernet II frame] in cache for next time round.
+            self.buf = buffer[start..len].to_vec();
         }
 
+        // Strip BPF header from beginning of buffer
         #[allow(trivial_casts)]
         unsafe {
             libc::memmove(
@@ -271,7 +249,6 @@ impl io::Read for BpfDevice {
 
         Ok(frame_len)
     }
-    // }
 }
 
 impl io::Write for BpfDevice {
