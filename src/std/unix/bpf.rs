@@ -3,9 +3,13 @@
 //! Copied from SmolTCP's `BpfDevice` with a few extra trait implementations. Thank you, SmolTCP
 //! maintainers!
 
-use crate::std::unix::{ifreq, ifreq_for};
+use crate::{
+    fmt,
+    std::unix::{ifreq, ifreq_for},
+    ETHERCAT_ETHERTYPE, ETHERCAT_ETHERTYPE_RAW,
+};
 use async_io::IoSafe;
-use smoltcp::wire::{EthernetAddress, ETHERNET_HEADER_LEN};
+use smoltcp::wire::{EthernetAddress, EthernetFrame, ETHERNET_HEADER_LEN};
 use std::{
     io, mem,
     os::unix::io::{AsFd, AsRawFd, BorrowedFd, RawFd},
@@ -51,6 +55,7 @@ pub struct BpfDevice {
     ifreq: ifreq,
     /// Interface name like `en11`.
     name: String,
+    buf: Vec<u8>,
 }
 
 impl AsRawFd for BpfDevice {
@@ -88,6 +93,7 @@ impl BpfDevice {
             fd: open_device()?,
             ifreq: ifreq_for(name),
             name: name.to_string(),
+            buf: Vec::with_capacity(4096),
         };
 
         self_.bind_interface()?;
@@ -159,29 +165,113 @@ unsafe impl IoSafe for BpfDevice {}
 
 impl io::Read for BpfDevice {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        unsafe {
-            let len = libc::read(
+        let len = unsafe {
+            libc::read(
                 self.fd,
                 buffer.as_mut_ptr() as *mut libc::c_void,
                 buffer.len(),
+            )
+        };
+
+        if len == -1 || len < BPF_HDRLEN as isize {
+            return Err(io::Error::last_os_error());
+        }
+
+        let frame_len = {
+            let bpf_header = &buffer[0..BPF_HDRLEN];
+
+            let bpf_header = unsafe {
+                core::ptr::NonNull::new(bpf_header.as_ptr() as *mut libc::bpf_hdr)
+                    .ok_or(io::Error::other("no BPF header"))?
+                    .as_ref()
+            };
+
+            debug_assert_eq!(
+                bpf_header.bh_caplen, bpf_header.bh_datalen,
+                "not all frame data was read"
             );
 
-            if len == -1 || len < BPF_HDRLEN as isize {
-                return Err(io::Error::last_os_error());
-            }
+            // dbg!(bpf_header);
 
-            let len = len as usize;
+            bpf_header.bh_datalen as usize
+        };
 
-            #[allow(trivial_casts)]
+        let remaining = len as u32 - BPF_HDRLEN as u32 - frame_len as u32;
+        dbg!(remaining, frame_len);
+
+        // dbg!(remaining, frame_len);
+        // dbg!(EthernetFrame::<&[u8]>::buffer_len(frame_len));
+        // println!("{:02x?}", &buffer[BPF_HDRLEN + frame_len..len as usize]);
+
+        {
+            let frame_len = EthernetFrame::<&[u8]>::buffer_len(frame_len);
+
+            let f = EthernetFrame::new_unchecked(&buffer[BPF_HDRLEN..][..frame_len]);
+
+            println!("Curr {} src {}", f.ethertype(), f.src_addr());
+
+            // if f.src_addr() == self.mac().unwrap().unwrap() {
+            //     println!("--> From master, skipping");
+            //     continue;
+            // }
+
+            // if f.ethertype() != ETHERCAT_ETHERTYPE {
+            //     println!("--> Not EtherCAT, skipping");
+            //     continue;
+            // }
+        };
+
+        if remaining > 0 {
+            let start =
+                (BPF_HDRLEN + frame_len).next_multiple_of(core::mem::align_of::<libc::bpf_hdr>());
+
+            let frame_len = {
+                // let bpf_header = &buffer[(BPF_HDRLEN + frame_len)..][..BPF_HDRLEN];
+                let bpf_header = &buffer[start..][..BPF_HDRLEN];
+
+                // println!("{:02x?}", &bpf_header);
+
+                let bpf_header = unsafe {
+                    core::ptr::NonNull::new(bpf_header.as_ptr() as *mut libc::bpf_hdr)
+                        .ok_or(io::Error::other("no BPF header"))?
+                        .as_ref()
+                };
+
+                // dbg!(
+                //     BPF_HDRLEN + frame_len,
+                //     (BPF_HDRLEN + frame_len).next_multiple_of(4)
+                // );
+
+                // println!(
+                //     "Next header align {}\n{:#?}",
+                //     core::mem::align_of::<libc::bpf_hdr>(),
+                //     bpf_header
+                // );
+
+                bpf_header.bh_datalen as usize
+            };
+
+            let frame_len = EthernetFrame::<&[u8]>::buffer_len(frame_len);
+
+            let f = EthernetFrame::new_unchecked(&buffer[(start + BPF_HDRLEN)..][..frame_len]);
+
+            println!("Next {} src {}", f.ethertype(), f.src_addr());
+
+            self.buf = buffer[(start + BPF_HDRLEN)..][..frame_len].to_vec();
+        }
+
+        #[allow(trivial_casts)]
+        unsafe {
             libc::memmove(
                 buffer.as_mut_ptr() as *mut libc::c_void,
                 &buffer[BPF_HDRLEN] as *const u8 as *const libc::c_void,
-                len - BPF_HDRLEN,
-            );
+                frame_len,
+            )
+        };
 
-            Ok(len)
-        }
+        Ok(frame_len)
     }
+    // }
 }
 
 impl io::Write for BpfDevice {
