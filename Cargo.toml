@@ -70,6 +70,7 @@ tokio = { version = "1.33.0", features = [
     "sync",
     "time",
 ] }
+# Used in `performance` example to set CPU affinity
 rustix = { version = "0.38.21", default-features = false, features = [
     "process",
 ] }
