@@ -18,8 +18,7 @@ use smoltcp::wire::{EthernetAddress, EthernetFrame};
 /// EtherCAT frame receive adapter.
 pub struct PduRx<'sto> {
     storage: PduStorageRef<'sto>,
-    // DELETEME: pub
-    pub(crate) source_mac: EthernetAddress,
+    source_mac: EthernetAddress,
 }
 
 impl<'sto> PduRx<'sto> {
@@ -45,12 +44,6 @@ impl<'sto> PduRx<'sto> {
     pub fn receive_frame(&mut self, ethernet_frame: &[u8]) -> Result<(), Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
-        fmt::trace!(
-            "Ethertype {:?} src addr {}",
-            raw_packet.ethertype(),
-            raw_packet.src_addr()
-        );
-
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self. As per
         // <https://github.com/OpenEtherCATsociety/SOEM/issues/585#issuecomment-1013688786>, the
         // first slave will set the second bit of the MSB of the MAC address (U/L bit). This means
@@ -58,8 +51,6 @@ impl<'sto> PduRx<'sto> {
         // filtering.
         if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == self.source_mac
         {
-            fmt::trace!("--> Ignoring frame");
-
             return Ok(());
         }
 
@@ -72,12 +63,6 @@ impl<'sto> PduRx<'sto> {
 
         let (i, command_code) = u8(i)?;
         let (i, index) = u8(i)?;
-
-        fmt::trace!(
-            "--> Frame #{} payload len {} B",
-            index,
-            header.payload_len()
-        );
 
         let mut frame = self
             .storage

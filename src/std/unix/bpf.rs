@@ -1,7 +1,7 @@
 //! macOS and OpenBSD raw socket using BPF.
 //!
-//! Copied from SmolTCP's `BpfDevice` with a few extra trait implementations. Thank you, SmolTCP
-//! maintainers!
+//! Copied from SmolTCP's `BpfDevice` with a few extra trait implementations and additions for
+//! handling multiple frames. Thank you, SmolTCP maintainers!
 
 use crate::{
     fmt,
@@ -50,10 +50,13 @@ macro_rules! try_ioctl {
 
 #[derive(Debug)]
 pub struct BpfDevice {
+    /// Interface file handle.
     fd: libc::c_int,
+    /// Interface... stuff.
     ifreq: ifreq,
     /// Interface name like `en11`.
     name: String,
+    /// Holds additional frame data if more than one frame was returned in the `read` call.
     buf: Vec<u8>,
 }
 

@@ -53,9 +53,6 @@ impl Future for TxRxFut<'_> {
                     ]))
                 }
 
-                // Byte 17 is index
-                fmt::trace!("Send frame #{}, {} bytes", data[17], data.len());
-
                 match Pin::new(&mut self.socket).poll_write(ctx, data) {
                     Poll::Ready(Ok(bytes_written)) => {
                         if bytes_written != data.len() {
@@ -88,38 +85,31 @@ impl Future for TxRxFut<'_> {
 
         let mut buf = vec![0; self.mtu];
 
-        loop {
-            match Pin::new(&mut self.socket).poll_read(ctx, &mut buf) {
-                Poll::Ready(Ok(n)) => {
-                    fmt::trace!("Poll ready");
-                    // Wake again in case there are more frames to consume. This is additionally
-                    // important for macOS as multiple packets may be received for one `poll_read`
-                    // call, but will only be returned during the _next_ `poll_read`. If this line
-                    // is removed, PDU response frames are missed, causing timeout errors.
-                    ctx.waker().wake_by_ref();
+        match Pin::new(&mut self.socket).poll_read(ctx, &mut buf) {
+            Poll::Ready(Ok(n)) => {
+                fmt::trace!("Poll ready");
+                // Wake again in case there are more frames to consume. This is additionally
+                // important for macOS as multiple packets may be received for one `poll_read`
+                // call, but will only be returned during the _next_ `poll_read`. If this line
+                // is removed, PDU response frames are missed, causing timeout errors.
+                ctx.waker().wake_by_ref();
 
-                    let packet = &buf[0..n];
+                let packet = &buf[0..n];
 
-                    if n == 0 {
-                        fmt::warn!("Received zero bytes");
-                    }
-
-                    if let Err(e) = self.rx.receive_frame(packet) {
-                        fmt::error!("Failed to receive frame: {}", e);
-
-                        return Poll::Ready(Err(Error::ReceiveFrame));
-                    }
+                if n == 0 {
+                    fmt::warn!("Received zero bytes");
                 }
-                Poll::Ready(Err(e)) => {
-                    fmt::error!("Receive PDU failed: {}", e);
 
-                    break;
-                }
-                Poll::Pending => {
-                    fmt::trace!("Poll pending");
-                    break;
+                if let Err(e) = self.rx.receive_frame(packet) {
+                    fmt::error!("Failed to receive frame: {}", e);
+
+                    return Poll::Ready(Err(Error::ReceiveFrame));
                 }
             }
+            Poll::Ready(Err(e)) => {
+                fmt::error!("Receive PDU failed: {}", e);
+            }
+            Poll::Pending => (),
         }
 
         Poll::Pending
