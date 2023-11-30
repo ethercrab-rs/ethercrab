@@ -13,16 +13,29 @@ use nom::{
     number::complete::{le_u16, u8},
 };
 use packed_struct::PackedStructSlice;
-use smoltcp::wire::EthernetFrame;
+use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 /// EtherCAT frame receive adapter.
 pub struct PduRx<'sto> {
     storage: PduStorageRef<'sto>,
+    source_mac: EthernetAddress,
 }
 
 impl<'sto> PduRx<'sto> {
     pub(in crate::pdu_loop) fn new(storage: PduStorageRef<'sto>) -> Self {
-        Self { storage }
+        Self {
+            storage,
+            source_mac: MASTER_ADDR,
+        }
+    }
+
+    /// Set the source MAC address to the given value.
+    ///
+    /// This is required on macOS (and BSD I believe) as the interface's MAC address cannot be
+    /// overridden at the packet level for some reason.
+    #[cfg(all(not(target_os = "linux"), unix))]
+    pub(crate) fn set_source_mac(&mut self, new: EthernetAddress) {
+        self.source_mac = new
     }
 
     /// Given a complete Ethernet II frame, parse a response PDU from it and wake the future that
@@ -36,7 +49,8 @@ impl<'sto> PduRx<'sto> {
         // first slave will set the second bit of the MSB of the MAC address (U/L bit). This means
         // if we send e.g. 10:10:10:10:10:10, we receive 12:10:10:10:10:10 which is useful for this
         // filtering.
-        if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == MASTER_ADDR {
+        if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == self.source_mac
+        {
             return Ok(());
         }
 
