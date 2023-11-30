@@ -1,9 +1,11 @@
 //! Copied from SmolTCP's RawSocketDesc, with inspiration from
 //! [https://github.com/embassy-rs/embassy](https://github.com/embassy-rs/embassy/blob/master/examples/std/src/tuntap.rs).
 
+use crate::{
+    std::unix::{ifreq, ifreq_for},
+    ETHERCAT_ETHERTYPE_RAW,
+};
 use async_io::IoSafe;
-
-use crate::ETHERCAT_ETHERTYPE_RAW;
 use std::{
     io, mem,
     os::{
@@ -12,22 +14,13 @@ use std::{
     },
 };
 
-#[repr(C)]
-#[derive(Debug)]
-struct ifreq {
-    ifr_name: [libc::c_char; libc::IF_NAMESIZE],
-    ifr_data: libc::c_int, /* ifr_ifindex or ifr_mtu */
-}
-
-#[derive(Debug)]
 pub struct RawSocketDesc {
-    protocol: libc::c_short,
-    lower: libc::c_int,
+    lower: i32,
     ifreq: ifreq,
 }
 
 impl RawSocketDesc {
-    pub fn new(name: &str) -> io::Result<RawSocketDesc> {
+    pub fn new(name: &str) -> io::Result<Self> {
         let protocol = ETHERCAT_ETHERTYPE_RAW as i16;
 
         let lower = unsafe {
@@ -44,7 +37,6 @@ impl RawSocketDesc {
         };
 
         let mut self_ = RawSocketDesc {
-            protocol,
             lower,
             ifreq: ifreq_for(name),
         };
@@ -55,9 +47,11 @@ impl RawSocketDesc {
     }
 
     fn bind_interface(&mut self) -> io::Result<()> {
+        let protocol = ETHERCAT_ETHERTYPE_RAW as i16;
+
         let sockaddr = libc::sockaddr_ll {
             sll_family: libc::AF_PACKET as u16,
-            sll_protocol: self.protocol.to_be() as u16,
+            sll_protocol: protocol.to_be() as u16,
             sll_ifindex: ifreq_ioctl(self.lower, &mut self.ifreq, libc::SIOCGIFINDEX)?,
             sll_hatype: 1,
             sll_pkttype: 0,
@@ -80,45 +74,9 @@ impl RawSocketDesc {
         Ok(())
     }
 
-    // NOTE: Leave these around in case we need them in the future.
-
-    // pub fn interface_mtu(&mut self) -> io::Result<usize> {
-    //     ifreq_ioctl(self.lower, &mut self.ifreq, libc::SIOCGIFMTU).map(|mtu| mtu as usize)
-    // }
-
-    // pub fn recv(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-    //     unsafe {
-    //         let len = libc::recv(
-    //             self.lower,
-    //             buffer.as_mut_ptr() as *mut libc::c_void,
-    //             buffer.len(),
-    //             0,
-    //         );
-
-    //         if len == -1 {
-    //             return Err(io::Error::last_os_error());
-    //         }
-
-    //         Ok(len as usize)
-    //     }
-    // }
-
-    // pub fn send(&mut self, buffer: &[u8]) -> io::Result<usize> {
-    //     unsafe {
-    //         let len = libc::send(
-    //             self.lower,
-    //             buffer.as_ptr() as *const libc::c_void,
-    //             buffer.len(),
-    //             0,
-    //         );
-
-    //         if len == -1 {
-    //             return Err(io::Error::last_os_error());
-    //         }
-
-    //         Ok(len as usize)
-    //     }
-    // }
+    pub fn interface_mtu(&mut self) -> io::Result<usize> {
+        ifreq_ioctl(self.lower, &mut self.ifreq, libc::SIOCGIFMTU).map(|mtu| mtu as usize)
+    }
 }
 
 impl AsRawFd for RawSocketDesc {
@@ -199,15 +157,4 @@ fn ifreq_ioctl(
     }
 
     Ok(ifreq.ifr_data)
-}
-
-fn ifreq_for(name: &str) -> ifreq {
-    let mut ifreq = ifreq {
-        ifr_name: [0; libc::IF_NAMESIZE],
-        ifr_data: 0,
-    };
-    for (i, byte) in name.as_bytes().iter().enumerate() {
-        ifreq.ifr_name[i] = *byte as libc::c_char
-    }
-    ifreq
 }

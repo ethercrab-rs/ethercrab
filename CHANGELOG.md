@@ -6,6 +6,11 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- [#135](https://github.com/ethercrab-rs/ethercrab/pull/135) macOS only: `tx_rx_task` now uses
+  native networking (BPF) instead of `libpcapng` to improve reliability.
+
 ## [0.3.4] - 2023-11-20
 
 ### Fixed
@@ -228,8 +233,8 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.4...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.4...HEAD
 [0.3.4]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.2...v0.3.3
 [0.3.4]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.2...v0.3.4
