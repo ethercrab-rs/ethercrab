@@ -816,8 +816,9 @@ pub trait FromEeprom: Sized {
     fn parse(i: &[u8]) -> Result<Self, Error> {
         Self::parse_fields(i)
             .map(|(_rest, parsed)| parsed)
-            .map_err(|e| {
-                fmt::error!("EEPROM object {:?} {}", core::any::type_name::<Self>(), e);
+            .map_err(|_e| {
+                #[cfg(feature = "std")]
+                fmt::error!("EEPROM object {:?} {}", core::any::type_name::<Self>(), _e);
 
                 Error::Eeprom(EepromError::Decode)
             })

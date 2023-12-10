@@ -150,7 +150,6 @@ where
 
         if let Some(mut reader) = self.category(CategoryType::SyncManager).await? {
             while let Some(bytes) = reader.take_vec::<{ SyncManager::STORAGE_SIZE }>().await? {
-                fmt::debug!("{:#04x?}", &bytes);
                 let sm = SyncManager::parse(&bytes)?;
 
                 sync_managers
@@ -174,8 +173,9 @@ where
 
         if let Some(mut reader) = category {
             while let Some(byte) = reader.next().await? {
-                let fmmu = FmmuUsage::try_from_primitive(byte).map_err(|e| {
-                    fmt::error!("Failed to decode FmmuUsage: {}", e);
+                let fmmu = FmmuUsage::try_from_primitive(byte).map_err(|_e| {
+                    #[cfg(feature = "std")]
+                    fmt::error!("Failed to decode FmmuUsage: {}", _e);
 
                     Error::Eeprom(EepromError::Decode)
                 })?;
@@ -313,8 +313,9 @@ where
 
             fmt::trace!("--> Raw string bytes {:?}", bytes);
 
-            let s = core::str::from_utf8(&bytes).map_err(|e| {
-                fmt::error!("Invalid UTF8: {}", e);
+            let s = core::str::from_utf8(&bytes).map_err(|_e| {
+                #[cfg(feature = "std")]
+                fmt::error!("Invalid UTF8: {}", _e);
 
                 Error::Eeprom(EepromError::Decode)
             })?;
