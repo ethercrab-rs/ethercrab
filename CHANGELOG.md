@@ -10,6 +10,15 @@ An EtherCAT master written in Rust.
 
 - [#135](https://github.com/ethercrab-rs/ethercrab/pull/135) macOS only: `tx_rx_task` now uses
   native networking (BPF) instead of `libpcapng` to improve reliability.
+- **(breaking)** [#136](https://github.com/ethercrab-rs/ethercrab/pull/136) Fix unsoundness issue
+  where `SlaveRef::io_raw` could be called multiple times, allowing multiple mutable references into
+  the device's output data.
+- **(breaking)** [#136](https://github.com/ethercrab-rs/ethercrab/pull/136) Rename
+  `SlaveRef::io_raw` to `SlaveRef::io_raw_mut`. `SlaveRef::io_raw` remains, but now only returns
+  non-mutable references to both the device inputs and outputs.
+
+  Also renames `SlaveRef::outputs_raw` to `SlaveRef::outputs_raw_mut`. `SlaveRef::outputs` now
+  returns a non-mutable reference to the device output data.
 
 ## [0.3.4] - 2023-11-20
 
