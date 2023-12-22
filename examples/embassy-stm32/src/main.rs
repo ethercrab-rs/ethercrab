@@ -191,7 +191,7 @@ async fn main(spawner: Spawner) {
 
         // Increment every output byte for every slave device by one
         for slave in group.iter(&client) {
-            let (_i, o) = slave.io_raw();
+            let (_i, o) = slave.io_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);
