@@ -167,7 +167,7 @@ impl<'a> Ds402<'a> {
     }
 
     fn set_control_word(&mut self, state: ControlWord) {
-        let (control, _rest) = self.slave.outputs_raw().split_at_mut(2);
+        let (control, _rest) = self.slave.outputs_raw_mut().split_at_mut(2);
 
         let state = state.bits().to_le_bytes();
 
@@ -197,8 +197,8 @@ impl<'a> Ds402Sm<'a> {
     }
 
     /// Get a reference to the underlying EtherCAT slave device.
-    pub fn slave(&self) -> &SlaveRef<'a, SlavePdi<'a>> {
-        &self.sm.context().slave
+    pub fn slave(&mut self) -> &mut SlaveRef<'a, SlavePdi<'a>> {
+        &mut self.sm.context_mut().slave
     }
 
     /// Get the DS402 status word.
