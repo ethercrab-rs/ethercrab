@@ -190,7 +190,7 @@ async fn main(spawner: Spawner) {
         defmt::unwrap!(group.tx_rx(&client).await);
 
         // Increment every output byte for every slave device by one
-        for slave in group.iter(&client) {
+        for mut slave in group.iter(&client) {
             let (_i, o) = slave.io_raw_mut();
 
             for byte in o.iter_mut() {
