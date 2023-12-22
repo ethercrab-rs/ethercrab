@@ -103,13 +103,13 @@ async fn main() -> Result<(), Error> {
         let mut tick = Instant::now();
 
         // EK1100 is first slave, EL2889 is second
-        let el2889 = slow_outputs
+        let mut el2889 = slow_outputs
             .slave(&client_slow, 1)
             .expect("EL2889 not present!");
 
         // Set initial output state
-        el2889.io_raw().1[0] = 0x01;
-        el2889.io_raw().1[1] = 0x80;
+        el2889.io_raw_mut().1[0] = 0x01;
+        el2889.io_raw_mut().1[1] = 0x80;
 
         loop {
             slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
@@ -118,7 +118,7 @@ async fn main() -> Result<(), Error> {
             if tick.elapsed() > slow_duration {
                 tick = Instant::now();
 
-                let (_i, o) = el2889.io_raw();
+                let (_i, o) = el2889.io_raw_mut();
 
                 // Make a nice pattern on EL2889 LEDs
                 o[0] = o[0].rotate_left(1);
@@ -139,8 +139,8 @@ async fn main() -> Result<(), Error> {
             fast_outputs.tx_rx(&client).await.expect("TX/RX");
 
             // Increment every output byte for every slave device by one
-            for slave in fast_outputs.iter(&client) {
-                let (_i, o) = slave.io_raw();
+            for mut slave in fast_outputs.iter(&client) {
+                let (_i, o) = slave.io_raw_mut();
 
                 for byte in o.iter_mut() {
                     *byte = byte.wrapping_add(1);

@@ -71,17 +71,17 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
     let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(10));
     slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let el2889 = slow_outputs.slave(&client, 1).expect("EL2889 not present!");
+    let mut el2889 = slow_outputs.slave(&client, 1).expect("EL2889 not present!");
 
     // Set initial output state
-    el2889.io_raw().1[0] = 0x01;
-    el2889.io_raw().1[1] = 0x80;
+    el2889.io_raw_mut().1[0] = 0x01;
+    el2889.io_raw_mut().1[1] = 0x80;
 
     // Animate slow pattern for 8 ticks
     for _ in 0..8 {
         slow_outputs.tx_rx(&client).await.expect("TX/RX");
 
-        let (_i, o) = el2889.io_raw();
+        let (_i, o) = el2889.io_raw_mut();
 
         // Make a nice pattern on EL2889 LEDs
         o[0] = o[0].rotate_left(1);
@@ -98,8 +98,8 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
         fast_outputs.tx_rx(&client).await.expect("TX/RX");
 
         // Increment every output byte for every slave device by one
-        for slave in fast_outputs.iter(&client) {
-            let (_i, o) = slave.io_raw();
+        for mut slave in fast_outputs.iter(&client) {
+            let (_i, o) = slave.io_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);

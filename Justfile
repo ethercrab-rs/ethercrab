@@ -35,6 +35,8 @@ linux-bench *args:
 
 generate-readme:
      cargo readme > README.md
+     # Remove unprocessed doc links
+     sed -i 's/\[\(`[^`]*`\)] /\1 /g' README.md
 
 check-readme: (generate-readme)
      git diff --quiet --exit-code README.md

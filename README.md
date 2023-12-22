@@ -17,7 +17,7 @@ A performant, `async`-first EtherCAT master written in pure Rust.
 
 ## Crate features
 
-- `std` (enabled by default) - exposes the [`std`] module, containing helpers to run the TX/RX
+- `std` (enabled by default) - exposes the `std` module, containing helpers to run the TX/RX
   loop on desktop operating systems.
 - `defmt` - enable logging with the [`defmt`](https://docs.rs/defmt) crate.
 - `log` - enable logging with the [`log`](https://docs.rs/log) crate. This is enabled by default
@@ -140,8 +140,8 @@ async fn main() -> Result<(), Error> {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Increment every output byte for every slave device by one
-        for slave in group.iter(&client) {
-            let (_i, o) = slave.io_raw();
+        for mut slave in group.iter(&client) {
+            let (_i, o) = slave.io_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);
