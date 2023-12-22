@@ -89,8 +89,8 @@ impl<'a, 'group> SlaveRef<'a, SlavePdi<'group>> {
 
     /// Get a tuple of (&I, &O) for this slave in the Process Data Image (PDI).
     ///
-    /// To get a mutable reference to the slave outputs, see either [`io_raw_mut`] or
-    /// [`outputs_mut`].
+    /// To get a mutable reference to the slave outputs, see either
+    /// [`io_raw_mut`](SlaveRef::io_raw_mut) or [`outputs_raw_mut`](SlaveRef::outputs_raw_mut).
     ///
     /// # Examples
     ///
