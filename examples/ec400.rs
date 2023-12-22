@@ -169,7 +169,7 @@ async fn main() -> Result<(), Error> {
             //     .await?;
 
             let status = servo.status_word();
-            let (i, o) = servo.slave().io_raw();
+            let (i, o) = servo.slave().io_raw_mut();
 
             let (pos, vel) = {
                 let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
@@ -211,7 +211,7 @@ async fn main() -> Result<(), Error> {
         }
 
         let status = servo.status_word();
-        let (i, o) = servo.slave().io_raw();
+        let (i, o) = servo.slave().io_raw_mut();
 
         let (pos, vel) = {
             let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());

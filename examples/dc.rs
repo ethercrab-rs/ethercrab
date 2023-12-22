@@ -108,8 +108,8 @@ async fn main() -> Result<(), Error> {
             .receive::<u64>(&client)
             .await?;
 
-        for slave in group.iter(&client) {
-            let (_i, o) = slave.io_raw();
+        for mut slave in group.iter(&client) {
+            let (_i, o) = slave.io_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);
