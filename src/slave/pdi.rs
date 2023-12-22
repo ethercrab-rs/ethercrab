@@ -128,8 +128,14 @@ impl<'a, 'group> SlaveRef<'a, SlavePdi<'group>> {
         self.state.inputs
     }
 
-    /// Get just the outputs for this slave in the Process Data Image (PDI).
-    pub fn outputs_raw(&mut self) -> &mut [u8] {
+    /// Get a reference to the raw output data for this slave in the Process Data Image (PDI).
+    pub fn outputs_raw(&self) -> &[u8] {
+        self.state.outputs
+    }
+
+    /// Get a mutable reference to the raw output data for this slave in the Process Data Image
+    /// (PDI).
+    pub fn outputs_raw_mut(&mut self) -> &mut [u8] {
         self.state.outputs
     }
 }
