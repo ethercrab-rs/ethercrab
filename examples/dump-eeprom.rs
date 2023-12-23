@@ -82,9 +82,15 @@ async fn main() -> Result<(), Error> {
 
     let slave_client = SlaveClient::new(&client, base_address + index);
 
-    let mut reader = SiiDataProvider::new(&slave_client).reader();
+    let provider = SiiDataProvider::new(&slave_client);
 
-    let mut buf = vec![0u8; usize::from(u16::MAX)];
+    let len = provider.len().await.expect("Len");
+
+    log::info!("--> Device EEPROM is {} bytes long", len);
+
+    let mut reader = provider.reader();
+
+    let mut buf = vec![0u8; usize::from(len)];
 
     reader.read_exact(&mut buf).await.expect("Read exact");
 

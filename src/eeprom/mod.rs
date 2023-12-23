@@ -1,9 +1,9 @@
-use embedded_io_async::{ErrorType, ReadExactError};
-
+use self::{device_reader::SII_FIRST_CATEGORY_START, types::CategoryType};
 use crate::{
     error::{EepromError, Error},
     fmt,
 };
+use embedded_io_async::{ErrorType, Read, ReadExactError, Seek, SeekFrom};
 
 pub mod device_reader;
 pub mod types;
@@ -16,13 +16,47 @@ pub mod types;
 /// This provides a method `reader` which creates handles into the underlying storage.
 pub trait EepromDataProvider {
     /// A reader instance that returns bytes from the underlying data source.
-    type Provider: embedded_io_async::Read
-        + embedded_io_async::Seek
-        + ErrorType<Error = Error>
-        + core::fmt::Debug;
+    type Provider: Read + Seek + ErrorType<Error = Error> + core::fmt::Debug;
 
     /// Get an instance of a reader.
     fn reader(&self) -> Self::Provider;
+
+    /// Find the length in bytes of the EEPROM.
+    // Internal only so I don't mind
+    #[allow(async_fn_in_trait)]
+    async fn len(&self) -> Result<u16, Error> {
+        let mut reader = self.reader();
+
+        reader
+            .seek(SeekFrom::Start(SII_FIRST_CATEGORY_START.into()))
+            .await?;
+
+        let mut len_bytes = SII_FIRST_CATEGORY_START;
+
+        loop {
+            let mut category_type = [0u8; 2];
+            let mut len_words = [0u8; 2];
+
+            reader.read_exact(&mut category_type).await?;
+            reader.read_exact(&mut len_words).await?;
+
+            // Add header
+            len_bytes += 4;
+
+            let category_type = CategoryType::from(u16::from_le_bytes(category_type));
+            let len_words = u16::from_le_bytes(len_words);
+
+            // Now add category data length
+            len_bytes += len_words * 2;
+
+            if let CategoryType::End = category_type {
+                break Ok(len_bytes);
+            }
+
+            // Next category starts after the current category's data. Seek takes a WORD address
+            reader.seek(SeekFrom::Current(len_words.into())).await?;
+        }
+    }
 }
 
 impl embedded_io_async::Error for Error {
@@ -52,7 +86,7 @@ pub struct ChunkReader<P> {
 
 impl<P> ChunkReader<P>
 where
-    P: embedded_io_async::Read + ErrorType<Error = Error>,
+    P: Read + ErrorType<Error = Error>,
 {
     pub fn new(reader: P, len_bytes: u16) -> Self {
         Self {
