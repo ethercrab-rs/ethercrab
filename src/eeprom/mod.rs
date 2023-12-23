@@ -5,7 +5,7 @@ use crate::{
     fmt,
 };
 
-pub mod reader;
+pub mod device_reader;
 pub mod types;
 
 // #[cfg(feature = "std")]

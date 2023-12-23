@@ -6,7 +6,7 @@ use crate::{
         CategoryType, DefaultMailbox, FromEeprom, PdoEntry, SiiGeneral, RX_PDO_RANGE, TX_PDO_RANGE,
     },
     eeprom::{
-        reader::SII_FIRST_CATEGORY_START,
+        device_reader::SII_FIRST_CATEGORY_START,
         types::{FmmuEx, FmmuUsage, Pdo, SyncManager},
         ChunkReader, EepromDataProvider,
     },

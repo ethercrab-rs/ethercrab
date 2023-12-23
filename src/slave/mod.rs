@@ -17,7 +17,7 @@ use crate::{
     },
     command::Command,
     dl_status::DlStatus,
-    eeprom::{reader::SiiDataProvider, types::SiiOwner},
+    eeprom::{device_reader::SiiDataProvider, types::SiiOwner},
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::MailboxType,
