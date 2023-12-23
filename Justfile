@@ -28,10 +28,10 @@ linux-test *args:
      cargo test {{args}}
 
 linux-bench *args:
-     cargo bench --features bench-hacks --no-run {{args}}
+     cargo bench --features __internals --no-run {{args}}
      sudo echo
      fd . --type executable ./target/release/deps -x sudo setcap cap_net_raw=pe
-     cargo bench --features bench-hacks {{args}}
+     cargo bench --features __internals {{args}}
 
 generate-readme:
      cargo readme > README.md

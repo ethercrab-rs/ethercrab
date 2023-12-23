@@ -90,7 +90,7 @@ std = [
 ]
 serde = ["dep:serde", "bitflags/serde"]
 # Development only - DO NOT USE
-bench-hacks = []
+__internals = []
 
 [[example]]
 name = "akd"

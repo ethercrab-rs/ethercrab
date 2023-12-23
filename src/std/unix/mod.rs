@@ -37,7 +37,7 @@ impl Future for TxRxFut<'_> {
 
         while let Some(frame) = self.tx.next_sendable_frame() {
             let res = frame.send_blocking(&mut buf, |data| {
-                #[cfg(feature = "bench-hacks")]
+                #[cfg(feature = "__internals")]
                 {
                     // Epic hack to make data writable
                     let data: &mut [u8] = unsafe {
