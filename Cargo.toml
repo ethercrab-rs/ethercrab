@@ -112,6 +112,10 @@ required-features = ["std"]
 name = "multiple-groups"
 required-features = ["std"]
 
+[[example]]
+name = "dump-eeprom"
+required-features = ["std", "__internals"]
+
 [[bench]]
 name = "pdu_loop"
 harness = false

@@ -40,3 +40,8 @@ generate-readme:
 
 check-readme: (generate-readme)
      git diff --quiet --exit-code README.md
+
+dump-eeprom *args:
+     cargo build --example dump-eeprom --features "std __internals" --release && \
+     sudo setcap cap_net_raw=pe ./target/release/examples/dump-eeprom && \
+     ./target/release/examples/dump-eeprom {{args}}
