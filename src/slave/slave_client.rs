@@ -5,23 +5,26 @@ use crate::{
     Client, Command, Timeouts,
 };
 
+/// A wrapper around [`Client`] preconfigured to use the given device address.
 #[derive(Debug)]
 pub struct SlaveClient<'client> {
-    pub configured_address: u16,
-    pub client: &'client Client<'client>,
+    pub(crate) configured_address: u16,
+    pub(crate) client: &'client Client<'client>,
 }
 
 impl<'client> SlaveClient<'client> {
+    /// Create a new slave client instance.
     #[inline(always)]
-    pub(crate) fn new(client: &'client Client<'client>, configured_address: u16) -> Self {
+    pub fn new(client: &'client Client<'client>, configured_address: u16) -> Self {
         Self {
             configured_address,
             client,
         }
     }
 
+    /// Get configured timeouts.
     #[inline(always)]
-    pub fn timeouts(&self) -> &Timeouts {
+    pub(crate) fn timeouts(&self) -> &Timeouts {
         &self.client.timeouts
     }
 

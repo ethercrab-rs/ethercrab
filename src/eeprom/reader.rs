@@ -21,6 +21,9 @@ pub struct SiiDataProvider<'slave> {
 }
 
 impl<'slave> SiiDataProvider<'slave> {
+    /// Create a new provider.
+    ///
+    /// Call `reader` to get a handle to read/seek the EEPROM.
     pub fn new(client: &'slave SlaveClient<'slave>) -> Self {
         Self { client }
     }
