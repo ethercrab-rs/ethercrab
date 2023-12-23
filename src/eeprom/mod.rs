@@ -31,7 +31,7 @@ pub trait EepromDataProvider {
             .seek(SeekFrom::Start(SII_FIRST_CATEGORY_START.into()))
             .await?;
 
-        let mut len_bytes = SII_FIRST_CATEGORY_START;
+        let mut len_bytes = SII_FIRST_CATEGORY_START * 2;
 
         loop {
             let mut category_type = [0u8; 2];
@@ -46,12 +46,12 @@ pub trait EepromDataProvider {
             let category_type = CategoryType::from(u16::from_le_bytes(category_type));
             let len_words = u16::from_le_bytes(len_words);
 
-            // Now add category data length
-            len_bytes += len_words * 2;
-
             if let CategoryType::End = category_type {
                 break Ok(len_bytes);
             }
+
+            // Now add category data length
+            len_bytes += len_words * 2;
 
             // Next category starts after the current category's data. Seek takes a WORD address
             reader.seek(SeekFrom::Current(len_words.into())).await?;
