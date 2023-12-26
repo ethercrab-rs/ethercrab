@@ -343,3 +343,19 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::eeprom::file_reader::EepromFile;
+
+    #[tokio::test]
+    async fn read_device_name() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2889.hex"));
+
+        assert_eq!(
+            e.device_name::<64>().await,
+            Ok(Some("stuff".try_into().unwrap()))
+        );
+    }
+}

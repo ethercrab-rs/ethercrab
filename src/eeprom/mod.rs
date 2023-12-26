@@ -8,8 +8,8 @@ use embedded_io_async::{ErrorType, Read, ReadExactError, Seek, SeekFrom};
 pub mod device_reader;
 pub mod types;
 
-// #[cfg(feature = "std")]
-// pub mod file_reader;
+#[cfg(feature = "std")]
+pub mod file_reader;
 
 /// A data source for EEPROM reads.
 ///

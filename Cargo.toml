@@ -92,6 +92,7 @@ std = [
     "smoltcp/phy-raw_socket",
     "log",
     "futures-lite/std",
+    "embedded-io-async/std",
 ]
 serde = ["dep:serde", "bitflags/serde"]
 # Development only - DO NOT USE
