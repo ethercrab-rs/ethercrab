@@ -46,8 +46,18 @@ impl embedded_io_async::Read for EepromFileHandle {
 }
 
 impl embedded_io_async::Seek for EepromFileHandle {
-    async fn seek(&mut self, pos: embedded_io_async::SeekFrom) -> Result<u64, Self::Error> {
-        self.file.seek(pos.into()).map_err(|e| {
+    async fn seek(&mut self, pos_words: embedded_io_async::SeekFrom) -> Result<u64, Self::Error> {
+        // EEPROM addresses are all words, so we must convert into bytes to correctly offset into
+        // the file.
+        let pos_bytes = match pos_words {
+            embedded_io_async::SeekFrom::Start(start) => std::io::SeekFrom::Start(start * 2),
+            embedded_io_async::SeekFrom::End(start) => std::io::SeekFrom::End(start * 2),
+            embedded_io_async::SeekFrom::Current(current) => {
+                std::io::SeekFrom::Current(current * 2)
+            }
+        };
+
+        self.file.seek(pos_bytes).map_err(|e| {
             fmt::error!("File seek error: {}", e);
 
             Error::Internal
