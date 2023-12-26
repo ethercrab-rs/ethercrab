@@ -29,7 +29,7 @@ where
         Self { provider }
     }
 
-    /// Start a reader at the given address, returning at most `len` bytes.
+    /// Start a reader at the given address in words, returning at most `len` bytes.
     async fn start_at(&self, addr: u16, len: u16) -> Result<ChunkReader<P::Provider>, Error> {
         let mut r = self.provider.reader();
 
@@ -355,7 +355,7 @@ mod tests {
 
         assert_eq!(
             e.device_name::<64>().await,
-            Ok(Some("stuff".try_into().unwrap()))
+            Ok(Some("EL2889".try_into().unwrap()))
         );
     }
 }
