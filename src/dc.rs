@@ -510,14 +510,13 @@ mod tests {
             },
         ];
 
-        let me =
-            Slave {
-                configured_address: 0x9252,
-                ports: ports_eol(),
-                name: "LAN9252".try_into().unwrap(),
-                index: 4,
-                ..slave_defaults
-            };
+        let me = Slave {
+            configured_address: 0x9252,
+            ports: ports_eol(),
+            name: "LAN9252".try_into().unwrap(),
+            index: 4,
+            ..slave_defaults
+        };
 
         let parent_index = find_slave_parent(&parents, &me);
 
@@ -539,51 +538,50 @@ mod tests {
             ..Default::default()
         };
 
-        let parents =
-            [
-                Slave {
-                    configured_address: 0x1100,
-                    ports: ports_fork(),
-                    name: "EK1100".try_into().unwrap(),
-                    index: 1,
-                    ..slave_defaults.clone()
-                },
-                Slave {
-                    configured_address: 0x2004,
-                    ports: ports_passthrough(),
-                    name: "EL2004".try_into().unwrap(),
-                    index: 2,
-                    ..slave_defaults.clone()
-                },
-                Slave {
-                    configured_address: 0x3004,
-                    ports: ports_eol(),
-                    name: "EL3004".try_into().unwrap(),
-                    index: 3,
-                    ..slave_defaults.clone()
-                },
-                Slave {
-                    configured_address: 0x1100,
-                    ports: ports_fork(),
-                    name: "EK1100_2".try_into().unwrap(),
-                    index: 4,
-                    ..slave_defaults.clone()
-                },
-                Slave {
-                    configured_address: 0x2004,
-                    ports: ports_passthrough(),
-                    name: "EL2828".try_into().unwrap(),
-                    index: 5,
-                    ..slave_defaults.clone()
-                },
-                Slave {
-                    configured_address: 0x3004,
-                    ports: ports_eol(),
-                    name: "EL2889".try_into().unwrap(),
-                    index: 6,
-                    ..slave_defaults.clone()
-                },
-            ];
+        let parents = [
+            Slave {
+                configured_address: 0x1100,
+                ports: ports_fork(),
+                name: "EK1100".try_into().unwrap(),
+                index: 1,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x2004,
+                ports: ports_passthrough(),
+                name: "EL2004".try_into().unwrap(),
+                index: 2,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x3004,
+                ports: ports_eol(),
+                name: "EL3004".try_into().unwrap(),
+                index: 3,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x1100,
+                ports: ports_fork(),
+                name: "EK1100_2".try_into().unwrap(),
+                index: 4,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x2004,
+                ports: ports_passthrough(),
+                name: "EL2828".try_into().unwrap(),
+                index: 5,
+                ..slave_defaults.clone()
+            },
+            Slave {
+                configured_address: 0x3004,
+                ports: ports_eol(),
+                name: "EL2889".try_into().unwrap(),
+                index: 6,
+                ..slave_defaults.clone()
+            },
+        ];
 
         let ek1100_2_parents = &parents[0..3];
         let ek1100_2 = &parents[3];
