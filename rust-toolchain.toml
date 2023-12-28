@@ -1,4 +1,4 @@
 [toolchain]
-channel = "nightly"
+channel = "1.75"
 profile = "default"
 targets = ["x86_64-unknown-linux-gnu"]
