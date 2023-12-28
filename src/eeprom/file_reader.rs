@@ -15,6 +15,8 @@ pub struct EepromFile {
 }
 
 impl EepromFile {
+    // Allow unused as this is only used in unit tests.
+    #[allow(unused)]
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
     }

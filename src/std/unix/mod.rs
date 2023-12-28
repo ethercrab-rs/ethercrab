@@ -2,12 +2,12 @@
 
 #[cfg(all(not(target_os = "linux"), unix))]
 mod bpf;
-#[cfg(all(target_os = "linux"))]
+#[cfg(target_os = "linux")]
 mod linux;
 
 #[cfg(all(not(target_os = "linux"), unix))]
 use self::bpf::BpfDevice as RawSocketDesc;
-#[cfg(all(target_os = "linux"))]
+#[cfg(target_os = "linux")]
 use self::linux::RawSocketDesc;
 
 use crate::{
@@ -127,11 +127,11 @@ pub fn tx_rx_task<'sto>(
     // macOS forcibly sets the source address to the NIC's MAC, so instead of using `MASTER_ADDR`
     // for filtering returned packets, we must set the address to compare to the NIC MAC.
     #[cfg(all(not(target_os = "linux"), unix))]
-    socket.mac().ok().flatten().map(|mac| {
+    if let Some(mac) = socket.mac().ok().flatten() {
         fmt::debug!("Setting source MAC to {}", mac);
 
         pdu_rx.set_source_mac(mac);
-    });
+    }
 
     let mtu = socket.interface_mtu()?;
 

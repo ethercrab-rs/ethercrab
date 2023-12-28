@@ -148,7 +148,7 @@ impl BpfDevice {
             .find(|iface| iface.interface_name == self.name)
             .and_then(|iface| iface.address)
             .and_then(|addr| addr.as_link_addr()?.addr())
-            .map(|addr| EthernetAddress(addr)))
+            .map(EthernetAddress))
     }
 }
 
@@ -184,7 +184,7 @@ impl io::Read for BpfDevice {
 
             let (cached_chunk, rest) = self.buf.split_at(len);
 
-            buffer[0..len].copy_from_slice(&cached_chunk);
+            buffer[0..len].copy_from_slice(cached_chunk);
 
             self.buf = rest.to_vec();
 
@@ -264,7 +264,7 @@ impl io::Write for BpfDevice {
             );
 
             if len == -1 {
-                Err(io::Error::last_os_error()).unwrap()
+                return Err(io::Error::last_os_error());
             }
 
             Ok(len as usize)

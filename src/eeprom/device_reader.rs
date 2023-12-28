@@ -119,7 +119,7 @@ impl<'slave> SiiDataProviderHandle<'slave> {
 
     async fn next(&mut self) -> Result<Option<u8>, Error> {
         if self.read.is_empty() {
-            let read = Self::read_eeprom_raw(&self.client, self.word_pos).await?;
+            let read = Self::read_eeprom_raw(self.client, self.word_pos).await?;
 
             for byte in read.iter() {
                 // SAFETY:
