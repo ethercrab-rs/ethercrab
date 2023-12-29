@@ -561,16 +561,16 @@ pub enum SyncManagerType {
 }
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Pdo {
     pub(crate) index: u16,
     pub(crate) num_entries: u8,
     pub(crate) sync_manager: u8,
-    dc_sync: u8,
+    pub(crate) dc_sync: u8,
     /// Index into EEPROM Strings section for PDO name.
-    name_string_idx: u8,
-    flags: PdoFlags,
+    pub(crate) name_string_idx: u8,
+    pub(crate) flags: PdoFlags,
     pub(crate) entries: heapless::Vec<PdoEntry, 16>,
 }
 
@@ -627,16 +627,16 @@ impl FromEeprom for Pdo {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PdoEntry {
-    index: u16,
-    sub_index: u8,
-    name_string_idx: u8,
+    pub(crate) index: u16,
+    pub(crate) sub_index: u8,
+    pub(crate) name_string_idx: u8,
     // See page 103 of ETG2000
-    data_type: PrimitiveDataType,
-    data_length_bits: u8,
-    flags: u16,
+    pub(crate) data_type: PrimitiveDataType,
+    pub(crate) data_length_bits: u8,
+    pub(crate) flags: u16,
 }
 
 impl core::fmt::Debug for PdoEntry {
@@ -681,7 +681,7 @@ impl FromEeprom for PdoEntry {
 
 bitflags::bitflags! {
     /// Defined in ETG2010 Table 14 offset 0x0006.
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, PartialEq)]
     pub struct PdoFlags: u16 {
         /// PdoMandatory [Esi:RTxPdo@Mandatory]
         const PDO_MANDATORY = 0x0001;

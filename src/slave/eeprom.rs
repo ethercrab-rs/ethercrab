@@ -351,9 +351,10 @@ where
 mod tests {
     use super::*;
     use crate::{
+        base_data_types::PrimitiveDataType,
         eeprom::{
             file_reader::EepromFile,
-            types::{SyncManagerEnable, SyncManagerType},
+            types::{PdoFlags, SyncManagerEnable, SyncManagerType},
         },
         sync_manager_channel::{Control, Direction, OperationMode},
     };
@@ -535,5 +536,84 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn pdos_invalid_range() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        assert_eq!(
+            e.pdos(PdoType::Rx, 0x1000..=0x1010).await,
+            Err(Error::Eeprom(EepromError::Decode))
+        );
+    }
+
+    // EK1100 doesn't have any IO so doesn't have any PDOs.
+    #[tokio::test]
+    async fn slave_no_pdos() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+
+        assert_eq!(e.master_read_pdos().await, Ok(heapless::Vec::new()));
+        assert_eq!(e.master_write_pdos().await, Ok(heapless::Vec::new()));
+    }
+
+    #[tokio::test]
+    async fn output_pdos_only() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
+
+        fn pdo(index: u16, name_string_idx: u8, entry_idx: u16) -> Pdo {
+            let entry_defaults = PdoEntry {
+                index: 0x7000,
+                sub_index: 1,
+                name_string_idx: 6,
+                data_type: PrimitiveDataType::Bool,
+                data_length_bits: 1,
+                flags: 0,
+            };
+
+            let pdo_defaults = Pdo {
+                index: 0x1600,
+                name_string_idx: 5,
+
+                num_entries: 1,
+                sync_manager: 0,
+                dc_sync: 0,
+                flags: PdoFlags::PDO_MANDATORY | PdoFlags::PDO_FIXED_CONTENT,
+
+                entries: heapless::Vec::from_slice(&[PdoEntry {
+                    index: 0x7000,
+                    ..entry_defaults
+                }])
+                .unwrap(),
+            };
+
+            Pdo {
+                index,
+                name_string_idx,
+                entries: heapless::Vec::from_slice(&[PdoEntry {
+                    index: entry_idx,
+                    ..entry_defaults
+                }])
+                .unwrap(),
+                ..pdo_defaults
+            }
+        }
+
+        let output_pdos = [
+            pdo(0x1600, 5, 0x7000),
+            pdo(0x1601, 7, 0x7010),
+            pdo(0x1602, 8, 0x7020),
+            pdo(0x1603, 9, 0x7030),
+            pdo(0x1604, 10, 0x7040),
+            pdo(0x1605, 11, 0x7050),
+            pdo(0x1606, 12, 0x7060),
+            pdo(0x1607, 13, 0x7070),
+        ];
+
+        assert_eq!(e.master_read_pdos().await, Ok(heapless::Vec::new()));
+        pretty_assertions::assert_eq!(
+            e.master_write_pdos().await,
+            Ok(heapless::Vec::from_slice(&output_pdos).unwrap())
+        );
     }
 }
