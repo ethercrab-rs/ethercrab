@@ -274,6 +274,22 @@ pub enum CategoryType {
     End = 0xffff,
 }
 
+/// The type of PDO to search for.
+#[derive(Debug, Copy, Clone)]
+pub enum PdoType {
+    Tx = 50,
+    Rx = 51,
+}
+
+impl From<PdoType> for CategoryType {
+    fn from(value: PdoType) -> Self {
+        match value {
+            PdoType::Tx => Self::TxPdo,
+            PdoType::Rx => Self::RxPdo,
+        }
+    }
+}
+
 /// ETG1000.6 Table 23
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,

@@ -7,7 +7,7 @@ use crate::{
     },
     eeprom::{
         device_reader::SII_FIRST_CATEGORY_START,
-        types::{FmmuEx, FmmuUsage, Pdo, SyncManager},
+        types::{FmmuEx, FmmuUsage, Pdo, PdoType, SyncManager},
         ChunkReader, EepromDataProvider,
     },
     error::{EepromError, Error, Item},
@@ -211,14 +211,14 @@ where
 
     async fn pdos(
         &self,
-        category: CategoryType,
+        direction: PdoType,
         valid_range: RangeInclusive<u16>,
     ) -> Result<heapless::Vec<Pdo, 16>, Error> {
         let mut pdos = heapless::Vec::new();
 
-        fmt::trace!("Get {:?} PDUs", category);
+        fmt::trace!("Get {:?} PDUs", direction);
 
-        if let Some(mut reader) = self.category(category).await? {
+        if let Some(mut reader) = self.category(CategoryType::from(direction)).await? {
             while let Some(pdo) = reader.take_vec::<{ Pdo::STORAGE_SIZE }>().await? {
                 let mut pdo = Pdo::parse(&pdo).map_err(|e| {
                     fmt::error!("PDO: {:?}", e);
@@ -264,12 +264,12 @@ where
 
     /// Transmit PDOs (from device's perspective) - inputs
     pub(crate) async fn master_read_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
-        self.pdos(CategoryType::TxPdo, TX_PDO_RANGE).await
+        self.pdos(PdoType::Tx, TX_PDO_RANGE).await
     }
 
     /// Receive PDOs (from device's perspective) - outputs
     pub(crate) async fn master_write_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
-        self.pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
+        self.pdos(PdoType::Rx, RX_PDO_RANGE).await
     }
 
     /// Find a string in the device EEPROM.
