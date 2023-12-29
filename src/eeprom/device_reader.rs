@@ -164,7 +164,7 @@ impl<'slave> embedded_io_async::Seek for SiiDataProviderHandle<'slave> {
         // Target WORD position
         let pos = match offset {
             SeekFrom::Start(addr) => addr,
-            SeekFrom::End(_) => panic!("From end not supported"),
+            SeekFrom::End(_) => fmt::panic!("From end not supported"),
             SeekFrom::Current(offset) => {
                 // Current position + desired offset - anything left in the buffer (/ 2 to get word
                 // count from bytes). The subtraction of the buffer length is required because a
