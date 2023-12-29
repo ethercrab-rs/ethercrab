@@ -617,6 +617,8 @@ mod tests {
         );
     }
 
+    // This exercises the "read from a specific address" codepath as opposed to the "find a category
+    // and start reading it" codepath.
     #[tokio::test]
     async fn get_mailbox_config() {
         let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
