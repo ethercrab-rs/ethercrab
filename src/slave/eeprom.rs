@@ -272,6 +272,9 @@ where
         self.pdos(CategoryType::RxPdo, RX_PDO_RANGE).await
     }
 
+    /// Find a string in the device EEPROM.
+    ///
+    /// An index of 0 denotes an empty string and will always return `Ok(None)`.
     pub(crate) async fn find_string<const N: usize>(
         &self,
         search_index: u8,
@@ -347,7 +350,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eeprom::file_reader::EepromFile;
+    use crate::{
+        eeprom::{
+            file_reader::EepromFile,
+            types::{SyncManagerEnable, SyncManagerType},
+        },
+        sync_manager_channel::{Control, Direction, OperationMode},
+    };
 
     #[tokio::test]
     async fn read_device_name() {
@@ -357,5 +366,174 @@ mod tests {
             e.device_name::<64>().await,
             Ok(Some("EL2889".try_into().unwrap()))
         );
+    }
+
+    #[tokio::test]
+    async fn sync_managers() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        let expected = [
+            SyncManager {
+                start_addr: 0x1800,
+                length: 0x0400,
+                control: Control {
+                    operation_mode: OperationMode::Mailbox,
+                    direction: Direction::MasterWrite,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::MailboxWrite,
+            },
+            SyncManager {
+                start_addr: 0x1c00,
+                length: 0x0400,
+                control: Control {
+                    operation_mode: OperationMode::Mailbox,
+                    direction: Direction::MasterRead,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::MailboxRead,
+            },
+            SyncManager {
+                start_addr: 0x1100,
+                length: 0x0000,
+                control: Control {
+                    operation_mode: OperationMode::Normal,
+                    direction: Direction::MasterWrite,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::ProcessDataWrite,
+            },
+            SyncManager {
+                start_addr: 0x1140,
+                length: 0x0000,
+                control: Control {
+                    operation_mode: OperationMode::Normal,
+                    direction: Direction::MasterRead,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::ProcessDataRead,
+            },
+        ];
+
+        assert_eq!(
+            e.sync_managers().await,
+            Ok(heapless::Vec::<SyncManager, 8>::from_slice(&expected).unwrap())
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_string() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
+
+        // Ensure we have at least one string.
+        assert_eq!(
+            e.find_string::<64>(1).await,
+            Ok(Some("EL2828".try_into().unwrap()))
+        );
+
+        // 0th index always returns None
+        assert_eq!(e.find_string::<64>(0).await, Ok(None));
+    }
+
+    #[tokio::test]
+    async fn short_buffer() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        // Pick a decently long string from the EEPROM file. This is just an arbitrary index.
+        let idx = 12;
+
+        let expected = "Velocity actual value";
+
+        // Ensure we have at least one string.
+        assert_eq!(
+            e.find_string::<64>(idx).await,
+            Ok(Some(expected.try_into().unwrap())),
+            "EEPROM should have at least one string"
+        );
+
+        // Reading into a buffer that's too short should error, not truncate or otherwise fail silently
+        assert_eq!(
+            e.find_string::<8>(idx).await,
+            Err(Error::StringTooLong {
+                max_length: 8,
+                string_length: expected.len(),
+            }),
+            "Read should fail if buffer is too small"
+        );
+    }
+
+    #[tokio::test]
+    async fn strings() -> Result<(), Error> {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        let mut strings = Vec::new();
+
+        // EEPROM dump was manually determined to have 34 strings in it.
+        let num_strings = 34;
+
+        // 0th string is special empty string index, so start from index 1.
+        for idx in 1..num_strings {
+            let s = e.find_string::<64>(idx).await?;
+
+            if let Some(s) = s {
+                strings.push(s.as_str().to_string());
+            }
+        }
+
+        // Any strings after the valid index range shouldn't error, but should return nothing.
+        assert_eq!(e.find_string::<64>(num_strings + 1).await, Ok(None));
+
+        assert_eq!(
+            strings,
+            [
+                "AKD",
+                "Drive",
+                "Drives",
+                "AKD EtherCAT Drive (CoE)",
+                "DRIVE",
+                "DcSync",
+                "DcOff",
+                "Inputs",
+                "Statusword",
+                "Position actual internal value",
+                "Second position feedback",
+                "Velocity actual value",
+                "Digital inputs",
+                "Following error actual value",
+                "Latch 1p",
+                "Torque actual value",
+                "Latch statusword",
+                "AIN.VALUE",
+                "Latch 1n",
+                "Latch 1 pn",
+                "Position actual value",
+                "Latch 2 pn",
+                "Outputs",
+                "Controlword",
+                "1st set-point",
+                "Target velocity",
+                "Latch controlword",
+                "Torque offset",
+                "Physical outputs",
+                "Max torque",
+                "ClearDigInputChangedBit",
+                "Target position",
+                "AOUT.VALUE write",
+            ]
+        );
+
+        Ok(())
     }
 }
