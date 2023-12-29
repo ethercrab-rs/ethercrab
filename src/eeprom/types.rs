@@ -753,7 +753,7 @@ impl defmt::Format for MailboxProtocols {
     }
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DefaultMailbox {
     /// Master to slave receive mailbox address offset.

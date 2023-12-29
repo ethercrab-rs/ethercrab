@@ -354,7 +354,7 @@ mod tests {
         base_data_types::PrimitiveDataType,
         eeprom::{
             file_reader::EepromFile,
-            types::{PdoFlags, SyncManagerEnable, SyncManagerType},
+            types::{MailboxProtocols, PdoFlags, SyncManagerEnable, SyncManagerType},
         },
         sync_manager_channel::{Control, Direction, OperationMode},
     };
@@ -615,5 +615,43 @@ mod tests {
             e.master_write_pdos().await,
             Ok(heapless::Vec::from_slice(&output_pdos).unwrap())
         );
+    }
+
+    #[tokio::test]
+    async fn get_mailbox_config() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        assert_eq!(
+            e.mailbox_config().await,
+            Ok(DefaultMailbox {
+                slave_receive_offset: 0x1800,
+                slave_receive_size: 0x0400,
+                slave_send_offset: 0x1c00,
+                slave_send_size: 0x0400,
+                supported_protocols: MailboxProtocols::EOE
+                    | MailboxProtocols::COE
+                    | MailboxProtocols::FOE,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn default_mailbox_config_matches_sms() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        let sms = e.sync_managers().await.expect("Read sync managers");
+
+        let mbox = e.mailbox_config().await.expect("Read mailbox config");
+
+        assert_eq!(
+            mbox.slave_receive_offset, sms[0].start_addr,
+            "slave_receive_offset"
+        );
+        assert_eq!(mbox.slave_receive_size, sms[0].length, "slave_receive_size");
+        assert_eq!(
+            mbox.slave_send_offset, sms[1].start_addr,
+            "slave_send_offset"
+        );
+        assert_eq!(mbox.slave_send_size, sms[1].length, "slave_send_size");
     }
 }
