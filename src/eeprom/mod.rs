@@ -208,7 +208,7 @@ where
         // If there is more to read, read chunks from provider until buffer is full. The remaining
         // `buf` will be empty if the cache completely fulfilled our request so this loop won't
         // execute in that case.
-        while buf.len() > 0 {
+        while !buf.is_empty() {
             let res = self.reader.read_chunk(self.read_pointer).await?;
             self.read_pointer += res.len() as u16 / 2;
 

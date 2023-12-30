@@ -347,13 +347,13 @@ mod tests {
                     .expect("send");
 
                 // Munge fake sent frame into a fake received frame
-                let written_packet = {
+                
+
+                {
                     let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
                     frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
                     frame.into_inner()
-                };
-
-                written_packet
+                }
             });
 
             let Poll::Ready(written_packet) = send_fut.poll(ctx) else {

@@ -21,7 +21,7 @@ impl<const CHUNK: usize> Clone for EepromFile<CHUNK> {
         Self {
             path: self.path.clone(),
             file: File::open(&self.path).expect("Could not open EEPROM file in clone"),
-            buf: self.buf.clone(),
+            buf: self.buf,
         }
     }
 }
@@ -70,12 +70,12 @@ impl<const CHUNK: usize> EepromDataProvider for EepromFile<CHUNK> {
         // read.
         let buf_len = self.buf.len().min(file_len - usize::from(start_word * 2));
 
-        let mut buf = &mut self.buf[0..buf_len];
+        let buf = &mut self.buf[0..buf_len];
 
         assert!(buf_len == 4 || buf_len == 8);
 
         self.file
-            .read_exact(&mut buf)
+            .read_exact(buf)
             .expect("Could not read from EEPROM file");
 
         Ok(buf)

@@ -177,7 +177,7 @@ where
             let fmmus = reader.read(&mut buf).await?;
 
             buf[0..fmmus]
-                .into_iter()
+                .iter()
                 .map(|raw| {
                     FmmuUsage::try_from_primitive(*raw).map_err(|_e| {
                         #[cfg(feature = "std")]
@@ -327,12 +327,12 @@ where
             }
 
             let mut buf = [0u8; N];
-            let mut bytes = &mut buf[0..string_len.into()];
-            reader.read_exact(&mut bytes).await?;
+            let bytes = &mut buf[0..string_len.into()];
+            reader.read_exact(bytes).await?;
 
             fmt::trace!("--> Raw string bytes {:?}", bytes);
 
-            let s = core::str::from_utf8(&bytes).map_err(|_e| {
+            let s = core::str::from_utf8(bytes).map_err(|_e| {
                 #[cfg(feature = "std")]
                 fmt::error!("Invalid UTF8: {}", _e);
 

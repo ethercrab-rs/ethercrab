@@ -590,11 +590,11 @@ mod tests {
         let el2828 = &parents[4];
 
         assert_eq!(
-            find_slave_parent(&ek1100_2_parents, &ek1100_2).unwrap(),
+            find_slave_parent(ek1100_2_parents, ek1100_2).unwrap(),
             Some(1)
         );
         assert_eq!(
-            find_slave_parent(&el2828_parents, &el2828).unwrap(),
+            find_slave_parent(el2828_parents, el2828).unwrap(),
             Some(ek1100_2.index)
         );
     }
@@ -794,7 +794,7 @@ mod tests {
         let expected = {
             let mut expected = slaves.clone();
 
-            expected.iter_mut().zip(downstreams.into_iter()).for_each(
+            expected.iter_mut().zip(downstreams).for_each(
                 |(slave, ([d0, d3, d1, d2], parent_index, propagation_delay))| {
                     slave.ports.set_downstreams(d0, d3, d1, d2);
 
@@ -909,7 +909,7 @@ mod tests {
         let expected = {
             let mut expected = slaves.clone();
 
-            expected.iter_mut().zip(downstreams.into_iter()).for_each(
+            expected.iter_mut().zip(downstreams).for_each(
                 |(slave, ([d0, d3, d1, d2], parent_index, propagation_delay))| {
                     slave.ports.set_downstreams(d0, d3, d1, d2);
 

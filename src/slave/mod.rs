@@ -110,16 +110,16 @@ impl PartialEq for Slave {
 impl Clone for Slave {
     fn clone(&self) -> Self {
         Self {
-            configured_address: self.configured_address.clone(),
+            configured_address: self.configured_address,
             config: self.config.clone(),
-            identity: self.identity.clone(),
+            identity: self.identity,
             name: self.name.clone(),
             flags: self.flags.clone(),
-            ports: self.ports.clone(),
-            dc_receive_time: self.dc_receive_time.clone(),
-            index: self.index.clone(),
-            parent_index: self.parent_index.clone(),
-            propagation_delay: self.propagation_delay.clone(),
+            ports: self.ports,
+            dc_receive_time: self.dc_receive_time,
+            index: self.index,
+            parent_index: self.parent_index,
+            propagation_delay: self.propagation_delay,
             mailbox_counter: AtomicU8::new(self.mailbox_counter.load(Ordering::Acquire)),
         }
     }
