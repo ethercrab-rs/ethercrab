@@ -12,57 +12,11 @@ pub mod types;
 #[cfg(feature = "std")]
 pub mod file_reader;
 
-// pub trait ChunkReaderTraitLol {
-//     async fn read_chunk(
-//         &mut self,
-//         start_word: u16,
-//     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error>;
-
-//     fn seek_to_word(&mut self, word: u16);
-// }
-
 /// A data source for EEPROM reads.
 ///
 /// This provides a method `reader` which creates handles into the underlying storage.
 pub trait EepromDataProvider: Clone {
     async fn read_chunk(&mut self, start_word: u16) -> Result<impl Deref<Target = [u8]>, Error>;
-
-    // /// Find the length in bytes of the EEPROM.
-    // // Internal only so I don't mind
-    // #[allow(async_fn_in_trait)]
-    // async fn len(&self) -> Result<u16, Error> {
-    //     let mut reader = self.reader();
-
-    //     reader
-    //         .seek(SeekFrom::Start(SII_FIRST_CATEGORY_START.into()))
-    //         .await?;
-
-    //     let mut len_bytes = SII_FIRST_CATEGORY_START * 2;
-
-    //     loop {
-    //         let mut category_type = [0u8; 2];
-    //         let mut len_words = [0u8; 2];
-
-    //         reader.read_exact(&mut category_type).await?;
-    //         reader.read_exact(&mut len_words).await?;
-
-    //         // Add header
-    //         len_bytes += 4;
-
-    //         let category_type = CategoryType::from(u16::from_le_bytes(category_type));
-    //         let len_words = u16::from_le_bytes(len_words);
-
-    //         if let CategoryType::End = category_type {
-    //             break Ok(len_bytes);
-    //         }
-
-    //         // Now add category data length
-    //         len_bytes += len_words * 2;
-
-    //         // Next category starts after the current category's data. Seek takes a WORD address
-    //         reader.seek(SeekFrom::Current(len_words.into())).await?;
-    //     }
-    // }
 }
 
 impl embedded_io_async::Error for Error {
@@ -168,45 +122,6 @@ where
         );
 
         self.cache = fmt::unwrap!(heapless::Vec::from_slice(trimmed));
-
-        // ---
-
-        // todo!();
-
-        // // Move forward in the cache and discard bytes in the cache before the position we're
-        // // skipping too.
-        // if usize::from(skip) <= self.cache.len() {
-        //     self.cache = fmt::unwrap!(heapless::Vec::from_slice(&self.cache[usize::from(skip)..]));
-        // }
-        // // If we've skipped past the existing cache, read a word-aligned chunk and discard the first
-        // // byte if the skip length is odd to re-align everything to byte boundaries.
-        // else {
-        //     self.pos = self.read_pointer;
-
-        //     let chunk = self.reader.read_chunk(self.pos / 2).await?;
-
-        //     let chunk = chunk.deref();
-
-        //     // Word address is rounded down so we discard the first byte in the read chunk to
-        //     // re-align to the byte position if it's odd. If it's even we don't need to do anything.
-        //     let discard_len = usize::from(self.pos % 2);
-
-        //     let new_cache = &chunk[discard_len..];
-
-        //     fmt::trace!(
-        //         "Discarding {} bytes to realign word read to byte boundaries. Pos is {:#06x?}, chunk is {:02x?}, new cache is {:02x?}",
-        //         discard_len,
-        //         self.pos,
-        //         chunk,
-        //         new_cache
-        //     );
-
-        //     self.cache = fmt::unwrap!(heapless::Vec::from_slice(new_cache));
-
-        //     // Next read will be after this current chunk we've just put in the cache
-        //     self.pos += chunk.len() as u16;
-        //     self.read_pointer = self.pos;
-        // }
 
         Ok(())
     }

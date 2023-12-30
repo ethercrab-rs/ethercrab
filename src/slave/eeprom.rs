@@ -40,27 +40,12 @@ where
     /// Search for a given category and return a reader over the bytes contained within the category
     /// if it is found.
     async fn category(&self, category: CategoryType) -> Result<Option<ChunkReader<P>>, Error> {
-        // let mut reader = ChunkReader::new(self.provider.clone(), 0, u16::MAX);
-
         let mut reader = self.provider.clone();
-
-        // reader
-        //     .seek_to_word(SeekFrom::Start(SII_FIRST_CATEGORY_START.into()))
-        //     .await?;
 
         let mut word_addr = SII_FIRST_CATEGORY_START;
 
         loop {
-            // let mut category_type = [0u8; 2];
-            // let mut len_words = [0u8; 2];
-
             let chunk = reader.read_chunk(word_addr).await?;
-
-            // category_type.copy_from_slice(&chunk[0..2]);
-            // len_words.copy_from_slice(&chunk[0..2]);
-
-            // reader.read_exact(&mut category_type).await?;
-            // reader.read_exact(&mut len_words).await?;
 
             word_addr += 2;
 
@@ -90,10 +75,6 @@ where
 
             // Next category starts after the current category's data. This is a WORD address.
             word_addr += len_words;
-
-            // reader
-            //     .seek_to_word(SeekFrom::Current(len_words.into()))
-            //     .await?;
         }
     }
 
@@ -331,7 +312,6 @@ where
             }
 
             for i in 0..search_index {
-                // let string_len = reader.try_next().await?;
                 let mut buf = [0u8; 1];
                 reader.read_exact(&mut buf).await?;
                 let string_len = buf[0];
@@ -341,7 +321,6 @@ where
                 reader.skip_ahead_bytes(string_len.into()).await?;
             }
 
-            // let string_len = usize::from(reader.try_next().await?);
             let mut buf = [0u8; 1];
             reader.read_exact(&mut buf).await?;
             let string_len = buf[0];
@@ -357,14 +336,6 @@ where
             let mut bytes = &mut buf[0..string_len.into()];
 
             reader.read_exact(&mut bytes).await?;
-
-            // let bytes = reader
-            //     .take_vec_len_exact::<N>(string_len)
-            //     .await
-            //     .map_err(|_| Error::StringTooLong {
-            //         max_length: N,
-            //         string_length: string_len,
-            //     })?;
 
             fmt::trace!("--> Raw string bytes {:?}", bytes);
 
