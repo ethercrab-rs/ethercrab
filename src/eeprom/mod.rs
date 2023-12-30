@@ -152,8 +152,16 @@ where
 
         let trimmed = &res[discard..];
 
+        #[cfg(not(feature = "defmt"))]
         fmt::trace!(
             "--> Discard {} bytes, cache from {:02x?} -> {:02x?}",
+            discard,
+            res.deref(),
+            trimmed
+        );
+        #[cfg(feature = "defmt")]
+        fmt::trace!(
+            "--> Discard {} bytes, cache from {=[u8]} -> {=[u8]}",
             discard,
             res.deref(),
             trimmed
@@ -236,8 +244,15 @@ where
         let (cached, cache_rest) = self.cache.split_at(buf.len().min(self.cache.len()));
 
         if !cached.is_empty() {
+            #[cfg(not(feature = "defmt"))]
             fmt::trace!(
                 "--> Cache has existing data: {:02x?} : {:02x?}",
+                cached,
+                cache_rest
+            );
+            #[cfg(feature = "defmt")]
+            fmt::trace!(
+                "--> Cache has existing data: {=[u8]} : {=[u8]}",
                 cached,
                 cache_rest
             );
@@ -278,8 +293,6 @@ where
                 // Unwrap: logic bug! The returned chunk must be either 4 or 8 bytes, and we have a
                 // vec of 8 bytes in length, so this should not fail if everything is correct.
                 self.cache = fmt::unwrap!(heapless::Vec::from_slice(into_cache));
-
-                fmt::trace!("----> Chunk is done. Cache has: {:02x?}", self.cache);
 
                 break;
             }

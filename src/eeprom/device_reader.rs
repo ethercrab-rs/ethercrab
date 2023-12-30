@@ -81,7 +81,7 @@ impl<'slave> EepromDataProvider for SiiDataProvider<'slave> {
                 #[cfg(not(feature = "defmt"))]
                 fmt::trace!("Read addr {:#06x}: {:02x?}", start_word, data);
                 #[cfg(feature = "defmt")]
-                fmt::trace!("Read addr {:#06x}: {=[u8]}", eeprom_address, data);
+                fmt::trace!("Read addr {:#06x}: {=[u8]}", start_word, data);
 
                 data
             })
