@@ -1,11 +1,10 @@
 use core::ops::Deref;
 
-use self::{device_reader::SII_FIRST_CATEGORY_START, types::CategoryType};
 use crate::{
     error::{EepromError, Error},
     fmt,
 };
-use embedded_io_async::{ErrorType, Read, ReadExactError, Seek, SeekFrom};
+use embedded_io_async::{ErrorType, Read, ReadExactError};
 
 pub mod device_reader;
 pub mod types;
@@ -120,14 +119,12 @@ impl<P> ChunkReader<P> {
             return Err(Error::Eeprom(EepromError::SectionOverrun));
         }
 
+        self.pos += skip;
+
         // Move forward in the cache and discard bytes in the cache before the position we're
         // skipping too.
         if usize::from(skip) <= self.cache.len() {
-            self.pos += skip;
-
-            let (_discard, rest) = self.cache.split_at(usize::from(skip));
-
-            self.cache = fmt::unwrap!(heapless::Vec::from_slice(rest));
+            self.cache = fmt::unwrap!(heapless::Vec::from_slice(&self.cache[usize::from(skip)..]));
         }
         // If we've skipped past the existing cache, read a word-aligned chunk and discard the first
         // byte if the skip length is odd to re-align everything to byte boundaries.
@@ -144,9 +141,9 @@ where
     P: EepromDataProvider,
 {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        fmt::trace!("Read chunk");
+        fmt::trace!("Read EEPROM chunk from byte pos {:#06x}", self.pos);
 
-        let DELETEME = buf.len();
+        let requested_read_len = buf.len();
 
         let max_read = usize::from(self.end - self.pos);
 
@@ -158,16 +155,21 @@ where
 
         let buf_len = buf.len();
 
-        // Clamp buffer to whatever's left to read in this chunk
+        // We can't read past the end of the chunk, so clamp the buffer's length to the remaining
+        // part of the chunk if necessary.
         let buf = &mut buf[0..buf_len.min(max_read)];
 
-        // Split off existing cache buffer and write into buf
-        let (cached, rest) = self.cache.split_at(buf.len().min(self.cache.len()));
+        // If there's any current cached data, split off existing cache buffer and write into result
+        // buf
+        let (cached, cache_rest) = self.cache.split_at(buf.len().min(self.cache.len()));
 
+        // Make sure the bit of the buffer we're copying into matches the cache chunk length
         let (start, mut buf) = buf.split_at_mut(cached.len());
 
         start.copy_from_slice(cached);
 
+        // Move byte position further along the EEPROM address space by however much cache we've
+        // taken.
         self.pos += cached.len() as u16;
         bytes_read += cached.len();
 
@@ -175,30 +177,21 @@ where
         //
         // This should never panic as the source data is the same type, so it can be at most exactly
         // the same length, or shorter.
-        self.cache = fmt::unwrap!(heapless::Vec::from_slice(rest));
+        self.cache = fmt::unwrap!(heapless::Vec::from_slice(cache_rest));
 
-        // If there is more to read, read chunks from provider until buffer is full
+        // If there is more to read, read chunks from provider until buffer is full. The remaining
+        // `buf` will be empty if the cache completely fulfilled our request so this loop won't
+        // execute in that case.
         while buf.len() > 0 {
-            fmt::trace!(
-                "----> Loop, buf len {} from pos {} {:02x}",
-                buf.len(),
-                self.pos,
-                self.pos
-            );
             let res = self.reader.read_chunk(self.pos / 2).await?;
 
+            // Next read will be after the chunk we've just read whether we use it all or not - the
+            // cache vec will take up the slack.
             self.pos += res.len() as u16;
 
             let chunk = res.deref();
 
-            fmt::trace!(
-                "----> Read loop pos {} {:02x}, chunk {:02x?}",
-                self.pos,
-                self.pos,
-                chunk
-            );
-
-            // Buffer is full. We're done.
+            // Buffer is full after reading this chunk into it. We're done.
             if buf.len() < chunk.len() {
                 let (chunk, into_cache) = chunk.split_at(buf.len());
 
@@ -217,160 +210,28 @@ where
 
             bytes_read += chunk.len();
 
-            // Buffer is not full. Write another chunk into it.
-            let (start, rest) = buf.split_at_mut(chunk.len());
+            // Buffer is not full. Write another chunk into the beginning of it.
+            let (buf_start, buf_rest) = buf.split_at_mut(chunk.len());
 
-            start.copy_from_slice(chunk);
+            buf_start.copy_from_slice(chunk);
 
-            fmt::trace!("--> Buf for next iter {}", rest.len());
+            fmt::trace!("--> Buf for next iter {}", buf_rest.len());
 
-            buf = rest;
+            // Shorten the buffer so the next write starts after the one we just did.
+            buf = buf_rest;
         }
 
-        // Store any remaining chunk in buffer for next read.
-
-        // ---
-
         fmt::trace!(
-            "--> Done. Read {} of requested {}, pos is now {:#06x}",
+            "--> Done. Read {} of requested {} B, pos is now {:#06x}",
             bytes_read,
-            DELETEME,
+            requested_read_len,
             self.pos
         );
 
         Ok(bytes_read)
-
-        // // We've read the entire category. We're finished now.
-        // if self.pos >= self.len {
-        //     return Ok(0);
-        // }
-
-        // // let buf_end = self.pos + buf.len() as u16;
-
-        // let clamped_buf_len = buf.len().min(usize::from(self.len - self.pos));
-
-        // dbg!(self.pos, self.len, buf.len(), clamped_buf_len);
-
-        // let mut buf = &mut buf[..clamped_buf_len];
-
-        // self.reader.read_exact(&mut buf).await?;
-
-        // self.pos += clamped_buf_len as u16;
-
-        // Ok(clamped_buf_len)
     }
 }
 
 impl<P> ErrorType for ChunkReader<P> {
     type Error = Error;
 }
-
-// // TODO: Delete all/as much of this as possible
-// impl<P> ChunkReader<P>
-// where
-//     P: EepromDataProvider,
-// {
-//     pub fn new(reader: P, len: u16) -> Self {
-//         Self {
-//             reader,
-//             pos: 0,
-//             len,
-//         }
-//     }
-
-//     /// Skip a given number of addresses (note: not bytes).
-//     pub async fn skip(&mut self, skip: u16) -> Result<(), Error> {
-//         // TODO: Optimise by calculating new skip address instead of just iterating through chunks
-//         for _ in 0..skip {
-//             self.next().await?;
-//         }
-
-//         Ok(())
-//     }
-
-//     pub async fn next(&mut self) -> Result<Option<u8>, Error> {
-//         let mut buf = [0u8; 1];
-
-//         // We've read the entire category. We're finished now.
-//         if self.pos >= self.len {
-//             return Ok(None);
-//         }
-
-//         self.reader.read_exact(&mut buf).await?;
-
-//         self.pos += 1;
-
-//         Ok(Some(buf[0]))
-//     }
-
-//     /// Try reading the next chunk in the current section.
-//     pub async fn try_next(&mut self) -> Result<u8, Error> {
-//         match self.next().await? {
-//             Some(value) => Ok(value),
-//             None => Err(Error::Eeprom(EepromError::SectionOverrun)),
-//         }
-//     }
-
-//     /// Attempt to read exactly `N` bytes. If not enough data could be read, this method returns an
-//     /// error.
-//     pub async fn take_vec_exact<const N: usize>(&mut self) -> Result<heapless::Vec<u8, N>, Error> {
-//         self.take_vec()
-//             .await?
-//             .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
-//     }
-
-//     /// Read up to `N` bytes. If not enough data could be read, this method will return `Ok(None)`.
-//     pub async fn take_vec<const N: usize>(
-//         &mut self,
-//     ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
-//         self.take_vec_len(N).await
-//     }
-
-//     /// Try to take `len` bytes, returning an error if the buffer length `N` is too small.
-//     ///
-//     /// If not enough data could be read, this method returns an error.
-//     pub async fn take_vec_len_exact<const N: usize>(
-//         &mut self,
-//         len: usize,
-//     ) -> Result<heapless::Vec<u8, N>, Error> {
-//         self.take_vec_len(len)
-//             .await?
-//             .ok_or(Error::Eeprom(EepromError::SectionUnderrun))
-//     }
-
-//     /// Try to take `len` bytes, returning an error if the buffer length `N` is too small.
-//     ///
-//     /// If not enough data can be read to fill the buffer, this method will return `Ok(None)`.
-//     async fn take_vec_len<const N: usize>(
-//         &mut self,
-//         len: usize,
-//     ) -> Result<Option<heapless::Vec<u8, N>>, Error> {
-//         let mut buf = heapless::Vec::new();
-
-//         let mut count = 0;
-
-//         loop {
-//             // We've collected the requested number of bytes
-//             if count >= len {
-//                 break Ok(Some(buf));
-//             }
-
-//             // If buffer is full, we'd end up with truncated data, so error out.
-//             if buf.is_full() {
-//                 fmt::error!("take_vec_len output buffer is full");
-
-//                 break Err(Error::Eeprom(EepromError::SectionOverrun));
-//             }
-
-//             if let Some(byte) = self.next().await? {
-//                 // SAFETY: We check for buffer space using is_full above
-//                 unsafe { buf.push_unchecked(byte) };
-
-//                 count += 1;
-//             } else {
-//                 // Not enough data to fill the buffer
-//                 break Ok(None);
-//             }
-//         }
-//     }
-// }
