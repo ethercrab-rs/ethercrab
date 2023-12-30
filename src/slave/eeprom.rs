@@ -350,7 +350,7 @@ where
 
                 fmt::trace!("String index {} has len {}", i, string_len);
 
-                reader.skip_ahead_bytes(string_len.into())?;
+                reader.skip_ahead_bytes(string_len.into()).await?;
             }
 
             // let string_len = usize::from(reader.try_next().await?);

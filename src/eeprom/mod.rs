@@ -87,14 +87,18 @@ pub struct ChunkReader<P> {
     reader: P,
     /// Current byte position in the entire address space.
     pos: u16,
-    // /// Chunk size in bytes.
-    // len: u16,
     /// The last byte address we're allowed to access.
     end: u16,
     cache: heapless::Vec<u8, 8>,
+
+    /// Position of last data that was actually asked for.
+    read_pointer: u16,
 }
 
-impl<P> ChunkReader<P> {
+impl<P> ChunkReader<P>
+where
+    P: EepromDataProvider,
+{
     pub fn new(reader: P, start_word: u16, len_words: u16) -> Self {
         Self {
             reader,
@@ -102,11 +106,12 @@ impl<P> ChunkReader<P> {
             // len: len_bytes,
             end: start_word * 2 + len_words * 2,
             cache: heapless::Vec::new(),
+            read_pointer: start_word * 2,
         }
     }
 
     /// Skip N bytes (NOT words) ahead of the current position.
-    pub fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), Error> {
+    pub async fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), Error> {
         fmt::trace!(
             "Skip EEPROM. Pos {:#06x}, skip by {} to {:#06x}, end {:#06x}",
             self.pos,
@@ -115,11 +120,11 @@ impl<P> ChunkReader<P> {
             self.end
         );
 
-        if self.pos + skip >= self.end {
+        if self.read_pointer + skip >= self.end {
             return Err(Error::Eeprom(EepromError::SectionOverrun));
         }
 
-        self.pos += skip;
+        self.read_pointer += skip;
 
         // Move forward in the cache and discard bytes in the cache before the position we're
         // skipping too.
@@ -129,7 +134,31 @@ impl<P> ChunkReader<P> {
         // If we've skipped past the existing cache, read a word-aligned chunk and discard the first
         // byte if the skip length is odd to re-align everything to byte boundaries.
         else {
-            todo!()
+            self.pos = self.read_pointer;
+
+            let chunk = self.reader.read_chunk(self.pos / 2).await?;
+
+            let chunk = chunk.deref();
+
+            // Word address is rounded down so we discard the first byte in the read chunk to
+            // re-align to the byte position if it's odd. If it's even we don't need to do anything.
+            let discard_len = usize::from(self.pos % 2);
+
+            let new_cache = &chunk[discard_len..];
+
+            fmt::trace!(
+                "Discarding {} bytes to realign word read to byte boundaries. Pos is {:#06x?}, chunk is {:02x?}, new cache is {:02x?}",
+                discard_len,
+                self.pos,
+                chunk,
+                new_cache
+            );
+
+            self.cache = fmt::unwrap!(heapless::Vec::from_slice(new_cache));
+
+            // Next read will be after this current chunk we've just put in the cache
+            self.pos += chunk.len() as u16;
+            self.read_pointer = self.pos;
         }
 
         Ok(())
@@ -162,6 +191,14 @@ where
         // If there's any current cached data, split off existing cache buffer and write into result
         // buf
         let (cached, cache_rest) = self.cache.split_at(buf.len().min(self.cache.len()));
+
+        if !cached.is_empty() {
+            fmt::trace!(
+                "--> Cache has existing data: {:02x?} : {:02x?}",
+                cached,
+                cache_rest
+            );
+        }
 
         // Make sure the bit of the buffer we're copying into matches the cache chunk length
         let (start, mut buf) = buf.split_at_mut(cached.len());
@@ -227,6 +264,8 @@ where
             requested_read_len,
             self.pos
         );
+
+        self.read_pointer += bytes_read as u16;
 
         Ok(bytes_read)
     }
