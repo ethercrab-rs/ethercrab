@@ -60,15 +60,25 @@ impl<const CHUNK: usize> EepromDataProvider for EepromFile<CHUNK> {
         &mut self,
         start_word: u16,
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
+        let file_len = self.file.metadata().unwrap().len() as usize;
+
         self.file
             .seek(std::io::SeekFrom::Start(u64::from(start_word) * 2))
             .expect("Bad seek!");
 
+        // Make sure a partial read off the end of the file is ok, e.g. 8 byte buffer but 4 byte
+        // read.
+        let buf_len = self.buf.len().min(file_len - usize::from(start_word * 2));
+
+        let mut buf = &mut self.buf[0..buf_len];
+
+        assert!(buf_len == 4 || buf_len == 8);
+
         self.file
-            .read_exact(&mut self.buf)
+            .read_exact(&mut buf)
             .expect("Could not read from EEPROM file");
 
-        Ok(self.buf.as_slice())
+        Ok(buf)
     }
 }
 
