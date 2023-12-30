@@ -81,8 +81,9 @@ where
             let len_words = u16::from_le_bytes(fmt::unwrap!(chunk[2..4].try_into()));
 
             fmt::trace!(
-                "Found category {:?}, length {:#04x} ({}) words",
+                "Found category {:?} at {:#06x} bytes, length {:#04x} ({}) words",
                 category_type,
+                word_addr * 2,
                 len_words,
                 len_words
             );
@@ -341,11 +342,13 @@ where
                 return Ok(None);
             }
 
-            for _ in 0..search_index {
+            for i in 0..search_index {
                 // let string_len = reader.try_next().await?;
                 let mut buf = [0u8; 1];
                 reader.read_exact(&mut buf).await?;
                 let string_len = buf[0];
+
+                fmt::trace!("String index {} has len {}", i, string_len);
 
                 reader.skip_ahead_bytes(string_len.into())?;
             }
@@ -362,7 +365,8 @@ where
                 });
             }
 
-            let mut bytes = [0u8; N];
+            let mut buf = [0u8; N];
+            let mut bytes = &mut buf[0..string_len.into()];
 
             reader.read_exact(&mut bytes).await?;
 
@@ -421,6 +425,8 @@ mod tests {
 
     #[tokio::test]
     async fn read_device_name() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2889.hex"));
 
         assert_eq!(
@@ -431,6 +437,8 @@ mod tests {
 
     #[tokio::test]
     async fn sync_managers() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         let expected = [
@@ -496,6 +504,8 @@ mod tests {
 
     #[tokio::test]
     async fn empty_string() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
 
         // Ensure we have at least one string.
@@ -510,6 +520,8 @@ mod tests {
 
     #[tokio::test]
     async fn short_buffer() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         // Pick a decently long string from the EEPROM file. This is just an arbitrary index.
@@ -537,6 +549,8 @@ mod tests {
 
     #[tokio::test]
     async fn strings() -> Result<(), Error> {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         let mut strings = Vec::new();

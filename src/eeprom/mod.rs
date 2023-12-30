@@ -99,23 +99,41 @@ impl<P> ChunkReader<P> {
     pub fn new(reader: P, start_word: u16, len_words: u16) -> Self {
         Self {
             reader,
-            pos: dbg!(start_word * 2),
+            pos: start_word * 2,
             // len: len_bytes,
-            end: dbg!(start_word * 2 + len_words * 2),
+            end: start_word * 2 + len_words * 2,
             cache: heapless::Vec::new(),
         }
     }
 
     /// Skip N bytes (NOT words) ahead of the current position.
     pub fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), Error> {
-        if self.pos + skip >= self.end {
-            println!("Oh no");
+        fmt::trace!(
+            "Skip EEPROM. Pos {:#06x}, skip by {} to {:#06x}, end {:#06x}",
+            self.pos,
+            skip,
+            self.pos + skip,
+            self.end
+        );
 
+        if self.pos + skip >= self.end {
             return Err(Error::Eeprom(EepromError::SectionOverrun));
         }
 
-        self.pos += skip;
-        self.cache.clear();
+        // Move forward in the cache and discard bytes in the cache before the position we're
+        // skipping too.
+        if usize::from(skip) <= self.cache.len() {
+            self.pos += skip;
+
+            let (_discard, rest) = self.cache.split_at(usize::from(skip));
+
+            self.cache = fmt::unwrap!(heapless::Vec::from_slice(rest));
+        }
+        // If we've skipped past the existing cache, read a word-aligned chunk and discard the first
+        // byte if the skip length is odd to re-align everything to byte boundaries.
+        else {
+            todo!()
+        }
 
         Ok(())
     }
@@ -126,42 +144,32 @@ where
     P: EepromDataProvider,
 {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        fmt::trace!("Read chunk");
+
         let DELETEME = buf.len();
 
         let max_read = usize::from(self.end - self.pos);
 
         let mut bytes_read = 0;
 
-        dbg!(max_read);
-
         if max_read == 0 {
             return Ok(0);
         }
-
-        dbg!(buf.len(), self.end);
 
         let buf_len = buf.len();
 
         // Clamp buffer to whatever's left to read in this chunk
         let buf = &mut buf[0..buf_len.min(max_read)];
 
-        dbg!(buf.len());
-
         // Split off existing cache buffer and write into buf
         let (cached, rest) = self.cache.split_at(buf.len().min(self.cache.len()));
 
-        dbg!(self.pos, cached, rest);
-
         let (start, mut buf) = buf.split_at_mut(cached.len());
-
-        dbg!(&start, &buf);
 
         start.copy_from_slice(cached);
 
         self.pos += cached.len() as u16;
         bytes_read += cached.len();
-
-        dbg!(self.pos);
 
         // Re-store any remaining cached data ready for the next read.
         //
@@ -171,8 +179,8 @@ where
 
         // If there is more to read, read chunks from provider until buffer is full
         while buf.len() > 0 {
-            println!(
-                "Loop, buf len {} from pos {} {:#04x}",
+            fmt::trace!(
+                "----> Loop, buf len {} from pos {} {:02x}",
                 buf.len(),
                 self.pos,
                 self.pos
@@ -183,9 +191,11 @@ where
 
             let chunk = res.deref();
 
-            println!(
-                "read loop pos {} {:#04x}, chunk {:#04x?}",
-                self.pos, self.pos, chunk
+            fmt::trace!(
+                "----> Read loop pos {} {:02x}, chunk {:02x?}",
+                self.pos,
+                self.pos,
+                chunk
             );
 
             // Buffer is full. We're done.
@@ -200,7 +210,7 @@ where
                 // vec of 8 bytes in length, so this should not fail if everything is correct.
                 self.cache = fmt::unwrap!(heapless::Vec::from_slice(into_cache));
 
-                println!("Chunk is done. Cache has: {:#04x?}", self.cache);
+                fmt::trace!("----> Chunk is done. Cache has: {:02x?}", self.cache);
 
                 break;
             }
@@ -212,7 +222,7 @@ where
 
             start.copy_from_slice(chunk);
 
-            println!("Buf for next iter {}", rest.len());
+            fmt::trace!("--> Buf for next iter {}", rest.len());
 
             buf = rest;
         }
@@ -221,7 +231,12 @@ where
 
         // ---
 
-        println!("Done. Read {} of requested {}", bytes_read, DELETEME);
+        fmt::trace!(
+            "--> Done. Read {} of requested {}, pos is now {:#06x}",
+            bytes_read,
+            DELETEME,
+            self.pos
+        );
 
         Ok(bytes_read)
 
