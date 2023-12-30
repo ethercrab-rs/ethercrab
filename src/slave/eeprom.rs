@@ -30,18 +30,6 @@ where
 
     /// Start a reader at the given address in words, returning at most `len` bytes.
     async fn start_at(&self, word_addr: u16, len_bytes: u16) -> Result<ChunkReader<P>, Error> {
-        // let mut r = self.provider.reader();
-
-        // r.seek_to_word(SeekFrom::Start(word_addr.into())).await?;
-
-        println!(
-            "Word addr {} {:#04x}, len bytes {} ({} w)",
-            word_addr,
-            word_addr,
-            len_bytes,
-            len_bytes / 2
-        );
-
         Ok(ChunkReader::new(
             self.provider.clone(),
             word_addr,
