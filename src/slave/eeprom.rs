@@ -686,4 +686,19 @@ mod tests {
 
         assert_eq!(e.fmmus().await, Ok(heapless::Vec::new()));
     }
+
+    #[tokio::test]
+    async fn identity() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        assert_eq!(
+            e.identity().await,
+            Ok(SlaveIdentity {
+                vendor_id: 0x0000006a,
+                product_id: 0x00414b44,
+                revision: 2,
+                serial: 2575499411,
+            })
+        );
+    }
 }
