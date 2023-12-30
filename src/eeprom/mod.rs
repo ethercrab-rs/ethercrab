@@ -13,9 +13,8 @@ pub mod types;
 pub mod file_reader;
 
 /// A data source for EEPROM reads.
-///
-/// This provides a method `reader` which creates handles into the underlying storage.
 pub trait EepromDataProvider: Clone {
+    /// Read a chunk of either 4 or 8 bytes from the backing store.
     async fn read_chunk(&mut self, start_word: u16) -> Result<impl Deref<Target = [u8]>, Error>;
 }
 

@@ -17,7 +17,7 @@ use crate::{
     },
     command::Command,
     dl_status::DlStatus,
-    eeprom::{device_reader::SiiDataProvider, types::SiiOwner},
+    eeprom::{device_reader::DeviceEeprom, types::SiiOwner},
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::MailboxType,
@@ -700,8 +700,8 @@ impl<'a, S> SlaveRef<'a, S> {
         Ok((status, code))
     }
 
-    fn eeprom(&self) -> SlaveEeprom<SiiDataProvider> {
-        SlaveEeprom::new(SiiDataProvider::new(&self.client))
+    fn eeprom(&self) -> SlaveEeprom<DeviceEeprom> {
+        SlaveEeprom::new(DeviceEeprom::new(&self.client))
     }
 
     /// Read a register.

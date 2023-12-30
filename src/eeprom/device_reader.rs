@@ -17,20 +17,17 @@ pub(crate) const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 
 /// EEPROM data provider that communicates with a physical sub device.
 #[derive(Clone)]
-pub struct SiiDataProvider<'slave> {
+pub struct DeviceEeprom<'slave> {
     client: &'slave SlaveClient<'slave>,
 }
 
-impl<'slave> SiiDataProvider<'slave> {
-    /// Create a new provider.
-    ///
-    /// Call `reader` to get a handle to read/seek the EEPROM.
+impl<'slave> DeviceEeprom<'slave> {
     pub fn new(client: &'slave SlaveClient<'slave>) -> Self {
         Self { client }
     }
 }
 
-impl<'slave> EepromDataProvider for SiiDataProvider<'slave> {
+impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
     async fn read_chunk(
         &mut self,
         start_word: u16,

@@ -8,7 +8,7 @@ use embedded_io_async::Read;
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    internals::{EepromDataProvider, SiiDataProvider, SlaveClient},
+    internals::{DeviceEeprom, EepromDataProvider, SlaveClient},
     std::tx_rx_task,
     Client, ClientConfig, PduStorage, SlaveGroupState, Timeouts,
 };
@@ -82,7 +82,7 @@ async fn main() -> Result<(), Error> {
 
     let slave_client = SlaveClient::new(&client, base_address + index);
 
-    let provider = SiiDataProvider::new(&slave_client);
+    let provider = DeviceEeprom::new(&slave_client);
 
     let len = provider.len().await.expect("Len");
 
