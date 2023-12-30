@@ -301,9 +301,7 @@ where
         let search_index = search_index - 1;
 
         if let Some(mut reader) = self.category(CategoryType::Strings).await? {
-            let mut buf = [0u8; 1];
-            reader.read_exact(&mut buf).await?;
-            let num_strings = buf[0];
+            let num_strings = reader.read_byte().await?;
 
             fmt::trace!("--> Slave has {} strings", num_strings);
 
@@ -312,18 +310,14 @@ where
             }
 
             for i in 0..search_index {
-                let mut buf = [0u8; 1];
-                reader.read_exact(&mut buf).await?;
-                let string_len = buf[0];
+                let string_len = reader.read_byte().await?;
 
                 fmt::trace!("String index {} has len {}", i, string_len);
 
                 reader.skip_ahead_bytes(string_len.into()).await?;
             }
 
-            let mut buf = [0u8; 1];
-            reader.read_exact(&mut buf).await?;
-            let string_len = buf[0];
+            let string_len = reader.read_byte().await?;
 
             if usize::from(string_len) > N {
                 return Err(Error::StringTooLong {
@@ -334,7 +328,6 @@ where
 
             let mut buf = [0u8; N];
             let mut bytes = &mut buf[0..string_len.into()];
-
             reader.read_exact(&mut bytes).await?;
 
             fmt::trace!("--> Raw string bytes {:?}", bytes);

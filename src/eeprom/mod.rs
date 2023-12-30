@@ -36,16 +36,24 @@ impl From<ReadExactError<Error>> for Error {
 }
 
 /// An abstraction over a provider of EEPROM bytes that only allows a certain range to be read.
+///
+/// The provider `P` should be as simple as possible, simply returning chunks of data either 4 or 8
+/// bytes long. Other lengths are not tested as the EtherCAT specification requires/supports only 4
+/// or 8 byte SII reads.
 #[derive(Debug)]
 pub struct ChunkReader<P> {
     reader: P,
+
     /// Current logical byte position in the entire address space.
     ///
-    /// This is the last byte that was returned by the reader, and should be used as a base for skip
-    /// offsets.
+    /// This is the last byte that was returned to the caller by the reader, and should be used as a
+    /// base for skip offsets.
     pos: u16,
+
     /// The last byte address we're allowed to access.
     end: u16,
+
+    /// Extra data that was read from the device but not returned by calls to `read()`.
     cache: heapless::Vec<u8, 8>,
 
     /// Position of last data that was actually asked for, e.g. the next byte after the current
@@ -59,6 +67,7 @@ impl<P> ChunkReader<P>
 where
     P: EepromDataProvider,
 {
+    /// Create a new `ChunkReader`.
     pub fn new(reader: P, start_word: u16, len_words: u16) -> Self {
         Self {
             reader,
@@ -124,6 +133,15 @@ where
         self.cache = fmt::unwrap!(heapless::Vec::from_slice(trimmed));
 
         Ok(())
+    }
+
+    /// Read a single byte.
+    pub async fn read_byte(&mut self) -> Result<u8, Error> {
+        let mut buf = [0u8; 1];
+
+        self.read_exact(&mut buf).await?;
+
+        Ok(buf[0])
     }
 }
 
