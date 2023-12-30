@@ -259,3 +259,46 @@ where
 impl<P> ErrorType for ChunkReader<P> {
     type Error = Error;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::eeprom::file_reader::EepromFile;
+
+    #[tokio::test]
+    async fn skip_past_end() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/akd.hex"), 0, 32);
+
+        // Current position is zero, so 32 words = 64 bytes = ok
+        assert_eq!(r.skip_ahead_bytes(63).await, Ok(()), "63 bytes");
+
+        let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/akd.hex"), 0, 32);
+
+        // Off by one errors are always fun
+        assert_eq!(
+            r.skip_ahead_bytes(64).await,
+            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            "64 bytes"
+        );
+
+        let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/akd.hex"), 0, 32);
+
+        // 65 is one byte off the end
+        assert_eq!(
+            r.skip_ahead_bytes(65).await,
+            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            "65 bytes"
+        );
+
+        let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/akd.hex"), 0, 32);
+
+        // Madness
+        assert_eq!(
+            r.skip_ahead_bytes(10000).await,
+            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            "10000 bytes"
+        );
+    }
+}
