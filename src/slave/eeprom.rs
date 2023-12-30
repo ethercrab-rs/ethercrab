@@ -656,4 +656,34 @@ mod tests {
         );
         assert_eq!(mbox.slave_send_size, sms[1].length, "slave_send_size");
     }
+
+    #[tokio::test]
+    async fn get_fmmu_usage() {
+        assert_eq!(
+            SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"))
+                .fmmus()
+                .await,
+            Ok(heapless::Vec::from_slice(&[
+                FmmuUsage::Outputs,
+                FmmuUsage::Inputs,
+                FmmuUsage::SyncManagerStatus,
+                FmmuUsage::Unused,
+            ])
+            .unwrap())
+        );
+
+        assert_eq!(
+            SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"))
+                .fmmus()
+                .await,
+            Ok(heapless::Vec::from_slice(&[FmmuUsage::Outputs, FmmuUsage::Unused,]).unwrap())
+        );
+    }
+
+    #[tokio::test]
+    async fn no_fmmus() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+
+        assert_eq!(e.fmmus().await, Ok(heapless::Vec::new()));
+    }
 }
