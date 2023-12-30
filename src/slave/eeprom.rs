@@ -1,6 +1,3 @@
-use embedded_io_async::{Read, Seek, SeekFrom};
-use num_enum::TryFromPrimitive;
-
 use crate::{
     eeprom::types::{
         CategoryType, DefaultMailbox, FromEeprom, PdoEntry, SiiGeneral, RX_PDO_RANGE, TX_PDO_RANGE,
@@ -15,6 +12,8 @@ use crate::{
     slave::SlaveIdentity,
 };
 use core::{ops::RangeInclusive, str::FromStr};
+use embedded_io_async::Read;
+use num_enum::TryFromPrimitive;
 
 pub struct SlaveEeprom<P> {
     provider: P,
@@ -30,35 +29,56 @@ where
     }
 
     /// Start a reader at the given address in words, returning at most `len` bytes.
-    async fn start_at(&self, addr: u16, len: u16) -> Result<ChunkReader<P::Provider>, Error> {
-        let mut r = self.provider.reader();
+    async fn start_at(&self, word_addr: u16, len_bytes: u16) -> Result<ChunkReader<P>, Error> {
+        // let mut r = self.provider.reader();
 
-        r.seek(SeekFrom::Start(addr.into())).await?;
+        // r.seek_to_word(SeekFrom::Start(word_addr.into())).await?;
 
-        Ok(ChunkReader::new(r, len))
+        println!(
+            "Word addr {} {:#04x}, len bytes {} ({} w)",
+            word_addr,
+            word_addr,
+            len_bytes,
+            len_bytes / 2
+        );
+
+        Ok(ChunkReader::new(
+            self.provider.clone(),
+            word_addr,
+            len_bytes / 2,
+        ))
     }
 
     /// Search for a given category and return a reader over the bytes contained within the category
     /// if it is found.
-    async fn category(
-        &self,
-        category: CategoryType,
-    ) -> Result<Option<ChunkReader<P::Provider>>, Error> {
-        let mut reader = self.provider.reader();
+    async fn category(&self, category: CategoryType) -> Result<Option<ChunkReader<P>>, Error> {
+        // let mut reader = ChunkReader::new(self.provider.clone(), 0, u16::MAX);
 
-        reader
-            .seek(SeekFrom::Start(SII_FIRST_CATEGORY_START.into()))
-            .await?;
+        let mut reader = self.provider.clone();
+
+        // reader
+        //     .seek_to_word(SeekFrom::Start(SII_FIRST_CATEGORY_START.into()))
+        //     .await?;
+
+        let mut word_addr = SII_FIRST_CATEGORY_START;
 
         loop {
-            let mut category_type = [0u8; 2];
-            let mut len_words = [0u8; 2];
+            // let mut category_type = [0u8; 2];
+            // let mut len_words = [0u8; 2];
 
-            reader.read_exact(&mut category_type).await?;
-            reader.read_exact(&mut len_words).await?;
+            let chunk = reader.read_chunk(word_addr).await?;
 
-            let category_type = CategoryType::from(u16::from_le_bytes(category_type));
-            let len_words = u16::from_le_bytes(len_words);
+            // category_type.copy_from_slice(&chunk[0..2]);
+            // len_words.copy_from_slice(&chunk[0..2]);
+
+            // reader.read_exact(&mut category_type).await?;
+            // reader.read_exact(&mut len_words).await?;
+
+            word_addr += 2;
+
+            let category_type =
+                CategoryType::from(u16::from_le_bytes(fmt::unwrap!(chunk[0..2].try_into())));
+            let len_words = u16::from_le_bytes(fmt::unwrap!(chunk[2..4].try_into()));
 
             fmt::trace!(
                 "Found category {:?}, length {:#04x} ({}) words",
@@ -69,14 +89,22 @@ where
 
             match category_type {
                 cat if cat == category => {
-                    break Ok(Some(ChunkReader::new(reader, len_words * 2)));
+                    break Ok(Some(ChunkReader::new(
+                        self.provider.clone(),
+                        word_addr,
+                        len_words,
+                    )));
                 }
                 CategoryType::End => break Ok(None),
                 _ => (),
             }
 
-            // Next category starts after the current category's data. Seek takes a WORD address
-            reader.seek(SeekFrom::Current(len_words.into())).await?;
+            // Next category starts after the current category's data. This is a WORD address.
+            word_addr += len_words;
+
+            // reader
+            //     .seek_to_word(SeekFrom::Current(len_words.into()))
+            //     .await?;
         }
     }
 
@@ -110,9 +138,9 @@ where
 
         fmt::trace!("Get mailbox config");
 
-        let buf = reader
-            .take_vec_exact::<{ DefaultMailbox::STORAGE_SIZE }>()
-            .await?;
+        let mut buf = [0u8; { DefaultMailbox::STORAGE_SIZE }];
+
+        reader.read_exact(&mut buf).await?;
 
         DefaultMailbox::parse(&buf)
     }
@@ -123,9 +151,9 @@ where
             .await?
             .ok_or(Error::Eeprom(EepromError::NoCategory))?;
 
-        let buf = reader
-            .take_vec_exact::<{ SiiGeneral::STORAGE_SIZE }>()
-            .await?;
+        let mut buf = [0u8; { SiiGeneral::STORAGE_SIZE }];
+
+        reader.read_exact(&mut buf).await?;
 
         SiiGeneral::parse(&buf)
     }
@@ -137,10 +165,11 @@ where
 
         fmt::trace!("Get identity");
 
-        reader
-            .take_vec_exact::<{ SlaveIdentity::STORAGE_SIZE }>()
-            .await
-            .and_then(|buf| SlaveIdentity::parse(&buf))
+        let mut buf = [0u8; { SlaveIdentity::STORAGE_SIZE }];
+
+        reader.read_exact(&mut buf).await?;
+
+        SlaveIdentity::parse(&buf)
     }
 
     pub(crate) async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
@@ -149,8 +178,10 @@ where
         fmt::trace!("Get sync managers");
 
         if let Some(mut reader) = self.category(CategoryType::SyncManager).await? {
-            while let Some(bytes) = reader.take_vec::<{ SyncManager::STORAGE_SIZE }>().await? {
-                let sm = SyncManager::parse(&bytes)?;
+            let mut buf = [0u8; { SyncManager::STORAGE_SIZE }];
+
+            while reader.read(&mut buf).await? == SyncManager::STORAGE_SIZE {
+                let sm = SyncManager::parse(&buf)?;
 
                 sync_managers
                     .push(sm)
@@ -168,21 +199,28 @@ where
 
         fmt::trace!("Get FMMUs");
 
-        // ETG100.4 6.6.1 states there may be up to 16 FMMUs
-        let mut fmmus = heapless::Vec::<_, 16>::new();
+        let fmmus = if let Some(mut reader) = category {
+            // ETG100.4 6.6.1 states there may be up to 16 FMMUs
+            let mut buf = [0u8; 16];
 
-        if let Some(mut reader) = category {
-            while let Some(byte) = reader.next().await? {
-                let fmmu = FmmuUsage::try_from_primitive(byte).map_err(|_e| {
-                    #[cfg(feature = "std")]
-                    fmt::error!("Failed to decode FmmuUsage: {}", _e);
+            // Read entire category using its discovered length.
+            let fmmus = reader.read(&mut buf).await?;
 
-                    Error::Eeprom(EepromError::Decode)
-                })?;
+            buf[0..fmmus]
+                .into_iter()
+                .map(|raw| {
+                    FmmuUsage::try_from_primitive(*raw).map_err(|_e| {
+                        #[cfg(feature = "std")]
+                        fmt::error!("Failed to decode FmmuUsage: {}", _e);
 
-                fmmus.push(fmmu).map_err(|_| Error::Capacity(Item::Fmmu))?;
-            }
-        }
+                        Error::Eeprom(EepromError::Decode)
+                    })
+                })
+                .collect::<Result<heapless::Vec<_, 16>, Error>>()?
+        } else {
+            // Category was not found so no FMMUs are present.
+            heapless::Vec::<_, 16>::new()
+        };
 
         fmt::debug!("Discovered FMMUs:\n{:#?}", fmmus);
 
@@ -195,8 +233,10 @@ where
         fmt::trace!("Get FMMU mappings");
 
         if let Some(mut reader) = self.category(CategoryType::FmmuExtended).await? {
-            while let Some(bytes) = reader.take_vec::<{ FmmuEx::STORAGE_SIZE }>().await? {
-                let fmmu = FmmuEx::parse(&bytes)?;
+            let mut buf = [0u8; { FmmuEx::STORAGE_SIZE }];
+
+            while reader.read(&mut buf).await? == FmmuEx::STORAGE_SIZE {
+                let fmmu = FmmuEx::parse(&buf)?;
 
                 mappings
                     .push(fmmu)
@@ -219,8 +259,10 @@ where
         fmt::trace!("Get {:?} PDUs", direction);
 
         if let Some(mut reader) = self.category(CategoryType::from(direction)).await? {
-            while let Some(pdo) = reader.take_vec::<{ Pdo::STORAGE_SIZE }>().await? {
-                let mut pdo = Pdo::parse(&pdo).map_err(|e| {
+            let mut buf = [0u8; { Pdo::STORAGE_SIZE }];
+
+            while reader.read(&mut buf).await? == Pdo::STORAGE_SIZE {
+                let mut pdo = Pdo::parse(&buf).map_err(|e| {
                     fmt::error!("PDO: {:?}", e);
 
                     Error::Eeprom(EepromError::Decode)
@@ -235,18 +277,17 @@ where
                 }
 
                 for _ in 0..pdo.num_entries {
-                    let entry = reader
-                        .take_vec_exact::<{ PdoEntry::STORAGE_SIZE }>()
-                        .await
-                        .and_then(|bytes| {
-                            let entry = PdoEntry::parse(&bytes).map_err(|e| {
-                                fmt::error!("PDO entry: {:?}", e);
+                    let mut buf = [0u8; { PdoEntry::STORAGE_SIZE }];
 
-                                Error::Eeprom(EepromError::Decode)
-                            })?;
+                    let entry = reader.read_exact(&mut buf).await.and_then(|_| {
+                        let entry = PdoEntry::parse(&buf).map_err(|e| {
+                            fmt::error!("PDO entry: {:?}", e);
 
-                            Ok(entry)
+                            Error::Eeprom(EepromError::Decode)
                         })?;
+
+                        Ok(entry)
+                    })?;
 
                     pdo.entries
                         .push(entry)
@@ -290,7 +331,9 @@ where
         let search_index = search_index - 1;
 
         if let Some(mut reader) = self.category(CategoryType::Strings).await? {
-            let num_strings = reader.try_next().await?;
+            let mut buf = [0u8; 1];
+            reader.read_exact(&mut buf).await?;
+            let num_strings = buf[0];
 
             fmt::trace!("--> Slave has {} strings", num_strings);
 
@@ -299,20 +342,37 @@ where
             }
 
             for _ in 0..search_index {
-                let string_len = reader.try_next().await?;
+                // let string_len = reader.try_next().await?;
+                let mut buf = [0u8; 1];
+                reader.read_exact(&mut buf).await?;
+                let string_len = buf[0];
 
-                reader.skip(u16::from(string_len)).await?;
+                reader.skip_ahead_bytes(string_len.into())?;
             }
 
-            let string_len = usize::from(reader.try_next().await?);
+            // let string_len = usize::from(reader.try_next().await?);
+            let mut buf = [0u8; 1];
+            reader.read_exact(&mut buf).await?;
+            let string_len = buf[0];
 
-            let bytes = reader
-                .take_vec_len_exact::<N>(string_len)
-                .await
-                .map_err(|_| Error::StringTooLong {
+            if usize::from(string_len) > N {
+                return Err(Error::StringTooLong {
                     max_length: N,
-                    string_length: string_len,
-                })?;
+                    string_length: string_len.into(),
+                });
+            }
+
+            let mut bytes = [0u8; N];
+
+            reader.read_exact(&mut bytes).await?;
+
+            // let bytes = reader
+            //     .take_vec_len_exact::<N>(string_len)
+            //     .await
+            //     .map_err(|_| Error::StringTooLong {
+            //         max_length: N,
+            //         string_length: string_len,
+            //     })?;
 
             fmt::trace!("--> Raw string bytes {:?}", bytes);
 
