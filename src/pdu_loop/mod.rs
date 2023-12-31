@@ -347,7 +347,6 @@ mod tests {
                     .expect("send");
 
                 // Munge fake sent frame into a fake received frame
-                
 
                 {
                     let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
