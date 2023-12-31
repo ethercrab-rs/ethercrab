@@ -370,7 +370,10 @@ mod tests {
         base_data_types::PrimitiveDataType,
         eeprom::{
             file_reader::EepromFile,
-            types::{MailboxProtocols, PdoFlags, SyncManagerEnable, SyncManagerType},
+            types::{
+                CoeDetails, Flags, MailboxProtocols, PdoFlags, PortStatus, SyncManagerEnable,
+                SyncManagerType,
+            },
         },
         sync_manager_channel::{Control, Direction, OperationMode},
     };
@@ -726,5 +729,94 @@ mod tests {
                 serial: 2575499411,
             })
         );
+    }
+
+    #[tokio::test]
+    async fn get_general_akd() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        assert_eq!(
+            e.general().await,
+            Ok(SiiGeneral {
+                group_string_idx: 2,
+                image_string_idx: 5,
+                order_string_idx: 1,
+                name_string_idx: 4,
+                coe_details: CoeDetails::ENABLE_SDO
+                    | CoeDetails::ENABLE_PDO_ASSIGN
+                    | CoeDetails::ENABLE_PDO_CONFIG,
+                foe_enabled: true,
+                eoe_enabled: true,
+                flags: Flags::ENABLE_SAFE_OP | Flags::MAILBOX_DLL,
+                ebus_current: 0,
+                ports: [
+                    PortStatus::Ebus,
+                    PortStatus::Unused,
+                    PortStatus::Unused,
+                    PortStatus::Unused,
+                ],
+                physical_memory_addr: 0,
+            }),
+        );
+    }
+
+    #[tokio::test]
+    async fn get_general_ek1100() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+
+        assert_eq!(
+            e.general().await,
+            Ok(SiiGeneral {
+                group_string_idx: 2,
+                image_string_idx: 0,
+                order_string_idx: 1,
+                name_string_idx: 4,
+                coe_details: CoeDetails::empty(),
+                foe_enabled: false,
+                eoe_enabled: false,
+                flags: Flags::empty(),
+                ebus_current: -2000,
+                ports: [
+                    PortStatus::Ebus,
+                    PortStatus::Unused,
+                    PortStatus::Unused,
+                    PortStatus::Unused,
+                ],
+                physical_memory_addr: 0,
+            }),
+        );
+    }
+
+    #[tokio::test]
+    async fn akd_strings() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        let general = e.general().await.expect("Get general");
+
+        let group = e.find_string::<128>(general.group_string_idx).await;
+        let image = e.find_string::<128>(general.image_string_idx).await;
+        let order = e.find_string::<128>(general.order_string_idx).await;
+        let name = e.find_string::<128>(general.name_string_idx).await;
+
+        assert_eq!(group, Ok(Some("Drive".try_into().unwrap())));
+        assert_eq!(image, Ok(Some("DRIVE".try_into().unwrap())));
+        assert_eq!(order, Ok(Some("AKD".try_into().unwrap())));
+        assert_eq!(
+            name,
+            Ok(Some("AKD EtherCAT Drive (CoE)".try_into().unwrap()))
+        );
+    }
+
+    #[tokio::test]
+    async fn ek1100_string_no_image() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+
+        let general = e.general().await.expect("Get general");
+
+        assert_eq!(general.image_string_idx, 0);
+
+        let image = e.find_string::<128>(general.image_string_idx).await;
+
+        assert_eq!(image, Ok(None));
     }
 }

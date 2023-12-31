@@ -343,29 +343,29 @@ impl FromEeprom for FmmuEx {
 /// Defined in ETG1000.6 Table 21
 #[derive(Debug, PartialEq, Eq)]
 pub struct SiiGeneral {
-    group_string_idx: u8,
-    image_string_idx: u8,
-    order_string_idx: u8,
+    pub(crate) group_string_idx: u8,
+    pub(crate) image_string_idx: u8,
+    pub(crate) order_string_idx: u8,
     pub name_string_idx: u8,
     // reserved: u8,
     pub coe_details: CoeDetails,
-    foe_enabled: bool,
-    eoe_enabled: bool,
+    pub(crate) foe_enabled: bool,
+    pub(crate) eoe_enabled: bool,
     // Following 3 fields marked as reserved
     // soe_channels: u8,
     // ds402_channels: u8,
     // sysman_class: u8,
-    flags: Flags,
+    pub(crate) flags: Flags,
     /// EBus Current Consumption in mA.
     ///
     /// A negative Values means feeding in current feed in sets the available current value to the
     /// given value
-    ebus_current: i16,
+    pub(crate) ebus_current: i16,
     // reserved: u8,
-    ports: [PortStatus; 4],
+    pub(crate) ports: [PortStatus; 4],
     /// defines the ESC memory address where the Identification ID is saved if Identification Method
     /// [`IDENT_PHY_M`] is set.
-    physical_memory_addr: u16,
+    pub(crate) physical_memory_addr: u16,
     // reserved2: [u8; 12]
 }
 
