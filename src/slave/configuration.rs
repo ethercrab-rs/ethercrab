@@ -34,7 +34,7 @@ where
         // to master mode here, now that the transition is complete.
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
-        let sync_managers = self.eeprom_sync_managers().await?;
+        let sync_managers = self.eeprom().sync_managers().await?;
 
         // Mailboxes must be configured in INIT state
         self.configure_mailbox_sms(&sync_managers).await?;
@@ -115,9 +115,9 @@ where
         group_start_address: u32,
         direction: PdoDirection,
     ) -> Result<PdiOffset, Error> {
-        let sync_managers = self.eeprom_sync_managers().await?;
-        let fmmu_usage = self.eeprom_fmmus().await?;
-        let fmmu_sm_mappings = self.eeprom_fmmu_mappings().await?;
+        let sync_managers = self.eeprom().sync_managers().await?;
+        let fmmu_usage = self.eeprom().fmmus().await?;
+        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
         let (state, _status_code) = self.status().await?;
 
@@ -146,7 +146,7 @@ where
 
         match direction {
             PdoDirection::MasterRead => {
-                let pdos = self.eeprom_master_read_pdos().await?;
+                let pdos = self.eeprom().master_read_pdos().await?;
 
                 fmt::trace!("Slave inputs PDOs {:#?}", pdos);
 
@@ -177,7 +177,7 @@ where
                 };
             }
             PdoDirection::MasterWrite => {
-                let pdos = self.eeprom_master_write_pdos().await?;
+                let pdos = self.eeprom().master_write_pdos().await?;
 
                 fmt::trace!("Slave outputs PDOs {:#?}", pdos);
 
@@ -263,9 +263,9 @@ where
     /// Configure SM0 and SM1 for mailbox communication.
     async fn configure_mailbox_sms(&mut self, sync_managers: &[SyncManager]) -> Result<(), Error> {
         // Read default mailbox configuration from slave information area
-        let mailbox_config = self.eeprom_mailbox_config().await?;
+        let mailbox_config = self.eeprom().mailbox_config().await?;
 
-        let general = self.eeprom_general().await?;
+        let general = self.eeprom().general().await?;
 
         fmt::trace!(
             "Slave {:#06x} Mailbox configuration: {:#?}",

@@ -50,11 +50,11 @@ miri_steps: &miri_steps
         key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
-    - run: rustup toolchain add nightly-2023-11-02 --target $TARGET --component miri
+    - run: rustup toolchain add nightly-2023-12-25 --target $TARGET --component miri
     - run: |
         export MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation"
 
-        cargo +nightly-2023-11-02 miri test --target $TARGET
+        cargo +nightly-2023-12-25 miri test --target $TARGET
 
     - save_cache:
         key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}

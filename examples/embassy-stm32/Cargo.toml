@@ -19,39 +19,35 @@ embedded-hal = "0.2.6"
 embedded-io = "0.6.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 static_cell = { version = "1.1", features = ["nightly"] }
-smoltcp = { version = "0.10.0", features = ["defmt"], default-features = false }
+smoltcp = { version = "0.11.0", features = ["defmt"], default-features = false }
 
-embassy-sync = { version = "0.3.0", features = ["defmt"] }
-embassy-executor = { version = "0.3.0", features = [
-    "nightly",
+embassy-sync = { version = "0.5.0", features = ["defmt"] }
+embassy-executor = { version = "0.4.0", features = [
     "arch-cortex-m",
     "executor-thread",
     "executor-interrupt",
     "defmt",
     "integrated-timers",
     "arch-cortex-m",
+    # TODO: Use stable when type_alias_impl_trait is stabilised.
+    "nightly",
 ] }
-embassy-time = { version = "0.1.2", features = [
+embassy-time = { version = "0.2.0", features = [
     "defmt",
     "defmt-timestamp-uptime",
-    "unstable-traits",
     "tick-hz-1_000_000",
 ] }
 embassy-stm32 = { version = "0.1.0", features = [
-    "nightly",
-    "unstable-traits",
     "defmt",
     "stm32f429zi",
-    "unstable-pac",
     "memory-x",
     "time-driver-any",
 ] }
-embassy-net = { version = "0.2.0", features = [
+embassy-net = { version = "0.2.1", features = [
     "defmt",
     "tcp",
     "dhcpv4",
     "medium-ethernet",
-    "nightly",
 ] }
 embassy-net-driver = { version = "0.2.0", features = ["defmt"] }
 
@@ -62,9 +58,9 @@ lto = true
 codegen-units = 1
 
 [patch.crates-io]
-embassy-sync = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
-embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy.git", rev = "b6fc682117a41e8e63a9632e06da5a17f46d9ab0" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy.git", rev = "eebfee189a592427423d3a3ad22132d59926a0e8" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "eebfee189a592427423d3a3ad22132d59926a0e8" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy.git", rev = "eebfee189a592427423d3a3ad22132d59926a0e8" }
+embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", rev = "eebfee189a592427423d3a3ad22132d59926a0e8" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy.git", rev = "eebfee189a592427423d3a3ad22132d59926a0e8" }
+embassy-net-driver = { git = "https://github.com/embassy-rs/embassy.git", rev = "eebfee189a592427423d3a3ad22132d59926a0e8" }

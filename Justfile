@@ -28,10 +28,10 @@ linux-test *args:
      cargo test {{args}}
 
 linux-bench *args:
-     cargo bench --features bench-hacks --no-run {{args}}
+     cargo bench --features __internals --no-run {{args}}
      sudo echo
      fd . --type executable ./target/release/deps -x sudo setcap cap_net_raw=pe
-     cargo bench --features bench-hacks {{args}}
+     cargo bench --features __internals {{args}}
 
 generate-readme:
      cargo readme > README.md
@@ -40,3 +40,8 @@ generate-readme:
 
 check-readme: (generate-readme)
      git diff --quiet --exit-code README.md
+
+dump-eeprom *args:
+     cargo build --example dump-eeprom --features "std __internals" --release && \
+     sudo setcap cap_net_raw=pe ./target/release/examples/dump-eeprom && \
+     ./target/release/examples/dump-eeprom {{args}}

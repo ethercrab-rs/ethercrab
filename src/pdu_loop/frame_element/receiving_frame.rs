@@ -144,14 +144,11 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 // crashing the program.
 impl<'sto> Drop for ReceiveFrameFut<'sto> {
     fn drop(&mut self) {
-        match self.frame.take() {
-            Some(r) => {
-                fmt::debug!("Dropping in-flight future, possibly caused by timeout");
+        if let Some(r) = self.frame.take() {
+            fmt::debug!("Dropping in-flight future, possibly caused by timeout");
 
-                // Make frame available for reuse if this future is dropped.
-                unsafe { FrameElement::set_state(r.frame, FrameState::None) };
-            }
-            None => (),
+            // Make frame available for reuse if this future is dropped.
+            unsafe { FrameElement::set_state(r.frame, FrameState::None) };
         }
     }
 }

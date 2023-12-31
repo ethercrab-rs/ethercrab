@@ -17,7 +17,7 @@ use crate::{
     },
     command::Command,
     dl_status::DlStatus,
-    eeprom::types::SiiOwner,
+    eeprom::{device_reader::DeviceEeprom, types::SiiOwner},
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::MailboxType,
@@ -41,7 +41,7 @@ use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
 pub use self::types::SlaveIdentity;
-use self::{slave_client::SlaveClient, types::Mailbox};
+use self::{eeprom::SlaveEeprom, slave_client::SlaveClient, types::Mailbox};
 
 /// Slave device metadata. See [`SlaveRef`] for richer behaviour.
 #[derive(Debug)]
@@ -110,16 +110,16 @@ impl PartialEq for Slave {
 impl Clone for Slave {
     fn clone(&self) -> Self {
         Self {
-            configured_address: self.configured_address.clone(),
+            configured_address: self.configured_address,
             config: self.config.clone(),
-            identity: self.identity.clone(),
+            identity: self.identity,
             name: self.name.clone(),
             flags: self.flags.clone(),
-            ports: self.ports.clone(),
-            dc_receive_time: self.dc_receive_time.clone(),
-            index: self.index.clone(),
-            parent_index: self.parent_index.clone(),
-            propagation_delay: self.propagation_delay.clone(),
+            ports: self.ports,
+            dc_receive_time: self.dc_receive_time,
+            index: self.index,
+            parent_index: self.parent_index,
+            propagation_delay: self.propagation_delay,
             mailbox_counter: AtomicU8::new(self.mailbox_counter.load(Ordering::Acquire)),
         }
     }
@@ -148,9 +148,9 @@ impl Slave {
         // Make sure master has access to slave EEPROM
         slave_ref.set_eeprom_mode(SiiOwner::Master).await?;
 
-        let identity = slave_ref.eeprom_identity().await?;
+        let identity = slave_ref.eeprom().identity().await?;
 
-        let name = slave_ref.eeprom_device_name().await?.unwrap_or_else(|| {
+        let name = slave_ref.eeprom().device_name().await?.unwrap_or_else(|| {
             let mut s = heapless::String::new();
 
             fmt::unwrap!(write!(
@@ -673,6 +673,7 @@ where
     }
 }
 
+// General impl with no bounds
 impl<'a, S> SlaveRef<'a, S> {
     pub(crate) fn new(client: &'a Client<'a>, configured_address: u16, state: S) -> Self {
         Self {
@@ -697,6 +698,10 @@ impl<'a, S> SlaveRef<'a, S> {
         let code = code?;
 
         Ok((status, code))
+    }
+
+    fn eeprom(&self) -> SlaveEeprom<DeviceEeprom> {
+        SlaveEeprom::new(DeviceEeprom::new(&self.client))
     }
 
     /// Read a register.

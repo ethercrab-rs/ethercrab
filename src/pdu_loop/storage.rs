@@ -56,8 +56,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             );
         }
 
-        // MSRV: Use MaybeUninit::zeroed when `const_maybe_uninit_zeroed` is stabilised.
-        let frames = UnsafeCell::new(MaybeUninit::uninit());
+        let frames = UnsafeCell::new(MaybeUninit::zeroed());
 
         Self {
             frames,
@@ -89,13 +88,6 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     }
 
     fn as_ref(&self) -> PduStorageRef {
-        // Zero out all memory backing the PDU storage list.
-        //
-        // MSRV: Remove when `const_maybe_uninit_zeroed` is stabilised. Rely on
-        // `MaybeUninit::zeroed` in `PduStorage::new()`. Tracking issue:
-        // <https://github.com/rust-lang/rust/issues/91850>
-        unsafe { (*self.frames.get()).as_mut_ptr().write_bytes(0u8, 1) };
-
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             num_frames: N,
@@ -229,10 +221,7 @@ impl<'sto> PduStorageRef<'sto> {
             .pad_to_align()
             .size();
 
-        // MSRV: When `pointer_byte_offsets` is stabilised, use `self.frames.as_ptr().byte_add(idx *
-        // stride)`. This code is a rip from the core lib function so should do pretty much the same
-        // thing. Tracking issue: <https://github.com/rust-lang/rust/issues/96283>
-        self.frames.as_ptr().cast::<u8>().add(idx * stride).cast()
+        self.frames.as_ptr().byte_add(idx * stride)
     }
 }
 
