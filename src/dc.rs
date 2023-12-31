@@ -343,7 +343,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
                 r#"Slave {{
                 index: {},
                 configured_address: {:#06x},
-                name: "{}".into(),
+                name: "{}".try_into().unwrap(),
                 ports: ports(
                     {}
                 ),
@@ -470,7 +470,7 @@ mod tests {
         let slave_defaults = Slave {
             configured_address: 0x0000,
             ports: Ports::default(),
-            name: "Default".into(),
+            name: "Default".try_into().unwrap(),
             flags: SupportFlags::default(),
             dc_receive_time: 0,
             index: 0,
@@ -483,28 +483,28 @@ mod tests {
             Slave {
                 configured_address: 0x1000,
                 ports: ports_passthrough(),
-                name: "LAN9252".into(),
+                name: "LAN9252".try_into().unwrap(),
                 index: 0,
                 ..slave_defaults.clone()
             },
             Slave {
                 configured_address: 0x1100,
                 ports: ports_fork(),
-                name: "EK1100".into(),
+                name: "EK1100".try_into().unwrap(),
                 index: 1,
                 ..slave_defaults.clone()
             },
             Slave {
                 configured_address: 0x2004,
                 ports: ports_passthrough(),
-                name: "EL2004".into(),
+                name: "EL2004".try_into().unwrap(),
                 index: 2,
                 ..slave_defaults.clone()
             },
             Slave {
                 configured_address: 0x3004,
                 ports: ports_eol(),
-                name: "EL3004".into(),
+                name: "EL3004".try_into().unwrap(),
                 index: 3,
                 ..slave_defaults.clone()
             },
@@ -513,7 +513,7 @@ mod tests {
         let me = Slave {
             configured_address: 0x9252,
             ports: ports_eol(),
-            name: "LAN9252".into(),
+            name: "LAN9252".try_into().unwrap(),
             index: 4,
             ..slave_defaults
         };
@@ -529,7 +529,7 @@ mod tests {
         let slave_defaults = Slave {
             configured_address: 0x0000,
             ports: Ports::default(),
-            name: "Default".into(),
+            name: "Default".try_into().unwrap(),
             flags: SupportFlags::default(),
             dc_receive_time: 0,
             index: 0,
@@ -542,42 +542,42 @@ mod tests {
             Slave {
                 configured_address: 0x1100,
                 ports: ports_fork(),
-                name: "EK1100".into(),
+                name: "EK1100".try_into().unwrap(),
                 index: 1,
                 ..slave_defaults.clone()
             },
             Slave {
                 configured_address: 0x2004,
                 ports: ports_passthrough(),
-                name: "EL2004".into(),
+                name: "EL2004".try_into().unwrap(),
                 index: 2,
                 ..slave_defaults.clone()
             },
             Slave {
                 configured_address: 0x3004,
                 ports: ports_eol(),
-                name: "EL3004".into(),
+                name: "EL3004".try_into().unwrap(),
                 index: 3,
                 ..slave_defaults.clone()
             },
             Slave {
                 configured_address: 0x1100,
                 ports: ports_fork(),
-                name: "EK1100_2".into(),
+                name: "EK1100_2".try_into().unwrap(),
                 index: 4,
                 ..slave_defaults.clone()
             },
             Slave {
                 configured_address: 0x2004,
                 ports: ports_passthrough(),
-                name: "EL2828".into(),
+                name: "EL2828".try_into().unwrap(),
                 index: 5,
                 ..slave_defaults.clone()
             },
             Slave {
                 configured_address: 0x3004,
                 ports: ports_eol(),
-                name: "EL2889".into(),
+                name: "EL2889".try_into().unwrap(),
                 index: 6,
                 ..slave_defaults.clone()
             },
@@ -590,11 +590,11 @@ mod tests {
         let el2828 = &parents[4];
 
         assert_eq!(
-            find_slave_parent(&ek1100_2_parents, &ek1100_2).unwrap(),
+            find_slave_parent(ek1100_2_parents, ek1100_2).unwrap(),
             Some(1)
         );
         assert_eq!(
-            find_slave_parent(&el2828_parents, &el2828).unwrap(),
+            find_slave_parent(el2828_parents, el2828).unwrap(),
             Some(ek1100_2.index)
         );
     }
@@ -604,7 +604,7 @@ mod tests {
         let slave_defaults = Slave {
             configured_address: 0x1000,
             ports: Ports::default(),
-            name: "Default".into(),
+            name: "Default".try_into().unwrap(),
             flags: SupportFlags::default(),
             dc_receive_time: 0,
             index: 0,
@@ -618,7 +618,7 @@ mod tests {
         let me = Slave {
             configured_address: 0x1100,
             ports: ports_eol(),
-            name: "EK1100".into(),
+            name: "EK1100".try_into().unwrap(),
             index: 4,
             ..slave_defaults
         };
@@ -663,7 +663,7 @@ mod tests {
         let mut slave = Slave {
             configured_address: 0x1000,
             ports,
-            name: "Default".into(),
+            name: "Default".try_into().unwrap(),
             flags: SupportFlags::default(),
             dc_receive_time: 0,
             index: 0,
@@ -707,7 +707,7 @@ mod tests {
 
         let defaults = Slave {
             configured_address: 0x999,
-            name: "CHANGEME".into(),
+            name: "CHANGEME".try_into().unwrap(),
             ports: Ports::default(),
             dc_receive_time: 0,
             index: 0,
@@ -729,7 +729,7 @@ mod tests {
             Slave {
                 index: 0,
                 configured_address: 0x1000,
-                name: "EK1100".into(),
+                name: "EK1100".try_into().unwrap(),
                 ports: ports(
                     true, 3380373882, false, 1819436374, true, 3380374482, true, 3380375762,
                 ),
@@ -739,7 +739,7 @@ mod tests {
             Slave {
                 index: 1,
                 configured_address: 0x1001,
-                name: "EK1122".into(),
+                name: "EK1122".try_into().unwrap(),
                 ports: ports(
                     true, 3384116362, false, 1819436374, false, 1717989224, true, 3384116672,
                 ),
@@ -749,7 +749,7 @@ mod tests {
             Slave {
                 index: 2,
                 configured_address: 0x1002,
-                name: "EL9560".into(),
+                name: "EL9560".try_into().unwrap(),
                 ports: ports(
                     true, 3383862982, false, 1819436374, false, 1717989224, false, 0,
                 ),
@@ -759,7 +759,7 @@ mod tests {
             Slave {
                 index: 3,
                 configured_address: 0x1003,
-                name: "EK1914".into(),
+                name: "EK1914".try_into().unwrap(),
                 ports: ports(
                     true, 3373883962, false, 1819436374, true, 3373884272, false, 0,
                 ),
@@ -769,7 +769,7 @@ mod tests {
             Slave {
                 index: 4,
                 configured_address: 0x1004,
-                name: "EL1008".into(),
+                name: "EL1008".try_into().unwrap(),
                 ports: ports(
                     true, 3375060602, false, 1819436374, false, 1717989224, false, 0,
                 ),
@@ -794,7 +794,7 @@ mod tests {
         let expected = {
             let mut expected = slaves.clone();
 
-            expected.iter_mut().zip(downstreams.into_iter()).for_each(
+            expected.iter_mut().zip(downstreams).for_each(
                 |(slave, ([d0, d3, d1, d2], parent_index, propagation_delay))| {
                     slave.ports.set_downstreams(d0, d3, d1, d2);
 
@@ -817,7 +817,7 @@ mod tests {
 
         let defaults = Slave {
             configured_address: 0x999,
-            name: "CHANGEME".into(),
+            name: "CHANGEME".try_into().unwrap(),
             ports: Ports::default(),
             dc_receive_time: 0,
             index: 0,
@@ -832,7 +832,7 @@ mod tests {
             Slave {
                 index: 0,
                 configured_address: 0x1000,
-                name: "EK1100".into(),
+                name: "EK1100".try_into().unwrap(),
                 ports: ports(
                     true, 3493061450, false, 1819436374, true, 3493064460, false, 0,
                 ),
@@ -842,7 +842,7 @@ mod tests {
             Slave {
                 index: 1,
                 configured_address: 0x1001,
-                name: "EK1122".into(),
+                name: "EK1122".try_into().unwrap(),
                 ports: ports(
                     true, 3493293220, true, 3493294570, true, 3493295650, true, 3493295940,
                 ),
@@ -852,7 +852,7 @@ mod tests {
             Slave {
                 index: 2,
                 configured_address: 0x1002,
-                name: "EK1914".into(),
+                name: "EK1914".try_into().unwrap(),
                 ports: ports(
                     true, 3485337450, false, 1819436374, true, 3485337760, false, 0,
                 ),
@@ -862,7 +862,7 @@ mod tests {
             Slave {
                 index: 3,
                 configured_address: 0x1003,
-                name: "EL1008".into(),
+                name: "EL1008".try_into().unwrap(),
                 ports: ports(
                     true, 3488375400, false, 1819436374, false, 1717989224, false, 0,
                 ),
@@ -872,7 +872,7 @@ mod tests {
             Slave {
                 index: 4,
                 configured_address: 0x1004,
-                name: "EK1101".into(),
+                name: "EK1101".try_into().unwrap(),
                 ports: ports(
                     true, 3485087810, false, 1819436374, false, 1717989224, false, 0,
                 ),
@@ -882,7 +882,7 @@ mod tests {
             Slave {
                 index: 5,
                 configured_address: 0x1005,
-                name: "EL9560".into(),
+                name: "EL9560".try_into().unwrap(),
                 ports: ports(
                     true, 3494335890, false, 1819436374, false, 1717989224, false, 0,
                 ),
@@ -909,7 +909,7 @@ mod tests {
         let expected = {
             let mut expected = slaves.clone();
 
-            expected.iter_mut().zip(downstreams.into_iter()).for_each(
+            expected.iter_mut().zip(downstreams).for_each(
                 |(slave, ([d0, d3, d1, d2], parent_index, propagation_delay))| {
                     slave.ports.set_downstreams(d0, d3, d1, d2);
 
