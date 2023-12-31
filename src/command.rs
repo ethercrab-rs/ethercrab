@@ -76,6 +76,15 @@ impl Writes {
         client.write_service(self, value).await
     }
 
+    /// Call a method at least once to populate the frame payload buffer, then send it.
+    pub async fn send_receive_with<'client, 'data>(
+        self,
+        client: &'client Client<'client>,
+        f: impl Fn(&mut [u8]) -> Result<usize, Error>,
+    ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
+        client.write_service_with(self, f).await
+    }
+
     /// Send a slice of data, ignoring any response.
     pub async fn send_slice<'client, 'data>(
         self,

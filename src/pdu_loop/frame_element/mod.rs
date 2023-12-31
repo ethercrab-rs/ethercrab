@@ -203,6 +203,10 @@ impl<'sto> FrameBox<'sto> {
         unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
     }
 
+    unsafe fn frame_mut(&mut self) -> &mut PduFrame {
+        unsafe { &mut *addr_of_mut!((*self.frame.as_ptr()).frame) }
+    }
+
     unsafe fn buf_len(&self) -> usize {
         usize::from(self.frame().flags.len())
     }

@@ -29,6 +29,12 @@ impl<'sto> CreatedFrame<'sto> {
         unsafe { self.inner.buf_mut() }
     }
 
+    pub fn set_len(&mut self, len: usize) {
+        let len = len as u16;
+
+        unsafe { self.inner.frame_mut() }.flags.length = len;
+    }
+
     pub fn index(&self) -> u8 {
         unsafe { self.inner.frame() }.index
     }

@@ -164,6 +164,44 @@ impl<'sto> PduLoop<'sto> {
         Err(Error::Timeout)
     }
 
+    pub(crate) async fn pdu_tx_readwrite_len_with(
+        &self,
+        command: Command,
+        f: impl Fn(&mut [u8]) -> Result<usize, Error>,
+        timeout: Duration,
+        retry_behaviour: RetryBehaviour,
+    ) -> Result<ReceivedFrame<'_>, Error> {
+        for _ in 0..retry_behaviour.loop_counts() {
+            // Allocate the maximum allowed frame payload for writing into
+            let mut frame = self
+                .storage
+                .alloc_frame(command, self.storage.frame_data_len as u16)?;
+
+            let frame_idx = frame.index();
+
+            let payload_len = f(frame.buf_mut())?;
+
+            frame.set_len(payload_len);
+
+            let frame = frame.mark_sendable();
+
+            self.wake_sender();
+
+            match crate::timer_factory::timeout(timeout, frame).await {
+                Ok(result) => return Ok(result),
+                Err(Error::Timeout) => {
+                    fmt::error!("Frame {} timed out", frame_idx);
+
+                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
+                    // state to `None`, ready for reuse.
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(Error::Timeout)
+    }
+
     /// Send data to and read data back from multiple slaves.
     // NOTE: Should be `pub(crate)` but the benchmarks need this internal method so we'll just hide
     // it instead.

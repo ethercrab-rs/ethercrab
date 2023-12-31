@@ -90,6 +90,19 @@ impl<'client> SlaveClient<'client> {
             .wkc(1, context)
     }
 
+    #[inline(always)]
+    pub(crate) async fn write_with(
+        &self,
+        register: u16,
+        f: impl Fn(&mut [u8]) -> Result<usize, Error>,
+        context: &'static str,
+    ) -> Result<RxFrameDataBuf<'_>, Error> {
+        Command::fpwr(self.configured_address, register)
+            .send_receive_with(self.client, f)
+            .await?
+            .wkc(1, context)
+    }
+
     /// A wrapper around an FPWR service to this slave's configured address, ignoring any response.
     #[inline(always)]
     pub(crate) async fn write<T>(

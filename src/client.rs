@@ -465,6 +465,22 @@ impl<'sto> Client<'sto> {
             .map(|response| response.into_data())
     }
 
+    pub(crate) async fn write_service_with(
+        &self,
+        command: Writes,
+        f: impl Fn(&mut [u8]) -> Result<usize, Error>,
+    ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
+        self.pdu_loop
+            .pdu_tx_readwrite_len_with(
+                Command::Write(command),
+                f,
+                self.timeouts.pdu,
+                self.config.retry_behaviour,
+            )
+            .await
+            .map(|response| response.into_data())
+    }
+
     pub(crate) async fn write_service_len(
         &self,
         command: Writes,
