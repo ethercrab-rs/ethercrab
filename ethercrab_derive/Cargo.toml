@@ -1,0 +1,15 @@
+[package]
+name = "ethercrab_derive"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1.0.34"
+syn = "2.0.44"
+
+[dev-dependencies]
+trybuild = "1.0.86"
