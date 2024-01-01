@@ -1,0 +1,18 @@
+[package]
+name = "ethercrab-derive"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1.0.34"
+# extra-traits for debug during dev. TODO: Remove
+syn = { version = "2.0.44", features = ["extra-traits"] }
+
+[dev-dependencies]
+num_enum = "0.7.1"
+trybuild = "1.0.86"
+ethercrab = { path = "../" }

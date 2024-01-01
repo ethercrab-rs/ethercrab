@@ -167,6 +167,8 @@ mod client_config;
 mod coe;
 mod command;
 mod dc;
+#[doc(hidden)]
+pub mod derive;
 mod dl_status;
 pub mod ds402;
 mod eeprom;
