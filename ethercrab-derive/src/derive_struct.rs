@@ -10,7 +10,7 @@ pub struct StructStuff {
     pub fields: Vec<FieldStuff>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FieldStuff {
     pub vis: Visibility,
     pub name: Ident,
@@ -64,6 +64,8 @@ pub fn parse_struct(
 
         let pre_skip = usize_attr(&field.attrs, "pre_skip")?;
 
+        let is_enum = field_is_enum_attr(&field.attrs)?;
+
         if let Some(skip) = pre_skip {
             total_field_width += skip;
         }
@@ -114,7 +116,7 @@ pub fn parse_struct(
 
             bit_offset,
 
-            is_enum: field_is_enum_attr(&field.attrs)?,
+            is_enum,
 
             pre_skip,
         });

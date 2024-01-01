@@ -2,26 +2,9 @@
 //!
 //! Internal only, please do not implement outside EtherCrab.
 
-// pub trait WireEnum {
-//     const BITS: usize;
-//     const BYTES: usize;
-// }
+// TODO: Can we get rid of PduData and PduRead with these traits?
 
 use crate::error::Error;
-
-// pub trait WireField: Into<Self::WireType> + Copy {
-//     type WireType;
-// }
-
-// impl WireField for u8 {
-//     type WireType = Self;
-// }
-// impl WireField for u16 {
-//     type WireType = Self;
-// }
-// impl WireField for u32 {
-//     type WireType = Self;
-// }
 
 macro_rules! impl_primitive_wire_field {
     ($ty:ty, $size:expr) => {
@@ -34,6 +17,13 @@ macro_rules! impl_primitive_wire_field {
                 chunk.copy_from_slice(&self.to_le_bytes());
 
                 chunk
+            }
+
+            fn unpack_from_slice(buf: &[u8]) -> Result<Self, Error> {
+                buf.get(0..Self::BYTES)
+                    .ok_or(Error::Internal)
+                    .and_then(|raw| raw.try_into().map_err(|_| Error::Internal))
+                    .map(Self::from_le_bytes)
             }
         }
     };
@@ -51,9 +41,17 @@ impl WireField for bool {
 
         &buf[0..1]
     }
+
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, Error> {
+        if buf.is_empty() {
+            return Err(Error::Internal);
+        }
+
+        Ok(buf[0] == 1)
+    }
 }
 
-pub trait WireField {
+pub trait WireField: Sized {
     // const BITS: usize;
     const BYTES: usize;
 
@@ -66,4 +64,14 @@ pub trait WireField {
     }
 
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8];
+
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, Error>;
+}
+
+pub trait WireFieldEnum: Sized {
+    const BYTES: usize;
+
+    type Repr;
+
+    fn unpack_to_repr(buf: &[u8]) -> Result<Self::Repr, Error>;
 }

@@ -1,4 +1,4 @@
-use crate::help::enum_repr_ty;
+use crate::help::{bit_width_attr, enum_repr_ty};
 use syn::{DataEnum, DeriveInput, Ident};
 
 pub struct EnumStuff {
