@@ -1,8 +1,10 @@
 use syn::{punctuated::Punctuated, Expr, ExprLit, Ident, Lit, Meta, Token, Type};
 
 pub fn bit_width_attr(attrs: &[syn::Attribute]) -> Result<Option<usize>, syn::Error> {
-    let mut width = None;
+    usize_attr(attrs, "bits")
+}
 
+pub fn usize_attr(attrs: &[syn::Attribute], search: &str) -> Result<Option<usize>, syn::Error> {
     for attr in attrs {
         let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
         else {
@@ -13,22 +15,20 @@ pub fn bit_width_attr(attrs: &[syn::Attribute]) -> Result<Option<usize>, syn::Er
             match meta {
                 syn::Meta::Path(_) => (),
                 syn::Meta::List(_) => (),
-                syn::Meta::NameValue(nv) if nv.path.is_ident("bits") => {
+                syn::Meta::NameValue(nv) if nv.path.is_ident(search) => {
                     if let Expr::Lit(ExprLit {
                         lit: Lit::Int(lit), ..
                     }) = &nv.value
                     {
-                        width = Some(lit.base10_parse::<usize>()?);
+                        return Ok(Some(lit.base10_parse::<usize>()?));
                     }
                 }
-                syn::Meta::NameValue(nv) => {
-                    dbg!("Ignore attribute {:?}", nv.path.get_ident());
-                }
+                _ => (),
             }
         }
     }
 
-    Ok(width)
+    Ok(None)
 }
 
 pub fn field_is_enum_attr(attrs: &[syn::Attribute]) -> Result<bool, syn::Error> {

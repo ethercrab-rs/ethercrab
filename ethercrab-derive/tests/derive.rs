@@ -187,9 +187,7 @@ fn nested_structs() {
         yes: bool,
         #[wire(bits = 1)]
         no: bool,
-        #[wire(bits = 6)]
-        _skip: u16,
-        #[wire(bits = 16)]
+        #[wire(pre_skip = 6, bits = 16)]
         stuff: u16,
     }
 
@@ -198,13 +196,11 @@ fn nested_structs() {
         control: Inner {
             yes: true,
             no: false,
-            _skip: 0,
             stuff: 0xaabb,
         },
         status: Inner {
             yes: false,
             no: true,
-            _skip: 0,
             stuff: 0xccdd,
         },
     };

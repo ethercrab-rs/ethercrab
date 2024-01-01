@@ -1,4 +1,4 @@
-use crate::help::{bit_width_attr, field_is_enum_attr};
+use crate::help::{bit_width_attr, field_is_enum_attr, usize_attr};
 use std::ops::Range;
 use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
 
@@ -26,6 +26,7 @@ pub struct FieldStuff {
     pub bytes: Range<usize>,
 
     pub is_enum: bool,
+    pub pre_skip: Option<usize>,
 }
 
 pub fn parse_struct(
@@ -61,7 +62,11 @@ pub fn parse_struct(
         let field_name = field.ident.unwrap();
         let field_width = bit_width_attr(&field.attrs)?;
 
-        let is_enum = field_is_enum_attr(&field.attrs)?;
+        let pre_skip = usize_attr(&field.attrs, "pre_skip")?;
+
+        if let Some(skip) = pre_skip {
+            total_field_width += skip;
+        }
 
         let Some(field_width) = field_width else {
             return Err(syn::Error::new(
@@ -109,7 +114,9 @@ pub fn parse_struct(
 
             bit_offset,
 
-            is_enum,
+            is_enum: field_is_enum_attr(&field.attrs)?,
+
+            pre_skip,
         });
 
         total_field_width += field_width;
