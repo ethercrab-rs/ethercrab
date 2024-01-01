@@ -6,3 +6,8 @@ pub trait WireEnum {
     const BITS: usize;
     const BYTES: usize;
 }
+
+pub trait WireStruct {
+    const BITS: usize;
+    const BYTES: usize;
+}

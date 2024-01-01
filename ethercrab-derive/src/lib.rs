@@ -1,3 +1,9 @@
+mod derive_enum;
+mod derive_struct;
+mod help;
+
+use derive_enum::parse_enum;
+use derive_struct::parse_struct;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{
@@ -25,7 +31,20 @@ pub fn ethercat_wire(input: TokenStream) -> TokenStream {
                 }
             }
         }),
-        Data::Struct(s) => todo!(),
+        Data::Struct(s) => parse_struct(s, input.clone()).map(|parsed| {
+            let vis = input.vis;
+            let name = input.ident;
+
+            let width_bits = parsed.width;
+            let width_bytes = parsed.width.div_ceil(8);
+
+            quote! {
+                impl ::ethercrab::derive::WireStruct for #name {
+                    const BITS: usize = #width_bits;
+                    const BYTES: usize = #width_bytes;
+                }
+            }
+        }),
         Data::Union(_) => Err(syn::Error::new(
             input.ident.span(),
             "Unions are not supported",
@@ -38,57 +57,6 @@ pub fn ethercat_wire(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(res)
-}
-
-struct EnumStuff {
-    /// Width in bits on the wire.
-    width: usize,
-}
-
-fn parse_enum(
-    e: DataEnum,
-    DeriveInput { attrs, ident, .. }: DeriveInput,
-) -> syn::Result<EnumStuff> {
-    // dbg!(&attrs);
-    // dbg!(e);
-
-    let mut width = None;
-
-    for attr in attrs {
-        let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
-        else {
-            continue;
-        };
-
-        for meta in nested {
-            match meta {
-                syn::Meta::Path(_) => (),
-                syn::Meta::List(_) => (),
-                syn::Meta::NameValue(nv) if nv.path.is_ident("bits") => {
-                    if let syn::Expr::Lit(ExprLit {
-                        lit: Lit::Int(lit), ..
-                    }) = &nv.value
-                    {
-                        width = Some(lit.base10_parse::<usize>()?);
-                    }
-                }
-                syn::Meta::NameValue(nv) => {
-                    dbg!("Ignore attribute {:?}", nv.path.get_ident());
-                }
-            }
-        }
-    }
-
-    let Some(width) = width else {
-        return Err(syn::Error::new(
-            ident.span(),
-            "Enum bit width is required, e.g. #[wire(bits = 8)]",
-        ));
-    };
-
-    dbg!(width);
-
-    Ok(EnumStuff { width })
 }
 
 #[cfg(test)]
