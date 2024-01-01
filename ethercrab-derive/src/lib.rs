@@ -89,9 +89,13 @@ pub fn ethercat_wire(input: TokenStream) -> TokenStream {
                             #name: {
                                 let masked = (buf[#byte_start] & #mask) >> #bit_start;
 
-                                #ty::try_from_primitive(masked)
+                                <#ty as num_enum::TryFromPrimitive>::try_from_primitive(masked)
                                     .map_err(|_| ::ethercrab::error::Error::Internal)?
                             },
+                        }
+                    } else if field.ty_name == "bool" {
+                        quote! {
+                            #name: ((buf[#byte_start] & #mask) >> #bit_start) > 0,
                         }
                     } else {
                         quote! {
@@ -107,12 +111,12 @@ pub fn ethercat_wire(input: TokenStream) -> TokenStream {
 
                     if field.is_enum {
                         quote! {
-                            #name: #ty::try_from_primitive(<#ty as ::ethercrab::derive::WireFieldEnum>::unpack_to_repr(&buf))
+                            #name: <#ty as num_enum::TryFromPrimitive>::try_from_primitive(<#ty as ::ethercrab::derive::WireFieldEnum>::unpack_to_repr(&buf))
                                 .map_err(|_| ::ethercrab::error::Error::Internal)?,
                         }
                     } else {
                         quote! {
-                            #name: todo!(),
+                            #name: <#ty as ::ethercrab::derive::WireField>::unpack_from_slice(&buf[#start_byte..#end_byte])?,
                         }
                     }
                 }

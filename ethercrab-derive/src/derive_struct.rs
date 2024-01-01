@@ -15,6 +15,7 @@ pub struct FieldStuff {
     pub vis: Visibility,
     pub name: Ident,
     pub ty: Type,
+    pub ty_name: Ident,
     pub bit_start: usize,
     pub bit_end: usize,
     pub byte_start: usize,
@@ -101,10 +102,21 @@ pub fn parse_struct(
             ));
         }
 
+        let ty_name = match field.ty.clone() {
+            Type::Path(path) => path
+                .path
+                .get_ident()
+                .cloned()
+                .ok_or(syn::Error::new(field_name.span(), "Type is required")),
+            _ => Err(syn::Error::new(field_name.span(), "Invalid type name")),
+        }?
+        .clone();
+
         field_stuff.push(FieldStuff {
             name: field_name,
             vis: field.vis,
             ty: field.ty,
+            ty_name,
 
             bits,
             bytes,
