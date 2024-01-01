@@ -15,24 +15,12 @@ pub fn ethercat_wire(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let res = match input.clone().data {
-        Data::Enum(e) => parse_enum(e, input.clone()).map(|parsed| {
-            let name = input.ident;
-            let repr = parsed.repr_type;
-
-            quote! {
-                impl ::ethercrab::derive::WireField for #name {
-                    type WireType = #repr;
-                }
-
-                impl From<#name> for #repr {
-                    fn from(value: #name) -> Self { value as #repr }
-                }
-            }
+        Data::Enum(e) => parse_enum(e, input.clone()).map(|_parsed| {
+            quote! {}
         }),
         Data::Struct(s) => parse_struct(s, input.clone()).map(|parsed| {
             let name = input.ident;
 
-            let width_bits = parsed.width;
             let width_bytes = parsed.width.div_ceil(8);
 
             let fields = parsed.fields.into_iter().map(|field| {
@@ -45,10 +33,11 @@ pub fn ethercat_wire(input: TokenStream) -> TokenStream {
 
                 if field.bits.len() < 8 {
                     let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
-                    let mask = proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
+                    let mask =
+                        proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
 
                     quote! {
-                        buf[#byte_start] |= (self.#name as u8) << #bit_start & #mask;
+                        buf[#byte_start] |= ((self.#name as u8) << #bit_start) & #mask;
                     }
                 }
                 // Assumption: multi-byte fields are byte-aligned. This should be validated during
@@ -57,27 +46,27 @@ pub fn ethercat_wire(input: TokenStream) -> TokenStream {
                     let start_byte = field.bytes.start;
                     let end_byte = field.bytes.end;
 
-                    quote! {
-                        let raw = <#ty as ::ethercrab::derive::WireField>::WireType::from(self.#name);
-
-                        &mut buf[#start_byte..#end_byte].copy_from_slice(&raw.to_le_bytes());
+                    if field.is_enum {
+                        quote! {
+                            buf[#start_byte..#end_byte].copy_from_slice(&(self.#name as #ty).to_le_bytes());
+                        }
+                    } else {
+                        quote! {
+                            self.#name.pack_to_slice_unchecked(&mut buf[#start_byte..#end_byte]);
+                        }
                     }
                 }
             });
 
             quote! {
-                impl ::ethercrab::derive::WireStruct for #name {
-                    const BITS: usize = #width_bits;
+                impl ::ethercrab::derive::WireField for #name {
+                    // const BITS: usize = #width_bits;
                     const BYTES: usize = #width_bytes;
 
-                    fn pack_to_slice<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], ::ethercrab::error::Error> {
-                        if buf.len() < #width_bytes {
-                            return Err(::ethercrab::error::Error::Internal);
-                        }
-
+                    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                         #(#fields)*
 
-                        Ok(&buf[0..#width_bytes])
+                        &buf[0..#width_bytes]
                     }
                 }
             }

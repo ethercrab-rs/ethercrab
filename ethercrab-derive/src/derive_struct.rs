@@ -1,4 +1,4 @@
-use crate::help::bit_width_attr;
+use crate::help::{bit_width_attr, field_is_enum_attr};
 use std::ops::Range;
 use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
 
@@ -24,6 +24,8 @@ pub struct FieldStuff {
 
     pub bits: Range<usize>,
     pub bytes: Range<usize>,
+
+    pub is_enum: bool,
 }
 
 pub fn parse_struct(
@@ -58,6 +60,8 @@ pub fn parse_struct(
         // Unwrap: this is a named-field struct so the field will always have a name.
         let field_name = field.ident.unwrap();
         let field_width = bit_width_attr(&field.attrs)?;
+
+        let is_enum = field_is_enum_attr(&field.attrs)?;
 
         let Some(field_width) = field_width else {
             return Err(syn::Error::new(
@@ -104,6 +108,8 @@ pub fn parse_struct(
             byte_end,
 
             bit_offset,
+
+            is_enum,
         });
 
         total_field_width += field_width;
@@ -119,8 +125,8 @@ pub fn parse_struct(
         ));
     }
 
-    Ok(dbg!(StructStuff {
+    Ok(StructStuff {
         width,
         fields: field_stuff,
-    }))
+    })
 }
