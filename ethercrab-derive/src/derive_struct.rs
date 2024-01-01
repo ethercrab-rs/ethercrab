@@ -1,9 +1,6 @@
 use crate::help::bit_width_attr;
 use std::ops::Range;
-use syn::{
-    punctuated::Punctuated, DataEnum, DataStruct, DeriveInput, Expr, ExprLit, Fields, FieldsNamed,
-    Ident, Lit, Meta, Token, Type, Visibility,
-};
+use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
 
 #[derive(Debug)]
 pub struct StructStuff {
@@ -15,18 +12,18 @@ pub struct StructStuff {
 
 #[derive(Debug)]
 pub struct FieldStuff {
-    vis: Visibility,
-    name: Ident,
-    ty: Type,
-    bit_start: usize,
-    bit_end: usize,
-    byte_start: usize,
-    byte_end: usize,
+    pub vis: Visibility,
+    pub name: Ident,
+    pub ty: Type,
+    pub bit_start: usize,
+    pub bit_end: usize,
+    pub byte_start: usize,
+    pub byte_end: usize,
     /// Offset of the starting bit in the starting byte.
-    bit_offset: usize,
+    pub bit_offset: usize,
 
-    bits: Range<usize>,
-    bytes: Range<usize>,
+    pub bits: Range<usize>,
+    pub bytes: Range<usize>,
 }
 
 pub fn parse_struct(
@@ -75,21 +72,38 @@ pub fn parse_struct(
         let bit_end = total_field_width + field_width;
         let byte_start = bit_start / 8;
         let byte_end = bit_end.div_ceil(8);
+        let bytes = byte_start..byte_end;
+        let bit_offset = bit_start % 8;
+        let bits = bit_start..bit_end;
+
+        if bytes.len() > 1 && (bit_offset > 0 || field_width % 8 > 0) {
+            return Err(syn::Error::new(
+                field_name.span(),
+                "Multibyte fields must be byte-aligned at start and end",
+            ));
+        }
+
+        if bits.len() < 8 && bytes.len() > 1 {
+            return Err(syn::Error::new(
+                field_name.span(),
+                "Fields smaller than 8 bits may not cross byte boundaries",
+            ));
+        }
 
         field_stuff.push(FieldStuff {
             name: field_name,
             vis: field.vis,
             ty: field.ty,
 
-            bits: bit_start..bit_end,
-            bytes: byte_start..byte_end,
+            bits,
+            bytes,
 
             bit_start,
             bit_end,
             byte_start,
             byte_end,
 
-            bit_offset: bit_start / 8,
+            bit_offset,
         });
 
         total_field_width += field_width;

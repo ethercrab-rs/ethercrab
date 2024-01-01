@@ -16,6 +16,7 @@ keywords = ["ethercat", "ethercrab"]
 proc-macro = true
 
 [dependencies]
+proc-macro2 = "1.0.73"
 quote = "1.0.34"
 # extra-traits for debug during dev. TODO: Remove
 syn = { version = "2.0.44", features = ["extra-traits"] }

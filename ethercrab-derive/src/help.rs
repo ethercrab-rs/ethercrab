@@ -31,10 +31,20 @@ pub fn bit_width_attr(attrs: &[syn::Attribute]) -> Result<Option<usize>, syn::Er
     Ok(width)
 }
 
-pub fn enum_repr_ty(attrs: &[syn::Attribute], ident: &Ident) -> Result<Type, syn::Error> {
+pub fn enum_repr_ty(attrs: &[syn::Attribute], ident: &Ident) -> Result<Ident, syn::Error> {
     for attr in attrs {
         match attr.meta.clone() {
-            syn::Meta::List(l) if l.path.is_ident("repr") => return l.parse_args::<Type>(),
+            syn::Meta::List(l) if l.path.is_ident("repr") => {
+                let ty = l.parse_args::<Type>()?;
+
+                if let Type::Path(ty) = ty {
+                    return ty
+                        .path
+                        .get_ident()
+                        .cloned()
+                        .ok_or_else(|| syn::Error::new(ident.span(), "Repr is not a valid type"));
+                }
+            }
             _ => (),
         }
     }
