@@ -31,32 +31,32 @@ pub fn usize_attr(attrs: &[syn::Attribute], search: &str) -> Result<Option<usize
     Ok(None)
 }
 
-pub fn field_is_enum_attr(attrs: &[syn::Attribute]) -> Result<bool, syn::Error> {
-    for attr in attrs {
-        let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
-        else {
-            continue;
-        };
+// pub fn field_is_enum_attr(attrs: &[syn::Attribute]) -> Result<bool, syn::Error> {
+//     for attr in attrs {
+//         let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
+//         else {
+//             continue;
+//         };
 
-        for meta in nested {
-            match meta {
-                syn::Meta::Path(_) => (),
-                syn::Meta::List(_) => (),
-                syn::Meta::NameValue(nv) if nv.path.is_ident("ty") => {
-                    if let Expr::Lit(ExprLit {
-                        lit: Lit::Str(s), ..
-                    }) = &nv.value
-                    {
-                        return Ok(s.value() == "enum");
-                    }
-                }
-                _ => (),
-            }
-        }
-    }
+//         for meta in nested {
+//             match meta {
+//                 syn::Meta::Path(_) => (),
+//                 syn::Meta::List(_) => (),
+//                 syn::Meta::NameValue(nv) if nv.path.is_ident("ty") => {
+//                     if let Expr::Lit(ExprLit {
+//                         lit: Lit::Str(s), ..
+//                     }) = &nv.value
+//                     {
+//                         return Ok(s.value() == "enum");
+//                     }
+//                 }
+//                 _ => (),
+//             }
+//         }
+//     }
 
-    Ok(false)
-}
+//     Ok(false)
+// }
 
 pub fn enum_repr_ty(attrs: &[syn::Attribute], ident: &Ident) -> Result<Ident, syn::Error> {
     for attr in attrs {

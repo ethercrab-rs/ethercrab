@@ -12,8 +12,9 @@ resolver = "2"
 keywords = ["ethercat", "ethercrab"]
 
 [lib]
-path = "."
 proc-macro = true
+# Explicitly written here to make cargo-readme happy <https://github.com/webern/cargo-readme/issues/32>
+path = "src/lib.rs"
 
 [dependencies]
 proc-macro2 = "1.0.73"
