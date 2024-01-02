@@ -167,8 +167,6 @@ mod client_config;
 mod coe;
 mod command;
 mod dc;
-#[doc(hidden)]
-pub mod derive;
 mod dl_status;
 pub mod ds402;
 mod eeprom;
@@ -201,10 +199,6 @@ pub use client::Client;
 pub use client_config::{ClientConfig, RetryBehaviour};
 pub use coe::SubIndex;
 pub use command::{Command, Reads, Writes};
-#[doc(hidden)]
-pub use derive::EtherCatWire;
-#[doc(hidden)]
-pub use ethercrab_derive::EtherCatWire;
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::RegisterAddress;
 pub use slave::{Slave, SlaveIdentity, SlavePdi, SlaveRef};

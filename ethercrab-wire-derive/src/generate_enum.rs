@@ -20,7 +20,7 @@ pub fn generate_enum(
     });
 
     let out = quote! {
-        impl ::ethercrab::derive::EtherCatWire for #name {
+        impl ::ethercrab_wire::EtherCatWire for #name {
             const BYTES: usize = #repr_type::BITS as usize / 8;
 
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
@@ -31,14 +31,14 @@ pub fn generate_enum(
                 buf
             }
 
-            fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab::error::Error> {
+            fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
                 let raw = buf.get(0..Self::BYTES).map(|bytes| {
                     #repr_type::from_le_bytes(bytes.try_into().unwrap())
-                }).ok_or(::ethercrab::error::Error::Internal)?;
+                }).ok_or(::ethercrab_wire::WireError::Todo)?;
 
                 match raw {
                     #(#match_arms),*
-                    _other => { Err(::ethercrab::error::Error::Internal) }
+                    _other => { Err(::ethercrab_wire::WireError::Todo) }
                 }
             }
         }

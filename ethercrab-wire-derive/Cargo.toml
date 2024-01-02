@@ -24,4 +24,4 @@ syn = { version = "2.0.44", features = ["extra-traits"] }
 [dev-dependencies]
 num_enum = "0.7.1"
 trybuild = "1.0.86"
-ethercrab = { path = "../" }
+ethercrab-wire = { version = "0.1.0", path = "../ethercrab-wire" }

@@ -1,4 +1,4 @@
-use crate::{error::WrappedPackingError, pdu_data::PduRead, EtherCatWire};
+use crate::{error::WrappedPackingError, pdu_data::PduRead};
 use core::fmt;
 use packed_struct::prelude::*;
 

@@ -1,6 +1,8 @@
+use ethercrab_wire::EtherCatWire;
+
 #[test]
 fn sync_manager_channel() {
-    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab::EtherCatWire)]
+    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCatWire)]
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[wire(bits = 8)]
     pub struct Control {
@@ -16,7 +18,7 @@ fn sync_manager_channel() {
         pub watchdog_enable: bool,
     }
 
-    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab::EtherCatWire)]
+    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCatWire)]
     #[wire(bits = 2)]
     #[repr(u8)]
     pub enum OperationMode {
@@ -25,7 +27,7 @@ fn sync_manager_channel() {
         Mailbox = 0x02,
     }
 
-    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab::EtherCatWire)]
+    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCatWire)]
     #[wire(bits = 2)]
     #[repr(u8)]
     pub enum Direction {

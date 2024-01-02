@@ -1,4 +1,4 @@
-use ethercrab::EtherCatWire;
+use ethercrab_wire::EtherCatWire;
 
 #[test]
 fn one_bit() {

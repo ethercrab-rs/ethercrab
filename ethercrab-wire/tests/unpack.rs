@@ -1,5 +1,4 @@
-use ethercrab::derive::EtherCatWire;
-use ethercrab_derive::EtherCatWire;
+use ethercrab_wire::EtherCatWire;
 
 #[test]
 fn basic_struct() {
