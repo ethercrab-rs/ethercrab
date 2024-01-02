@@ -1,6 +1,5 @@
 use crate::LEN_MASK;
 use ethercrab_wire::WireError;
-use packed_struct::{PackedStruct, PackedStructInfo};
 
 /// PDU fields placed after ADP and ADO, e.g. `LEN`, `C` and `NEXT` fields in ETG1000.4 5.4.1.2
 /// Table 14 – Auto increment physical read (APRD).
@@ -76,11 +75,11 @@ impl ethercrab_wire::EtherCatWire for PduFlags {
 //     }
 // }
 
-impl PackedStructInfo for PduFlags {
-    fn packed_bits() -> usize {
-        8 * 2
-    }
-}
+// impl PackedStructInfo for PduFlags {
+//     fn packed_bits() -> usize {
+//         8 * 2
+//     }
+// }
 
 impl PduFlags {
     pub const fn with_len(len: u16) -> Self {

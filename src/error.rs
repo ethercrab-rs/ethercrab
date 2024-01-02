@@ -2,7 +2,6 @@
 
 use crate::{coe::abort_code::AbortCode, command::Command, fmt, SlaveState};
 use core::{cell::BorrowError, num::TryFromIntError, str::Utf8Error};
-use packed_struct::PackingError;
 
 /// An EtherCrab error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -421,14 +420,14 @@ where
     }
 }
 
-impl From<PackingError> for Error {
-    #[allow(unused)]
-    fn from(e: PackingError) -> Self {
-        fmt::error!("Packing error");
+// impl From<PackingError> for Error {
+//     #[allow(unused)]
+//     fn from(e: PackingError) -> Self {
+//         fmt::error!("Packing error");
 
-        Self::Pdu(PduError::Decode)
-    }
-}
+//         Self::Pdu(PduError::Decode)
+//     }
+// }
 
 impl From<TryFromIntError> for Error {
     fn from(_e: TryFromIntError) -> Self {

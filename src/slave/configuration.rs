@@ -19,7 +19,6 @@ use crate::{
 use core::ops::DerefMut;
 use ethercrab_wire::EtherCatWire;
 use num_enum::FromPrimitive;
-use packed_struct::{PackedStruct, PackedStructSlice};
 
 /// Configuation from EEPROM methods.
 impl<'a, S> SlaveRef<'a, S>

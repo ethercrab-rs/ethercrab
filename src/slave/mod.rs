@@ -37,7 +37,6 @@ use core::{
 };
 use ethercrab_wire::EtherCatWire;
 use nom::{bytes::complete::take, number::complete::le_u32};
-use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;

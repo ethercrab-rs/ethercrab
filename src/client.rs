@@ -20,7 +20,6 @@ use core::{
 };
 use embassy_futures::select::{select, Either};
 use heapless::FnvIndexMap;
-use packed_struct::PackedStruct;
 
 /// The main EtherCAT master instance.
 ///

@@ -13,7 +13,7 @@ use nom::{
     error::context,
     number::complete::{le_u16, u8},
 };
-use packed_struct::PackedStructSlice;
+// use packed_struct::PackedStructSlice;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 /// EtherCAT frame receive adapter.

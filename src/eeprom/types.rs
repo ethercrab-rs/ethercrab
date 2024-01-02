@@ -15,12 +15,12 @@ use nom::{
     IResult,
 };
 use num_enum::{FromPrimitive, TryFromPrimitive};
-use packed_struct::prelude::*;
 
 pub const TX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
 pub const RX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1600..=0x17ff;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
+#[repr(u8)]
 pub enum SiiOwner {
     /// EEPROM access rights are assigned to PDI during state change from Init to PreOp, Init to
     /// Boot and while in Boot
