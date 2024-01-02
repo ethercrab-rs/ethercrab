@@ -4,7 +4,7 @@ use crate::pdu_data::PduRead;
 /// AL (Application Layer) Status Code.
 ///
 /// Defined in ETG1000.6 Table 11.
-#[derive(Debug, Copy, Clone, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum AlStatusCode {
@@ -117,7 +117,7 @@ pub enum AlStatusCode {
     // NOTE: Other codes < 0x8000 are reserved.
     // NOTE: Codes 0x8000 - 0xffff are vendor specific.
     /// Unknown status code.
-    #[num_enum(catch_all)]
+    #[wire(catch_all)]
     Unknown(u16),
 }
 

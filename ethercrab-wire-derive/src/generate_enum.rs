@@ -16,7 +16,7 @@ pub fn generate_enum(
         .into_iter()
         .filter(|variant| !variant.catch_all);
 
-    let pack = match &parsed.catch_all {
+    let (pack, into_primitive_impl) = match &parsed.catch_all {
         Some(_catch_all_variant) => {
             let match_arms = parsed.variants.clone().into_iter().map(|variant| {
                 let value =
@@ -25,26 +25,56 @@ pub fn generate_enum(
 
                 if variant.catch_all {
                     quote! {
-                        Self::#variant_name (value) => { *value }
+                        #name::#variant_name (value) => { *value }
                     }
                 } else {
                     quote! {
-                        Self::#variant_name => { #value }
+                        #name::#variant_name => { #value }
                     }
                 }
             });
 
-            quote! {
-                let value: #repr_type = match self {
-                    #(#match_arms),*
-                };
+            let match_arms_from = parsed.variants.clone().into_iter().map(|variant| {
+                let value =
+                    proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
+                let variant_name = variant.name;
 
-                buf.copy_from_slice(&value.to_le_bytes());
-            }
+                if variant.catch_all {
+                    quote! {
+                        #name::#variant_name (value) => { value }
+                    }
+                } else {
+                    quote! {
+                        #name::#variant_name => { #value }
+                    }
+                }
+            });
+
+            (
+                quote! {
+                    let value: #repr_type = match self {
+                        #(#match_arms),*
+                    };
+
+                    buf.copy_from_slice(&value.to_le_bytes());
+                },
+                quote! {
+                    impl From<#name> for #repr_type {
+                        fn from(value: #name) -> Self {
+                            match value {
+                                #(#match_arms_from),*
+                            }
+                        }
+                    }
+                },
+            )
         }
-        None => quote! {
-            buf.copy_from_slice(&(*self as #repr_type).to_le_bytes());
-        },
+        None => (
+            quote! {
+                buf.copy_from_slice(&(*self as #repr_type).to_le_bytes());
+            },
+            quote! {},
+        ),
     };
 
     let match_arms = primitive_variants.clone().map(|variant| {
@@ -56,7 +86,7 @@ pub fn generate_enum(
         }
     });
 
-    let (fallthrough, from_impl) = match parsed.catch_all.clone() {
+    let (fallthrough, from_primitive_impl) = match parsed.catch_all.clone() {
         Some(catch_all) => {
             let variant = catch_all.name.clone();
             let catch_all_variant = catch_all.name;
@@ -79,7 +109,7 @@ pub fn generate_enum(
 
                 quote! {
                     impl From<#repr_type> for #name {
-                        fn from(value: u8) -> Self {
+                        fn from(value: #repr_type) -> Self {
                             match value {
                                 #(#match_arms),*
                                 other => Self::#catch_all_variant(other)
@@ -126,7 +156,8 @@ pub fn generate_enum(
             }
         }
 
-        #from_impl
+        #from_primitive_impl
+        #into_primitive_impl
     };
 
     Ok(out)

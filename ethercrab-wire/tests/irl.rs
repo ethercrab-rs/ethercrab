@@ -70,3 +70,15 @@ fn arr() {
         pub data: [u8; 4],
     }
 }
+
+#[test]
+fn enum_u16() {
+    #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[repr(u16)]
+    pub enum AlStatusCode {
+        NoError = 0x0000,
+        #[wire(catch_all)]
+        Unknown(u16),
+    }
+}
