@@ -177,7 +177,9 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn coe_header_fuzz() {
         heckcheck::check(|status: CoeHeader| {
-            let packed = crate::deleteme_pack(status);
+            let mut buf = [0u8; { CoeHeader::BYTES }];
+
+            let packed = status.pack_to_slice_unchecked(&mut buf);
 
             let unpacked = CoeHeader::unpack_from_slice(&packed).expect("Unpack");
 

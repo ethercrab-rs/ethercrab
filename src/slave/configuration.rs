@@ -512,10 +512,12 @@ where
             }
         };
 
+        let mut fmmu_buf = [0u8; { Fmmu::BYTES }];
+
         self.client
             .write_slice(
                 RegisterAddress::fmmu(fmmu_index as u8).into(),
-                &crate::deleteme_pack(fmmu_config),
+                fmmu_config.pack_to_slice_unchecked(&mut fmmu_buf),
                 "PDI FMMU",
             )
             .await?;

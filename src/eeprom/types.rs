@@ -32,37 +32,49 @@ pub enum SiiOwner {
 }
 
 /// Defined in ETG1000.4 6.4.3
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PackedStruct)]
-#[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
+// #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
+#[wire(bytes = 2)]
 pub struct SiiControl {
     // First byte, but second octet because little endian
-    #[packed_field(bits = "8", ty = "enum")]
+    // #[packed_field(bits = "8", ty = "enum")]
+    #[wire(bits = 1)]
     pub access: SiiAccess,
     // #[packed_field(bits = "9..=12")]
     // reserved4: u8,
-    #[packed_field(bits = "13")]
+    #[wire(pre_skip = 4, bits = 1)]
+    // #[packed_field(bits = "13")]
     pub emulate_sii: bool,
-    #[packed_field(bits = "14", ty = "enum")]
+    // #[packed_field(bits = "14", ty = "enum")]
+    #[wire(bits = 1)]
     pub read_size: SiiReadSize,
-    #[packed_field(bits = "15", ty = "enum")]
+    // #[packed_field(bits = "15", ty = "enum")]
+    #[wire(bits = 1)]
     pub address_type: SiiAddressSize,
 
-    // Second byte, but first octet because little endian
-    #[packed_field(bits = "0")]
+    // #[packed_field(bits = "0")]
+    #[wire(bits = 1)]
     pub read: bool,
-    #[packed_field(bits = "1")]
+    // #[packed_field(bits = "1")]
+    #[wire(bits = 1)]
     pub write: bool,
-    #[packed_field(bits = "2")]
+    // #[packed_field(bits = "2")]
+    #[wire(bits = 1)]
     pub reload: bool,
-    #[packed_field(bits = "3")]
+    // #[packed_field(bits = "3")]
+    #[wire(bits = 1)]
     pub checksum_error: bool,
-    #[packed_field(bits = "4")]
+    // #[packed_field(bits = "4")]
+    #[wire(bits = 1)]
     pub device_info_error: bool,
-    #[packed_field(bits = "5")]
+    // #[packed_field(bits = "5")]
+    #[wire(bits = 1)]
     pub command_error: bool,
-    #[packed_field(bits = "6")]
+    // #[packed_field(bits = "6")]
+    #[wire(bits = 1)]
     pub write_error: bool,
-    #[packed_field(bits = "7")]
+    // #[packed_field(bits = "7")]
+    #[wire(bits = 1)]
     pub busy: bool,
 }
 
@@ -89,7 +101,8 @@ impl SiiControl {
     }
 
     pub fn as_array(&self) -> [u8; 2] {
-        fmt::unwrap!(self.pack())
+        // fmt::unwrap!(self.pack())
+        crate::deleteme_pack(*self)
     }
 }
 
@@ -105,14 +118,16 @@ impl PduRead for SiiControl {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
+#[repr(u8)]
 pub enum SiiAccess {
     #[default]
     ReadOnly = 0x00,
     ReadWrite = 0x01,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
+#[repr(u8)]
 pub enum SiiReadSize {
     /// Read 4 octets at a time.
     #[default]
@@ -131,7 +146,8 @@ impl SiiReadSize {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
+#[repr(u8)]
 pub enum SiiAddressSize {
     #[default]
     U8 = 0x00,

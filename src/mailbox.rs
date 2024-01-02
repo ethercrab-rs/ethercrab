@@ -137,7 +137,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn mailbox_header_fuzz() {
         heckcheck::check(|status: MailboxHeader| {
-            let packed = crate::deleteme_pack(status);
+            let packed = crate::deleteme_pack::<6, _>(status);
 
             let unpacked = MailboxHeader::unpack_from_slice(&packed).expect("Unpack");
 

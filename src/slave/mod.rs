@@ -442,11 +442,14 @@ where
 
         let counter = request.counter();
 
+        let mut req_buf = [0u8; 16];
+        let req = request.pack_to_slice(&mut req_buf).unwrap();
+
         // Send data to slave IN mailbox
         Command::fpwr(self.state.configured_address, write_mailbox.address)
             .send_receive_slice_len(
                 self.client.client,
-                &crate::deleteme_pack(request),
+                &req,
                 // Need to write entire mailbox to latch it
                 write_mailbox.len,
             )
