@@ -1,4 +1,5 @@
 use crate::parse_struct::StructStuff;
+use proc_macro2::{Ident, Span};
 use quote::quote;
 use std::str::FromStr;
 use syn::DeriveInput;
@@ -16,8 +17,12 @@ pub fn generate_struct(
         let byte_start = field.bytes.start;
         let bit_start = field.bit_offset;
 
+        let ty_name = field
+            .ty_name
+            .unwrap_or_else(|| Ident::new("UnknownTypeStopLookingAtMe", Span::call_site()));
+
         // Small optimisation
-        if field.ty_name == "u8" || field.ty_name == "bool" {
+        if ty_name == "u8" || ty_name == "bool" {
             let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
             let mask = proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
 
@@ -51,23 +56,24 @@ pub fn generate_struct(
     let fields_unpack = parsed.fields.clone().into_iter().map(|field| {
         let ty = field.ty;
         let name = field.name;
-
         let byte_start = field.bytes.start;
-
         let bit_start = field.bit_offset;
+        let ty_name = field
+            .ty_name
+            .unwrap_or_else(|| Ident::new("UnknownTypeStopLookingAtMe", Span::call_site()));
 
         if field.bits.len() <= 8 {
             let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
             let mask =
                 proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
 
-            if field.ty_name == "bool" {
+            if ty_name == "bool" {
                 quote! {
                     #name: ((buf[#byte_start] & #mask) >> #bit_start) > 0
                 }
             }
             // Small optimisation
-            else if field.ty_name == "u8" {
+            else if ty_name == "u8" {
                 quote! {
                     #name: (buf[#byte_start] & #mask) >> #bit_start
                 }

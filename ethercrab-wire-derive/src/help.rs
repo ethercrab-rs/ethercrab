@@ -1,7 +1,14 @@
 use syn::{punctuated::Punctuated, Expr, ExprLit, Ident, Lit, Meta, Token, Type};
 
 pub fn bit_width_attr(attrs: &[syn::Attribute]) -> Result<Option<usize>, syn::Error> {
-    usize_attr(attrs, "bits")
+    let bits = usize_attr(attrs, "bits")?;
+
+    let res = match bits {
+        Some(bits) => Some(bits),
+        None => usize_attr(attrs, "bytes")?.map(|bytes| bytes * 8),
+    };
+
+    Ok(res)
 }
 
 pub fn usize_attr(attrs: &[syn::Attribute], search: &str) -> Result<Option<usize>, syn::Error> {

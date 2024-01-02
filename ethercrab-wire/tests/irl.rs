@@ -59,3 +59,14 @@ fn slave_state() {
         Other(u8),
     }
 }
+
+#[test]
+fn arr() {
+    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCatWire)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[wire(bytes = 4)]
+    pub struct Control {
+        #[wire(bytes = 4)]
+        pub data: [u8; 4],
+    }
+}
