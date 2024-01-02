@@ -36,15 +36,6 @@ impl AlControl {
             ..Default::default()
         }
     }
-
-    // DELETEME
-    pub fn pack(&self) -> [u8; 2] {
-        let mut buf = [0u8; 2];
-
-        self.pack_to_slice_unchecked(&mut buf);
-
-        buf
-    }
 }
 
 impl PduRead for AlControl {

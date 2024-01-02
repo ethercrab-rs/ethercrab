@@ -131,7 +131,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn mailbox_header_fuzz() {
         heckcheck::check(|status: MailboxHeader| {
-            let packed = crate::deleteme_pack::<6, _>(status);
+            let packed = status.pack();
 
             let unpacked = MailboxHeader::unpack_from_slice(&packed).expect("Unpack");
 
@@ -146,13 +146,14 @@ mod tests {
         // From wireshark capture
         let expected = [0x0a, 0x00, 0x00, 0x00, 0x00, 0x33];
 
-        let packed = crate::deleteme_pack(MailboxHeader {
+        let packed = MailboxHeader {
             length: 10,
             priority: Priority::Lowest,
             address: 0x0000,
             counter: 3,
             mailbox_type: MailboxType::Coe,
-        });
+        }
+        .pack();
 
         assert_eq!(packed, expected);
     }

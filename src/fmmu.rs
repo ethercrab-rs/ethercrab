@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn default_is_zero() {
-        assert_eq!(crate::deleteme_pack(Fmmu::default()), [0u8; 16]);
+        assert_eq!(Fmmu::default().pack(), [0u8; 16]);
     }
 
     #[test]

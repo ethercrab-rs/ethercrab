@@ -230,12 +230,3 @@ where
         )))
     }
 }
-
-// DELETEME
-fn deleteme_pack<const N: usize, T: ethercrab_wire::EtherCatWire>(t: T) -> [u8; N] {
-    let mut buf = [0u8; N];
-
-    t.pack_to_slice_unchecked(&mut buf);
-
-    buf
-}

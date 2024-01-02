@@ -98,11 +98,6 @@ impl SiiControl {
             ..Default::default()
         }
     }
-
-    pub fn as_array(&self) -> [u8; 2] {
-        // fmt::unwrap!(self.pack())
-        crate::deleteme_pack(*self)
-    }
 }
 
 impl PduRead for SiiControl {

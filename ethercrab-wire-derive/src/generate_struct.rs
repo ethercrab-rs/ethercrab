@@ -102,13 +102,24 @@ pub fn generate_struct(
 
     let out = quote! {
         impl ::ethercrab_wire::EtherCatWire for #name {
-            // const BITS: usize = #width_bits;
             const BYTES: usize = #width_bytes;
+
+            type Arr = [u8; #width_bytes];
 
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 #(#fields_pack)*
 
                 &buf[0..#width_bytes]
+            }
+
+            fn pack(&self) -> Self::Arr {
+                // TODO: Optimise if only one byte in length
+
+                let mut buf = [0u8; #width_bytes];
+
+                self.pack_to_slice_unchecked(&mut buf);
+
+                buf
             }
 
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {

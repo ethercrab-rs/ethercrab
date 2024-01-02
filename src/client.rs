@@ -19,6 +19,7 @@ use core::{
     sync::atomic::{AtomicU16, Ordering},
 };
 use embassy_futures::select::{select, Either};
+use ethercrab_wire::EtherCatWire;
 use heapless::FnvIndexMap;
 
 /// The main EtherCAT master instance.

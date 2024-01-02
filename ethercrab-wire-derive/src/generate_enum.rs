@@ -145,15 +145,34 @@ pub fn generate_enum(
         quote! {}
     };
 
+    let size_bytes = match repr_type.to_string().as_str() {
+        "u8" => 1usize,
+        "u16" => 2,
+        "u32" => 4,
+        invalid => unreachable!("Invalid repr {}", invalid),
+    };
+
     let out = quote! {
         impl ::ethercrab_wire::EtherCatWire for #name {
-            const BYTES: usize = #repr_type::BITS as usize / 8;
+            const BYTES: usize = #size_bytes;
+
+            type Arr = [u8; #size_bytes];
 
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 // TODO: If only one byte, just write it to `buf[0]`
                 let mut buf = &mut buf[0..Self::BYTES];
 
                 #pack
+
+                buf
+            }
+
+            fn pack(&self) -> Self::Arr {
+                // TODO: Optimise if only one byte in length
+
+                let mut buf = [0u8; #size_bytes];
+
+                self.pack_to_slice_unchecked(&mut buf);
 
                 buf
             }

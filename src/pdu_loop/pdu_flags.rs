@@ -20,6 +20,8 @@ pub struct PduFlags {
 impl ethercrab_wire::EtherCatWire for PduFlags {
     const BYTES: usize = 2;
 
+    type Arr = [u8; 2];
+
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let raw = self.length & LEN_MASK
             | (self.circulated as u16) << 14
@@ -28,6 +30,14 @@ impl ethercrab_wire::EtherCatWire for PduFlags {
         let buf = &mut buf[0..Self::BYTES];
 
         buf.copy_from_slice(&raw.to_le_bytes());
+
+        buf
+    }
+
+    fn pack(&self) -> Self::Arr {
+        let mut buf = [0u8; 2];
+
+        self.pack_to_slice_unchecked(&mut buf);
 
         buf
     }
@@ -77,7 +87,7 @@ mod tests {
             is_not_last: true,
         };
 
-        let packed = crate::deleteme_pack(flags);
+        let packed = flags.pack();
 
         assert_eq!(packed, [0x10, 0x81]);
 
@@ -96,7 +106,7 @@ mod tests {
 
         assert_eq!(flags.len(), 1036);
 
-        assert_eq!(crate::deleteme_pack(flags), [0b0000_1100, 0b0000_0100]);
-        assert_eq!(crate::deleteme_pack(flags), [0x0c, 0x04]);
+        assert_eq!(flags.pack(), [0b0000_1100, 0b0000_0100]);
+        assert_eq!(flags.pack(), [0x0c, 0x04]);
     }
 }
