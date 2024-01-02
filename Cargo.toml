@@ -14,7 +14,7 @@ resolver = "2"
 rust-version = "1.75"
 
 [workspace]
-members = ["ethercrab-derive"]
+members = ["ethercrab-wire-derive"]
 
 [package.metadata.docs.rs]
 default-target = "x86_64-unknown-linux-gnu"
@@ -44,7 +44,7 @@ smoltcp = { version = "0.11.0", default-features = false, features = [
     "socket-raw",
     "medium-ethernet",
 ] }
-ethercrab-derive = { version = "0.1.0", path = "ethercrab-derive" }
+ethercrab-wire = { version = "0.1.0", path = "ethercrab-wire" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.34.0", features = ["std"], optional = true }
