@@ -3,12 +3,12 @@
 use crate::{
     all_consumed,
     base_data_types::PrimitiveDataType,
-    error::{EepromError, Error, WrappedPackingError},
+    error::{EepromError, Error},
     fmt,
     pdu_data::PduRead,
     sync_manager_channel::{self},
 };
-use ethercrab_wire::EtherCatWire;
+use ethercrab_wire::{EtherCatWire, WireError};
 use nom::{
     combinator::{map, map_opt, map_res},
     number::complete::{le_i16, le_u16, le_u8},
@@ -89,14 +89,14 @@ impl SiiControl {
     }
 
     pub fn as_array(&self) -> [u8; 2] {
-        fmt::unwrap!(self.pack().map_err(crate::error::WrappedPackingError::from))
+        fmt::unwrap!(self.pack())
     }
 }
 
 impl PduRead for SiiControl {
     const LEN: u16 = u16::LEN;
 
-    type Error = WrappedPackingError;
+    type Error = WireError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         let res = Self::unpack_from_slice(slice)?;
@@ -163,10 +163,7 @@ impl SiiRequest {
     pub fn as_array(&self) -> [u8; 6] {
         let mut buf = [0u8; 6];
 
-        fmt::unwrap!(self
-            .control
-            .pack_to_slice(&mut buf[0..2])
-            .map_err(crate::error::WrappedPackingError::from));
+        fmt::unwrap!(self.control.pack_to_slice(&mut buf[0..2]));
 
         buf[2..4].copy_from_slice(&self.address.to_le_bytes());
 

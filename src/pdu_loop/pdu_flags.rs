@@ -1,6 +1,9 @@
 use crate::LEN_MASK;
+use ethercrab_wire::WireError;
 use packed_struct::{PackedStruct, PackedStructInfo};
 
+/// PDU fields placed after ADP and ADO, e.g. `LEN`, `C` and `NEXT` fields in ETG1000.4 5.4.1.2
+/// Table 14 – Auto increment physical read (APRD).
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct PduFlags {
     /// Data length of this PDU.
@@ -15,19 +18,25 @@ pub struct PduFlags {
     is_not_last: bool,
 }
 
-impl PackedStruct for PduFlags {
-    type ByteArray = [u8; 2];
+impl ethercrab_wire::EtherCatWire for PduFlags {
+    const BYTES: usize = 2;
 
-    fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let raw = self.length & LEN_MASK
             | (self.circulated as u16) << 14
             | (self.is_not_last as u16) << 15;
 
-        Ok(raw.to_le_bytes())
+        let buf = &mut buf[0..Self::BYTES];
+
+        buf.copy_from_slice(&raw.to_le_bytes());
+
+        buf
     }
 
-    fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
-        let src = u16::from_le_bytes(*src);
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
+        let buf = buf.get(0..Self::BYTES).ok_or(WireError::Todo)?;
+
+        let src = u16::from_le_bytes(buf.try_into().unwrap());
 
         let length = src & LEN_MASK;
         let circulated = (src >> 14) & 0x01 == 0x01;
@@ -40,6 +49,32 @@ impl PackedStruct for PduFlags {
         })
     }
 }
+
+// impl PackedStruct for PduFlags {
+//     type ByteArray = [u8; 2];
+
+//     fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
+//         let raw = self.length & LEN_MASK
+//             | (self.circulated as u16) << 14
+//             | (self.is_not_last as u16) << 15;
+
+//         Ok(raw.to_le_bytes())
+//     }
+
+//     fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
+//         let src = u16::from_le_bytes(*src);
+
+//         let length = src & LEN_MASK;
+//         let circulated = (src >> 14) & 0x01 == 0x01;
+//         let is_not_last = (src >> 15) & 0x01 == 0x01;
+
+//         Ok(Self {
+//             length,
+//             circulated,
+//             is_not_last,
+//         })
+//     }
+// }
 
 impl PackedStructInfo for PduFlags {
     fn packed_bits() -> usize {
@@ -63,6 +98,8 @@ impl PduFlags {
 
 #[cfg(test)]
 mod tests {
+    use ethercrab_wire::EtherCatWire;
+
     use super::*;
 
     #[test]
@@ -73,11 +110,11 @@ mod tests {
             is_not_last: true,
         };
 
-        let packed = flags.pack().unwrap();
+        let packed = crate::deleteme_pack(flags);
 
         assert_eq!(packed, [0x10, 0x81]);
 
-        let unpacked = PduFlags::unpack(&packed).unwrap();
+        let unpacked = PduFlags::unpack_from_slice(&packed).unwrap();
 
         assert_eq!(unpacked, flags);
     }
@@ -92,7 +129,7 @@ mod tests {
 
         assert_eq!(flags.len(), 1036);
 
-        assert_eq!(flags.pack().unwrap(), [0b0000_1100, 0b0000_0100]);
-        assert_eq!(flags.pack().unwrap(), [0x0c, 0x04]);
+        assert_eq!(crate::deleteme_pack(flags), [0b0000_1100, 0b0000_0100]);
+        assert_eq!(crate::deleteme_pack(flags), [0x0c, 0x04]);
     }
 }

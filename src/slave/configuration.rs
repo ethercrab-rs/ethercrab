@@ -515,9 +515,7 @@ where
         self.client
             .write_slice(
                 RegisterAddress::fmmu(fmmu_index as u8).into(),
-                &fmt::unwrap!(fmmu_config
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from)),
+                &crate::deleteme_pack(fmmu_config),
                 "PDI FMMU",
             )
             .await?;

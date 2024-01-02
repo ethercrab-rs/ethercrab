@@ -78,6 +78,24 @@ impl EtherCatWire for bool {
     }
 }
 
+impl<const N: usize> EtherCatWire for [u8; N] {
+    const BYTES: usize = N;
+
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+        let buf = &mut buf[0..N];
+
+        buf.copy_from_slice(self);
+
+        buf
+    }
+
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
+        let chunk = buf.get(0..N).ok_or(WireError::Todo)?;
+
+        chunk.try_into().map_err(|_e| WireError::Todo)
+    }
+}
+
 /// A type to be sent/received on the wire, according to EtherCAT spec rules (packed bits, little
 /// endian).
 pub trait EtherCatWire: Sized {

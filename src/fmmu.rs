@@ -5,40 +5,50 @@ use core::fmt;
 use packed_struct::prelude::*;
 
 /// ETG1000.4 Table 56 – Fieldbus memory management unit (FMMU) entity.
-#[derive(Default, Copy, Clone, PackedStruct, PartialEq, Eq)]
+#[derive(Default, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[packed_struct(bit_numbering = "msb0", endian = "lsb", size_bytes = "16")]
+// #[packed_struct(bit_numbering = "msb0", endian = "lsb", size_bytes = "16")]
+#[wire(bytes = 16)]
 pub struct Fmmu {
     /// This parameter shall contain the start address in octets in the logical memory area of the
     /// memory translation.
-    #[packed_field(bytes = "0..=3")]
+    // #[packed_field(bytes = "0..=3")]
+    #[wire(bytes = 4)]
     pub logical_start_address: u32,
 
-    #[packed_field(bytes = "4..=5")]
+    // #[packed_field(bytes = "4..=5")]
+    #[wire(bytes = 2)]
     pub length_bytes: u16,
 
-    #[packed_field(bytes = "6", size_bits = "3")]
+    // #[packed_field(bytes = "6", size_bits = "3")]
+    #[wire(bits = 3, post_skip = 5)]
     pub logical_start_bit: u8,
 
-    #[packed_field(bytes = "7", size_bits = "3")]
+    // #[packed_field(bytes = "7", size_bits = "3")]
+    #[wire(bits = 3, post_skip = 5)]
     pub logical_end_bit: u8,
 
-    #[packed_field(bytes = "8..=9")]
+    #[wire(bytes = 2)]
+    // #[packed_field(bytes = "8..=9")]
     pub physical_start_address: u16,
 
-    #[packed_field(bytes = "10", size_bits = "3")]
+    // #[packed_field(bytes = "10", size_bits = "3")]
+    #[wire(bits = 3, post_skip = 5)]
     pub physical_start_bit: u8,
 
     // 11th byte, last bit
-    #[packed_field(bits = "95")]
+    // #[packed_field(bits = "95")]
+    #[wire(bits = 1)]
     pub read_enable: bool,
 
     // 11th byte, penultimate bit
-    #[packed_field(bits = "94")]
+    // #[packed_field(bits = "94")]
+    #[wire(bits = 1, post_skip = 6)]
     pub write_enable: bool,
 
     // 12th byte, last bit
-    #[packed_field(bits = "103")]
+    // #[packed_field(bits = "103")]
+    #[wire(bits = 1, post_skip = 31)]
     pub enable: bool,
     // Encoded in `size_bytes` attribute of `packed_struct`.
     // pub reserved_1: u8,
@@ -88,10 +98,11 @@ impl fmt::Display for Fmmu {
 mod tests {
     use super::*;
     use core::mem;
+    use ethercrab_wire::EtherCatWire;
 
     #[test]
     fn default_is_zero() {
-        assert_eq!(Fmmu::default().pack().unwrap(), [0u8; 16]);
+        assert_eq!(crate::deleteme_pack(Fmmu::default()), [0u8; 16]);
     }
 
     #[test]
@@ -99,7 +110,7 @@ mod tests {
         // Unpacked size
         assert_eq!(mem::size_of::<Fmmu>(), 16);
         // Packed size
-        assert_eq!(Fmmu::packed_bytes_size(None).unwrap(), 16);
+        assert_eq!(Fmmu::BYTES, 16);
     }
 
     #[test]

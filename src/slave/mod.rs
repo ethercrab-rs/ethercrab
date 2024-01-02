@@ -437,7 +437,6 @@ where
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
         H: CoeServiceRequest + Debug,
-        <H as PackedStruct>::ByteArray: AsRef<[u8]>,
     {
         let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
 
@@ -447,10 +446,7 @@ where
         Command::fpwr(self.state.configured_address, write_mailbox.address)
             .send_receive_slice_len(
                 self.client.client,
-                fmt::unwrap!(request
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from))
-                .as_ref(),
+                &crate::deleteme_pack(request),
                 // Need to write entire mailbox to latch it
                 write_mailbox.len,
             )
@@ -459,21 +455,14 @@ where
 
         let mut response = self.coe_response(&read_mailbox).await?;
 
-        let headers_len = H::Response::packed_bits() / 8;
+        let headers_len = H::Response::BYTES;
 
         let (headers, data) = response.split_at(headers_len);
 
         // Clippy: The WrappedPackingError conversion is a noop in std but in no_std/defmt land it's
         // required for the `defmt::Format` impl.
         #[allow(clippy::useless_conversion)]
-        let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
-            fmt::error!(
-                "Failed to unpack mailbox response headers: {}",
-                crate::error::WrappedPackingError::from(e)
-            );
-
-            e
-        })?;
+        let headers = H::Response::unpack_from_slice(headers)?;
 
         if headers.is_aborted() {
             let code = AbortCode::from(u32::from_le_bytes(fmt::unwrap!(data[0..4].try_into())));
