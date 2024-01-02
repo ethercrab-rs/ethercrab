@@ -13,7 +13,9 @@ resolver = "2"
 rust-version = "1.75"
 
 [dependencies]
+defmt = { version = "0.3.5", optional = true }
 ethercrab-wire-derive = { version = "0.1.0", path = "../ethercrab-wire-derive" }
 
 [features]
 std = []
+defmt-03 = ["dep:defmt"]

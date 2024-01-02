@@ -89,6 +89,7 @@ defmt = [
     "smoltcp/defmt",
     "embedded-io-async/defmt-03",
     "heapless/defmt-03",
+    "ethercrab-wire/defmt-03",
 ]
 log = ["dep:log"]
 std = [
