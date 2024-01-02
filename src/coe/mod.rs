@@ -62,22 +62,16 @@ pub enum CoeService {
 
 /// Defined in ETG1000.6 Section 5.6.2.1.1
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
-// #[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
 #[wire(bytes = 1)]
 pub struct InitSdoFlags {
-    // #[packed_field(bits = "0")]
     #[wire(bits = 1)]
     pub size_indicator: bool,
-    // #[packed_field(bits = "1")]
     #[wire(bits = 1)]
     pub expedited_transfer: bool,
-    // #[packed_field(bits = "2..=3")]
     #[wire(bits = 2)]
     pub size: u8,
-    // #[packed_field(bits = "4")]
     #[wire(bits = 1)]
     pub complete_access: bool,
-    // #[packed_field(bits = "5..=7")]
     #[wire(bits = 3)]
     pub command: u8,
 }
@@ -91,39 +85,30 @@ impl InitSdoFlags {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
-// #[packed_struct(size_bytes = "4", bit_numbering = "msb0", endian = "lsb")]
 #[wire(bytes = 4)]
 pub struct InitSdoHeader {
-    // #[packed_field(bytes = "0")]
     #[wire(bytes = 1)]
     pub flags: InitSdoFlags,
-    // #[packed_field(bytes = "1..=2")]
     #[wire(bytes = 2)]
     pub index: u16,
-    // #[packed_field(bytes = "3")]
     #[wire(bytes = 1)]
     pub sub_index: u8,
 }
 
 /// Defined in ETG1000.6 5.6.2.3.1
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
-// #[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
 #[wire(bytes = 1)]
 pub struct SegmentSdoHeader {
-    // #[packed_field(bits = "0")]
     #[wire(bits = 1)]
     pub is_last_segment: bool,
 
-    // #[packed_field(bits = "1..=3")]
     /// Segment data size, `0x00` to `0x07`.
     #[wire(bits = 3)]
     pub segment_data_size: u8,
 
-    // #[packed_field(bits = "4")]
     #[wire(bits = 1)]
     pub toggle: bool,
 
-    // #[packed_field(bits = "5..=7")]
     #[wire(bits = 3)]
     command: u8,
 }

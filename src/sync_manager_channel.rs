@@ -13,23 +13,17 @@ pub const SM_BASE_ADDRESS: u16 = 0x1c10;
 /// Defined in ETG1000.4 6.7.2
 #[derive(Default, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-// #[packed_struct(size_bytes = "8", bit_numbering = "msb0", endian = "lsb")]
 #[wire(bits = 64)]
 pub struct SyncManagerChannel {
-    #[wire(bits = 16)]
-    // #[packed_field(size_bytes = "2")]
+    #[wire(bytes = 2)]
     pub physical_start_address: u16,
-    #[wire(bits = 16)]
-    // #[packed_field(size_bytes = "2")]
+    #[wire(bytes = 2)]
     pub length_bytes: u16,
-    #[wire(bits = 8)]
-    // #[packed_field(size_bytes = "1")]
+    #[wire(bytes = 1)]
     pub control: Control,
-    #[wire(bits = 8)]
-    // #[packed_field(size_bytes = "1")]
+    #[wire(bytes = 1)]
     pub status: Status,
-    #[wire(bits = 16)]
-    // #[packed_field(size_bytes = "2")]
+    #[wire(bytes = 2)]
     pub enable: Enable,
 }
 
@@ -83,49 +77,36 @@ impl PduRead for SyncManagerChannel {
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-// #[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
-#[wire(bits = 7)]
+#[wire(bits = 8)]
 pub struct Control {
-    // #[packed_field(bits = "0..=1", ty = "enum")]
     #[wire(bits = 2)]
     pub operation_mode: OperationMode,
-    // #[packed_field(bits = "2..=3", ty = "enum")]
     #[wire(bits = 2)]
     pub direction: Direction,
-    // #[packed_field(bits = "4")]
     #[wire(bits = 1)]
     pub ecat_event_enable: bool,
     #[wire(bits = 1)]
-    // #[packed_field(bits = "5")]
     pub dls_user_event_enable: bool,
-    // #[packed_field(bits = "6")]
-    #[wire(bits = 1)]
+    #[wire(bits = 1, post_skip = 1)]
     pub watchdog_enable: bool,
     // reserved1: bool
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-// #[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
 #[wire(bits = 8)]
 pub struct Status {
-    // #[packed_field(bits = "0")]
     #[wire(bits = 1)]
     pub has_write_event: bool,
-    // #[packed_field(bits = "1")]
     #[wire(bits = 1, post_skip = 1)]
     pub has_read_event: bool,
     // reserved1: bool
-    // #[packed_field(bits = "3")]
     #[wire(bits = 1)]
     pub mailbox_full: bool,
-    // #[packed_field(bits = "4..=5", ty = "enum")]
     #[wire(bits = 2)]
     pub buffer_state: BufferState,
-    // #[packed_field(bits = "6")]
     #[wire(bits = 1)]
     pub read_buffer_open: bool,
-    // #[packed_field(bits = "7")]
     #[wire(bits = 1)]
     pub write_buffer_open: bool,
 }
@@ -133,43 +114,32 @@ pub struct Status {
 /// Described in ETG1000.4 6.7.2 Sync Manager Attributes
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-// #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 #[wire(bits = 16)]
 pub struct Enable {
-    // ---
-    // First byte (little endian, so second index)
-    // ---
-    // #[packed_field(bits = "8")]
     #[wire(bits = 1)]
     pub enable: bool,
-    // #[packed_field(bits = "9")]
     #[wire(bits = 1, post_skip = 4)]
     pub repeat: bool,
     // reserved4: u8
     /// DC Event 0 with EtherCAT write.
     ///
     /// Set to `true` to enable DC 0 events on EtherCAT writes.
-    // #[packed_field(bits = "14")]
     #[wire(bits = 1)]
     pub enable_dc_event_bus_write: bool,
 
     /// DC Event 0 with local write.
     ///
     /// Set to `true` to enable DC 0 events from local writes.
-    // #[packed_field(bits = "15")]
     #[wire(bits = 1)]
     pub enable_dc_event_local_write: bool,
     // ---
     // Second byte (little endian, so first index)
     // ---
-    // #[packed_field(bits = "0")]
     #[wire(bits = 1)]
     pub channel_pdi_disabled: bool,
-    // #[packed_field(bits = "1")]
     #[wire(bits = 1, post_skip = 6)]
     pub repeat_ack: bool,
-    // #[packed_field(bits = "10..15")]
-    // pub _rest: u8,
+    // reserved6: u8,
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]

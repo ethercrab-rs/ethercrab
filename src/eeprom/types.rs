@@ -33,7 +33,6 @@ pub enum SiiOwner {
 
 /// Defined in ETG1000.4 6.4.3
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
-// #[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
 #[wire(bytes = 2)]
 pub struct SiiControl {
     // First byte, but second octet because little endian

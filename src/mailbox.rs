@@ -36,29 +36,23 @@ pub enum MailboxType {
 ///
 /// Defined in ETG1000.6 under either `TMBXHEADER` or `MbxHeader` e.g. Table 29 - CoE Elements.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
-// #[packed_struct(size_bytes = "6", bit_numbering = "msb0", endian = "lsb")]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 6)]
 pub struct MailboxHeader {
     /// Mailbox data payload length.
-    // #[packed_field(bytes = "0..=1")]
     #[wire(bytes = 2)]
     pub length: u16,
-    // #[packed_field(bytes = "2..=3")]
     #[wire(bytes = 2)]
     pub address: u16,
     // reserved6: u8,
-    // #[packed_field(bits = "38..=39", ty = "enum")]
     #[wire(pre_skip = 6, bits = 2)]
     pub priority: Priority,
     // #[wire(bits = 4)]
     // pub type: u8
-    // #[packed_field(bits = "44..=47", ty = "enum")]
     #[wire(bits = 4)]
     pub mailbox_type: MailboxType,
     /// Mailbox counter from 1 to 7 inclusive. Wraps around to 1 when count exceeds 7. 0 is
     /// reserved.
-    // #[packed_field(bits = "41..=43")]
     #[wire(bits = 3, post_skip = 1)]
     pub counter: u8,
     // _reserved1: u8

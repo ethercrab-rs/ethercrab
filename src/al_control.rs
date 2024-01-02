@@ -1,4 +1,4 @@
-use crate::{fmt, pdu_data::PduRead, slave_state::SlaveState};
+use crate::{pdu_data::PduRead, slave_state::SlaveState};
 use ethercrab_wire::{EtherCatWire, WireError};
 
 /// The AL control/status word for an individual slave device.
@@ -18,34 +18,6 @@ pub struct AlControl {
     #[wire(bits = 1, post_skip = 10)]
     pub id_request: bool,
 }
-
-// impl PackedStruct for AlControl {
-//     type ByteArray = [u8; 2];
-
-//     fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
-//         let byte = (u8::from(self.state) & 0x0f)
-//             | ((self.error as u8) << 4)
-//             | ((self.id_request as u8) << 5);
-
-//         Ok([byte, 0])
-//     }
-
-//     fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
-//         let byte = src[0];
-
-//         fmt::trace!("AL raw byte {:#010b} (slice {:?})", byte, src);
-
-//         let state = SlaveState::from(byte & 0x0f);
-//         let error = (byte & (1 << 4)) > 0;
-//         let id_request = (byte & (1 << 5)) > 0;
-
-//         Ok(Self {
-//             state,
-//             error,
-//             id_request,
-//         })
-//     }
-// }
 
 impl AlControl {
     pub fn new(state: SlaveState) -> Self {
