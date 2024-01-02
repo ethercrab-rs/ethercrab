@@ -1,3 +1,6 @@
+use proc_macro2::Span;
+use proc_macro_crate::{crate_name, FoundCrate};
+use quote::quote;
 use syn::{punctuated::Punctuated, Expr, ExprLit, Ident, Lit, Meta, Token, Type};
 
 pub fn bit_width_attr(attrs: &[syn::Attribute]) -> Result<Option<usize>, syn::Error> {

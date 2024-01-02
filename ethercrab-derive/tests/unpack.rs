@@ -1,4 +1,4 @@
-use ethercrab::derive::WireField;
+use ethercrab::derive::EtherCatWire;
 use ethercrab_derive::EtherCatWire;
 
 #[test]

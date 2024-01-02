@@ -1,4 +1,4 @@
-use crate::{error::WrappedPackingError, pdu_data::PduRead};
+use crate::{error::WrappedPackingError, pdu_data::PduRead, EtherCatWire};
 use core::fmt;
 use packed_struct::prelude::*;
 
@@ -75,19 +75,25 @@ impl PduRead for SyncManagerChannel {
     }
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PackedStruct)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
+// #[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
+#[wire(bits = 7)]
 pub struct Control {
-    #[packed_field(bits = "0..=1", ty = "enum")]
+    // #[packed_field(bits = "0..=1", ty = "enum")]
+    #[wire(bits = 2)]
     pub operation_mode: OperationMode,
-    #[packed_field(bits = "2..=3", ty = "enum")]
+    // #[packed_field(bits = "2..=3", ty = "enum")]
+    #[wire(bits = 2)]
     pub direction: Direction,
-    #[packed_field(bits = "4")]
+    // #[packed_field(bits = "4")]
+    #[wire(bits = 1)]
     pub ecat_event_enable: bool,
-    #[packed_field(bits = "5")]
+    #[wire(bits = 1)]
+    // #[packed_field(bits = "5")]
     pub dls_user_event_enable: bool,
-    #[packed_field(bits = "6")]
+    // #[packed_field(bits = "6")]
+    #[wire(bits = 1)]
     pub watchdog_enable: bool,
     // reserved1: bool
 }
@@ -146,16 +152,20 @@ pub struct Enable {
     // pub _rest: u8,
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bits = 2)]
+#[repr(u8)]
 pub enum OperationMode {
     #[default]
     Normal = 0x00,
     Mailbox = 0x02,
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bits = 2)]
+#[repr(u8)]
 pub enum Direction {
     #[default]
     MasterRead = 0x00,

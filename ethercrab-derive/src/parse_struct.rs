@@ -28,6 +28,7 @@ pub struct FieldStuff {
 
     pub is_enum: bool,
     pub pre_skip: Option<usize>,
+    pub post_skip: Option<usize>,
 }
 
 pub fn parse_struct(
@@ -64,6 +65,7 @@ pub fn parse_struct(
         let field_width = bit_width_attr(&field.attrs)?;
 
         let pre_skip = usize_attr(&field.attrs, "pre_skip")?;
+        let post_skip = usize_attr(&field.attrs, "post_skip")?;
 
         let is_enum = field_is_enum_attr(&field.attrs)?;
 
@@ -112,6 +114,10 @@ pub fn parse_struct(
         }?
         .clone();
 
+        if let Some(skip) = post_skip {
+            total_field_width += skip;
+        }
+
         field_stuff.push(FieldStuff {
             name: field_name,
             vis: field.vis,
@@ -131,6 +137,7 @@ pub fn parse_struct(
             is_enum,
 
             pre_skip,
+            post_skip,
         });
 
         total_field_width += field_width;

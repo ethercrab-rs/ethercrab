@@ -8,7 +8,7 @@ use crate::error::Error;
 
 macro_rules! impl_primitive_wire_field {
     ($ty:ty, $size:expr) => {
-        impl WireField for $ty {
+        impl EtherCatWire for $ty {
             const BYTES: usize = $size;
 
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
@@ -33,7 +33,7 @@ impl_primitive_wire_field!(u8, 1);
 impl_primitive_wire_field!(u16, 2);
 impl_primitive_wire_field!(u32, 4);
 
-impl WireField for bool {
+impl EtherCatWire for bool {
     const BYTES: usize = 1;
 
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
@@ -51,7 +51,7 @@ impl WireField for bool {
     }
 }
 
-pub trait WireField: Sized {
+pub trait EtherCatWire: Sized {
     // const BITS: usize;
     const BYTES: usize;
 

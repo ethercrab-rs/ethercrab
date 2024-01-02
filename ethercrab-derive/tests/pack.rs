@@ -1,6 +1,4 @@
-use ethercrab::derive::WireField;
-use ethercrab_derive::EtherCatWire;
-use num_enum::TryFromPrimitive;
+use ethercrab::EtherCatWire;
 
 #[test]
 fn one_bit() {

@@ -75,7 +75,7 @@ pub fn generate_struct(
                     #name: {
                         let masked = (buf[#byte_start] & #mask) >> #bit_start;
 
-                        <#ty as ::ethercrab::derive::WireField>::unpack_from_slice(&[masked])?
+                        <#ty as ::ethercrab::derive::EtherCatWire>::unpack_from_slice(&[masked])?
                     }
                 }
             }
@@ -86,13 +86,13 @@ pub fn generate_struct(
             let end_byte = field.bytes.end;
 
             quote! {
-                #name: <#ty as ::ethercrab::derive::WireField>::unpack_from_slice(&buf[#start_byte..#end_byte])?
+                #name: <#ty as ::ethercrab::derive::EtherCatWire>::unpack_from_slice(&buf[#start_byte..#end_byte])?
             }
         }
     });
 
     let out = quote! {
-        impl ::ethercrab::derive::WireField for #name {
+        impl ::ethercrab::derive::EtherCatWire for #name {
             // const BITS: usize = #width_bits;
             const BYTES: usize = #width_bytes;
 
