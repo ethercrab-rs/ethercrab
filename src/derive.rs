@@ -67,11 +67,3 @@ pub trait WireField: Sized {
 
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, Error>;
 }
-
-pub trait WireFieldEnum: Sized {
-    const BYTES: usize;
-
-    type Repr;
-
-    fn unpack_to_repr(buf: &[u8]) -> Result<Self::Repr, Error>;
-}

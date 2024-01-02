@@ -32,8 +32,8 @@ fn basic_struct() {
 }
 
 #[test]
-fn pack_struct_nested_enum() {
-    #[derive(Debug, Copy, Clone, EtherCatWire, num_enum::TryFromPrimitive)]
+fn unpack_struct_nested_enum() {
+    #[derive(Debug, Copy, Clone, EtherCatWire, PartialEq)]
     #[repr(u8)]
     enum Nested {
         Foo = 0x01,
@@ -42,30 +42,29 @@ fn pack_struct_nested_enum() {
         Quux = 0x04,
     }
 
-    #[derive(Debug, EtherCatWire)]
+    #[derive(Debug, EtherCatWire, PartialEq)]
     #[wire(bits = 8)]
     struct Check {
         #[wire(bits = 2)]
         foo: u8,
-        #[wire(bits = 3, ty = "enum")]
+        #[wire(bits = 3)]
         bar: Nested,
         #[wire(bits = 3)]
         baz: u8,
     }
 
-    let check = Check {
+    let expected = Check {
         foo: 0b11,
         bar: Nested::Baz,
-        baz: 0x010,
+        // 0x010 is too big to fit in 3 bits, so it will be zero on deserialise
+        baz: 0,
     };
 
-    let expected = [0b11 | (0x03 << 2) | (0x010 << 5)];
+    let buf = [0b11 | (0x03 << 2) | (0x010 << 5)];
 
-    let mut buf = [0u8; 16];
+    let out = Check::unpack_from_slice(&buf);
 
-    let out = check.pack_to_slice(&mut buf).unwrap();
-
-    assert_eq!(out, &expected);
+    assert_eq!(out, Ok(expected));
 }
 
 #[test]

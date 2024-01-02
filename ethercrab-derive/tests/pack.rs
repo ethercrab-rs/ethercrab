@@ -24,7 +24,7 @@ fn one_byte() {
 
 #[test]
 fn basic_enum_byte() {
-    #[derive(Debug, Copy, Clone, EtherCatWire, num_enum::TryFromPrimitive)]
+    #[derive(Debug, Copy, Clone, EtherCatWire)]
     #[repr(u8)]
     #[wire(bits = 8)]
     enum Check {
@@ -34,10 +34,7 @@ fn basic_enum_byte() {
         Quux = 0xef,
     }
 
-    dbg!(Check::try_from_primitive(0xaau8));
-
-    // Maybe I'll need this
-    // dbg!(u8::from(Check::Foo));
+    // TODO
 }
 
 #[test]
@@ -132,7 +129,7 @@ fn pack_struct_single_byte() {
 
 #[test]
 fn pack_struct_nested_enum() {
-    #[derive(Debug, Copy, Clone, EtherCatWire, num_enum::TryFromPrimitive)]
+    #[derive(Debug, Copy, Clone, EtherCatWire)]
     #[repr(u8)]
     enum Nested {
         Foo = 0x01,
@@ -146,7 +143,7 @@ fn pack_struct_nested_enum() {
     struct Check {
         #[wire(bits = 2)]
         foo: u8,
-        #[wire(bits = 3, ty = "enum")]
+        #[wire(bits = 3)]
         bar: Nested,
         #[wire(bits = 3)]
         baz: u8,

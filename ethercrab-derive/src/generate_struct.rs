@@ -46,55 +46,50 @@ pub fn generate_struct(
     });
 
     let fields_unpack = parsed.fields.clone().into_iter().map(|field| {
-                let ty = field.ty;
-                let name = field.name;
+        let ty = field.ty;
+        let name = field.name;
 
-                let byte_start = field.bytes.start;
+        let byte_start = field.bytes.start;
 
-                let bit_start = field.bit_offset;
+        let bit_start = field.bit_offset;
 
-                if field.bits.len() <= 8 {
-                    let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
-                    let mask =
-                        proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
+        if field.bits.len() <= 8 {
+            let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
+            let mask =
+                proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
 
-                    if field.is_enum {
-                        quote! {
-                            #name: {
-                                let masked = (buf[#byte_start] & #mask) >> #bit_start;
+            if field.ty_name == "bool" {
+                quote! {
+                    #name: ((buf[#byte_start] & #mask) >> #bit_start) > 0
+                }
+            }
+            // Small optimisation
+            else if field.ty_name == "u8" {
+                quote! {
+                    #name: (buf[#byte_start] & #mask) >> #bit_start
+                }
+            }
+            // Anything else will be a struct or an enum
+            else {
+                quote! {
+                    #name: {
+                        let masked = (buf[#byte_start] & #mask) >> #bit_start;
 
-                                <#ty as num_enum::TryFromPrimitive>::try_from_primitive(masked)
-                                    .map_err(|_| ::ethercrab::error::Error::Internal)?
-                            },
-                        }
-                    } else if field.ty_name == "bool" {
-                        quote! {
-                            #name: ((buf[#byte_start] & #mask) >> #bit_start) > 0,
-                        }
-                    } else {
-                        quote! {
-                            #name: (buf[#byte_start] & #mask) >> #bit_start,
-                        }
+                        <#ty as ::ethercrab::derive::WireField>::unpack_from_slice(&[masked])?
                     }
                 }
-                // Assumption: multi-byte fields are byte-aligned. This should be validated during
-                // parse.
-                else {
-                    let start_byte = field.bytes.start;
-                    let end_byte = field.bytes.end;
+            }
+        }
+        // Assumption: multi-byte fields are byte-aligned. This must be validated during parse.
+        else {
+            let start_byte = field.bytes.start;
+            let end_byte = field.bytes.end;
 
-                    if field.is_enum {
-                        quote! {
-                            #name: <#ty as num_enum::TryFromPrimitive>::try_from_primitive(<#ty as ::ethercrab::derive::WireFieldEnum>::unpack_to_repr(&buf))
-                                .map_err(|_| ::ethercrab::error::Error::Internal)?,
-                        }
-                    } else {
-                        quote! {
-                            #name: <#ty as ::ethercrab::derive::WireField>::unpack_from_slice(&buf[#start_byte..#end_byte])?,
-                        }
-                    }
-                }
-            });
+            quote! {
+                #name: <#ty as ::ethercrab::derive::WireField>::unpack_from_slice(&buf[#start_byte..#end_byte])?
+            }
+        }
+    });
 
     let out = quote! {
         impl ::ethercrab::derive::WireField for #name {
@@ -113,7 +108,7 @@ pub fn generate_struct(
                 }
 
                 Ok(Self {
-                    #(#fields_unpack)*
+                    #(#fields_unpack),*
                 })
             }
         }
