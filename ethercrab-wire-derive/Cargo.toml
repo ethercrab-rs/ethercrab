@@ -12,6 +12,7 @@ resolver = "2"
 keywords = ["ethercat", "ethercrab"]
 
 [lib]
+path = "."
 proc-macro = true
 
 [dependencies]
