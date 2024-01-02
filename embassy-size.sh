@@ -2,9 +2,9 @@
 
 echo -e "commit,date,text,bss,dec,bin" > target/sizes.csv
 
-set -e
+current_branch=$(git rev-parse --abbrev-ref HEAD)
 
-for commit in $(git rev-list master)
+for commit in $(git rev-list $current_branch)
 do
     if [[ -f "examples/embassy-stm32/Cargo.toml" ]]; then
         pushd examples/embassy-stm32
