@@ -25,7 +25,7 @@ target_steps: &target_steps
 
     - run: rustup target add $TARGET || true
     - run: cargo fmt --all -- --check
-    - run: just check-readme
+    - run: just check-readmes
     - run: cargo test --target $TARGET
     - run: cargo bench --no-run --target $TARGET
     - run: cargo build --target $TARGET --examples --release
