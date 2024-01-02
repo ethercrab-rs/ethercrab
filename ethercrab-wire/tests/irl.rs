@@ -82,6 +82,7 @@ fn enum_u16() {
         Unknown(u16),
     }
 }
+
 #[test]
 fn enum_alternatives() {
     #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
@@ -92,5 +93,31 @@ fn enum_alternatives() {
         Nop = 0,
         #[wire(alternatives = [2,3,4,5,6,7,8,9])]
         DeviceSpecific = 1,
+    }
+}
+
+#[test]
+fn enum_default_and_catch_all() {
+    #[derive(Default, Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[repr(u16)]
+    pub enum AlStatusCode {
+        NoError = 0x0000,
+        #[default]
+        Something = 0x0001,
+        #[wire(catch_all)]
+        Unknown(u16),
+    }
+}
+
+#[test]
+fn enum_default_only() {
+    #[derive(Default, Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[repr(u16)]
+    pub enum AlStatusCode {
+        NoError = 0x0000,
+        #[default]
+        Something = 0x0001,
     }
 }

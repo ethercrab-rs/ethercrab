@@ -82,52 +82,67 @@ pub fn generate_enum(
         let variant_name = variant.name;
 
         quote! {
+            #value => { Self::#variant_name }
+        }
+    });
+
+    let result_match_arms = primitive_variants.clone().map(|variant| {
+        let value = proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
+        let variant_name = variant.name;
+
+        quote! {
             #value => { Ok(Self::#variant_name) }
         }
     });
 
-    let (fallthrough, from_primitive_impl) = match parsed.catch_all.clone() {
-        Some(catch_all) => {
-            let variant = catch_all.name.clone();
-            let catch_all_variant = catch_all.name;
+    let fallthrough = if let Some(ref catch_all_variant) = parsed.catch_all {
+        let catch_all = catch_all_variant.name.clone();
 
-            let fallthrough = quote! {
-                other => Ok(Self::#variant(other))
-            };
+        quote! {
+            other => Ok(Self::#catch_all(other))
+        }
+    } else if let Some(ref default_variant) = parsed.default_variant {
+        let default = default_variant.name.clone();
 
-            let from_impl = {
-                let match_arms = primitive_variants.clone().map(|variant| {
-                    let value =
-                        proc_macro2::TokenStream::from_str(&variant.discriminant.to_string())
-                            .unwrap();
-                    let variant_name = variant.name;
+        quote! {
+            _other => Ok(Self::#default)
+        }
+    } else {
+        quote! {
+            _other => { Err(::ethercrab_wire::WireError::Todo) }
+        }
+    };
 
-                    quote! {
-                        #value => { Self::#variant_name }
-                    }
-                });
+    let from_primitive_impl = if let Some(catch_all_variant) = parsed.catch_all {
+        let catch_all = catch_all_variant.name.clone();
+        let match_arms = match_arms.clone();
 
-                quote! {
-                    impl From<#repr_type> for #name {
-                        fn from(value: #repr_type) -> Self {
-                            match value {
-                                #(#match_arms),*
-                                other => Self::#catch_all_variant(other)
-                            }
-                        }
+        quote! {
+            impl From<#repr_type> for #name {
+                fn from(value: #repr_type) -> Self {
+                    match value {
+                        #(#match_arms),*
+                        other => Self::#catch_all(other)
                     }
                 }
-            };
-
-            (fallthrough, from_impl)
+            }
         }
-        None => (
-            quote! {
-                _other => { Err(::ethercrab_wire::WireError::Todo) }
-            },
-            // Fallible, so no From<> impl
-            quote! {},
-        ),
+    } else if let Some(default_variant) = parsed.default_variant {
+        let default = default_variant.name;
+        let match_arms = match_arms.clone();
+
+        quote! {
+            impl From<#repr_type> for #name {
+                fn from(value: #repr_type) -> Self {
+                    match value {
+                        #(#match_arms),*
+                        other => Self::#default
+                    }
+                }
+            }
+        }
+    } else {
+        quote! {}
     };
 
     let out = quote! {
@@ -150,7 +165,7 @@ pub fn generate_enum(
                 }).ok_or(::ethercrab_wire::WireError::Todo)?;
 
                 match raw {
-                    #(#match_arms),*
+                    #(#result_match_arms),*
                     #fallthrough,
                 }
             }

@@ -149,3 +149,14 @@ pub fn variant_alternatives(attrs: &[syn::Attribute]) -> Result<Vec<u32>, syn::E
 
     Ok(Vec::new())
 }
+
+pub fn variant_is_default(attrs: &[syn::Attribute]) -> Result<bool, syn::Error> {
+    for attr in attrs {
+        match attr.meta {
+            Meta::Path(ref p) if p.is_ident("default") => return Ok(true),
+            _ => continue,
+        }
+    }
+
+    Ok(false)
+}

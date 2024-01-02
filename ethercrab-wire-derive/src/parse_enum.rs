@@ -1,4 +1,4 @@
-use crate::help::{attr_exists, enum_repr_ty, variant_alternatives};
+use crate::help::{attr_exists, enum_repr_ty, variant_alternatives, variant_is_default};
 use syn::{DataEnum, DeriveInput, Expr, ExprLit, Ident, Lit};
 
 // TODO: Rename all these `*Stuff` fields lol
@@ -10,6 +10,7 @@ pub struct EnumStuff {
     pub variants: Vec<VariantStuff>,
 
     pub catch_all: Option<VariantStuff>,
+    pub default_variant: Option<VariantStuff>,
 }
 
 #[derive(Clone)]
@@ -17,6 +18,7 @@ pub struct VariantStuff {
     pub name: Ident,
     pub discriminant: u32,
     pub catch_all: bool,
+    pub default: bool,
     pub alternatives: Vec<u32>,
 }
 
@@ -51,6 +53,7 @@ pub fn parse_enum(
     let mut discriminant_accum = 0;
     let mut variants = Vec::new();
     let mut catch_all = None;
+    let mut default_variant = None;
 
     for variant in e.variants {
         let ident = variant.ident;
@@ -67,6 +70,7 @@ pub fn parse_enum(
             _ => return Err(syn::Error::new(repr.span(), "Invalid discriminant format")),
         };
 
+        let is_default = variant_is_default(&variant.attrs)?;
         let is_catch_all = attr_exists(&variant.attrs, "catch_all")?;
 
         let alternatives = variant_alternatives(&variant.attrs)?;
@@ -83,6 +87,7 @@ pub fn parse_enum(
             discriminant: variant_discriminant,
             catch_all: is_catch_all,
             alternatives: alternatives.clone(),
+            default: is_default,
         };
 
         if is_catch_all {
@@ -96,15 +101,28 @@ pub fn parse_enum(
             }
         }
 
+        if is_default {
+            let old = default_variant.replace(record.clone());
+
+            if old.is_some() {
+                return Err(syn::Error::new(
+                    ident.span(),
+                    "Only one default variant is allowed",
+                ));
+            }
+        }
+
         discriminant_accum = variant_discriminant;
 
         variants.push(record.clone());
 
         for alternative in alternatives {
             let alt = VariantStuff {
+                name: ident.clone(),
                 discriminant: alternative,
                 alternatives: Vec::new(),
-                ..record.clone()
+                default: false,
+                catch_all: false,
             };
 
             variants.push(alt);
@@ -118,5 +136,6 @@ pub fn parse_enum(
         repr_type: repr,
         variants,
         catch_all,
+        default_variant,
     })
 }
