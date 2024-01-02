@@ -1,4 +1,4 @@
-use crate::help::{attr_exists, enum_repr_ty};
+use crate::help::{attr_exists, enum_repr_ty, variant_alternatives};
 use syn::{DataEnum, DeriveInput, Expr, ExprLit, Ident, Lit};
 
 // TODO: Rename all these `*Stuff` fields lol
@@ -17,6 +17,7 @@ pub struct VariantStuff {
     pub name: Ident,
     pub discriminant: u32,
     pub catch_all: bool,
+    pub alternatives: Vec<u32>,
 }
 
 pub fn parse_enum(
@@ -68,10 +69,20 @@ pub fn parse_enum(
 
         let is_catch_all = attr_exists(&variant.attrs, "catch_all")?;
 
+        let alternatives = variant_alternatives(&variant.attrs)?;
+
+        if is_catch_all && !alternatives.is_empty() {
+            return Err(syn::Error::new(
+                ident.span(),
+                "Catch all cannot have alternatives",
+            ));
+        }
+
         let record = VariantStuff {
             name: ident.clone(),
             discriminant: variant_discriminant,
             catch_all: is_catch_all,
+            alternatives: alternatives.clone(),
         };
 
         if is_catch_all {
@@ -87,7 +98,19 @@ pub fn parse_enum(
 
         discriminant_accum = variant_discriminant;
 
-        variants.push(record)
+        variants.push(record.clone());
+
+        for alternative in alternatives {
+            let alt = VariantStuff {
+                discriminant: alternative,
+                alternatives: Vec::new(),
+                ..record.clone()
+            };
+
+            variants.push(alt);
+
+            discriminant_accum = alternative;
+        }
     }
 
     Ok(EnumStuff {

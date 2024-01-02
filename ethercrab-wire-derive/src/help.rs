@@ -1,4 +1,7 @@
-use syn::{punctuated::Punctuated, Expr, ExprLit, Ident, Lit, Meta, Token, Type};
+use syn::{
+    punctuated::Punctuated, spanned::Spanned, Expr, ExprArray, ExprLit, Ident, Lit, Meta, Token,
+    Type,
+};
 
 pub fn bit_width_attr(attrs: &[syn::Attribute]) -> Result<Option<usize>, syn::Error> {
     let bits = usize_attr(attrs, "bits")?;
@@ -105,4 +108,44 @@ pub fn enum_repr_ty(attrs: &[syn::Attribute], ident: &Ident) -> Result<Ident, sy
         ident.span(),
         "Enums must have a #[repr()] attribute",
     ))
+}
+
+/// Look for 'alternatives = [1,2,3]` attribute on enum variant.
+pub fn variant_alternatives(attrs: &[syn::Attribute]) -> Result<Vec<u32>, syn::Error> {
+    for attr in attrs {
+        let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
+        else {
+            continue;
+        };
+
+        for meta in nested {
+            match meta {
+                syn::Meta::Path(_) => (),
+                syn::Meta::List(_) => (),
+                syn::Meta::NameValue(nv) if nv.path.is_ident("alternatives") => {
+                    if let Expr::Array(ExprArray { elems, .. }) = &nv.value {
+                        return elems
+                            .iter()
+                            .map(|elem| {
+                                let Expr::Lit(ExprLit {
+                                    lit: Lit::Int(lit), ..
+                                }) = elem.clone()
+                                else {
+                                    return Err(syn::Error::new(
+                                        elem.span(),
+                                        "Alternatives must be numbers",
+                                    ));
+                                };
+
+                                lit.base10_parse::<u32>()
+                            })
+                            .collect::<Result<Vec<_>, _>>();
+                    }
+                }
+                _ => (),
+            }
+        }
+    }
+
+    Ok(Vec::new())
 }

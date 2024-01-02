@@ -82,3 +82,15 @@ fn enum_u16() {
         Unknown(u16),
     }
 }
+#[test]
+fn enum_alternatives() {
+    #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[repr(u16)]
+    pub enum Alternatives {
+        #[default]
+        Nop = 0,
+        #[wire(alternatives = [2,3,4,5,6,7,8,9])]
+        DeviceSpecific = 1,
+    }
+}
