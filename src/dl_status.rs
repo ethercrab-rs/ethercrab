@@ -51,17 +51,6 @@ pub struct DlStatus {
     pub signal_port3: bool,
 }
 
-impl DlStatus {
-    // DELETEME
-    pub fn pack(&self) -> [u8; 2] {
-        let mut buf = [0u8; 2];
-
-        self.pack_to_slice_unchecked(&mut buf);
-
-        buf
-    }
-}
-
 // impl PackedS/* truct for DlStatus {
 //     type ByteArray = [u8; 2];
 

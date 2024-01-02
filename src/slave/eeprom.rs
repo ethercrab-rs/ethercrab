@@ -13,7 +13,7 @@ use crate::{
 };
 use core::{ops::RangeInclusive, str::FromStr};
 use embedded_io_async::Read;
-use num_enum::TryFromPrimitive;
+use ethercrab_wire::EtherCatWire;
 
 pub struct SlaveEeprom<P> {
     provider: P,
@@ -179,11 +179,11 @@ where
             buf[0..fmmus]
                 .iter()
                 .map(|raw| {
-                    FmmuUsage::try_from_primitive(*raw).map_err(|_e| {
+                    FmmuUsage::unpack_from_slice(&[*raw]).map_err(|e| {
                         #[cfg(feature = "std")]
-                        fmt::error!("Failed to decode FmmuUsage: {}", _e);
+                        fmt::error!("Failed to decode FmmuUsage: {}", e);
 
-                        Error::Eeprom(EepromError::Decode)
+                        e.into()
                     })
                 })
                 .collect::<Result<heapless::Vec<_, 16>, Error>>()?

@@ -10,11 +10,11 @@ use crate::{
 };
 use ethercrab_wire::{EtherCatWire, WireError};
 use nom::{
+    bytes::complete::take,
     combinator::{map, map_opt, map_res},
     number::complete::{le_i16, le_u16, le_u8},
     IResult,
 };
-use num_enum::{FromPrimitive, TryFromPrimitive};
 
 pub const TX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
 pub const RX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1600..=0x17ff;
@@ -190,7 +190,7 @@ impl SiiRequest {
 /// SII register address.
 ///
 /// Defined in ETG1000.6 Table 16 or ETG2010 Table 2
-#[derive(Debug, Copy, Clone, num_enum::IntoPrimitive)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
 #[repr(u16)]
 pub enum SiiCoding {
     /// PDI Control
@@ -266,13 +266,13 @@ pub enum SiiCoding {
 /// Defined in ETG1000.6 Table 19.
 ///
 /// Additional information also in ETG1000.6 Table 17.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum CategoryType {
-    #[num_enum(default)]
+    #[default]
     Nop = 0,
-    #[num_enum(alternatives = [2,3,4,5,6,7,8,9])]
+    #[wire(alternatives = [2,3,4,5,6,7,8,9])]
     DeviceSpecific = 1,
     Strings = 10,
     DataTypes = 20,
@@ -305,13 +305,11 @@ impl From<PdoType> for CategoryType {
 }
 
 /// ETG1000.6 Table 23
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FmmuUsage {
-    #[num_enum(alternatives = [0xff])]
+    #[wire(alternatives = [0xff])]
     Unused = 0x00,
     Outputs = 0x01,
     Inputs = 0x02,
@@ -322,7 +320,7 @@ impl FromEeprom for FmmuUsage {
     const STORAGE_SIZE: usize = 1;
 
     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, usage) = map_res(le_u8, FmmuUsage::try_from_primitive)(i)?;
+        let (i, usage) = map_res(take(1usize), FmmuUsage::unpack_from_slice)(i)?;
 
         Ok((i, usage))
     }
@@ -411,10 +409,10 @@ impl FromEeprom for SiiGeneral {
             let p4 = (raw >> 12) & 0x0f;
 
             [
-                PortStatus::from_primitive(p1 as u8),
-                PortStatus::from_primitive(p2 as u8),
-                PortStatus::from_primitive(p3 as u8),
-                PortStatus::from_primitive(p4 as u8),
+                PortStatus::from(p1 as u8),
+                PortStatus::from(p2 as u8),
+                PortStatus::from(p3 as u8),
+                PortStatus::from(p4 as u8),
             ]
         })(i)?;
 
@@ -442,7 +440,7 @@ impl FromEeprom for SiiGeneral {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[repr(u8)]
 pub enum PortStatus {
     #[default]
@@ -519,7 +517,7 @@ impl FromEeprom for SyncManager {
         let (i, _status) = le_u8(i)?;
 
         let (i, enable) = map_opt(le_u8, SyncManagerEnable::from_bits)(i)?;
-        let (i, usage_type) = map(le_u8, SyncManagerType::from_primitive)(i)?;
+        let (i, usage_type) = map(le_u8, SyncManagerType::from)(i)?;
 
         all_consumed(i)?;
 
@@ -558,7 +556,7 @@ impl defmt::Format for SyncManagerEnable {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, num_enum::FromPrimitive)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum SyncManagerType {
@@ -674,7 +672,10 @@ impl FromEeprom for PdoEntry {
         let (i, index) = le_u16(i)?;
         let (i, sub_index) = le_u8(i)?;
         let (i, name_string_idx) = le_u8(i)?;
-        let (i, data_type) = map_res(le_u8, PrimitiveDataType::try_from_primitive)(i)?;
+        let (i, data_type) = map_res(
+            take(PrimitiveDataType::BYTES),
+            PrimitiveDataType::unpack_from_slice,
+        )(i)?;
         let (i, data_length_bits) = le_u8(i)?;
         let (i, flags) = le_u16(i)?;
 

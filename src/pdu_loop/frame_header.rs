@@ -7,13 +7,13 @@ use nom::{
     IResult,
 };
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[repr(u8)]
 enum ProtocolType {
     DlPdu = 0x01u8,
     NetworkVariables = 0x04,
     Mailbox = 0x05,
-    #[num_enum(catch_all)]
+    #[wire(catch_all)]
     Unknown(u8),
 }
 

@@ -18,7 +18,6 @@ use crate::{
 };
 use core::ops::DerefMut;
 use ethercrab_wire::EtherCatWire;
-use num_enum::FromPrimitive;
 
 /// Configuation from EEPROM methods.
 impl<'a, S> SlaveRef<'a, S>
@@ -62,7 +61,7 @@ where
                     .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
                     .await?
                     .iter()
-                    .map(|sm| SyncManagerType::from_primitive(*sm));
+                    .map(|sm| SyncManagerType::from(*sm));
 
                 heapless::Vec::from_iter(sms)
             } else {
@@ -79,7 +78,7 @@ where
                         .map(|sm| {
                             fmt::trace!("Sync manager {} at sub-index {}", sm, index);
 
-                            SyncManagerType::from_primitive(sm)
+                            SyncManagerType::from(sm)
                         })?;
 
                     sms.push(sm).map_err(|_| {
