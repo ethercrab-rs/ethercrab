@@ -436,19 +436,19 @@ where
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
         H: CoeServiceRequest + Debug,
+        H::Arr: AsRef<[u8]>,
     {
         let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
 
         let counter = request.counter();
 
-        let mut req_buf = [0u8; 16];
-        let req = request.pack_to_slice(&mut req_buf).unwrap();
+        let arr = request.pack();
 
         // Send data to slave IN mailbox
         Command::fpwr(self.state.configured_address, write_mailbox.address)
             .send_receive_slice_len(
                 self.client.client,
-                &req,
+                arr.as_ref(),
                 // Need to write entire mailbox to latch it
                 write_mailbox.len,
             )
