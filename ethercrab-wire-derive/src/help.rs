@@ -31,6 +31,24 @@ pub fn usize_attr(attrs: &[syn::Attribute], search: &str) -> Result<Option<usize
     Ok(None)
 }
 
+pub fn attr_exists(attrs: &[syn::Attribute], search: &str) -> Result<bool, syn::Error> {
+    for attr in attrs {
+        let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
+        else {
+            continue;
+        };
+
+        for meta in nested {
+            match meta {
+                syn::Meta::Path(p) if p.is_ident(search) => return Ok(true),
+                _ => (),
+            }
+        }
+    }
+
+    Ok(false)
+}
+
 // pub fn field_is_enum_attr(attrs: &[syn::Attribute]) -> Result<bool, syn::Error> {
 //     for attr in attrs {
 //         let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)

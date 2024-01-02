@@ -36,3 +36,26 @@ fn sync_manager_channel() {
         MasterWrite = 0x01,
     }
 }
+
+#[test]
+fn slave_state() {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, EtherCatWire)]
+    #[repr(u8)]
+    pub enum SlaveState {
+        /// No state recorded/read/known.
+        None = 0x00,
+        /// EtherCAT `INIT` state.
+        Init = 0x01,
+        /// EtherCAT `PRE-OP` state.
+        PreOp = 0x02,
+        /// EtherCAT `BOOT` state.
+        Bootstrap = 0x03,
+        /// EtherCAT `SAFE-OP` state.
+        SafeOp = 0x04,
+        /// EtherCAT `OP` state.
+        Op = 0x8,
+        /// State is a combination of above variants or is an unknown value.
+        #[wire(catch_all)]
+        Other(u8),
+    }
+}

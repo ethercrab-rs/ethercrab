@@ -13,9 +13,7 @@ pub fn generate_struct(
 
     let fields_pack = parsed.fields.clone().into_iter().map(|field| {
         let name = field.name;
-
         let byte_start = field.bytes.start;
-
         let bit_start = field.bit_offset;
 
         // Small optimisation
@@ -27,14 +25,25 @@ pub fn generate_struct(
                 buf[#byte_start] |= ((self.#name as u8) << #bit_start) & #mask;
             }
         }
+        // Single byte fields need merging into the other data
+        else if field.bytes.len() == 1 {
+            let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
+            let mask = proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
+
+            quote! {
+                let mut field_buf = [0u8; 1];
+                let res = self.#name.pack_to_slice_unchecked(&mut field_buf)[0];
+
+                buf[#byte_start] |= (res << #bit_start) & #mask;
+            }
+        }
         // Assumption: multi-byte fields are byte-aligned. This should be validated during
         // parse.
         else {
-            let start_byte = field.bytes.start;
-            let end_byte = field.bytes.end;
+            let byte_end = field.bytes.end;
 
             quote! {
-                self.#name.pack_to_slice_unchecked(&mut buf[#start_byte..#end_byte]);
+                self.#name.pack_to_slice_unchecked(&mut buf[#byte_start..#byte_end]);
             }
         }
     });

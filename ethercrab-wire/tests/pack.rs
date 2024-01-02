@@ -153,13 +153,13 @@ fn pack_struct_nested_enum() {
         baz: 0x010,
     };
 
-    let expected = [0b11 | (0x03 << 2) | (0x010 << 5)];
+    let expected = [0b11u8 | (0x03 << 2) | (0x010 << 5)];
 
     let mut buf = [0u8; 16];
 
     let out = check.pack_to_slice(&mut buf).unwrap();
 
-    assert_eq!(out, &expected);
+    assert_eq!(out, &expected, "{:#010b} {:#010b}", out[0], expected[0]);
 }
 
 #[test]
