@@ -76,12 +76,7 @@ impl<'sto> Client<'sto> {
 
         // Reset slaves to init
         Command::bwr(RegisterAddress::AlControl.into())
-            .send_slice(
-                self,
-                &fmt::unwrap!(AlControl::reset()
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from)),
-            )
+            .send_slice(self, &AlControl::reset().pack())
             .await?;
 
         // Clear FMMUs. FMMU memory section is 0xff (255) bytes long - see ETG1000.4 Table 57

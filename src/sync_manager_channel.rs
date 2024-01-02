@@ -1,4 +1,4 @@
-use crate::{error::WrappedPackingError, pdu_data::PduRead};
+use crate::pdu_data::PduRead;
 use core::fmt;
 use ethercrab_wire::{EtherCatWire, WireError};
 

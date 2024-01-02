@@ -1,8 +1,5 @@
-use crate::{
-    error::WrappedPackingError,
-    pdu_data::{PduData, PduRead},
-};
-use packed_struct::{prelude::*, PackingError};
+use crate::pdu_data::{PduData, PduRead};
+use ethercrab_wire::{EtherCatWire, WireError};
 
 /// Slave device register address abstraction.
 ///
@@ -248,32 +245,30 @@ impl RegisterAddress {
     }
 }
 
-#[derive(Debug, PackedStruct)]
-#[packed_struct(bit_numbering = "msb0")]
+#[derive(Debug, ethercrab_wire::EtherCatWire)]
+#[wire(bits = 8)]
 pub struct PortDescriptors {
-    #[packed_field(bits = "0..=1", ty = "enum")]
+    // #[packed_field(bits = "0..=1", ty = "enum")]
+    #[wire(bits = 2)]
     port_0: PortType,
-    #[packed_field(bits = "2..=3", ty = "enum")]
+    // #[packed_field(bits = "2..=3", ty = "enum")]
+    #[wire(bits = 2)]
     port_1: PortType,
-    #[packed_field(bits = "4..=5", ty = "enum")]
+    // #[packed_field(bits = "4..=5", ty = "enum")]
+    #[wire(bits = 2)]
     port_2: PortType,
-    #[packed_field(bits = "6..=7", ty = "enum")]
+    // #[packed_field(bits = "6..=7", ty = "enum")]
+    #[wire(bits = 2)]
     port_3: PortType,
 }
 
 impl PduRead for PortDescriptors {
     const LEN: u16 = 1;
 
-    type Error = WrappedPackingError;
+    type Error = WireError;
 
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let arr = slice[0..1]
-            .try_into()
-            .map_err(|_| PackingError::BufferTooSmall)?;
-
-        let res = Self::unpack(arr)?;
-
-        Ok(res)
+    fn try_from_slice(buf: &[u8]) -> Result<Self, Self::Error> {
+        Self::unpack_from_slice(buf)
     }
 }
 
@@ -283,7 +278,7 @@ impl PduData for PortDescriptors {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PrimitiveEnum_u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[repr(u8)]
 pub enum PortType {
     NotImplemented = 0x00u8,
@@ -292,21 +287,34 @@ pub enum PortType {
     Mii = 0x03,
 }
 
-#[derive(Default, Clone, Debug, PartialEq)]
+#[derive(Default, Clone, Debug, PartialEq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bits = 16)]
 pub struct SupportFlags {
+    #[wire(bits = 1)]
     pub fmmu_supports_bit_ops: bool,
+    #[wire(bits = 1)]
     pub reserved_register_support: bool,
+    #[wire(bits = 1)]
     pub dc_supported: bool,
+    #[wire(bits = 1)]
     pub has_64bit_dc: bool,
+    #[wire(bits = 1)]
     pub low_jitter: bool,
+    #[wire(bits = 1)]
     pub ebus_enhanced_link_detection: bool,
+    #[wire(bits = 1)]
     pub mii_enhanced_link_detection: bool,
+    #[wire(bits = 1)]
     pub separate_fcs_error_handling: bool,
+    #[wire(bits = 1)]
     pub enhanced_dc_sync: bool,
+    #[wire(bits = 1)]
     pub lrw_supported: bool,
+    #[wire(bits = 1)]
     pub brw_aprw_fprw_supported: bool,
+    #[wire(bits = 1, post_skip = 4)]
     pub special_fmmu: bool,
 }
 
@@ -335,55 +343,13 @@ impl core::fmt::Display for SupportFlags {
     }
 }
 
-impl PackedStruct for SupportFlags {
-    type ByteArray = [u8; 2];
-
-    fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
-        let result = (self.fmmu_supports_bit_ops as u16)
-            | (self.reserved_register_support as u16) << 1
-            | (self.dc_supported as u16) << 2
-            | (self.has_64bit_dc as u16) << 3
-            | (self.low_jitter as u16) << 4
-            | (self.ebus_enhanced_link_detection as u16) << 5
-            | (self.mii_enhanced_link_detection as u16) << 6
-            | (self.separate_fcs_error_handling as u16) << 7
-            | (self.enhanced_dc_sync as u16) << 8
-            | (self.lrw_supported as u16) << 9
-            | (self.brw_aprw_fprw_supported as u16) << 10
-            | (self.special_fmmu as u16) << 11;
-
-        Ok(result.to_le_bytes())
-    }
-
-    fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
-        let raw = u16::from_le_bytes(*src);
-
-        Ok(Self {
-            fmmu_supports_bit_ops: (raw & 1) == 1,
-            reserved_register_support: (raw >> 1 & 1) == 1,
-            dc_supported: (raw >> 2 & 1) == 1,
-            has_64bit_dc: (raw >> 3 & 1) == 1,
-            low_jitter: (raw >> 4 & 1) == 1,
-            ebus_enhanced_link_detection: (raw >> 5 & 1) == 1,
-            mii_enhanced_link_detection: (raw >> 6 & 1) == 1,
-            separate_fcs_error_handling: (raw >> 7 & 1) == 1,
-            enhanced_dc_sync: (raw >> 8 & 1) == 1,
-            lrw_supported: (raw >> 9 & 1) == 1,
-            brw_aprw_fprw_supported: (raw >> 10 & 1) == 1,
-            special_fmmu: (raw >> 11 & 1) == 1,
-        })
-    }
-}
-
 impl PduRead for SupportFlags {
     const LEN: u16 = 2;
 
-    type Error = WrappedPackingError;
+    type Error = WireError;
 
     fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let res = Self::unpack_from_slice(slice)?;
-
-        Ok(res)
+        Self::unpack_from_slice(slice)
     }
 }
 
@@ -395,7 +361,9 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn support_flags_fuzz() {
         heckcheck::check(|status: SupportFlags| {
-            let packed = status.pack().expect("Pack");
+            let mut buf = [0u8; 2];
+
+            let packed = status.pack_to_slice(&mut buf).expect("Pack");
 
             let unpacked = SupportFlags::unpack_from_slice(&packed).expect("Unpack");
 

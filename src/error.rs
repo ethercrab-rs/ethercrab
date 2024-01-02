@@ -444,6 +444,11 @@ impl From<ethercrab_wire::WireError> for Error {
     }
 }
 
+// -- DELETEME --
+// -- DELETEME --
+// -- DELETEME --
+// -- DELETEME --
+
 #[cfg(not(feature = "defmt"))]
 pub use packed_struct::PackingError as WrappedPackingError;
 

@@ -5,7 +5,7 @@ use crate::pdu_data::PduRead;
 /// Read from register `0x0130` ([`RegisterAddress::AlStatus`](crate::register::RegisterAddress::AlStatus)).
 ///
 /// Defined in ETG1000.6 6.4.1, ETG1000.6 Table 9.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[repr(u8)]
@@ -23,7 +23,7 @@ pub enum SlaveState {
     /// EtherCAT `OP` state.
     Op = 0x8,
     /// State is a combination of above variants or is an unknown value.
-    #[num_enum(catch_all)]
+    #[wire(catch_all)]
     Other(u8),
 }
 

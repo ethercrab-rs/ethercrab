@@ -35,6 +35,7 @@ use core::{
     ops::Deref,
     sync::atomic::{AtomicU8, Ordering},
 };
+use ethercrab_wire::EtherCatWire;
 use nom::{bytes::complete::take, number::complete::le_u32};
 use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
 
@@ -765,9 +766,7 @@ impl<'a, S> SlaveRef<'a, S> {
             .client
             .write_slice(
                 RegisterAddress::AlControl.into(),
-                &fmt::unwrap!(AlControl::new(desired_state)
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from)),
+                &AlControl::new(desired_state).pack(),
                 "AL control",
             )
             .await
