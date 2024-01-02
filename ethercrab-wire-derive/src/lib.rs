@@ -1,3 +1,16 @@
+//! This crate may expand in the future but is currently only used internally by [`ethercrab`]
+//! itself. It is experimental and may change at any time, so please do not depend on or rely on any
+//! of this crate's items.
+
+#![deny(missing_docs)]
+#![deny(missing_copy_implementations)]
+#![deny(trivial_casts)]
+#![deny(trivial_numeric_casts)]
+#![deny(unused_import_braces)]
+#![deny(unused_qualifications)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]
+
 mod generate_enum;
 mod generate_struct;
 mod help;
@@ -11,6 +24,7 @@ use parse_struct::parse_struct;
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, Data, DeriveInput};
 
+/// Derive methods to encode/decode an item for use by EtherCAT.
 #[proc_macro_derive(EtherCatWire, attributes(wire))]
 pub fn ethercat_wire(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

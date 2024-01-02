@@ -8,6 +8,7 @@ use crate::{
     pdu_data::PduRead,
     sync_manager_channel::{self},
 };
+use ethercrab_wire::EtherCatWire;
 use nom::{
     combinator::{map, map_opt, map_res},
     number::complete::{le_i16, le_u16, le_u8},
@@ -497,8 +498,9 @@ impl FromEeprom for SyncManager {
     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
         let (i, start_addr) = le_u16(i)?;
         let (i, length) = le_u16(i)?;
-        let (i, control) =
-            map_res(le_u8, |byte| sync_manager_channel::Control::unpack(&[byte]))(i)?;
+        let (i, control) = map_res(le_u8, |byte| {
+            sync_manager_channel::Control::unpack_from_slice(&[byte])
+        })(i)?;
 
         // Ignored
         let (i, _status) = le_u8(i)?;

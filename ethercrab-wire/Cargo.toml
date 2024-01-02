@@ -2,8 +2,18 @@
 name = "ethercrab-wire"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+categories = ["science::robotics", "no-std", "network-programming"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/ethercrab-rs/ethercrab"
+documentation = "https://docs.rs/ethercrab-wire"
+description = "On-the-wire tools for the EtherCrab crate"
+keywords = ["no-std", "ethercat", "ethercrab"]
+resolver = "2"
+rust-version = "1.75"
 
 [dependencies]
 ethercrab-wire-derive = { version = "0.1.0", path = "../ethercrab-wire-derive" }
+
+[features]
+std = []

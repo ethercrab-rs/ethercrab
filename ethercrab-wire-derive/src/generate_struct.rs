@@ -12,14 +12,14 @@ pub fn generate_struct(
     let width_bytes = parsed.width.div_ceil(8);
 
     let fields_pack = parsed.fields.clone().into_iter().map(|field| {
-        let ty = field.ty;
         let name = field.name;
 
         let byte_start = field.bytes.start;
 
         let bit_start = field.bit_offset;
 
-        if field.bits.len() <= 8 {
+        // Small optimisation
+        if field.ty_name == "u8" || field.ty_name == "bool" {
             let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
             let mask = proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
 
@@ -33,14 +33,8 @@ pub fn generate_struct(
             let start_byte = field.bytes.start;
             let end_byte = field.bytes.end;
 
-            if field.is_enum {
-                quote! {
-                    buf[#start_byte..#end_byte].copy_from_slice(&(self.#name as #ty).to_le_bytes());
-                }
-            } else {
-                quote! {
-                    self.#name.pack_to_slice_unchecked(&mut buf[#start_byte..#end_byte]);
-                }
+            quote! {
+                self.#name.pack_to_slice_unchecked(&mut buf[#start_byte..#end_byte]);
             }
         }
     });

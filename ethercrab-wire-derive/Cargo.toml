@@ -2,7 +2,6 @@
 name = "ethercrab-wire-derive"
 version = "0.1.0"
 edition = "2021"
-publish = false
 categories = ["science::robotics", "no-std", "network-programming"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
@@ -18,10 +17,10 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1.0.73"
 quote = "1.0.34"
-# extra-traits for debug during dev. TODO: Remove
-syn = { version = "2.0.44", features = ["extra-traits"] }
+syn = "2.0.44"
 
 [dev-dependencies]
 num_enum = "0.7.1"
 trybuild = "1.0.86"
 ethercrab-wire = { version = "0.1.0", path = "../ethercrab-wire" }
+syn = { version = "2.0.44", features = ["extra-traits"] }

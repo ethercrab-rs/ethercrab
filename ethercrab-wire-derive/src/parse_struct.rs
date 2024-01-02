@@ -1,8 +1,7 @@
-use crate::help::{bit_width_attr, field_is_enum_attr, usize_attr};
+use crate::help::{bit_width_attr, usize_attr};
 use std::ops::Range;
 use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
 
-#[derive(Debug)]
 pub struct StructStuff {
     /// Width in bits on the wire.
     pub width: usize,
@@ -10,7 +9,7 @@ pub struct StructStuff {
     pub fields: Vec<FieldStuff>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FieldStuff {
     pub vis: Visibility,
     pub name: Ident,
@@ -26,7 +25,6 @@ pub struct FieldStuff {
     pub bits: Range<usize>,
     pub bytes: Range<usize>,
 
-    pub is_enum: bool,
     pub pre_skip: Option<usize>,
     pub post_skip: Option<usize>,
 }
@@ -66,8 +64,6 @@ pub fn parse_struct(
 
         let pre_skip = usize_attr(&field.attrs, "pre_skip")?;
         let post_skip = usize_attr(&field.attrs, "post_skip")?;
-
-        let is_enum = field_is_enum_attr(&field.attrs)?;
 
         if let Some(skip) = pre_skip {
             total_field_width += skip;
@@ -133,8 +129,6 @@ pub fn parse_struct(
             byte_end,
 
             bit_offset,
-
-            is_enum,
 
             pre_skip,
             post_skip,

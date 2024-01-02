@@ -17,6 +17,7 @@ use crate::{
     sync_manager_channel::{self, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
 use core::ops::DerefMut;
+use ethercrab_wire::EtherCatWire;
 use num_enum::FromPrimitive;
 use packed_struct::{PackedStruct, PackedStructSlice};
 
@@ -240,11 +241,13 @@ where
         };
 
         self.client
-            .write_slice(
+            .write_with(
                 RegisterAddress::sync_manager(sync_manager_index).into(),
-                &fmt::unwrap!(sm_config
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from)),
+                |buf| {
+                    let b = sm_config.pack_to_slice(buf)?;
+
+                    Ok(b.len())
+                },
                 "SM config",
             )
             .await?;

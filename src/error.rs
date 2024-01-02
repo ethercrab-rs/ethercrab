@@ -89,6 +89,9 @@ pub enum Error {
         /// Slave address.
         configured_address: u16,
     },
+
+    /// An error occurred encoding or decoding an item.
+    Wire(ethercrab_wire::WireError),
 }
 
 #[cfg(feature = "std")]
@@ -152,6 +155,7 @@ impl core::fmt::Display for Error {
                 "slave {:#06x} state is invalid: {}, expected {}",
                 configured_address, actual, expected
             ),
+            Error::Wire(e) => write!(f, "wire encode/decode error: {}", e),
         }
     }
 }
@@ -431,6 +435,12 @@ impl From<TryFromIntError> for Error {
         fmt::error!("Integer conversion error");
 
         Self::IntegerTypeConversion
+    }
+}
+
+impl From<ethercrab_wire::WireError> for Error {
+    fn from(value: ethercrab_wire::WireError) -> Self {
+        Self::Wire(value)
     }
 }
 

@@ -6,7 +6,7 @@
 
 // TODO: Can we get rid of PduData and PduRead with these traits?
 
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
 #![deny(missing_copy_implementations)]
 #![deny(trivial_casts)]
@@ -21,6 +21,15 @@
 pub enum WireError {
     /// TODO!
     Todo,
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for WireError {}
+
+impl core::fmt::Display for WireError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("TODO")
+    }
 }
 
 macro_rules! impl_primitive_wire_field {
@@ -90,7 +99,7 @@ pub trait EtherCatWire: Sized {
     ///
     /// # Panics
     ///
-    /// This method will panic if `buf` is too short to hold the packed data.
+    /// This method must panic if `buf` is too short to hold the packed data.
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8];
 
     /// Unpack this type from the beginning of the given buffer.
