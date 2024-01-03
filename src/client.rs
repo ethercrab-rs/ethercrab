@@ -437,7 +437,7 @@ impl<'sto> Client<'sto> {
         len_override: Option<u16>,
     ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
         self.pdu_loop
-            .send_packable(
+            .pdu_send(
                 command,
                 data,
                 len_override,

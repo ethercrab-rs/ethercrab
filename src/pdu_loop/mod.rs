@@ -131,7 +131,7 @@ impl<'sto> PduLoop<'sto> {
     /// case, `data` will be a slice of length `4` containing the outputs to send, and
     /// `len_override` will be `Some(10)`. This makes the latter 6 bytes available for writing the
     /// PDU response into.
-    pub(crate) async fn send_packable(
+    pub(crate) async fn pdu_send(
         &self,
         command: Command,
         data: impl EtherCrabWire<'_>,
@@ -204,7 +204,7 @@ mod tests {
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
 
         let send_result = pdu_loop
-            .send_packable(
+            .pdu_send(
                 Reads::Brd {
                     address: 0,
                     register: 0,
@@ -303,7 +303,7 @@ mod tests {
             //     RetryBehaviour::None
             // ));
 
-            let mut frame_fut = pin!(pdu_loop.send_packable(
+            let mut frame_fut = pin!(pdu_loop.pdu_send(
                 Command::fpwr(0x5678, 0x1234).into(),
                 data.as_ref(),
                 None,
@@ -594,7 +594,7 @@ mod tests {
             fmt::info!("Send PDU {i}");
 
             let result = pdu_loop
-                .send_packable(
+                .pdu_send(
                     Command::fpwr(0x1000, 0x980).into(),
                     data,
                     None,
