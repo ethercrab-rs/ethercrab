@@ -4,9 +4,11 @@
 [![Crates.io](https://img.shields.io/crates/v/ethercrab-wire.svg)](https://crates.io/crates/ethercrab-wire)
 [![Docs.rs](https://docs.rs/ethercrab-wire/badge.svg)](https://docs.rs/ethercrab-wire)
 
-This crate may expand in the future but is currently only used internally by [`ethercrab`]
-itself. It is experimental and may change at any time, so please do not depend on or rely on any
-of this crate's items.
+## Experimental
+
+This crate may expand in the future but is currently only used internally by
+[`ethercrab`](https://crates.io/crates/ethercrab) itself. It is experimental and may change at
+any time, so please do not depend on or rely on any of this crate's items.
 
 ## License
 

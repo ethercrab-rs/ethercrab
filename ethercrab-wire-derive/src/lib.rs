@@ -1,3 +1,5 @@
+//! # Experimental
+//!
 //! This crate may expand in the future but is currently only used internally by
 //! [`ethercrab`](https://crates.io/crates/ethercrab) itself. It is experimental and may change at
 //! any time, so please do not depend on or rely on any of this crate's items.

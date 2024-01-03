@@ -6,6 +6,8 @@
 
 Traits used to pack/unpack structs and enums from EtherCAT packets on the wire.
 
+## Experimental
+
 This crate is currently minimal and very rough as it is only used internally by
 [`ethercrab`](https://crates.io/crates/ethercrab). It is not recommended for public use (yet)
 and may change at any time.
