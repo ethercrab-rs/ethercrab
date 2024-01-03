@@ -148,8 +148,15 @@ pub enum SiiAddressSize {
     U16 = 0x01,
 }
 
+#[derive(ethercrab_wire::EtherCatWire)]
+#[wire(bytes = 6)]
 pub struct SiiRequest {
+    #[wire(bytes = 2)]
     control: SiiControl,
+    // Post skip is required to send the correct amount of bytes on the wire. This is weird because
+    // addressing is all a single WORD, but the SII read request expects a low AND high WORD, hence
+    // the extra 16 bits of padding here for the unusedhigh WORD.
+    #[wire(bytes = 2, post_skip = 16)]
     address: u16,
 }
 
@@ -848,5 +855,37 @@ pub trait FromEeprom: Sized {
 
                 Error::Eeprom(EepromError::Decode)
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sii_control_pack() {
+        let ctl = SiiControl {
+            access: SiiAccess::ReadWrite,
+            emulate_sii: false,
+            read_size: SiiReadSize::Octets8,
+            address_type: SiiAddressSize::U8,
+            read: false,
+            write: false,
+            reload: false,
+            checksum_error: false,
+            device_info_error: false,
+            command_error: false,
+            write_error: false,
+            busy: true,
+        };
+
+        assert_eq!(ctl.pack(), [0b0100_0001, 0b1000_0000],);
+    }
+
+    #[test]
+    fn sii_request_read_pack() {
+        let packed = SiiRequest::read(0x1234).pack();
+
+        assert_eq!(packed, [0x00, 0x01, 0x34, 0x12, 0x00, 0x00]);
     }
 }
