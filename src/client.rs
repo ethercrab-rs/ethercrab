@@ -76,6 +76,7 @@ impl<'sto> Client<'sto> {
         // Reset slaves to init
         Command::bwr(RegisterAddress::AlControl.into())
             .wrap(self)
+            .ignore_wkc()
             .send(AlControl::reset())
             .await?;
 
@@ -109,11 +110,13 @@ impl<'sto> Client<'sto> {
         // master clock.
         Command::bwr(RegisterAddress::DcControlLoopParam3.into())
             .wrap(self)
+            .ignore_wkc()
             .send(0x0c00u16)
             .await?;
         // Must be after param 3 so DC control unit is reset
         Command::bwr(RegisterAddress::DcControlLoopParam1.into())
             .wrap(self)
+            .ignore_wkc()
             .send(0x1000u16)
             .await?;
 

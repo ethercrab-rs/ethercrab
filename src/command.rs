@@ -468,6 +468,9 @@ impl<'client> WrappedRead<'client> {
 
     /// Receive only the working counter.
     ///
+    /// Any expected working counter value will be ignored when calling this method, regardless of
+    /// any value set by [`with_wkc`](WrappedRead::with_wkc).
+    ///
     /// `T` determines the length of the read, which is required for valid reads. It is otherwise
     /// ignored.
     pub(crate) async fn receive_wkc<T>(&self) -> Result<u16, Error>

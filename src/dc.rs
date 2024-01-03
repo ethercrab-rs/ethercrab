@@ -84,6 +84,7 @@ async fn write_dc_parameters(
         RegisterAddress::DcSystemTimeOffset.into(),
     )
     .wrap(client)
+    .ignore_wkc()
     .send(-dc_receive_time + now_nanos)
     .await?;
 
@@ -92,6 +93,7 @@ async fn write_dc_parameters(
         RegisterAddress::DcSystemTimeTransmissionDelay.into(),
     )
     .wrap(client)
+    .ignore_wkc()
     .send(slave.propagation_delay)
     .await?;
 
