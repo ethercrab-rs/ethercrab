@@ -1,5 +1,7 @@
 //! Raw EtherCAT commands, e.g. `LRW`, `BRD`, `APWR`, etc.
 
+use core::ops::Deref;
+
 use crate::{
     error::{Error, PduError},
     fmt,
@@ -952,6 +954,20 @@ impl<'client> WrappedWrite<'client> {
 
                 Ok((data, wkc))
             })?
+            .maybe_wkc(self.wkc)
+    }
+
+    /// Similar to [`send_receive`](WrappedWrite::send_receive) but returns a slice.
+    pub async fn send_receive_slice<'data>(
+        self,
+        value: impl EtherCatWire<'_>,
+    ) -> Result<RxFrameDataBuf<'data>, Error>
+    where
+        'client: 'data,
+    {
+        self.client
+            .pdu(self.command.into(), value, None)
+            .await?
             .maybe_wkc(self.wkc)
     }
 

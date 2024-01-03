@@ -128,10 +128,6 @@ name = "dump-eeprom"
 required-features = ["std", "__internals"]
 
 [[bench]]
-name = "pdu_loop"
-harness = false
-
-[[bench]]
 name = "loopback"
 harness = false
 

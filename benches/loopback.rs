@@ -15,16 +15,19 @@ fn main() {
     use ethercrab::std::tx_rx_task;
     use ethercrab::PduStorage;
     use ethercrab::{Client, ClientConfig, Command, Timeouts};
+    use std::ops::Deref;
     use std::time::Duration;
 
     const DATA: [u8; 8] = [0x11u8, 0x22, 0x33, 0x44, 0xaa, 0xbb, 0xcc, 0xdd];
 
     fn do_bench(b: &mut Bencher, rt: &tokio::runtime::Runtime, client: &Client) {
         b.to_async(rt).iter(|| async {
-            let _ = Command::lwr(0x1234_5678)
-                .send_receive_slice(client, &DATA)
+            let _: &[u8] = Command::lwr(0x1234_5678)
+                .wrap(client)
+                .send_receive_slice(DATA.as_ref())
                 .await
-                .expect("write");
+                .expect("write")
+                .deref();
         })
     }
 
