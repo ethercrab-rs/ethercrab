@@ -78,7 +78,7 @@ impl<'sto> Client<'sto> {
 
         // Reset slaves to init
         Command::bwr(RegisterAddress::AlControl.into())
-            .wrap(self, "")
+            .wrap(self)
             .send(AlControl::reset())
             .await?;
 
@@ -111,12 +111,12 @@ impl<'sto> Client<'sto> {
         // According to ETG1020, we'll use the mode where the DC reference clock is adjusted to the
         // master clock.
         Command::bwr(RegisterAddress::DcControlLoopParam3.into())
-            .wrap(self, "")
+            .wrap(self)
             .send(0x0c00u16)
             .await?;
         // Must be after param 3 so DC control unit is reset
         Command::bwr(RegisterAddress::DcControlLoopParam1.into())
-            .wrap(self, "")
+            .wrap(self)
             .send(0x1000u16)
             .await?;
 
@@ -224,7 +224,7 @@ impl<'sto> Client<'sto> {
             let configured_address = BASE_SLAVE_ADDR.wrapping_add(slave_idx);
 
             Command::apwr(slave_idx, RegisterAddress::ConfiguredStationAddress.into())
-                .wrap(self, "set station address")
+                .wrap(self)
                 .send(configured_address)
                 .await?;
 
@@ -371,7 +371,7 @@ impl<'sto> Client<'sto> {
     /// Count the number of slaves on the network.
     async fn count_slaves(&self) -> Result<u16, Error> {
         Command::brd(RegisterAddress::Type.into())
-            .wrap(self, "")
+            .wrap(self)
             .receive_wkc::<u8>()
             .await
     }
@@ -391,7 +391,7 @@ impl<'sto> Client<'sto> {
         timeout(self.timeouts.state_transition, async {
             loop {
                 let status = Command::brd(RegisterAddress::AlStatus.into())
-                    .wrap(self, "read all slaves state")
+                    .wrap(self)
                     .with_wkc(num_slaves)
                     .receive::<AlControl>()
                     .await?;
@@ -408,7 +408,7 @@ impl<'sto> Client<'sto> {
                     {
                         let slave_status =
                             Command::fprd(slave_addr, RegisterAddress::AlStatusCode.into())
-                                .wrap(self, "")
+                                .wrap(self)
                                 .ignore_wkc()
                                 .receive::<AlStatusCode>()
                                 .await

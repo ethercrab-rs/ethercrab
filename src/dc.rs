@@ -18,7 +18,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
     // Latch receive times into all ports of all slaves.
     Command::bwr(RegisterAddress::DcTimePort0.into())
-        .wrap(client, "Broadcast time")
+        .wrap(client)
         .with_wkc(num_slaves_with_dc as u16)
         .send_receive(0u32)
         .await?;
@@ -31,13 +31,13 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
         // TODO: Remember why this is i64 here. SOEM uses i64 I think, and I seem to remember things
         // breaking/being weird if it wasn't i64? Was it something to do with wraparound/overflow?
         let dc_receive_time = sl
-            .read(RegisterAddress::DcReceiveTime, "Latch DC receive time")
+            .read(RegisterAddress::DcReceiveTime)
             .ignore_wkc()
             .receive::<i64>()
             .await?;
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
-            .read(RegisterAddress::DcTimePort0, "Port receive times")
+            .read(RegisterAddress::DcTimePort0)
             // 4 * u32
             .receive::<[u8; 4 * 4]>()
             .await
@@ -83,7 +83,7 @@ async fn write_dc_parameters(
         slave.configured_address,
         RegisterAddress::DcSystemTimeOffset.into(),
     )
-    .wrap(client, "")
+    .wrap(client)
     .send(-dc_receive_time + now_nanos)
     .await?;
 
@@ -91,7 +91,7 @@ async fn write_dc_parameters(
         slave.configured_address,
         RegisterAddress::DcSystemTimeTransmissionDelay.into(),
     )
-    .wrap(client, "")
+    .wrap(client)
     .send(slave.propagation_delay)
     .await?;
 
@@ -433,7 +433,7 @@ pub(crate) async fn run_dc_static_sync(
             dc_reference_slave.configured_address,
             RegisterAddress::DcSystemTime.into(),
         )
-        .wrap(client, "")
+        .wrap(client)
         .ignore_wkc()
         .receive::<u64>()
         .await?;

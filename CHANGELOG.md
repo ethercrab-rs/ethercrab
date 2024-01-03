@@ -14,6 +14,11 @@ An EtherCAT master written in Rust.
 - **(breaking)** (technically) [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Fix typo
   in name `AlStatusCode::ApplicationControllerAvailableI` ->
   `AlStatusCode::ApplicationControllerAvailable`
+- **(breaking)** [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Remove `PduRead` and
+  `PduData` traits. These are replaced with the `derive`-able `EtherCrabWire` trait.
+- **(breaking)** [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Remove the `context`
+  field from `Error::WorkingCounter`. The output from EtherCrab's error logging should be used
+  instead.
 
 ## [0.3.5] - 2023-12-22
 

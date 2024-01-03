@@ -65,14 +65,9 @@ pub enum Writes {
 }
 
 impl Writes {
-    /// Wrap this command with a [`Client`]` and optional context string to make it sendable over
-    /// the wire.
-    pub fn wrap<'client>(
-        self,
-        client: &'client Client<'client>,
-        context: &'static str,
-    ) -> WrappedWrite<'client> {
-        WrappedWrite::new(client, self, context)
+    /// Wrap this command with a [`Client`]` to make it sendable over the wire.
+    pub fn wrap<'client>(self, client: &'client Client<'client>) -> WrappedWrite<'client> {
+        WrappedWrite::new(client, self)
     }
 }
 
@@ -320,14 +315,9 @@ pub enum Reads {
 }
 
 impl Reads {
-    /// Wrap this command with a client and optional context string to make it sendable over the
-    /// wire.
-    pub fn wrap<'client>(
-        self,
-        client: &'client Client<'client>,
-        context: &'static str,
-    ) -> WrappedRead<'client> {
-        WrappedRead::new(client, self, context)
+    /// Wrap this command with a client to make it sendable over the wire.
+    pub fn wrap<'client>(self, client: &'client Client<'client>) -> WrappedRead<'client> {
+        WrappedRead::new(client, self)
     }
 }
 
@@ -406,8 +396,8 @@ impl Reads {
 ///
 /// A `Command` won't do much on its own. To perform network operations with the command it must be
 /// wrapped with either [`WrappedRead`] or [`WrappedWrite`]. These structs add a [`Client`]` and
-/// optional error context string and expose many different read/write operations. See the methods
-/// on [`WrappedRead`] and [`WrappedWrite`] for more.
+/// expose many different read/write operations. See the methods on [`WrappedRead`] and
+/// [`WrappedWrite`] for more.
 ///
 /// # Examples
 ///
@@ -425,7 +415,7 @@ impl Reads {
 ///
 /// # async {
 /// let value = Command::fprd(slave_configured_address, RegisterAddress::SiiData.into())
-///     .wrap(&client, "Read SII data")
+///     .wrap(&client)
 ///     .receive::<u32>()
 ///     .await?;
 /// # Result::<(), ethercrab::error::Error>::Ok(())
@@ -449,7 +439,7 @@ impl Reads {
 ///
 /// # async {
 /// Command::fpwr(slave_configured_address, register)
-///     .wrap(&client, "Send data")
+///     .wrap(&client)
 ///     .send(data)
 ///     .await?;
 /// # Result::<(), ethercrab::error::Error>::Ok(())
@@ -827,21 +817,15 @@ impl From<Writes> for Command {
 pub struct WrappedRead<'client> {
     client: &'client Client<'client>,
     command: Reads,
-    context: &'static str,
     /// Expected working counter.
     wkc: Option<u16>,
 }
 
 impl<'client> WrappedRead<'client> {
-    pub(crate) fn new(
-        client: &'client Client<'client>,
-        command: Reads,
-        context: &'static str,
-    ) -> Self {
+    pub(crate) fn new(client: &'client Client<'client>, command: Reads) -> Self {
         Self {
             client,
             command,
-            context,
             wkc: Some(1),
         }
     }
@@ -874,7 +858,7 @@ impl<'client> WrappedRead<'client> {
 
                 Ok((data, wkc))
             })?
-            .maybe_wkc(self.wkc, self.context)
+            .maybe_wkc(self.wkc)
     }
 
     /// Receive a given number of bytes and return it as a slice.
@@ -882,7 +866,7 @@ impl<'client> WrappedRead<'client> {
         self.client
             .pdu(self.command.into(), (), Some(len))
             .await?
-            .maybe_wkc(self.wkc, self.context)
+            .maybe_wkc(self.wkc)
     }
 
     /// Receive only the working counter.
@@ -905,22 +889,16 @@ impl<'client> WrappedRead<'client> {
 pub struct WrappedWrite<'client> {
     client: &'client Client<'client>,
     command: Writes,
-    context: &'static str,
     /// Expected working counter.
     wkc: Option<u16>,
     len_override: Option<u16>,
 }
 
 impl<'client> WrappedWrite<'client> {
-    pub(crate) fn new(
-        client: &'client Client<'client>,
-        command: Writes,
-        context: &'static str,
-    ) -> Self {
+    pub(crate) fn new(client: &'client Client<'client>, command: Writes) -> Self {
         Self {
             client,
             command,
-            context,
             wkc: Some(1),
             len_override: None,
         }
@@ -956,7 +934,7 @@ impl<'client> WrappedWrite<'client> {
         self.client
             .pdu(self.command.into(), data, self.len_override)
             .await?
-            .maybe_wkc(self.wkc, self.context)?;
+            .maybe_wkc(self.wkc)?;
 
         Ok(())
     }
@@ -974,7 +952,7 @@ impl<'client> WrappedWrite<'client> {
 
                 Ok((data, wkc))
             })?
-            .maybe_wkc(self.wkc, self.context)
+            .maybe_wkc(self.wkc)
     }
 
     pub(crate) async fn send_receive_slice_mut<'buf>(

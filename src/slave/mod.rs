@@ -163,12 +163,12 @@ impl Slave {
         });
 
         let flags = slave_ref
-            .read(RegisterAddress::SupportFlags, "support flags")
+            .read(RegisterAddress::SupportFlags)
             .receive::<SupportFlags>()
             .await?;
 
         let ports = slave_ref
-            .read(RegisterAddress::DlStatus, "DL status")
+            .read(RegisterAddress::DlStatus)
             .receive::<DlStatus>()
             .await
             .map(|dl_status| {
@@ -346,7 +346,7 @@ where
         // Ensure slave OUT (master IN) mailbox is empty
         {
             let sm = self
-                .read(mailbox_read_sm, "Master read mailbox")
+                .read(mailbox_read_sm)
                 .receive::<SyncManagerChannel>()
                 .await?;
 
@@ -357,7 +357,7 @@ where
                     self.configured_address()
                 );
 
-                self.read(read_mailbox.address, "Slave send mailbox empty")
+                self.read(read_mailbox.address)
                     .ignore_wkc()
                     .receive_slice(read_mailbox.len)
                     .await?;
@@ -368,7 +368,7 @@ where
         crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
             loop {
                 let sm = self
-                    .read(mailbox_write_sm, "Master write mailbox")
+                    .read(mailbox_write_sm)
                     .receive::<SyncManagerChannel>()
                     .await?;
 
@@ -401,7 +401,7 @@ where
         crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
             loop {
                 let sm = self
-                    .read(mailbox_read_sm, "Master reply read mailbox")
+                    .read(mailbox_read_sm)
                     .receive::<SyncManagerChannel>()
                     .await?;
 
@@ -425,7 +425,7 @@ where
 
         // Read acknowledgement from slave OUT mailbox
         let response = self
-            .read(read_mailbox.address, "read OUT mailbox after write")
+            .read(read_mailbox.address)
             .receive_slice(read_mailbox.len)
             .await?;
 
@@ -462,7 +462,7 @@ where
         //     .wkc(1, "SDO upload request")?;
 
         // Send data to slave IN mailbox
-        self.write(write_mailbox.address, "SDO upload request")
+        self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
             .send(request)
             .await?;
@@ -696,12 +696,10 @@ impl<'a, S> SlaveRef<'a, S> {
 
     /// Get the EtherCAT state machine state of the slave.
     pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
-        let status = self
-            .read(RegisterAddress::AlStatus, "AL Status")
-            .receive::<AlControl>();
+        let status = self.read(RegisterAddress::AlStatus).receive::<AlControl>();
 
         let code = self
-            .read(RegisterAddress::AlStatusCode, "AL Status Code")
+            .read(RegisterAddress::AlStatusCode)
             .receive::<AlStatusCode>();
 
         let (status, code) = embassy_futures::join::join(status, code).await;
@@ -728,9 +726,7 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: for<'xx> EtherCatWireSized<'xx>,
     {
-        self.read(register.into(), "Raw register read")
-            .receive()
-            .await
+        self.read(register.into()).receive().await
     }
 
     /// Write a register.
@@ -746,16 +742,14 @@ impl<'a, S> SlaveRef<'a, S> {
         //     .await?
         //     .wkc(1, "raw write")
 
-        self.write(register.into(), "Raw register read")
-            .send_receive(value)
-            .await
+        self.write(register.into()).send_receive(value).await
     }
 
     pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         crate::timer_factory::timeout(self.client.timeouts.state_transition, async {
             loop {
                 let status = self
-                    .read(RegisterAddress::AlStatus, "Read AL status")
+                    .read(RegisterAddress::AlStatus)
                     .ignore_wkc()
                     .receive::<AlControl>()
                     .await?;
@@ -770,12 +764,12 @@ impl<'a, S> SlaveRef<'a, S> {
         .await
     }
 
-    pub(crate) fn write(&self, register: impl Into<u16>, context: &'static str) -> WrappedWrite {
-        Command::fpwr(self.configured_address, register.into()).wrap(&self.client, context)
+    pub(crate) fn write(&self, register: impl Into<u16>) -> WrappedWrite {
+        Command::fpwr(self.configured_address, register.into()).wrap(&self.client)
     }
 
-    pub(crate) fn read(&self, register: impl Into<u16>, context: &'static str) -> WrappedRead {
-        Command::fprd(self.configured_address, register.into()).wrap(&self.client, context)
+    pub(crate) fn read(&self, register: impl Into<u16>) -> WrappedRead {
+        Command::fprd(self.configured_address, register.into()).wrap(&self.client)
     }
 
     pub(crate) async fn request_slave_state_nowait(
@@ -790,13 +784,13 @@ impl<'a, S> SlaveRef<'a, S> {
 
         // Send state request
         let response = self
-            .write(RegisterAddress::AlControl, "AL control")
+            .write(RegisterAddress::AlControl)
             .send_receive::<AlControl>(AlControl::new(desired_state))
             .await?;
 
         if response.error {
             let error = self
-                .read(RegisterAddress::AlStatus, "AL status")
+                .read(RegisterAddress::AlStatus)
                 .receive::<AlStatusCode>()
                 .await?;
 
@@ -830,9 +824,7 @@ impl<'a, S> SlaveRef<'a, S> {
         //     )
         //     .await?;
 
-        self.write(RegisterAddress::SiiConfig, "Write SII config literal")
-            .send(2u16)
-            .await?;
+        self.write(RegisterAddress::SiiConfig).send(2u16).await?;
 
         // self.client
         //     .write::<u16>(
@@ -842,9 +834,7 @@ impl<'a, S> SlaveRef<'a, S> {
         //     )
         //     .await?;
 
-        self.write(RegisterAddress::SiiConfig, "Write SII config mode")
-            .send(mode)
-            .await?;
+        self.write(RegisterAddress::SiiConfig).send(mode).await?;
 
         Ok(())
     }

@@ -105,7 +105,7 @@ async fn main() -> Result<(), Error> {
 
         // Dynamic drift compensation
         Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
-            .wrap(&client, "")
+            .wrap(&client)
             .ignore_wkc()
             .receive::<u64>()
             .await?;

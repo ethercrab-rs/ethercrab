@@ -27,7 +27,7 @@ impl<'sto> ReceivedFrame<'sto> {
     ///
     /// If the working counter of the received frame does not match the given expected value, this
     /// method will return an [`Error::WorkingCounter`] error.
-    pub fn wkc(self, expected: u16, context: &'static str) -> Result<RxFrameDataBuf<'sto>, Error> {
+    pub fn wkc(self, expected: u16) -> Result<RxFrameDataBuf<'sto>, Error> {
         let frame = self.frame();
         let act_wc = frame.working_counter;
 
@@ -37,7 +37,6 @@ impl<'sto> ReceivedFrame<'sto> {
             Err(Error::WorkingCounter {
                 expected,
                 received: act_wc,
-                context: Some(context),
             })
         }
     }

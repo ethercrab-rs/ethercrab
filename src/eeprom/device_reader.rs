@@ -40,7 +40,7 @@ impl<'slave> DeviceEeprom<'slave> {
 
                 let control = self
                     .client
-                    .read(RegisterAddress::SiiControl, "SII busy wait")
+                    .read(RegisterAddress::SiiControl)
                     .receive::<SiiControl>()
                     .await?;
 
@@ -62,7 +62,7 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
         let status = self
             .client
-            .read(RegisterAddress::SiiControl, "Read SII control")
+            .read(RegisterAddress::SiiControl)
             .receive::<SiiControl>()
             .await?;
 
@@ -71,20 +71,20 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
             fmt::trace!("Resetting EEPROM error flags");
 
             self.client
-                .write(RegisterAddress::SiiControl, "Reset errors")
+                .write(RegisterAddress::SiiControl)
                 .send(status.error_reset())
                 .await?;
         }
 
         self.client
-            .write(RegisterAddress::SiiControl, "SII read setup")
+            .write(RegisterAddress::SiiControl)
             .send_receive(SiiRequest::read(start_word))
             .await?;
 
         self.wait().await?;
 
         self.client
-            .read(RegisterAddress::SiiData, "SII data")
+            .read(RegisterAddress::SiiData)
             .receive_slice(status.read_size.chunk_len())
             .await
             .map(|data| {

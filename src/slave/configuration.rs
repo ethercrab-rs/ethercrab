@@ -238,12 +238,9 @@ where
             },
         };
 
-        self.write(
-            RegisterAddress::sync_manager(sync_manager_index),
-            "SM config",
-        )
-        .send(sm_config)
-        .await?;
+        self.write(RegisterAddress::sync_manager(sync_manager_index))
+            .send(sm_config)
+            .await?;
 
         fmt::debug!(
             "Slave {:#06x} SM{}: {}",
@@ -474,7 +471,7 @@ where
     ) -> Result<(), Error> {
         // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
         let mut fmmu_config = self
-            .read(RegisterAddress::fmmu(fmmu_index as u8), "read FMMU config")
+            .read(RegisterAddress::fmmu(fmmu_index as u8))
             .receive::<Fmmu>()
             .await?;
         // .read_slice(
@@ -507,7 +504,7 @@ where
             }
         };
 
-        self.write(RegisterAddress::fmmu(fmmu_index as u8), "PDI FMMU")
+        self.write(RegisterAddress::fmmu(fmmu_index as u8))
             .send(fmmu_config)
             .await?;
 
