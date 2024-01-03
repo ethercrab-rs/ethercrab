@@ -500,124 +500,124 @@ impl<'sto> Client<'sto> {
         self.pdu_loop.max_frame_data()
     }
 
-    pub(crate) fn handle(&self) -> SendHandle<()> {
-        todo!();
-    }
+    // pub(crate) fn handle(&self) -> SendHandle<()> {
+    //     todo!();
+    // }
 }
 
-pub struct SendHandle<'client, P> {
-    client: &'client Client<'client>,
-    command: Command,
-    len_override: Option<u16>,
-    payload: P,
-}
+// pub struct SendHandle<'client, P> {
+//     client: &'client Client<'client>,
+//     command: Command,
+//     len_override: Option<u16>,
+//     payload: P,
+// }
 
-impl<'client, P> SendHandle<'client, P> {
-    /// Set the payload for this frame, along with its length.
-    pub fn set_payload<NEWP>(mut self, payload: NEWP) -> SendHandle<'client, NEWP>
-    where
-        NEWP: for<'a> EtherCatWire<'a>,
-    {
-        // let buf = self
-        //     .frame
-        //     .buf_mut()
-        //     .get_mut(0..NEWP::BYTES)
-        //     .ok_or(Error::Internal)?;
+// impl<'client, P> SendHandle<'client, P> {
+//     /// Set the payload for this frame, along with its length.
+//     pub fn set_payload<NEWP>(mut self, payload: NEWP) -> SendHandle<'client, NEWP>
+//     where
+//         NEWP: for<'a> EtherCatWire<'a>,
+//     {
+//         // let buf = self
+//         //     .frame
+//         //     .buf_mut()
+//         //     .get_mut(0..NEWP::BYTES)
+//         //     .ok_or(Error::Internal)?;
 
-        // payload.pack_to_slice(buf)?;
+//         // payload.pack_to_slice(buf)?;
 
-        // self.len = NEWP::BYTES;
+//         // self.len = NEWP::BYTES;
 
-        SendHandle {
-            payload,
-            client: self.client,
-            command: self.command,
-            len_override: self.len_override,
-        }
-    }
+//         SendHandle {
+//             payload,
+//             client: self.client,
+//             command: self.command,
+//             len_override: self.len_override,
+//         }
+//     }
 
-    /// Set the frame's length parameter in the header.
-    ///
-    /// This may be longer than the frame's data buffer as it is just metadata.
-    pub fn set_len(mut self, len: u16) -> Self {
-        Self {
-            len_override: Some(len),
-            ..self
-        }
-    }
-}
+//     /// Set the frame's length parameter in the header.
+//     ///
+//     /// This may be longer than the frame's data buffer as it is just metadata.
+//     pub fn set_len(mut self, len: u16) -> Self {
+//         Self {
+//             len_override: Some(len),
+//             ..self
+//         }
+//     }
+// }
 
-impl<'client, P> SendHandle<'client, P>
-where
-    P: for<'a> EtherCatWire<'a>,
-{
-    /// Send the frame, waiting for the response but ignoring the returned payload.
-    pub async fn ignore_response(self) -> Result<(), Error> {
-        // self.client
-        //     .pdu_loop
-        //     .pdu_tx_readwrite_len(
-        //         self.command,
-        //         value,
-        //         len,
-        //         self.client.timeouts.pdu,
-        //         self.client.config.retry_behaviour,
-        //     )
-        //     .await
-        //     .map(|response| response.into_data())
+// impl<'client, P> SendHandle<'client, P>
+// where
+//     P: for<'a> EtherCatWire<'a>,
+// {
+//     /// Send the frame, waiting for the response but ignoring the returned payload.
+//     pub async fn ignore_response(self) -> Result<(), Error> {
+//         // self.client
+//         //     .pdu_loop
+//         //     .pdu_tx_readwrite_len(
+//         //         self.command,
+//         //         value,
+//         //         len,
+//         //         self.client.timeouts.pdu,
+//         //         self.client.config.retry_behaviour,
+//         //     )
+//         //     .await
+//         //     .map(|response| response.into_data())
 
-        self.client
-            .pdu_loop
-            .send_packable(
-                self.command,
-                self.payload,
-                self.len_override,
-                self.client.timeouts.pdu,
-                self.client.config.retry_behaviour,
-            )
-            .await?;
+//         self.client
+//             .pdu_loop
+//             .send_packable(
+//                 self.command,
+//                 self.payload,
+//                 self.len_override,
+//                 self.client.timeouts.pdu,
+//                 self.client.config.retry_behaviour,
+//             )
+//             .await?;
 
-        Ok(())
-    }
+//         Ok(())
+//     }
 
-    /// Send the frame, waiting for and parsing the response.
-    // TODO: A raw version that returns `(RxFrameDataBuf<'_>, u16)`
-    pub async fn send(self) -> Result<(P, u16), Error> {
-        let res = self
-            .client
-            .pdu_loop
-            .send_packable(
-                self.command,
-                self.payload,
-                self.len_override,
-                self.client.timeouts.pdu,
-                self.client.config.retry_behaviour,
-            )
-            .await
-            .and_then(|res| {
-                // Ok(P::unpack_from_slice(res)?)
+//     /// Send the frame, waiting for and parsing the response.
+//     // TODO: A raw version that returns `(RxFrameDataBuf<'_>, u16)`
+//     pub async fn send(self) -> Result<(P, u16), Error> {
+//         let res = self
+//             .client
+//             .pdu_loop
+//             .send_packable(
+//                 self.command,
+//                 self.payload,
+//                 self.len_override,
+//                 self.client.timeouts.pdu,
+//                 self.client.config.retry_behaviour,
+//             )
+//             .await
+//             .and_then(|res| {
+//                 // Ok(P::unpack_from_slice(res)?)
 
-                let (data, wkc) = res.into_data();
+//                 let (data, wkc) = res.into_data();
 
-                let data = P::unpack_from_slice(&data)?;
+//                 let data = P::unpack_from_slice(&data)?;
 
-                Ok((data, wkc))
-            })?;
+//                 Ok((data, wkc))
+//             })?;
 
-        Ok(res)
-    }
-}
+//         Ok(res)
+//     }
+// }
 
-async fn test_stuff(client: &Client<'_>) -> Result<(), Error> {
-    client
-        .handle()
-        .set_payload(SiiControl::default())
-        .ignore_response()
-        .await?;
+// async fn test_stuff(client: &Client<'_>) -> Result<(), Error> {
+//     client
+//         .handle()
+//         .set_payload(SiiControl::default())
+//         .ignore_response()
+//         .await?;
 
-    // handle.send().await?;
+//     // handle.send().await?;
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 fn blank_mem_iter(
     start: impl Into<u16>,

@@ -176,27 +176,28 @@ impl<'sto> PduLoop<'sto> {
         retry_behaviour: RetryBehaviour,
     ) -> Result<ReceivedFrame<'_>, Error> {
         for _ in 0..retry_behaviour.loop_counts() {
-            // let send_data_len = send_data.len();
+            // let send_data_len = data.packed_len() as u16;
             // let payload_length = u16::try_from(send_data.len())?.max(data_length);
 
-            let data_len = data.packed_len() as u16;
+            // Length of data to populate in the send buffer
+            let send_data_len = data.packed_len() as u16;
 
-            let len: u16 = len_override.unwrap_or(data_len).max(data_len);
+            // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
+            // inputs in the remaining buffer.
+            let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
 
-            let mut frame = self.storage.alloc_frame(command, len)?;
+            let mut frame = self.storage.alloc_frame(command, total_payload_len)?;
 
             let frame_idx = frame.index();
 
-            // let payload = frame
-            //     .buf_mut()
-            //     .get_mut(0..usize::from(payload_length))
-            //     .ok_or(Error::Pdu(PduError::TooLong))?;
-
-            // payload[0..send_data_len].copy_from_slice(send_data);
+            let payload = frame
+                .buf_mut()
+                .get_mut(0..usize::from(send_data_len))
+                .ok_or(Error::Pdu(PduError::TooLong))?;
 
             // SAFETY: We ensure the payload length is at least the length of the packed input data
-            // above.
-            data.pack_to_slice_unchecked(frame.buf_mut());
+            // above, as well as the data to be written is not longer than the payload buffer.
+            data.pack_to_slice_unchecked(payload);
 
             let frame = frame.mark_sendable();
 

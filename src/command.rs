@@ -8,8 +8,8 @@ use crate::{
     pdu_loop::{PduResponse, RxFrameDataBuf},
     Client,
 };
-use core::any::type_name;
-use ethercrab_wire::{EtherCatWire, WireError};
+use core::{any::type_name, ops::Deref};
+use ethercrab_wire::{EtherCatWire, EtherCatWireSized, WireError};
 use nom::{combinator::map, sequence::pair, IResult};
 
 const NOP: u8 = 0x00;
@@ -85,7 +85,7 @@ impl Writes {
         client
             .pdu_loop
             .send_packable(
-                Command::Write(self),
+                self.into(),
                 d,
                 None,
                 client.timeouts.pdu,
@@ -124,12 +124,24 @@ impl Writes {
         value: T,
     ) -> Result<PduResponse<()>, Error>
     where
-        T: PduData,
+        T: for<'a> EtherCatWire<'a>,
     {
+        // client
+        //     .write_service(self, value.as_slice())
+        //     .await
+        //     .map(|(_, wkc)| ((), wkc))
+
         client
-            .write_service(self, value.as_slice())
+            .pdu_loop
+            .send_packable(
+                self.into(),
+                value,
+                None,
+                client.timeouts.pdu,
+                client.config.retry_behaviour,
+            )
             .await
-            .map(|(_, wkc)| ((), wkc))
+            .map(|response| ((), response.into_data().1))
     }
 
     /// Send a value, returning the response sent by the slave network.
@@ -139,24 +151,42 @@ impl Writes {
         value: T,
     ) -> Result<PduResponse<T>, Error>
     where
-        T: PduData,
+        T: for<'a> EtherCatWire<'a>,
     {
+        // client
+        //     .write_service(self, value.as_slice())
+        //     .await
+        //     .and_then(|(data, working_counter)| {
+        //         let res = T::try_from_slice(&data).map_err(|e| {
+        //             fmt::error!(
+        //                 "PDU data decode: {:?}, T: {} data {:?}",
+        //                 e,
+        //                 type_name::<T>(),
+        //                 data
+        //             );
+
+        //             PduError::Decode
+        //         })?;
+
+        //         Ok((res, working_counter))
+        //     })
+
         client
-            .write_service(self, value.as_slice())
+            .pdu_loop
+            .send_packable(
+                self.into(),
+                value,
+                None,
+                client.timeouts.pdu,
+                client.config.retry_behaviour,
+            )
             .await
-            .and_then(|(data, working_counter)| {
-                let res = T::try_from_slice(&data).map_err(|e| {
-                    fmt::error!(
-                        "PDU data decode: {:?}, T: {} data {:?}",
-                        e,
-                        type_name::<T>(),
-                        data
-                    );
+            .and_then(|response| {
+                let (data, wkc) = response.into_data();
 
-                    PduError::Decode
-                })?;
+                let data = T::unpack_from_slice(&data)?;
 
-                Ok((res, working_counter))
+                Ok((data, wkc))
             })
     }
 
@@ -168,7 +198,33 @@ impl Writes {
     ) -> Result<PduResponse<&'buf mut [u8]>, Error> {
         assert!(value.len() <= client.max_frame_data(), "Chunked sends not yet supported. Buffer of length {} is too long to send in one {} frame", value.len(), client.max_frame_data());
 
-        let (data, working_counter) = client.write_service(self, value).await?;
+        // let (data, working_counter) = client.write_service(self, value).await?;
+
+        // if data.len() != value.len() {
+        //     fmt::error!(
+        //         "Data length {} does not match value length {}",
+        //         data.len(),
+        //         value.len()
+        //     );
+        //     return Err(Error::Pdu(PduError::Decode));
+        // }
+
+        // value[0..read_back_len].copy_from_slice(&data[0..read_back_len]);
+
+        // Ok((value, working_counter))
+
+        let res = client
+            .pdu_loop
+            .send_packable(
+                self.into(),
+                value.as_ref(),
+                None,
+                client.timeouts.pdu,
+                client.config.retry_behaviour,
+            )
+            .await?;
+
+        let (data, wkc) = res.into_data();
 
         if data.len() != value.len() {
             fmt::error!(
@@ -181,7 +237,7 @@ impl Writes {
 
         value[0..read_back_len].copy_from_slice(&data[0..read_back_len]);
 
-        Ok((value, working_counter))
+        Ok((value, wkc))
     }
 }
 
@@ -233,24 +289,42 @@ impl Reads {
     /// Receive data and decode into a `T`.
     pub async fn receive<T>(self, client: &Client<'_>) -> Result<PduResponse<T>, Error>
     where
-        T: PduRead,
+        T: for<'a> EtherCatWireSized<'a>,
     {
+        // client
+        //     .read_service(self, T::LEN)
+        //     .await
+        //     .and_then(|(data, working_counter)| {
+        //         let res = T::try_from_slice(&data).map_err(|e| {
+        //             fmt::error!(
+        //                 "PDU data decode: {:?}, T: {} data {:?}",
+        //                 e,
+        //                 type_name::<T>(),
+        //                 data
+        //             );
+
+        //             PduError::Decode
+        //         })?;
+
+        //         Ok((res, working_counter))
+        //     })
+
         client
-            .read_service(self, T::LEN)
+            .pdu_loop
+            .send_packable(
+                Command::Read(self),
+                (),
+                Some(T::BYTES as u16),
+                client.timeouts.pdu,
+                client.config.retry_behaviour,
+            )
             .await
-            .and_then(|(data, working_counter)| {
-                let res = T::try_from_slice(&data).map_err(|e| {
-                    fmt::error!(
-                        "PDU data decode: {:?}, T: {} data {:?}",
-                        e,
-                        type_name::<T>(),
-                        data
-                    );
+            .and_then(|res| {
+                let (data, wkc) = res.into_data();
 
-                    PduError::Decode
-                })?;
+                let data = T::unpack_from_slice(&data)?;
 
-                Ok((res, working_counter))
+                Ok((data, wkc))
             })
     }
 
@@ -260,7 +334,19 @@ impl Reads {
         client: &'client Client<'client>,
         len: u16,
     ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
-        client.read_service(self, len).await
+        // client.read_service(self, len).await
+
+        client
+            .pdu_loop
+            .send_packable(
+                Command::Read(self),
+                (),
+                Some(len),
+                client.timeouts.pdu,
+                client.config.retry_behaviour,
+            )
+            .await
+            .map(|res| res.into_data())
     }
 }
 
@@ -555,69 +641,6 @@ pub struct PduBuilder<'client, P> {
     wkc: u16,
 }
 
-// enum PduPayload<'a, P> {
-//     Borrowed(&'a P),
-//     Owned(P),
-// }
-
-// impl<'a, P> From<P> for PduPayload<'a, P>
-// where
-//     P: EtherCatWire,
-// {
-//     fn from(value: P) -> Self {
-//         Self::Owned(value)
-//     }
-// }
-
-// impl<'a, P> From<&'a P> for PduPayload<'a, P>
-// where
-//     P: EtherCatWire,
-// {
-//     fn from(value: &'a P) -> Self {
-//         Self::Borrowed(value)
-//     }
-// }
-
-// // TODO: Better name!
-// pub trait SliceStuff: Sized {
-//     fn copy_into_unchecked(&self, buf: &mut [u8]) -> &[u8];
-
-//     fn from_slice(buf: &[u8]) -> Result<Self, Error>;
-
-//     fn packed_len(&self) -> usize;
-// }
-
-// impl<T> SliceStuff for T
-// where
-//     T: EtherCatWire,
-// {
-//     fn copy_into_unchecked(&self, buf: &mut [u8]) -> &[u8] {
-//         self.pack_to_slice_unchecked(buf)
-//     }
-
-//     fn from_slice(buf: &[u8]) -> Result<Self, Error> {
-//         Ok(Self::unpack_from_slice(buf)?)
-//     }
-
-//     fn packed_len(&self) -> usize {
-//         Self::BYTES
-//     }
-// }
-
-// impl SliceStuff for &[u8] {
-//     fn copy_into_unchecked(&self, buf: &mut [u8]) -> &[u8] {
-//         self.pack_to_slice_unchecked(buf)
-//     }
-
-//     fn from_slice(buf: &[u8]) -> Result<Self, Error> {
-//         Ok(Self::unpack_from_slice(buf)?)
-//     }
-
-//     fn packed_len(&self) -> usize {
-//         Self::BYTES
-//     }
-// }
-
 impl<'client> PduBuilder<'client, ()> {
     pub fn new(command: Command, client: &'client Client<'client>, context: &'static str) -> Self {
         Self {
@@ -629,6 +652,42 @@ impl<'client> PduBuilder<'client, ()> {
             wkc: 1,
         }
     }
+
+    /// Set the expected working counter from its default of 1 to the given value.
+    pub fn set_wkc(mut self, wkc: u16) -> Self {
+        self.wkc = wkc;
+
+        self
+    }
+
+    /// Set the frame's length parameter in the header.
+    ///
+    /// This may be longer than the frame's data buffer as it is just metadata.
+    pub fn set_len(mut self, len: u16) -> Self {
+        self.len_override = Some(len);
+
+        self
+    }
+
+    /// Send the frame, ignoring the response.
+    pub async fn read<NEWP>(self) -> Result<(), Error>
+    where
+        NEWP: for<'a> EtherCatWireSized<'a>,
+    {
+        self.client
+            .pdu_loop
+            .send_packable(
+                self.command,
+                self.payload,
+                Some(NEWP::BYTES as u16),
+                self.client.timeouts.pdu,
+                self.client.config.retry_behaviour,
+            )
+            .await?
+            .wkc(self.wkc, self.context)?;
+
+        Ok(())
+    }
 }
 
 impl<'client, P> PduBuilder<'client, P> {
@@ -637,16 +696,6 @@ impl<'client, P> PduBuilder<'client, P> {
     where
         NEWP: for<'a> EtherCatWire<'a>,
     {
-        // let buf = self
-        //     .frame
-        //     .buf_mut()
-        //     .get_mut(0..NEWP::BYTES)
-        //     .ok_or(Error::Internal)?;
-
-        // payload.pack_to_slice(buf)?;
-
-        // self.len = NEWP::BYTES;
-
         PduBuilder {
             payload,
             command: self.command,
@@ -656,16 +705,6 @@ impl<'client, P> PduBuilder<'client, P> {
             wkc: self.wkc,
         }
     }
-
-    /// Set the frame's length parameter in the header.
-    ///
-    /// This may be longer than the frame's data buffer as it is just metadata.
-    pub fn set_len(self, len: u16) -> Self {
-        Self {
-            len_override: Some(len),
-            ..self
-        }
-    }
 }
 
 impl<'client, P> PduBuilder<'client, P>
@@ -673,14 +712,13 @@ where
     P: for<'a> EtherCatWire<'a>,
 {
     /// Send the frame, ignoring the response.
-    // TODO: A raw version that returns `(RxFrameDataBuf<'_>, u16)` maybe?
     pub async fn send(self) -> Result<(), Error> {
         self.client
             .pdu_loop
             .send_packable(
                 self.command,
                 self.payload,
-                self.len_override,
+                None,
                 self.client.timeouts.pdu,
                 self.client.config.retry_behaviour,
             )
@@ -691,26 +729,43 @@ where
     }
 
     /// Send the frame, waiting for and parsing the response.
-    // TODO: A raw version that returns `(RxFrameDataBuf<'_>, u16)` maybe?
-    pub async fn response(self) -> Result<P, Error> {
+    pub async fn response<NEWP>(self) -> Result<NEWP, Error>
+    where
+        NEWP: for<'a> EtherCatWire<'a>,
+    {
         let res = self
             .client
             .pdu_loop
             .send_packable(
                 self.command,
                 self.payload,
-                self.len_override,
+                None,
                 self.client.timeouts.pdu,
                 self.client.config.retry_behaviour,
             )
             .await?
             .wkc(self.wkc, self.context)
             .and_then(|res| {
-                let data = P::unpack_from_slice(&res)?;
+                let data = NEWP::unpack_from_slice(&res)?;
 
                 Ok(data)
             })?;
 
         Ok(res)
+    }
+
+    /// Send the frame, waiting for and parsing the response.
+    pub async fn response_slice(self, len: usize) -> Result<RxFrameDataBuf<'client>, Error> {
+        self.client
+            .pdu_loop
+            .send_packable(
+                self.command,
+                (),
+                Some(len as u16),
+                self.client.timeouts.pdu,
+                self.client.config.retry_behaviour,
+            )
+            .await?
+            .wkc(self.wkc, self.context)
     }
 }

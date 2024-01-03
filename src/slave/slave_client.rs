@@ -1,11 +1,11 @@
-use ethercrab_wire::EtherCatWire;
+use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
 
 use crate::{
     command::PduBuilder,
     error::Error,
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
-    Client, Command, Timeouts, Writes,
+    Client, Command, Reads, Timeouts, Writes,
 };
 
 /// A wrapper around [`Client`] preconfigured to use the given device address.
@@ -34,7 +34,7 @@ impl<'client> SlaveClient<'client> {
     #[inline(always)]
     pub(crate) async fn read_ignore_wkc<T>(&self, register: u16) -> Result<PduResponse<T>, Error>
     where
-        T: PduRead,
+        T: for<'a> EtherCatWireSized<'a>,
     {
         Command::fprd(self.configured_address, register)
             .receive(self.client)
@@ -49,7 +49,7 @@ impl<'client> SlaveClient<'client> {
         value: T,
     ) -> Result<PduResponse<T>, Error>
     where
-        T: PduData,
+        T: for<'a> EtherCatWire<'a>,
     {
         Command::fpwr(self.configured_address, register)
             .send_receive(self.client, value)
@@ -59,7 +59,7 @@ impl<'client> SlaveClient<'client> {
     #[inline(always)]
     pub(crate) async fn read<T>(&self, register: u16, context: &'static str) -> Result<T, Error>
     where
-        T: PduRead,
+        T: for<'a> EtherCatWireSized<'a>,
     {
         Command::fprd(self.configured_address, register)
             .receive(self.client)
@@ -93,18 +93,23 @@ impl<'client> SlaveClient<'client> {
             .wkc(1, context)
     }
 
-    #[inline(always)]
-    pub(crate) fn write_builder_rename_me(
-        &self,
-        register: u16,
-        context: &'static str,
-    ) -> PduBuilder<()> {
-        PduBuilder::new(
-            Command::fpwr(self.configured_address, register).into(),
-            self.client,
-            context,
-        )
-    }
+    // #[inline(always)]
+    // pub(crate) fn read_builder_rename_me(&self, register: u16, context: &'static str) -> Reads {
+    //     Command::fprd(self.configured_address, register)
+    // }
+
+    // #[inline(always)]
+    // pub(crate) fn write_builder_rename_me(
+    //     &self,
+    //     register: u16,
+    //     context: &'static str,
+    // ) -> PduBuilder<()> {
+    //     PduBuilder::new(
+    //         Command::fpwr(self.configured_address, register).into(),
+    //         self.client,
+    //         context,
+    //     )
+    // }
 
     /// A wrapper around an FPWR service to this slave's configured address, ignoring any response.
     #[inline(always)]
@@ -115,7 +120,7 @@ impl<'client> SlaveClient<'client> {
         context: &'static str,
     ) -> Result<(), Error>
     where
-        T: PduData,
+        T: for<'a> EtherCatWire<'a>,
     {
         Command::fpwr(self.configured_address, register)
             .send(self.client, value)

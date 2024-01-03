@@ -5,6 +5,7 @@ use crate::{
     },
     error::Error,
     fmt,
+    pdu_loop::{CheckWorkingCounter, RxFrameDataBuf},
     register::RegisterAddress,
     slave::slave_client::SlaveClient,
 };
@@ -51,13 +52,10 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
                 .await?;
         }
 
-        // Set up an SII read. This writes the control word and the register word after it
-        // TODO: Consider either removing context strings or using defmt or something to avoid
-        // bloat.
         self.client
-            .write_slice(
+            .write(
                 RegisterAddress::SiiControl.into(),
-                &SiiRequest::read(start_word).as_array(),
+                SiiRequest::read(start_word),
                 "SII read setup",
             )
             .await?;

@@ -699,7 +699,7 @@ impl<'a, S> SlaveRef<'a, S> {
     /// break higher level interactions with EtherCrab.
     pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
     where
-        T: PduRead,
+        T: for<'xx> EtherCatWireSized<'xx>,
     {
         self.client
             .read_ignore_wkc(register.into())
@@ -713,7 +713,7 @@ impl<'a, S> SlaveRef<'a, S> {
     /// break higher level interactions with EtherCrab.
     pub async fn register_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
     where
-        T: PduData,
+        T: for<'xx> EtherCatWire<'xx>,
     {
         self.client
             .write_ignore_wkc(register.into(), value)

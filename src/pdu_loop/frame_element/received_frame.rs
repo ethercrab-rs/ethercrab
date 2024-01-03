@@ -1,3 +1,5 @@
+use ethercrab_wire::EtherCatWire;
+
 use super::{FrameBox, FrameElement, PduFrame};
 use crate::{
     error::Error,

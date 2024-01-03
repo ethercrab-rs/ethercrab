@@ -36,43 +36,30 @@ pub enum SiiOwner {
 #[wire(bytes = 2)]
 pub struct SiiControl {
     // First byte, but second octet because little endian
-    // #[packed_field(bits = "8", ty = "enum")]
     #[wire(bits = 1)]
     pub access: SiiAccess,
-    // #[packed_field(bits = "9..=12")]
     // reserved4: u8,
     #[wire(pre_skip = 4, bits = 1)]
-    // #[packed_field(bits = "13")]
     pub emulate_sii: bool,
-    // #[packed_field(bits = "14", ty = "enum")]
     #[wire(bits = 1)]
     pub read_size: SiiReadSize,
-    // #[packed_field(bits = "15", ty = "enum")]
     #[wire(bits = 1)]
     pub address_type: SiiAddressSize,
 
-    // #[packed_field(bits = "0")]
     #[wire(bits = 1)]
     pub read: bool,
-    // #[packed_field(bits = "1")]
     #[wire(bits = 1)]
     pub write: bool,
-    // #[packed_field(bits = "2")]
     #[wire(bits = 1)]
     pub reload: bool,
-    // #[packed_field(bits = "3")]
     #[wire(bits = 1)]
     pub checksum_error: bool,
-    // #[packed_field(bits = "4")]
     #[wire(bits = 1)]
     pub device_info_error: bool,
-    // #[packed_field(bits = "5")]
     #[wire(bits = 1)]
     pub command_error: bool,
-    // #[packed_field(bits = "6")]
     #[wire(bits = 1)]
     pub write_error: bool,
-    // #[packed_field(bits = "7")]
     #[wire(bits = 1)]
     pub busy: bool,
 }
@@ -175,16 +162,6 @@ impl SiiRequest {
             control: SiiControl::read(),
             address,
         }
-    }
-
-    pub fn as_array(&self) -> [u8; 6] {
-        let mut buf = [0u8; 6];
-
-        fmt::unwrap!(self.control.pack_to_slice(&mut buf[0..2]));
-
-        buf[2..4].copy_from_slice(&self.address.to_le_bytes());
-
-        buf
     }
 }
 

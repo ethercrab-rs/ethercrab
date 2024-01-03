@@ -239,12 +239,11 @@ where
         };
 
         self.client
-            .write_builder_rename_me(
+            .write(
                 RegisterAddress::sync_manager(sync_manager_index).into(),
+                sm_config,
                 "SM config",
             )
-            .set_payload(sm_config)
-            .send()
             .await?;
 
         fmt::debug!(
