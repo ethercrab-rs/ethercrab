@@ -1,8 +1,8 @@
-use ethercrab_wire::EtherCatWire;
+use ethercrab_wire::EtherCrabWire;
 
 #[test]
 fn basic_struct() {
-    #[derive(Debug, EtherCatWire, PartialEq)]
+    #[derive(Debug, EtherCrabWire, PartialEq)]
     #[wire(bits = 56)]
     struct Check {
         #[wire(bits = 8)]
@@ -32,7 +32,7 @@ fn basic_struct() {
 
 #[test]
 fn unpack_struct_nested_enum() {
-    #[derive(Debug, Copy, Clone, EtherCatWire, PartialEq)]
+    #[derive(Debug, Copy, Clone, EtherCrabWire, PartialEq)]
     #[repr(u8)]
     enum Nested {
         Foo = 0x01,
@@ -41,7 +41,7 @@ fn unpack_struct_nested_enum() {
         Quux = 0x04,
     }
 
-    #[derive(Debug, EtherCatWire, PartialEq)]
+    #[derive(Debug, EtherCrabWire, PartialEq)]
     #[wire(bits = 8)]
     struct Check {
         #[wire(bits = 2)]
@@ -68,7 +68,7 @@ fn unpack_struct_nested_enum() {
 
 #[test]
 fn nested_structs() {
-    #[derive(Debug, EtherCatWire)]
+    #[derive(Debug, EtherCrabWire)]
     #[wire(bits = 80)]
     struct Check {
         #[wire(bits = 32)]
@@ -79,7 +79,7 @@ fn nested_structs() {
         status: Inner,
     }
 
-    #[derive(Debug, Copy, Clone, EtherCatWire)]
+    #[derive(Debug, Copy, Clone, EtherCrabWire)]
     #[wire(bits = 24)]
     struct Inner {
         #[wire(bits = 1)]

@@ -153,7 +153,7 @@ pub fn generate_enum(
     };
 
     let out = quote! {
-        impl ::ethercrab_wire::EtherCatWire<'_> for #name {
+        impl ::ethercrab_wire::EtherCrabWire<'_> for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 // TODO: If only one byte, just write it to `buf[0]`
                 let mut buf = &mut buf[0..#size_bytes];
@@ -180,22 +180,22 @@ pub fn generate_enum(
             }
         }
 
-        impl ::ethercrab_wire::EtherCatWireSized<'_> for #name {
-            const BYTES: usize = #size_bytes;
+        impl ::ethercrab_wire::EtherCrabWireSized<'_> for #name {
+            const PACKED_LEN: usize = #size_bytes;
 
-            type Arr = [u8; #size_bytes];
+            type Buffer = [u8; #size_bytes];
 
-            fn pack(&self) -> Self::Arr {
+            fn pack(&self) -> Self::Buffer {
                 // TODO: Optimise if only one byte in length
 
                 let mut buf = [0u8; #size_bytes];
 
-                <Self as ::ethercrab_wire::EtherCatWire>::pack_to_slice_unchecked(self, &mut buf);
+                <Self as ::ethercrab_wire::EtherCrabWire>::pack_to_slice_unchecked(self, &mut buf);
 
                 buf
             }
 
-            fn buffer() -> Self::Arr {
+            fn buffer() -> Self::Buffer {
                 [0u8; #size_bytes]
             }
         }

@@ -7,7 +7,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     Client,
 };
-use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
+use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
 use nom::{combinator::map, sequence::pair, IResult};
 
 const NOP: u8 = 0x00;
@@ -445,10 +445,10 @@ impl<'client> WrappedRead<'client> {
     /// Receive data and decode into a `T`.
     pub async fn receive<T>(self) -> Result<T, Error>
     where
-        T: for<'a> EtherCatWireSized<'a>,
+        T: for<'a> EtherCrabWireSized<'a>,
     {
         self.client
-            .pdu(self.command.into(), (), Some(T::BYTES as u16))
+            .pdu(self.command.into(), (), Some(T::PACKED_LEN as u16))
             .await
             .and_then(|(data, wkc)| {
                 let data = T::unpack_from_slice(&data)?;
@@ -475,7 +475,7 @@ impl<'client> WrappedRead<'client> {
     /// ignored.
     pub(crate) async fn receive_wkc<T>(&self) -> Result<u16, Error>
     where
-        T: for<'a> EtherCatWire<'a> + Default,
+        T: for<'a> EtherCrabWire<'a> + Default,
     {
         self.client
             .pdu(self.command.into(), T::default(), None)
@@ -530,7 +530,7 @@ impl<'client> WrappedWrite<'client> {
     }
 
     /// Send a payload with a set length, ignoring the response.
-    pub async fn send<'data>(self, data: impl EtherCatWire<'_>) -> Result<(), Error> {
+    pub async fn send<'data>(self, data: impl EtherCrabWire<'_>) -> Result<(), Error> {
         self.client
             .pdu(self.command.into(), data, self.len_override)
             .await?
@@ -540,9 +540,9 @@ impl<'client> WrappedWrite<'client> {
     }
 
     /// Send a value, returning the response returned from the network.
-    pub async fn send_receive<'data, T>(self, value: impl EtherCatWire<'_>) -> Result<T, Error>
+    pub async fn send_receive<'data, T>(self, value: impl EtherCrabWire<'_>) -> Result<T, Error>
     where
-        T: for<'a> EtherCatWire<'a>,
+        T: for<'a> EtherCrabWire<'a>,
     {
         self.client
             .pdu(self.command.into(), value, None)
@@ -558,7 +558,7 @@ impl<'client> WrappedWrite<'client> {
     /// Similar to [`send_receive`](WrappedWrite::send_receive) but returns a slice.
     pub async fn send_receive_slice<'data>(
         self,
-        value: impl EtherCatWire<'_>,
+        value: impl EtherCrabWire<'_>,
     ) -> Result<RxFrameDataBuf<'data>, Error>
     where
         'client: 'data,

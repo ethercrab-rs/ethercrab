@@ -20,14 +20,11 @@ mod error;
 mod impls;
 
 pub use error::WireError;
-pub use ethercrab_wire_derive::EtherCatWire;
+pub use ethercrab_wire_derive::EtherCrabWire;
 
 /// A type to be sent/received on the wire, according to EtherCAT spec rules (packed bits, little
 /// endian).
-pub trait EtherCatWire<'a>: Sized {
-    // /// The number of bytes rounded up that can hold this type.
-    // const BYTES: usize;
-
+pub trait EtherCrabWire<'a>: Sized {
     /// Pack the type and write it into the beginning of `buf`.
     ///
     /// The default implementation of this method will return an error if the buffer is not long
@@ -56,18 +53,18 @@ pub trait EtherCatWire<'a>: Sized {
 
 /// Implemented for types with a known size at compile time (pretty much everything that isn't a
 /// `&[u8]`).
-pub trait EtherCatWireSized<'a>: EtherCatWire<'a> {
+pub trait EtherCrabWireSized<'a>: EtherCrabWire<'a> {
     /// Packed size in bytes.
-    const BYTES: usize;
+    const PACKED_LEN: usize;
 
     /// Used to define an array of the correct length. This type should ALWAYS be of the form `[u8;
     /// N]` where `N` is a fixed value or const generic as per the type this trait is implemented
     /// on.
-    type Arr: AsRef<[u8]> + AsMut<[u8]>;
+    type Buffer: AsRef<[u8]> + AsMut<[u8]>;
 
     /// Pack this item to a fixed sized array.
-    fn pack(&self) -> Self::Arr;
+    fn pack(&self) -> Self::Buffer;
 
     /// Create a buffer sized to contain the packed representation of this item.
-    fn buffer() -> Self::Arr;
+    fn buffer() -> Self::Buffer;
 }

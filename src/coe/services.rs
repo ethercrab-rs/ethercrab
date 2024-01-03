@@ -5,7 +5,7 @@ use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 
 /// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download
 /// request.
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWire)]
 #[wire(bytes = 16)]
 pub struct SdoExpeditedDownload {
     #[wire(bytes = 12)]
@@ -37,7 +37,7 @@ impl Display for SdoExpeditedDownload {
 /// These fields are common to non-segmented (i.e. "normal") SDO requests and responses.
 ///
 /// See ETG1000.6 Section 5.6.2 SDO.
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWire)]
 #[wire(bytes = 12)]
 pub struct SdoNormal {
     #[wire(bytes = 6)]
@@ -67,7 +67,7 @@ impl Display for SdoNormal {
 }
 
 /// Headers belonging to segmented SDO transfers.
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWire)]
 #[wire(bytes = 9)]
 pub struct SdoSegmented {
     #[wire(bytes = 6)]
@@ -96,7 +96,7 @@ pub trait CoeServiceResponse {
 }
 
 /// Must be implemented for any type used to send a CoE service.
-pub trait CoeServiceRequest: for<'a> ethercrab_wire::EtherCatWireSized<'a> {
+pub trait CoeServiceRequest: for<'a> ethercrab_wire::EtherCrabWireSized<'a> {
     type Response: CoeServiceResponse;
 
     /// Get the auto increment counter value for this request.

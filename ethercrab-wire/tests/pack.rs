@@ -1,8 +1,8 @@
-use ethercrab_wire::EtherCatWire;
+use ethercrab_wire::EtherCrabWire;
 
 #[test]
 fn one_bit() {
-    #[derive(Debug, EtherCatWire)]
+    #[derive(Debug, EtherCrabWire)]
     #[wire(bits = 1)]
     struct Bit {
         #[wire(bits = 1)]
@@ -12,7 +12,7 @@ fn one_bit() {
 
 #[test]
 fn one_byte() {
-    #[derive(Debug, EtherCatWire)]
+    #[derive(Debug, EtherCrabWire)]
     #[wire(bits = 8)]
     struct Byte {
         #[wire(bits = 8)]
@@ -22,7 +22,7 @@ fn one_byte() {
 
 #[test]
 fn basic_enum_byte() {
-    #[derive(Debug, Copy, Clone, EtherCatWire)]
+    #[derive(Debug, Copy, Clone, EtherCrabWire)]
     #[repr(u8)]
     #[wire(bits = 8)]
     enum Check {
@@ -37,7 +37,7 @@ fn basic_enum_byte() {
 
 #[test]
 fn basic_struct() {
-    #[derive(Debug, EtherCatWire)]
+    #[derive(Debug, EtherCrabWire)]
     #[wire(bits = 56)]
     struct Check {
         #[wire(bits = 8)]
@@ -69,7 +69,7 @@ fn basic_struct() {
 
 #[test]
 fn bools() {
-    #[derive(Debug, EtherCatWire)]
+    #[derive(Debug, EtherCrabWire)]
     #[wire(bits = 3)]
     struct Check {
         #[wire(bits = 1)]
@@ -97,7 +97,7 @@ fn bools() {
 
 #[test]
 fn pack_struct_single_byte() {
-    #[derive(Debug, EtherCatWire)]
+    #[derive(Debug, EtherCrabWire)]
     #[wire(bits = 8)]
     struct Check {
         #[wire(bits = 2)]
@@ -127,7 +127,7 @@ fn pack_struct_single_byte() {
 
 #[test]
 fn pack_struct_nested_enum() {
-    #[derive(Debug, Copy, Clone, EtherCatWire)]
+    #[derive(Debug, Copy, Clone, EtherCrabWire)]
     #[repr(u8)]
     enum Nested {
         Foo = 0x01,
@@ -136,7 +136,7 @@ fn pack_struct_nested_enum() {
         Quux = 0x04,
     }
 
-    #[derive(Debug, EtherCatWire)]
+    #[derive(Debug, EtherCrabWire)]
     #[wire(bits = 8)]
     struct Check {
         #[wire(bits = 2)]
@@ -164,7 +164,7 @@ fn pack_struct_nested_enum() {
 
 #[test]
 fn nested_structs() {
-    #[derive(Debug, EtherCatWire)]
+    #[derive(Debug, EtherCrabWire)]
     #[wire(bits = 80)]
     struct Check {
         #[wire(bits = 32)]
@@ -175,7 +175,7 @@ fn nested_structs() {
         status: Inner,
     }
 
-    #[derive(Debug, Copy, Clone, EtherCatWire)]
+    #[derive(Debug, Copy, Clone, EtherCrabWire)]
     #[wire(bits = 24)]
     struct Inner {
         #[wire(bits = 1)]
@@ -216,7 +216,7 @@ fn nested_structs() {
 // // If I don't need this I won't implement it because it makes things a bunch more complex.
 // #[test]
 // fn u16_across_bytes() {
-//     #[derive(Debug, EtherCatWire)]
+//     #[derive(Debug, EtherCrabWire)]
 //     #[wire(bits = 24)]
 //     struct Check {
 //         #[wire(bits = 3)]

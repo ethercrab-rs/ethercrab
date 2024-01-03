@@ -7,7 +7,7 @@ use nom::{
     IResult,
 };
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[repr(u8)]
 enum ProtocolType {
     DlPdu = 0x01u8,

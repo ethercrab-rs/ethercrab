@@ -7,7 +7,7 @@ use crate::{
     fmt,
     sync_manager_channel::{self},
 };
-use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
+use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
 use nom::{
     bytes::complete::take,
     combinator::{map, map_opt, map_res},
@@ -18,7 +18,7 @@ use nom::{
 pub const TX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
 pub const RX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1600..=0x17ff;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWire)]
 #[repr(u8)]
 pub enum SiiOwner {
     /// EEPROM access rights are assigned to PDI during state change from Init to PreOp, Init to
@@ -31,7 +31,7 @@ pub enum SiiOwner {
 }
 
 /// Defined in ETG1000.4 6.4.3
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWire)]
 #[wire(bytes = 2)]
 pub struct SiiControl {
     // First byte, but second octet because little endian
@@ -86,7 +86,7 @@ impl SiiControl {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWire)]
 #[repr(u8)]
 pub enum SiiAccess {
     #[default]
@@ -94,7 +94,7 @@ pub enum SiiAccess {
     ReadWrite = 0x01,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWire)]
 #[repr(u8)]
 pub enum SiiReadSize {
     /// Read 4 octets at a time.
@@ -114,7 +114,7 @@ impl SiiReadSize {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWire)]
 #[repr(u8)]
 pub enum SiiAddressSize {
     #[default]
@@ -122,7 +122,7 @@ pub enum SiiAddressSize {
     U16 = 0x01,
 }
 
-#[derive(ethercrab_wire::EtherCatWire)]
+#[derive(ethercrab_wire::EtherCrabWire)]
 #[wire(bytes = 6)]
 pub struct SiiRequest {
     #[wire(bytes = 2)]
@@ -155,7 +155,7 @@ impl SiiRequest {
 /// SII register address.
 ///
 /// Defined in ETG1000.6 Table 16 or ETG2010 Table 2
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWire)]
 #[repr(u16)]
 pub enum SiiCoding {
     /// PDI Control
@@ -231,7 +231,7 @@ pub enum SiiCoding {
 /// Defined in ETG1000.6 Table 19.
 ///
 /// Additional information also in ETG1000.6 Table 17.
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum CategoryType {
@@ -270,7 +270,7 @@ impl From<PdoType> for CategoryType {
 }
 
 /// ETG1000.6 Table 23
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FmmuUsage {
@@ -405,7 +405,7 @@ impl FromEeprom for SiiGeneral {
     }
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[repr(u8)]
 pub enum PortStatus {
     #[default]
@@ -521,7 +521,7 @@ impl defmt::Format for SyncManagerEnable {
     }
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum SyncManagerType {
@@ -638,7 +638,7 @@ impl FromEeprom for PdoEntry {
         let (i, sub_index) = le_u8(i)?;
         let (i, name_string_idx) = le_u8(i)?;
         let (i, data_type) = map_res(
-            take(PrimitiveDataType::BYTES),
+            take(PrimitiveDataType::PACKED_LEN),
             PrimitiveDataType::unpack_from_slice,
         )(i)?;
         let (i, data_length_bits) = le_u8(i)?;

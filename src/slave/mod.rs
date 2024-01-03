@@ -34,7 +34,7 @@ use core::{
     ops::Deref,
     sync::atomic::{AtomicU8, Ordering},
 };
-use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
+use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
 use nom::{bytes::complete::take, number::complete::le_u32};
 
 pub use self::pdi::SlavePdi;
@@ -442,7 +442,7 @@ where
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
         H: CoeServiceRequest + Debug,
-        H::Response: for<'xx> EtherCatWire<'xx>,
+        H::Response: for<'xx> EtherCrabWire<'xx>,
     {
         let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
 
@@ -509,13 +509,13 @@ where
         value: T,
     ) -> Result<(), Error>
     where
-        T: for<'x> EtherCatWireSized<'x>,
+        T: for<'x> EtherCrabWireSized<'x>,
     {
         let sub_index = sub_index.into();
 
         let counter = self.mailbox_counter();
 
-        if T::BYTES > 4 {
+        if T::PACKED_LEN > 4 {
             fmt::error!("Only 4 byte SDO writes or smaller are supported currently.");
 
             // TODO: Normal SDO download. Only expedited requests for now
@@ -526,7 +526,7 @@ where
 
         value.pack_to_slice(&mut buf)?;
 
-        let request = coe::services::download(counter, index, sub_index, buf, T::BYTES as u8);
+        let request = coe::services::download(counter, index, sub_index, buf, T::PACKED_LEN as u8);
 
         fmt::trace!("CoE download");
 
@@ -634,7 +634,7 @@ where
     /// Note that currently this method only supports reads of up to 32 bytes.
     pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
     where
-        T: for<'x> EtherCatWireSized<'x>,
+        T: for<'x> EtherCrabWireSized<'x>,
     {
         let sub_index = sub_index.into();
 
@@ -647,7 +647,7 @@ where
                     fmt::error!(
                         "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
                         type_name::<T>(),
-                        T::BYTES,
+                        T::PACKED_LEN,
                         data,
                         data.len()
                     );
@@ -707,7 +707,7 @@ impl<'a, S> SlaveRef<'a, S> {
     /// break higher level interactions with EtherCrab.
     pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
     where
-        T: for<'xx> EtherCatWireSized<'xx>,
+        T: for<'xx> EtherCrabWireSized<'xx>,
     {
         self.read(register.into()).receive().await
     }
@@ -718,7 +718,7 @@ impl<'a, S> SlaveRef<'a, S> {
     /// break higher level interactions with EtherCrab.
     pub async fn register_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
     where
-        T: for<'xx> EtherCatWire<'xx>,
+        T: for<'xx> EtherCrabWire<'xx>,
     {
         // self.client
         //     .write_ignore_wkc(register.into(), value)

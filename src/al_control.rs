@@ -3,7 +3,7 @@ use crate::slave_state::SlaveState;
 /// The AL control/status word for an individual slave device.
 ///
 /// Defined in ETG1000.6 Table 9 - AL Control Description.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bits = 16)]
 pub struct AlControl {
@@ -40,7 +40,7 @@ impl AlControl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
+    use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
 
     #[test]
     fn al_control() {

@@ -18,7 +18,7 @@ use core::{
     ops::Range,
     sync::atomic::{AtomicU16, Ordering},
 };
-use ethercrab_wire::EtherCatWire;
+use ethercrab_wire::EtherCrabWire;
 use heapless::FnvIndexMap;
 
 /// The main EtherCAT master instance.
@@ -433,7 +433,7 @@ impl<'sto> Client<'sto> {
     pub(crate) async fn pdu(
         &self,
         command: Command,
-        data: impl EtherCatWire<'_>,
+        data: impl EtherCrabWire<'_>,
         len_override: Option<u16>,
     ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
         self.pdu_loop

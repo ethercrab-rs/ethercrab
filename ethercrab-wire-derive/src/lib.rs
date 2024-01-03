@@ -27,8 +27,8 @@ use proc_macro::TokenStream;
 use syn::{parse_macro_input, Data, DeriveInput};
 
 /// Derive methods to encode/decode an item for use by EtherCAT.
-#[proc_macro_derive(EtherCatWire, attributes(wire))]
-pub fn ethercat_wire(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(EtherCrabWire, attributes(wire))]
+pub fn ether_crab_wire(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let res = match input.clone().data {

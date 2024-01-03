@@ -2,7 +2,7 @@ pub mod abort_code;
 pub mod services;
 
 /// Defined in ETG1000.6 5.6.1 Table 29 – CoE elements.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[wire(bytes = 2)]
 pub struct CoeHeader {
@@ -38,7 +38,7 @@ pub struct CoeHeader {
 // }
 
 /// Defined in ETG1000.6 Table 29 – CoE elements
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[repr(u8)]
 pub enum CoeService {
@@ -61,7 +61,7 @@ pub enum CoeService {
 }
 
 /// Defined in ETG1000.6 Section 5.6.2.1.1
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[wire(bytes = 1)]
 pub struct InitSdoFlags {
     #[wire(bits = 1)]
@@ -84,7 +84,7 @@ impl InitSdoFlags {
     pub const ABORT_REQUEST: u8 = 0x04;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[wire(bytes = 4)]
 pub struct InitSdoHeader {
     #[wire(bytes = 1)]
@@ -96,7 +96,7 @@ pub struct InitSdoHeader {
 }
 
 /// Defined in ETG1000.6 5.6.2.3.1
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
 #[wire(bytes = 1)]
 pub struct SegmentSdoHeader {
     #[wire(bits = 1)]
@@ -156,13 +156,13 @@ impl From<u8> for SubIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
+    use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn coe_header_fuzz() {
         heckcheck::check(|status: CoeHeader| {
-            let mut buf = [0u8; { CoeHeader::BYTES }];
+            let mut buf = [0u8; { CoeHeader::PACKED_LEN }];
 
             let packed = status.pack_to_slice_unchecked(&mut buf);
 
