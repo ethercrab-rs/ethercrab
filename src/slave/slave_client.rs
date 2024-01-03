@@ -1,3 +1,5 @@
+use ethercrab_wire::EtherCatWire;
+
 use crate::{
     error::Error,
     pdu_data::{PduData, PduRead},
@@ -94,11 +96,11 @@ impl<'client> SlaveClient<'client> {
     pub(crate) async fn write_with(
         &self,
         register: u16,
-        f: impl Fn(&mut [u8]) -> Result<usize, Error>,
+        d: impl EtherCatWire,
         context: &'static str,
     ) -> Result<RxFrameDataBuf<'_>, Error> {
         Command::fpwr(self.configured_address, register)
-            .send_receive_with(self.client, f)
+            .send_receive_with(self.client, d)
             .await?
             .wkc(1, context)
     }

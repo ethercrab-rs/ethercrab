@@ -149,6 +149,12 @@ pub trait EtherCatWire: Sized {
 
     /// Unpack this type from the beginning of the given buffer.
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError>;
+
+    // DELETEME?
+    /// Get the length in bytes of this item when packed.
+    fn packed_len(&self) -> usize {
+        Self::BYTES
+    }
 }
 
 pub use ethercrab_wire_derive::EtherCatWire;

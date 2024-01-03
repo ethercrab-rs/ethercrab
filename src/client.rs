@@ -3,6 +3,7 @@ use crate::{
     al_status_code::AlStatusCode,
     command::{Command, Reads, Writes},
     dc,
+    eeprom::types::{SiiControl, SiiRequest},
     error::{Error, Item},
     fmt,
     pdi::PdiOffset,
@@ -15,6 +16,7 @@ use crate::{
     ClientConfig, SlaveGroup, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
+    marker::PhantomData,
     ops::Range,
     sync::atomic::{AtomicU16, Ordering},
 };
@@ -28,7 +30,7 @@ use heapless::FnvIndexMap;
 /// access to EtherCAT PDUs like `BRD`, `LRW`, etc.
 #[derive(Debug)]
 pub struct Client<'sto> {
-    pdu_loop: PduLoop<'sto>,
+    pub(crate) pdu_loop: PduLoop<'sto>,
     /// The total number of discovered slaves.
     ///
     /// Using an `AtomicU16` here only to satisfy `Sync` requirements, but it's only ever written to
@@ -36,7 +38,7 @@ pub struct Client<'sto> {
     num_slaves: AtomicU16,
     pub(crate) timeouts: Timeouts,
 
-    config: ClientConfig,
+    pub(crate) config: ClientConfig,
 }
 
 unsafe impl<'sto> Sync for Client<'sto> {}
@@ -460,21 +462,21 @@ impl<'sto> Client<'sto> {
             .map(|response| response.into_data())
     }
 
-    pub(crate) async fn write_service_with(
-        &self,
-        command: Writes,
-        f: impl Fn(&mut [u8]) -> Result<usize, Error>,
-    ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
-        self.pdu_loop
-            .pdu_tx_readwrite_len_with(
-                Command::Write(command),
-                f,
-                self.timeouts.pdu,
-                self.config.retry_behaviour,
-            )
-            .await
-            .map(|response| response.into_data())
-    }
+    // pub(crate) async fn write_service_with(
+    //     &self,
+    //     command: Writes,
+    //     f: impl Fn(&mut [u8]) -> Result<usize, Error>,
+    // ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
+    //     self.pdu_loop
+    //         .pdu_tx_readwrite_len_with(
+    //             Command::Write(command),
+    //             f,
+    //             self.timeouts.pdu,
+    //             self.config.retry_behaviour,
+    //         )
+    //         .await
+    //         .map(|response| response.into_data())
+    // }
 
     pub(crate) async fn write_service_len(
         &self,
@@ -497,6 +499,124 @@ impl<'sto> Client<'sto> {
     pub(crate) fn max_frame_data(&self) -> usize {
         self.pdu_loop.max_frame_data()
     }
+
+    pub(crate) fn handle(&self) -> SendHandle<()> {
+        todo!();
+    }
+}
+
+pub struct SendHandle<'client, P> {
+    client: &'client Client<'client>,
+    command: Command,
+    len_override: Option<u16>,
+    payload: P,
+}
+
+impl<'client, P> SendHandle<'client, P> {
+    /// Set the payload for this frame, along with its length.
+    pub fn set_payload<NEWP>(mut self, payload: NEWP) -> SendHandle<'client, NEWP>
+    where
+        NEWP: EtherCatWire,
+    {
+        // let buf = self
+        //     .frame
+        //     .buf_mut()
+        //     .get_mut(0..NEWP::BYTES)
+        //     .ok_or(Error::Internal)?;
+
+        // payload.pack_to_slice(buf)?;
+
+        // self.len = NEWP::BYTES;
+
+        SendHandle {
+            payload,
+            client: self.client,
+            command: self.command,
+            len_override: self.len_override,
+        }
+    }
+
+    /// Set the frame's length parameter in the header.
+    ///
+    /// This may be longer than the frame's data buffer as it is just metadata.
+    pub fn set_len(mut self, len: u16) -> Self {
+        Self {
+            len_override: Some(len),
+            ..self
+        }
+    }
+}
+
+impl<'client, P> SendHandle<'client, P>
+where
+    P: EtherCatWire,
+{
+    /// Send the frame, waiting for the response but ignoring the returned payload.
+    pub async fn ignore_response(self) -> Result<(), Error> {
+        // self.client
+        //     .pdu_loop
+        //     .pdu_tx_readwrite_len(
+        //         self.command,
+        //         value,
+        //         len,
+        //         self.client.timeouts.pdu,
+        //         self.client.config.retry_behaviour,
+        //     )
+        //     .await
+        //     .map(|response| response.into_data())
+
+        self.client
+            .pdu_loop
+            .send_packable(
+                self.command,
+                self.payload,
+                self.len_override,
+                self.client.timeouts.pdu,
+                self.client.config.retry_behaviour,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    /// Send the frame, waiting for and parsing the response.
+    // TODO: A raw version that returns `(RxFrameDataBuf<'_>, u16)`
+    pub async fn send(self) -> Result<(P, u16), Error> {
+        let res = self
+            .client
+            .pdu_loop
+            .send_packable(
+                self.command,
+                self.payload,
+                self.len_override,
+                self.client.timeouts.pdu,
+                self.client.config.retry_behaviour,
+            )
+            .await
+            .and_then(|res| {
+                // Ok(P::unpack_from_slice(res)?)
+
+                let (data, wkc) = res.into_data();
+
+                let data = P::unpack_from_slice(&data)?;
+
+                Ok((data, wkc))
+            })?;
+
+        Ok(res)
+    }
+}
+
+async fn test_stuff(client: &Client<'_>) -> Result<(), Error> {
+    client
+        .handle()
+        .set_payload(SiiControl::default())
+        .ignore_response()
+        .await?;
+
+    // handle.send().await?;
+
+    Ok(())
 }
 
 fn blank_mem_iter(

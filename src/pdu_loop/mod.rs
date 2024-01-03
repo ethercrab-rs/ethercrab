@@ -16,8 +16,11 @@ use crate::{
 };
 use core::time::Duration;
 
+use ethercrab_wire::EtherCatWire;
 pub use frame_element::received_frame::RxFrameDataBuf;
 pub use frame_element::sendable_frame::SendableFrame;
+// TODO: Remove this.
+pub use frame_element::created_frame::CreatedFrame;
 pub use pdu_rx::PduRx;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
@@ -144,6 +147,56 @@ impl<'sto> PduLoop<'sto> {
                 .ok_or(Error::Pdu(PduError::TooLong))?;
 
             payload[0..send_data_len].copy_from_slice(send_data);
+
+            let frame = frame.mark_sendable();
+
+            self.wake_sender();
+
+            match crate::timer_factory::timeout(timeout, frame).await {
+                Ok(result) => return Ok(result),
+                Err(Error::Timeout) => {
+                    fmt::error!("Frame {} timed out", frame_idx);
+
+                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
+                    // state to `None`, ready for reuse.
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(Error::Timeout)
+    }
+
+    pub(crate) async fn send_packable(
+        &self,
+        command: Command,
+        data: impl EtherCatWire,
+        len_override: Option<u16>,
+        timeout: Duration,
+        retry_behaviour: RetryBehaviour,
+    ) -> Result<ReceivedFrame<'_>, Error> {
+        for _ in 0..retry_behaviour.loop_counts() {
+            // let send_data_len = send_data.len();
+            // let payload_length = u16::try_from(send_data.len())?.max(data_length);
+
+            let data_len = data.packed_len() as u16;
+
+            let len: u16 = len_override.unwrap_or(data_len).max(data_len);
+
+            let mut frame = self.storage.alloc_frame(command, len)?;
+
+            let frame_idx = frame.index();
+
+            // let payload = frame
+            //     .buf_mut()
+            //     .get_mut(0..usize::from(payload_length))
+            //     .ok_or(Error::Pdu(PduError::TooLong))?;
+
+            // payload[0..send_data_len].copy_from_slice(send_data);
+
+            // SAFETY: We ensure the payload length is at least the length of the packed input data
+            // above.
+            data.pack_to_slice_unchecked(frame.buf_mut());
 
             let frame = frame.mark_sendable();
 

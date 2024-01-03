@@ -10,6 +10,7 @@ use crate::{
     pdu_loop::{PduResponse, RxFrameDataBuf},
     Client,
 };
+use ethercrab_wire::EtherCatWire;
 use nom::{combinator::map, sequence::pair, IResult};
 
 const NOP: u8 = 0x00;
@@ -80,9 +81,19 @@ impl Writes {
     pub async fn send_receive_with<'client, 'data>(
         self,
         client: &'client Client<'client>,
-        f: impl Fn(&mut [u8]) -> Result<usize, Error>,
+        d: impl EtherCatWire,
     ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
-        client.write_service_with(self, f).await
+        client
+            .pdu_loop
+            .send_packable(
+                Command::Write(self),
+                d,
+                None,
+                client.timeouts.pdu,
+                client.config.retry_behaviour,
+            )
+            .await
+            .map(|response| response.into_data())
     }
 
     /// Send a slice of data, ignoring any response.

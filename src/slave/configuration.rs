@@ -241,11 +241,7 @@ where
         self.client
             .write_with(
                 RegisterAddress::sync_manager(sync_manager_index).into(),
-                |buf| {
-                    let b = sm_config.pack_to_slice(buf)?;
-
-                    Ok(b.len())
-                },
+                sm_config,
                 "SM config",
             )
             .await?;
