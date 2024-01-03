@@ -1,5 +1,4 @@
 use core::fmt;
-use ethercrab_wire::{EtherCatWire, WireError};
 
 /// ETG1000.6 Table 67 – CoE Communication Area, "Sync Manager Communication Type".
 pub const SM_TYPE_ADDRESS: u16 = 0x1c00;
@@ -174,6 +173,7 @@ pub enum BufferState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ethercrab_wire::EtherCatWire;
 
     #[test]
     fn issue_49_decode_timeout_response() {

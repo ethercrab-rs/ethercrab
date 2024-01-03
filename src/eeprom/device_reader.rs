@@ -5,11 +5,9 @@ use crate::{
     },
     error::Error,
     fmt,
-    pdu_loop::{CheckWorkingCounter, RxFrameDataBuf},
     register::RegisterAddress,
-    Client, Command, SlaveRef,
+    SlaveRef,
 };
-use ethercrab_wire::EtherCatWireSized;
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
 /// Table 2.
@@ -32,12 +30,6 @@ impl<'slave> DeviceEeprom<'slave> {
     async fn wait(&self) -> Result<(), Error> {
         crate::timer_factory::timeout(self.client.timeouts().eeprom, async {
             loop {
-                // let control =
-                //     Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-                //         .wrap(self.client, "SII busy wait")
-                //         .receive::<SiiControl>()
-                //         .await?;
-
                 let control = self
                     .client
                     .read(RegisterAddress::SiiControl)

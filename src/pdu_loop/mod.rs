@@ -12,7 +12,6 @@ use crate::{
     error::{Error, PduError},
     fmt,
     pdu_loop::storage::PduStorageRef,
-    Reads, Writes,
 };
 use core::time::Duration;
 
@@ -120,60 +119,18 @@ impl<'sto> PduLoop<'sto> {
         frame.await
     }
 
-    // /// Send data to and read data back from the slave devices.
-    // ///
-    // /// Unlike [`pdu_tx_readwrite`](crate::pdu_loop::PduLoop::pdu_tx_readwrite), this method allows
-    // /// overriding the minimum data length of the payload.
-    // ///
-    // /// The PDU data length will be the larger of `send_data.len()` and `data_length`. If a larger
-    // /// response than `send_data` is desired, set the expected response length in `data_length`.
-    // ///
-    // /// This is useful for e.g. sending a 10 byte PDI with 4 output bytes and 6 input bytes. In this
-    // /// case, `send_data` will be a slice of length `4` containing the outputs to send, and
-    // /// `data_length` will be `10`. This makes the latter 6 bytes available for writing the PDU
-    // /// response into.
-    // pub(crate) async fn pdu_tx_readwrite_len(
-    //     &self,
-    //     command: Command,
-    //     send_data: &[u8],
-    //     data_length: u16,
-    //     timeout: Duration,
-    //     retry_behaviour: RetryBehaviour,
-    // ) -> Result<ReceivedFrame<'_>, Error> {
-    //     for _ in 0..retry_behaviour.loop_counts() {
-    //         let send_data_len = send_data.len();
-    //         let payload_length = u16::try_from(send_data.len())?.max(data_length);
-
-    //         let mut frame = self.storage.alloc_frame(command, data_length)?;
-
-    //         let frame_idx = frame.index();
-
-    //         let payload = frame
-    //             .buf_mut()
-    //             .get_mut(0..usize::from(payload_length))
-    //             .ok_or(Error::Pdu(PduError::TooLong))?;
-
-    //         payload[0..send_data_len].copy_from_slice(send_data);
-
-    //         let frame = frame.mark_sendable();
-
-    //         self.wake_sender();
-
-    //         match crate::timer_factory::timeout(timeout, frame).await {
-    //             Ok(result) => return Ok(result),
-    //             Err(Error::Timeout) => {
-    //                 fmt::error!("Frame {} timed out", frame_idx);
-
-    //                 // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
-    //                 // state to `None`, ready for reuse.
-    //             }
-    //             Err(e) => return Err(e),
-    //         }
-    //     }
-
-    //     Err(Error::Timeout)
-    // }
-
+    /// Send data to and read data back from the slave devices.
+    ///
+    /// This method allows overriding the minimum data length of the payload.
+    ///
+    /// The PDU data length will be the larger of the payload data length and the length override
+    /// (if provided). If a larger **response** than the sent data is desired, set the expected
+    /// response length in `len_override`.
+    ///
+    /// This is useful for e.g. sending a 10 byte PDI with 4 output bytes and 6 input bytes. In this
+    /// case, `data` will be a slice of length `4` containing the outputs to send, and
+    /// `len_override` will be `Some(10)`. This makes the latter 6 bytes available for writing the
+    /// PDU response into.
     pub(crate) async fn send_packable(
         &self,
         command: Command,
@@ -183,9 +140,6 @@ impl<'sto> PduLoop<'sto> {
         retry_behaviour: RetryBehaviour,
     ) -> Result<ReceivedFrame<'_>, Error> {
         for _ in 0..retry_behaviour.loop_counts() {
-            // let send_data_len = data.packed_len() as u16;
-            // let payload_length = u16::try_from(send_data.len())?.max(data_length);
-
             // Length of data to populate in the send buffer
             let send_data_len = data.packed_len() as u16;
 
@@ -224,83 +178,6 @@ impl<'sto> PduLoop<'sto> {
 
         Err(Error::Timeout)
     }
-
-    // pub(crate) async fn pdu_tx_readwrite_len_with(
-    //     &self,
-    //     command: Command,
-    //     f: impl Fn(&mut [u8]) -> Result<usize, Error>,
-    //     timeout: Duration,
-    //     retry_behaviour: RetryBehaviour,
-    // ) -> Result<ReceivedFrame<'_>, Error> {
-    //     for _ in 0..retry_behaviour.loop_counts() {
-    //         // Allocate the maximum allowed frame payload for writing into
-    //         let mut frame = self
-    //             .storage
-    //             .alloc_frame(command, self.storage.frame_data_len as u16)?;
-
-    //         let frame_idx = frame.index();
-
-    //         let payload_len = f(frame.buf_mut())?;
-
-    //         frame.set_len(payload_len);
-
-    //         let frame = frame.mark_sendable();
-
-    //         self.wake_sender();
-
-    //         match crate::timer_factory::timeout(timeout, frame).await {
-    //             Ok(result) => return Ok(result),
-    //             Err(Error::Timeout) => {
-    //                 fmt::error!("Frame {} timed out", frame_idx);
-
-    //                 // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
-    //                 // state to `None`, ready for reuse.
-    //             }
-    //             Err(e) => return Err(e),
-    //         }
-    //     }
-
-    //     Err(Error::Timeout)
-    // }
-
-    // /// Send data to and read data back from multiple slaves.
-    // // NOTE: Should be `pub(crate)` but the benchmarks need this internal method so we'll just hide
-    // // it instead.
-    // #[doc(hidden)]
-    // pub async fn pdu_tx_readwrite<'a>(
-    //     &'a self,
-    //     command: Writes,
-    //     send_data: &[u8],
-    //     timeout: Duration,
-    //     retry_behaviour: RetryBehaviour,
-    // ) -> Result<ReceivedFrame<'_>, Error> {
-    //     self.pdu_tx_readwrite_len(
-    //         Command::Write(command),
-    //         send_data,
-    //         send_data.len().try_into()?,
-    //         timeout,
-    //         retry_behaviour,
-    //     )
-    //     .await
-    // }
-
-    // /// Send a PDU to read data back from one or more slave devices.
-    // pub(crate) async fn pdu_tx_readonly(
-    //     &self,
-    //     command: Reads,
-    //     data_length: u16,
-    //     timeout: Duration,
-    //     retry_behaviour: RetryBehaviour,
-    // ) -> Result<ReceivedFrame<'_>, Error> {
-    //     self.pdu_tx_readwrite_len(
-    //         Command::Read(command),
-    //         &[],
-    //         data_length,
-    //         timeout,
-    //         retry_behaviour,
-    //     )
-    //     .await
-    // }
 }
 
 #[cfg(test)]
@@ -312,6 +189,7 @@ mod tests {
             created_frame::CreatedFrame, sendable_frame::SendableFrame, FrameBox, FrameElement,
             FrameState,
         },
+        Reads,
     };
     use core::{future::poll_fn, marker::PhantomData, ops::Deref, pin::pin, task::Poll};
     use futures_lite::Future;
@@ -324,18 +202,6 @@ mod tests {
         // One 16 byte frame
         static STORAGE: PduStorage<1, 16> = PduStorage::new();
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
-
-        // let send_result = pdu_loop
-        //     .pdu_tx_readonly(
-        //         Reads::Brd {
-        //             address: 0,
-        //             register: 0,
-        //         },
-        //         16,
-        //         Duration::from_secs(0),
-        //         RetryBehaviour::None,
-        //     )
-        //     .await;
 
         let send_result = pdu_loop
             .send_packable(

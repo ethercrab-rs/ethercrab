@@ -8,7 +8,6 @@ use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
 #[wire(bytes = 16)]
 pub struct SdoExpeditedDownload {
-    // #[packed_field(size_bytes = "12")]
     #[wire(bytes = 12)]
     pub headers: SdoNormal,
     #[wire(bytes = 4)]
@@ -41,13 +40,10 @@ impl Display for SdoExpeditedDownload {
 #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCatWire)]
 #[wire(bytes = 12)]
 pub struct SdoNormal {
-    // #[packed_field(size_bytes = "6")]
     #[wire(bytes = 6)]
     pub header: MailboxHeader,
-    // #[packed_field(size_bytes = "2")]
     #[wire(bytes = 2)]
     pub coe_header: CoeHeader,
-    // #[packed_field(size_bytes = "4")]
     #[wire(bytes = 4)]
     pub sdo_header: InitSdoHeader,
 }
@@ -75,12 +71,9 @@ impl Display for SdoNormal {
 #[wire(bytes = 9)]
 pub struct SdoSegmented {
     #[wire(bytes = 6)]
-    // #[packed_field(size_bytes = "6")]
     pub header: MailboxHeader,
-    // #[packed_field(size_bytes = "2")]
     #[wire(bytes = 2)]
     pub coe_header: CoeHeader,
-    // #[packed_field(size_bytes = "1")]
     #[wire(bytes = 1)]
     pub sdo_header: SegmentSdoHeader,
 }

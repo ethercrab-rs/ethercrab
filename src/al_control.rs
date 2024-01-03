@@ -1,5 +1,4 @@
 use crate::slave_state::SlaveState;
-use ethercrab_wire::{EtherCatWire, WireError};
 
 /// The AL control/status word for an individual slave device.
 ///
@@ -41,7 +40,7 @@ impl AlControl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::EtherCatWireSized;
+    use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
 
     #[test]
     fn al_control() {

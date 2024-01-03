@@ -1,8 +1,5 @@
-use ethercrab_wire::EtherCatWire;
-
 use super::{FrameBox, FrameElement, PduFrame};
 use crate::{
-    error::Error,
     fmt,
     pdu_loop::{frame_element::FrameState, PduResponse},
 };
@@ -23,18 +20,15 @@ impl<'sto> ReceivedFrame<'sto> {
         unsafe { self.inner.frame() }.working_counter
     }
 
-    /// Retrieve the frame's data.
-    ///
-    /// If the working counter of the received frame does not match the given expected value, this
-    /// method will return an [`Error::WorkingCounter`] error.
-    pub fn wkc(self, expected: u16) -> Result<RxFrameDataBuf<'sto>, Error> {
+    #[cfg(test)]
+    pub fn wkc(self, expected: u16) -> Result<RxFrameDataBuf<'sto>, crate::error::Error> {
         let frame = self.frame();
         let act_wc = frame.working_counter;
 
         if act_wc == expected {
             Ok(self.into_data_buf())
         } else {
-            Err(Error::WorkingCounter {
+            Err(crate::error::Error::WorkingCounter {
                 expected,
                 received: act_wc,
             })

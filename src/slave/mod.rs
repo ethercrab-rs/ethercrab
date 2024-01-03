@@ -20,13 +20,13 @@ use crate::{
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::MailboxType,
-    pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
+    pdu_loop::RxFrameDataBuf,
     register::RegisterAddress,
     register::SupportFlags,
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
     sync_manager_channel::SyncManagerChannel,
-    Reads, Timeouts, WrappedRead, WrappedWrite, Writes,
+    Timeouts, WrappedRead, WrappedWrite,
 };
 use core::{
     any::type_name,
@@ -448,19 +448,6 @@ where
 
         let counter = request.counter();
 
-        // let arr = request.pack();
-
-        // // Send data to slave IN mailbox
-        // Command::fpwr(self.state.configured_address, write_mailbox.address)
-        //     .send_receive_slice_len(
-        //         self.client.client,
-        //         arr.as_ref(),
-        //         // Need to write entire mailbox to latch it
-        //         write_mailbox.len,
-        //     )
-        //     .await?
-        //     .wkc(1, "SDO upload request")?;
-
         // Send data to slave IN mailbox
         self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
@@ -468,10 +455,6 @@ where
             .await?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
-
-        // let headers_len = H::Response::BYTES;
-
-        // let (headers, data) = response.split_at(headers_len);
 
         let headers = H::Response::unpack_from_slice(&response)?;
 
@@ -816,23 +799,7 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
         // ETG1000.4 Table 48 – Slave information interface access
         // A value of 2 sets owner to Master (not PDI) and cancels access
-        // self.client
-        //     .write::<u16>(
-        //         RegisterAddress::SiiConfig.into(),
-        //         2,
-        //         "Write SII config literal",
-        //     )
-        //     .await?;
-
         self.write(RegisterAddress::SiiConfig).send(2u16).await?;
-
-        // self.client
-        //     .write::<u16>(
-        //         RegisterAddress::SiiConfig.into(),
-        //         mode as u16,
-        //         "Write SII config mode",
-        //     )
-        //     .await?;
 
         self.write(RegisterAddress::SiiConfig).send(mode).await?;
 

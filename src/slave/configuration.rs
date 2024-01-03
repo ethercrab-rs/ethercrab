@@ -17,7 +17,6 @@ use crate::{
     sync_manager_channel::{self, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
 use core::ops::DerefMut;
-use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
 
 /// Configuation from EEPROM methods.
 impl<'a, S> SlaveRef<'a, S>

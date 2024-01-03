@@ -1,5 +1,3 @@
-use ethercrab_wire::EtherCatWire;
-
 /// Slave device register address abstraction.
 ///
 /// This enum makes it easier to work with raw EtherCAT addresses by giving them nice names.
@@ -247,16 +245,12 @@ impl RegisterAddress {
 #[derive(Debug, ethercrab_wire::EtherCatWire)]
 #[wire(bits = 8)]
 pub struct PortDescriptors {
-    // #[packed_field(bits = "0..=1", ty = "enum")]
     #[wire(bits = 2)]
     port_0: PortType,
-    // #[packed_field(bits = "2..=3", ty = "enum")]
     #[wire(bits = 2)]
     port_1: PortType,
-    // #[packed_field(bits = "4..=5", ty = "enum")]
     #[wire(bits = 2)]
     port_2: PortType,
-    // #[packed_field(bits = "6..=7", ty = "enum")]
     #[wire(bits = 2)]
     port_3: PortType,
 }
@@ -329,6 +323,7 @@ impl core::fmt::Display for SupportFlags {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ethercrab_wire::EtherCatWire;
 
     #[test]
     #[cfg_attr(miri, ignore)]
