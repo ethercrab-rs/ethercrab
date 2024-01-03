@@ -79,6 +79,11 @@ macro_rules! impl_primitive_wire_field {
 impl_primitive_wire_field!(u8, 1);
 impl_primitive_wire_field!(u16, 2);
 impl_primitive_wire_field!(u32, 4);
+impl_primitive_wire_field!(u64, 8);
+impl_primitive_wire_field!(i8, 1);
+impl_primitive_wire_field!(i16, 2);
+impl_primitive_wire_field!(i32, 4);
+impl_primitive_wire_field!(i64, 8);
 
 impl<'a> EtherCatWire<'a> for bool {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
@@ -107,6 +112,30 @@ impl EtherCatWireSized<'_> for bool {
 
     fn pack(&self) -> Self::Arr {
         [*self as u8; 1]
+    }
+}
+
+impl<'a> EtherCatWire<'a> for () {
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+        &buf[0..0]
+    }
+
+    fn unpack_from_slice(_buf: &[u8]) -> Result<Self, WireError> {
+        Ok(())
+    }
+
+    fn packed_len(&self) -> usize {
+        0
+    }
+}
+
+impl EtherCatWireSized<'_> for () {
+    const BYTES: usize = 0;
+
+    type Arr = [u8; 0];
+
+    fn pack(&self) -> Self::Arr {
+        [0u8; 0]
     }
 }
 
@@ -206,5 +235,3 @@ pub trait EtherCatWireSized<'a>: EtherCatWire<'a> {
 }
 
 pub use ethercrab_wire_derive::EtherCatWire;
-
-// impl EtherCatWire for &[u8] {}
