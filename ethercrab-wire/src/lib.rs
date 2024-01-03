@@ -35,25 +35,39 @@ impl core::fmt::Display for WireError {
 
 macro_rules! impl_primitive_wire_field {
     ($ty:ty, $size:expr) => {
-        impl EtherCatWire for $ty {
-            const BYTES: usize = $size;
-
-            type Arr = [u8; $size];
-
+        impl EtherCatWire<'_> for $ty {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-                let chunk = &mut buf[0..Self::BYTES];
+                let chunk = &mut buf[0..$size];
 
                 chunk.copy_from_slice(&self.to_le_bytes());
 
                 chunk
             }
 
+            fn pack_to_slice<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], WireError> {
+                if buf.len() < $size {
+                    return Err(WireError::Todo);
+                }
+
+                Ok(self.pack_to_slice_unchecked(buf))
+            }
+
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-                buf.get(0..Self::BYTES)
+                buf.get(0..$size)
                     .ok_or(WireError::Todo)
                     .and_then(|raw| raw.try_into().map_err(|_| WireError::Todo))
                     .map(Self::from_le_bytes)
             }
+
+            fn packed_len(&self) -> usize {
+                $size
+            }
+        }
+
+        impl EtherCatWireSized<'_> for $ty {
+            const BYTES: usize = $size;
+
+            type Arr = [u8; $size];
 
             fn pack(&self) -> Self::Arr {
                 self.to_le_bytes()
@@ -66,11 +80,7 @@ impl_primitive_wire_field!(u8, 1);
 impl_primitive_wire_field!(u16, 2);
 impl_primitive_wire_field!(u32, 4);
 
-impl EtherCatWire for bool {
-    const BYTES: usize = 1;
-
-    type Arr = [u8; 1];
-
+impl<'a> EtherCatWire<'a> for bool {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         buf[0] = *self as u8;
 
@@ -85,16 +95,22 @@ impl EtherCatWire for bool {
         Ok(buf[0] == 1)
     }
 
+    fn packed_len(&self) -> usize {
+        1
+    }
+}
+
+impl EtherCatWireSized<'_> for bool {
+    const BYTES: usize = 1;
+
+    type Arr = [u8; Self::BYTES];
+
     fn pack(&self) -> Self::Arr {
         [*self as u8; 1]
     }
 }
 
-impl<const N: usize> EtherCatWire for [u8; N] {
-    const BYTES: usize = N;
-
-    type Arr = [u8; N];
-
+impl<const N: usize> EtherCatWire<'_> for [u8; N] {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let buf = &mut buf[0..N];
 
@@ -109,28 +125,51 @@ impl<const N: usize> EtherCatWire for [u8; N] {
         chunk.try_into().map_err(|_e| WireError::Todo)
     }
 
+    fn packed_len(&self) -> usize {
+        N
+    }
+}
+
+impl<const N: usize> EtherCatWireSized<'_> for [u8; N] {
+    const BYTES: usize = N;
+
+    type Arr = [u8; N];
+
     fn pack(&self) -> Self::Arr {
         *self
     }
 }
 
+impl<'a> EtherCatWire<'a> for &'a [u8] {
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+        let buf = &mut buf[0..self.len()];
+
+        buf.copy_from_slice(self);
+
+        buf
+    }
+
+    fn unpack_from_slice(buf: &'a [u8]) -> Result<&'a [u8], WireError> {
+        Ok(buf)
+    }
+
+    fn packed_len(&self) -> usize {
+        self.len()
+    }
+}
+
 /// A type to be sent/received on the wire, according to EtherCAT spec rules (packed bits, little
 /// endian).
-pub trait EtherCatWire: Sized {
-    /// The number of bytes rounded up that can hold this type.
-    const BYTES: usize;
-
-    /// Used to define an array of the correct length. This type should ALWAYS be of the form `[u8;
-    /// N]` where `N` is a fixed value or const generic as per the type this trait is implemented
-    /// on.
-    type Arr;
+pub trait EtherCatWire<'a>: Sized {
+    // /// The number of bytes rounded up that can hold this type.
+    // const BYTES: usize;
 
     /// Pack the type and write it into the beginning of `buf`.
     ///
     /// The default implementation of this method will return an error if the buffer is not long
     /// enough.
     fn pack_to_slice<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], WireError> {
-        if buf.len() < Self::BYTES {
+        if buf.len() < self.packed_len() {
             return Err(WireError::Todo);
         }
 
@@ -144,17 +183,28 @@ pub trait EtherCatWire: Sized {
     /// This method must panic if `buf` is too short to hold the packed data.
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8];
 
+    /// Unpack this type from the beginning of the given buffer.
+    fn unpack_from_slice(buf: &'a [u8]) -> Result<Self, WireError>;
+
+    /// Get the length in bytes of this item when packed.
+    fn packed_len(&self) -> usize;
+}
+
+/// Implemented for types with a known size at compile time (pretty much everything that isn't a
+/// `&[u8]`).
+pub trait EtherCatWireSized<'a>: EtherCatWire<'a> {
+    /// Packed size in bytes.
+    const BYTES: usize;
+
+    /// Used to define an array of the correct length. This type should ALWAYS be of the form `[u8;
+    /// N]` where `N` is a fixed value or const generic as per the type this trait is implemented
+    /// on.
+    type Arr: AsRef<[u8]>;
+
     /// Pack this item to a fixed sized array.
     fn pack(&self) -> Self::Arr;
-
-    /// Unpack this type from the beginning of the given buffer.
-    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError>;
-
-    // DELETEME?
-    /// Get the length in bytes of this item when packed.
-    fn packed_len(&self) -> usize {
-        Self::BYTES
-    }
 }
 
 pub use ethercrab_wire_derive::EtherCatWire;
+
+// impl EtherCatWire for &[u8] {}

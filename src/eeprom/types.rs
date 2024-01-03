@@ -8,7 +8,7 @@ use crate::{
     pdu_data::PduRead,
     sync_manager_channel::{self},
 };
-use ethercrab_wire::{EtherCatWire, WireError};
+use ethercrab_wire::{EtherCatWire, EtherCatWireSized, WireError};
 use nom::{
     bytes::complete::take,
     combinator::{map, map_opt, map_res},

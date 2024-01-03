@@ -82,7 +82,7 @@ impl fmt::Display for Fmmu {
 mod tests {
     use super::*;
     use core::mem;
-    use ethercrab_wire::EtherCatWire;
+    use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
 
     #[test]
     fn default_is_zero() {
@@ -94,7 +94,7 @@ mod tests {
         // Unpacked size
         assert_eq!(mem::size_of::<Fmmu>(), 16);
         // Packed size
-        assert_eq!(Fmmu::BYTES, 16);
+        assert_eq!(Fmmu::default().packed_len(), 16);
     }
 
     #[test]

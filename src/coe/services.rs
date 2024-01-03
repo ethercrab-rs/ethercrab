@@ -94,7 +94,7 @@ impl Display for SdoSegmented {
 }
 
 /// Functionality common to all service responses (normal, expedited, segmented).
-pub trait CoeServiceResponse: ethercrab_wire::EtherCatWire {
+pub trait CoeServiceResponse {
     fn counter(&self) -> u8;
     fn is_aborted(&self) -> bool;
     fn mailbox_type(&self) -> MailboxType;
@@ -103,7 +103,7 @@ pub trait CoeServiceResponse: ethercrab_wire::EtherCatWire {
 }
 
 /// Must be implemented for any type used to send a CoE service.
-pub trait CoeServiceRequest: ethercrab_wire::EtherCatWire {
+pub trait CoeServiceRequest: for<'a> ethercrab_wire::EtherCatWireSized<'a> {
     type Response: CoeServiceResponse;
 
     /// Get the auto increment counter value for this request.

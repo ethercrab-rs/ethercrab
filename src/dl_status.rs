@@ -69,7 +69,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn dl_status_fuzz() {
         heckcheck::check(|status: DlStatus| {
-            let mut buf = [0u8; DlStatus::BYTES];
+            let mut buf = [0u8; 16];
 
             let packed = status.pack_to_slice(&mut buf).expect("Pack");
 

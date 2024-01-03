@@ -153,33 +153,23 @@ pub fn generate_enum(
     };
 
     let out = quote! {
-        impl ::ethercrab_wire::EtherCatWire for #name {
-            const BYTES: usize = #size_bytes;
-
-            type Arr = [u8; #size_bytes];
-
+        impl ::ethercrab_wire::EtherCatWire<'_> for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 // TODO: If only one byte, just write it to `buf[0]`
-                let mut buf = &mut buf[0..Self::BYTES];
+                let mut buf = &mut buf[0..#size_bytes];
 
                 #pack
 
                 buf
             }
 
-            fn pack(&self) -> Self::Arr {
-                // TODO: Optimise if only one byte in length
-
-                let mut buf = [0u8; #size_bytes];
-
-                self.pack_to_slice_unchecked(&mut buf);
-
-                buf
+            fn packed_len(&self) -> usize {
+                #size_bytes
             }
 
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
                 // TODO: If only one byte, just get it from `buf[0]`
-                let raw = buf.get(0..Self::BYTES).map(|bytes| {
+                let raw = buf.get(0..#size_bytes).map(|bytes| {
                     #repr_type::from_le_bytes(bytes.try_into().unwrap())
                 }).ok_or(::ethercrab_wire::WireError::Todo)?;
 
@@ -187,6 +177,22 @@ pub fn generate_enum(
                     #(#result_match_arms),*
                     #fallthrough,
                 }
+            }
+        }
+
+        impl ::ethercrab_wire::EtherCatWireSized<'_> for #name {
+            const BYTES: usize = #size_bytes;
+
+            type Arr = [u8; #size_bytes];
+
+            fn pack(&self) -> Self::Arr {
+                // TODO: Optimise if only one byte in length
+
+                let mut buf = [0u8; #size_bytes];
+
+                <Self as ::ethercrab_wire::EtherCatWire>::pack_to_slice_unchecked(self, &mut buf);
+
+                buf
             }
         }
 

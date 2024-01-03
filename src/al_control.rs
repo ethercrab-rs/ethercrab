@@ -51,6 +51,7 @@ impl PduRead for AlControl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ethercrab_wire::EtherCatWireSized;
 
     #[test]
     fn al_control() {

@@ -9,7 +9,7 @@ use crate::{
     Client,
 };
 use core::any::type_name;
-use ethercrab_wire::EtherCatWire;
+use ethercrab_wire::{EtherCatWire, WireError};
 use nom::{combinator::map, sequence::pair, IResult};
 
 const NOP: u8 = 0x00;
@@ -80,7 +80,7 @@ impl Writes {
     pub async fn send_receive_with<'client, 'data>(
         self,
         client: &'client Client<'client>,
-        d: impl EtherCatWire,
+        d: impl for<'a> EtherCatWire<'a>,
     ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
         client
             .pdu_loop
@@ -548,11 +548,75 @@ impl From<Writes> for Command {
 pub struct PduBuilder<'client, P> {
     command: Command,
     len_override: Option<u16>,
+    // payload: PduPayload<'p, P>,
     payload: P,
     client: &'client Client<'client>,
     context: &'static str,
     wkc: u16,
 }
+
+// enum PduPayload<'a, P> {
+//     Borrowed(&'a P),
+//     Owned(P),
+// }
+
+// impl<'a, P> From<P> for PduPayload<'a, P>
+// where
+//     P: EtherCatWire,
+// {
+//     fn from(value: P) -> Self {
+//         Self::Owned(value)
+//     }
+// }
+
+// impl<'a, P> From<&'a P> for PduPayload<'a, P>
+// where
+//     P: EtherCatWire,
+// {
+//     fn from(value: &'a P) -> Self {
+//         Self::Borrowed(value)
+//     }
+// }
+
+// // TODO: Better name!
+// pub trait SliceStuff: Sized {
+//     fn copy_into_unchecked(&self, buf: &mut [u8]) -> &[u8];
+
+//     fn from_slice(buf: &[u8]) -> Result<Self, Error>;
+
+//     fn packed_len(&self) -> usize;
+// }
+
+// impl<T> SliceStuff for T
+// where
+//     T: EtherCatWire,
+// {
+//     fn copy_into_unchecked(&self, buf: &mut [u8]) -> &[u8] {
+//         self.pack_to_slice_unchecked(buf)
+//     }
+
+//     fn from_slice(buf: &[u8]) -> Result<Self, Error> {
+//         Ok(Self::unpack_from_slice(buf)?)
+//     }
+
+//     fn packed_len(&self) -> usize {
+//         Self::BYTES
+//     }
+// }
+
+// impl SliceStuff for &[u8] {
+//     fn copy_into_unchecked(&self, buf: &mut [u8]) -> &[u8] {
+//         self.pack_to_slice_unchecked(buf)
+//     }
+
+//     fn from_slice(buf: &[u8]) -> Result<Self, Error> {
+//         Ok(Self::unpack_from_slice(buf)?)
+//     }
+
+//     fn packed_len(&self) -> usize {
+//         Self::BYTES
+//     }
+// }
 
 impl<'client> PduBuilder<'client, ()> {
     pub fn new(command: Command, client: &'client Client<'client>, context: &'static str) -> Self {
@@ -571,7 +635,7 @@ impl<'client, P> PduBuilder<'client, P> {
     /// Set the payload for this frame, along with its length.
     pub fn set_payload<NEWP>(self, payload: NEWP) -> PduBuilder<'client, NEWP>
     where
-        NEWP: EtherCatWire,
+        NEWP: for<'a> EtherCatWire<'a>,
     {
         // let buf = self
         //     .frame
@@ -606,7 +670,7 @@ impl<'client, P> PduBuilder<'client, P> {
 
 impl<'client, P> PduBuilder<'client, P>
 where
-    P: EtherCatWire,
+    P: for<'a> EtherCatWire<'a>,
 {
     /// Send the frame, ignoring the response.
     // TODO: A raw version that returns `(RxFrameDataBuf<'_>, u16)` maybe?

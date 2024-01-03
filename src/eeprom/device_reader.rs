@@ -8,7 +8,7 @@ use crate::{
     register::RegisterAddress,
     slave::slave_client::SlaveClient,
 };
-use ethercrab_wire::EtherCatWire;
+use ethercrab_wire::EtherCatWireSized;
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
 /// Table 2.

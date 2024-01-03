@@ -21,7 +21,7 @@ use core::{
     sync::atomic::{AtomicU16, Ordering},
 };
 use embassy_futures::select::{select, Either};
-use ethercrab_wire::EtherCatWire;
+use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
 use heapless::FnvIndexMap;
 
 /// The main EtherCAT master instance.
@@ -516,7 +516,7 @@ impl<'client, P> SendHandle<'client, P> {
     /// Set the payload for this frame, along with its length.
     pub fn set_payload<NEWP>(mut self, payload: NEWP) -> SendHandle<'client, NEWP>
     where
-        NEWP: EtherCatWire,
+        NEWP: for<'a> EtherCatWire<'a>,
     {
         // let buf = self
         //     .frame
@@ -549,7 +549,7 @@ impl<'client, P> SendHandle<'client, P> {
 
 impl<'client, P> SendHandle<'client, P>
 where
-    P: EtherCatWire,
+    P: for<'a> EtherCatWire<'a>,
 {
     /// Send the frame, waiting for the response but ignoring the returned payload.
     pub async fn ignore_response(self) -> Result<(), Error> {

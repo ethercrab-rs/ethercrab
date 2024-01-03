@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn size() {
         // Packed size
-        assert_eq!(SyncManagerChannel::BYTES, 8);
+        assert_eq!(SyncManagerChannel::default().packed_len(), 8);
     }
 
     #[test]

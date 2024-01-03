@@ -17,33 +17,21 @@ pub struct PduFlags {
     is_not_last: bool,
 }
 
-impl ethercrab_wire::EtherCatWire for PduFlags {
-    const BYTES: usize = 2;
-
-    type Arr = [u8; 2];
-
+impl ethercrab_wire::EtherCatWire<'_> for PduFlags {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let raw = self.length & LEN_MASK
             | (self.circulated as u16) << 14
             | (self.is_not_last as u16) << 15;
 
-        let buf = &mut buf[0..Self::BYTES];
+        let buf = &mut buf[0..self.packed_len()];
 
         buf.copy_from_slice(&raw.to_le_bytes());
 
         buf
     }
 
-    fn pack(&self) -> Self::Arr {
-        let mut buf = [0u8; 2];
-
-        self.pack_to_slice_unchecked(&mut buf);
-
-        buf
-    }
-
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-        let buf = buf.get(0..Self::BYTES).ok_or(WireError::Todo)?;
+        let buf = buf.get(0..2).ok_or(WireError::Todo)?;
 
         let src = u16::from_le_bytes(buf.try_into().unwrap());
 
@@ -56,6 +44,24 @@ impl ethercrab_wire::EtherCatWire for PduFlags {
             circulated,
             is_not_last,
         })
+    }
+
+    fn packed_len(&self) -> usize {
+        2
+    }
+}
+
+impl ethercrab_wire::EtherCatWireSized<'_> for PduFlags {
+    const BYTES: usize = 2;
+
+    type Arr = [u8; 2];
+
+    fn pack(&self) -> Self::Arr {
+        let mut buf = [0u8; 2];
+
+        ethercrab_wire::EtherCatWire::pack_to_slice_unchecked(self, &mut buf);
+
+        buf
     }
 }
 
@@ -75,7 +81,7 @@ impl PduFlags {
 
 #[cfg(test)]
 mod tests {
-    use ethercrab_wire::EtherCatWire;
+    use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
 
     use super::*;
 

@@ -170,7 +170,7 @@ impl<'sto> PduLoop<'sto> {
     pub(crate) async fn send_packable(
         &self,
         command: Command,
-        data: impl EtherCatWire,
+        data: impl EtherCatWire<'_>,
         len_override: Option<u16>,
         timeout: Duration,
         retry_behaviour: RetryBehaviour,

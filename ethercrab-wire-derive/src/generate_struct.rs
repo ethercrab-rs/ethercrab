@@ -101,35 +101,42 @@ pub fn generate_struct(
     });
 
     let out = quote! {
-        impl ::ethercrab_wire::EtherCatWire for #name {
-            const BYTES: usize = #width_bytes;
-
-            type Arr = [u8; #width_bytes];
-
+        impl ::ethercrab_wire::EtherCatWire<'_> for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 #(#fields_pack)*
 
                 &buf[0..#width_bytes]
             }
 
-            fn pack(&self) -> Self::Arr {
-                // TODO: Optimise if only one byte in length
-
-                let mut buf = [0u8; #width_bytes];
-
-                self.pack_to_slice_unchecked(&mut buf);
-
-                buf
+            fn packed_len(&self) -> usize {
+                #width_bytes
             }
 
+
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
-                if buf.len() < Self::BYTES {
+                if buf.len() < #width_bytes {
                     return Err(::ethercrab_wire::WireError::Todo)
                 }
 
                 Ok(Self {
                     #(#fields_unpack),*
                 })
+            }
+        }
+
+        impl ::ethercrab_wire::EtherCatWireSized<'_> for #name {
+            const BYTES: usize = #width_bytes;
+
+            type Arr = [u8; #width_bytes];
+
+            fn pack(&self) -> Self::Arr {
+                // TODO: Optimise if only one byte in length
+
+                let mut buf = [0u8; #width_bytes];
+
+                <Self as ::ethercrab_wire::EtherCatWire>::pack_to_slice_unchecked(self, &mut buf);
+
+                buf
             }
         }
     };

@@ -156,7 +156,7 @@ impl From<u8> for SubIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::EtherCatWire;
+    use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
 
     #[test]
     #[cfg_attr(miri, ignore)]

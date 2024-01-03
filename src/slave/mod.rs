@@ -35,7 +35,7 @@ use core::{
     ops::Deref,
     sync::atomic::{AtomicU8, Ordering},
 };
-use ethercrab_wire::EtherCatWire;
+use ethercrab_wire::{EtherCatWire, EtherCatWireSized};
 use nom::{bytes::complete::take, number::complete::le_u32};
 
 pub use self::pdi::SlavePdi;
@@ -436,7 +436,7 @@ where
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
         H: CoeServiceRequest + Debug,
-        H::Arr: AsRef<[u8]>,
+        H::Response: for<'xx> EtherCatWireSized<'xx>,
     {
         let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
 
@@ -461,9 +461,6 @@ where
 
         let (headers, data) = response.split_at(headers_len);
 
-        // Clippy: The WrappedPackingError conversion is a noop in std but in no_std/defmt land it's
-        // required for the `defmt::Format` impl.
-        #[allow(clippy::useless_conversion)]
         let headers = H::Response::unpack_from_slice(headers)?;
 
         if headers.is_aborted() {
