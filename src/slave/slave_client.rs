@@ -1,10 +1,11 @@
 use ethercrab_wire::EtherCatWire;
 
 use crate::{
+    command::PduBuilder,
     error::Error,
     pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
-    Client, Command, Timeouts,
+    Client, Command, Timeouts, Writes,
 };
 
 /// A wrapper around [`Client`] preconfigured to use the given device address.
@@ -93,16 +94,16 @@ impl<'client> SlaveClient<'client> {
     }
 
     #[inline(always)]
-    pub(crate) async fn write_with(
+    pub(crate) fn write_builder_rename_me(
         &self,
         register: u16,
-        d: impl EtherCatWire,
         context: &'static str,
-    ) -> Result<RxFrameDataBuf<'_>, Error> {
-        Command::fpwr(self.configured_address, register)
-            .send_receive_with(self.client, d)
-            .await?
-            .wkc(1, context)
+    ) -> PduBuilder<()> {
+        PduBuilder::new(
+            Command::fpwr(self.configured_address, register).into(),
+            self.client,
+            context,
+        )
     }
 
     /// A wrapper around an FPWR service to this slave's configured address, ignoring any response.

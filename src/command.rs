@@ -1,7 +1,5 @@
 //! Raw EtherCAT commands, e.g. `LRW`, `BRD`, `APWR`, etc.
 
-use core::any::type_name;
-
 use crate::{
     error::{Error, PduError},
     fmt,
@@ -10,6 +8,7 @@ use crate::{
     pdu_loop::{PduResponse, RxFrameDataBuf},
     Client,
 };
+use core::any::type_name;
 use ethercrab_wire::EtherCatWire;
 use nom::{combinator::map, sequence::pair, IResult};
 
@@ -531,5 +530,123 @@ impl Command {
                 }))
             }
         }
+    }
+}
+
+impl From<Reads> for Command {
+    fn from(value: Reads) -> Self {
+        Self::Read(value)
+    }
+}
+
+impl From<Writes> for Command {
+    fn from(value: Writes) -> Self {
+        Self::Write(value)
+    }
+}
+
+pub struct PduBuilder<'client, P> {
+    command: Command,
+    len_override: Option<u16>,
+    payload: P,
+    client: &'client Client<'client>,
+    context: &'static str,
+    wkc: u16,
+}
+
+impl<'client> PduBuilder<'client, ()> {
+    pub fn new(command: Command, client: &'client Client<'client>, context: &'static str) -> Self {
+        Self {
+            command,
+            len_override: None,
+            payload: (),
+            client,
+            context,
+            wkc: 1,
+        }
+    }
+}
+
+impl<'client, P> PduBuilder<'client, P> {
+    /// Set the payload for this frame, along with its length.
+    pub fn set_payload<NEWP>(self, payload: NEWP) -> PduBuilder<'client, NEWP>
+    where
+        NEWP: EtherCatWire,
+    {
+        // let buf = self
+        //     .frame
+        //     .buf_mut()
+        //     .get_mut(0..NEWP::BYTES)
+        //     .ok_or(Error::Internal)?;
+
+        // payload.pack_to_slice(buf)?;
+
+        // self.len = NEWP::BYTES;
+
+        PduBuilder {
+            payload,
+            command: self.command,
+            len_override: self.len_override,
+            context: self.context,
+            client: self.client,
+            wkc: self.wkc,
+        }
+    }
+
+    /// Set the frame's length parameter in the header.
+    ///
+    /// This may be longer than the frame's data buffer as it is just metadata.
+    pub fn set_len(self, len: u16) -> Self {
+        Self {
+            len_override: Some(len),
+            ..self
+        }
+    }
+}
+
+impl<'client, P> PduBuilder<'client, P>
+where
+    P: EtherCatWire,
+{
+    /// Send the frame, ignoring the response.
+    // TODO: A raw version that returns `(RxFrameDataBuf<'_>, u16)` maybe?
+    pub async fn send(self) -> Result<(), Error> {
+        self.client
+            .pdu_loop
+            .send_packable(
+                self.command,
+                self.payload,
+                self.len_override,
+                self.client.timeouts.pdu,
+                self.client.config.retry_behaviour,
+            )
+            .await?
+            .wkc(self.wkc, self.context)?;
+
+        Ok(())
+    }
+
+    /// Send the frame, waiting for and parsing the response.
+    // TODO: A raw version that returns `(RxFrameDataBuf<'_>, u16)` maybe?
+    pub async fn response(self) -> Result<P, Error> {
+        let res = self
+            .client
+            .pdu_loop
+            .send_packable(
+                self.command,
+                self.payload,
+                self.len_override,
+                self.client.timeouts.pdu,
+                self.client.config.retry_behaviour,
+            )
+            .await?
+            .wkc(self.wkc, self.context)
+            .and_then(|res| {
+                let data = P::unpack_from_slice(&res)?;
+
+                Ok(data)
+            })?;
+
+        Ok(res)
     }
 }
