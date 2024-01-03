@@ -11,6 +11,9 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Bump MSRV to 1.75.0
 - [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Refactor sub device EEPROM reader to be
   more efficient when skipping sections of the device EEPROM map.
+- **(breaking)** (technically) [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Fix typo
+  in name `AlStatusCode::ApplicationControllerAvailableI` ->
+  `AlStatusCode::ApplicationControllerAvailable`
 
 ## [0.3.5] - 2023-12-22
 
