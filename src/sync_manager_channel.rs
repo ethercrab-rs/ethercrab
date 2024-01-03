@@ -1,4 +1,3 @@
-use crate::pdu_data::PduRead;
 use core::fmt;
 use ethercrab_wire::{EtherCatWire, WireError};
 
@@ -60,18 +59,6 @@ impl fmt::Display for SyncManagerChannel {
                 "disabled"
             },
         ))
-    }
-}
-
-impl PduRead for SyncManagerChannel {
-    const LEN: u16 = 8;
-
-    type Error = WireError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let res = Self::unpack_from_slice(slice)?;
-
-        Ok(res)
     }
 }
 

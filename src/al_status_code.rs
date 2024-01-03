@@ -1,6 +1,3 @@
-use crate::fmt;
-use crate::pdu_data::PduRead;
-
 /// AL (Application Layer) Status Code.
 ///
 /// Defined in ETG1000.6 Table 11.
@@ -119,18 +116,6 @@ pub enum AlStatusCode {
     /// Unknown status code.
     #[wire(catch_all)]
     Unknown(u16),
-}
-
-impl PduRead for AlStatusCode {
-    const LEN: u16 = u16::LEN;
-
-    type Error = core::convert::Infallible;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let data = u16::from_le_bytes(fmt::unwrap!(slice.try_into()));
-
-        Ok(Self::from(data))
-    }
 }
 
 impl core::fmt::Display for AlStatusCode {

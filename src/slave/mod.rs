@@ -2,7 +2,6 @@ pub(crate) mod configuration;
 mod eeprom;
 pub mod pdi;
 pub mod ports;
-pub(crate) mod slave_client;
 mod types;
 
 use crate::{
@@ -21,13 +20,13 @@ use crate::{
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::MailboxType,
-    pdu_data::{PduData, PduRead},
-    pdu_loop::{CheckWorkingCounter, RxFrameDataBuf},
+    pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     register::RegisterAddress,
     register::SupportFlags,
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
     sync_manager_channel::SyncManagerChannel,
+    Reads, Timeouts, WrappedRead, WrappedWrite, Writes,
 };
 use core::{
     any::type_name,
@@ -41,7 +40,7 @@ use nom::{bytes::complete::take, number::complete::le_u32};
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
 pub use self::types::SlaveIdentity;
-use self::{eeprom::SlaveEeprom, slave_client::SlaveClient, types::Mailbox};
+use self::{eeprom::SlaveEeprom, types::Mailbox};
 
 /// Slave device metadata. See [`SlaveRef`] for richer behaviour.
 #[derive(Debug)]
@@ -164,13 +163,13 @@ impl Slave {
         });
 
         let flags = slave_ref
-            .client
-            .read::<SupportFlags>(RegisterAddress::SupportFlags.into(), "support flags")
+            .read(RegisterAddress::SupportFlags, "support flags")
+            .receive::<SupportFlags>()
             .await?;
 
         let ports = slave_ref
-            .client
-            .read::<DlStatus>(RegisterAddress::DlStatus.into(), "DL status")
+            .read(RegisterAddress::DlStatus, "DL status")
+            .receive::<DlStatus>()
             .await
             .map(|dl_status| {
                 // NOTE: dc_receive_times are populated during DC initialisation
@@ -263,8 +262,19 @@ impl Slave {
 /// slave device's process data.
 #[derive(Debug)]
 pub struct SlaveRef<'a, S> {
-    client: SlaveClient<'a>,
+    client: &'a Client<'a>,
+    configured_address: u16,
     state: S,
+}
+
+impl<'a> Clone for SlaveRef<'a, ()> {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client,
+            configured_address: self.configured_address,
+            state: (),
+        }
+    }
 }
 
 impl<'a, S> SlaveRef<'a, S>
@@ -279,11 +289,6 @@ where
     /// Get additional identifying details for the slave device.
     pub fn identity(&self) -> SlaveIdentity {
         self.state.identity
-    }
-
-    /// Get the configured station address of the slave device.
-    pub fn configured_address(&self) -> u16 {
-        self.state.configured_address
     }
 
     /// Get the network propagation delay of this device in nanoseconds.
@@ -341,8 +346,8 @@ where
         // Ensure slave OUT (master IN) mailbox is empty
         {
             let sm = self
-                .client
-                .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                .read(mailbox_read_sm, "Master read mailbox")
+                .receive::<SyncManagerChannel>()
                 .await?;
 
             // If flag is set, read entire mailbox to clear it
@@ -352,25 +357,26 @@ where
                     self.configured_address()
                 );
 
-                Command::fprd(self.state.configured_address, read_mailbox.address)
-                    .receive_slice(self.client.client, read_mailbox.len)
+                self.read(read_mailbox.address, "Slave send mailbox empty")
+                    .ignore_wkc()
+                    .receive_slice(read_mailbox.len)
                     .await?;
             }
         }
 
         // Wait for slave IN mailbox to be available to receive data from master
-        crate::timer_factory::timeout(self.client.client.timeouts.mailbox_echo, async {
+        crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
             loop {
                 let sm = self
-                    .client
-                    .read::<SyncManagerChannel>(mailbox_write_sm, "Master write mailbox")
+                    .read(mailbox_write_sm, "Master write mailbox")
+                    .receive::<SyncManagerChannel>()
                     .await?;
 
                 if !sm.status.mailbox_full {
                     break Ok(());
                 }
 
-                self.client.client.timeouts.loop_tick().await;
+                self.client.timeouts.loop_tick().await;
             }
         })
         .await
@@ -392,18 +398,18 @@ where
         let mailbox_read_sm = u16::from(RegisterAddress::sync_manager(read_mailbox.sync_manager));
 
         // Wait for slave OUT mailbox to be ready
-        crate::timer_factory::timeout(self.client.client.timeouts.mailbox_echo, async {
+        crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
             loop {
                 let sm = self
-                    .client
-                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master reply read mailbox")
+                    .read(mailbox_read_sm, "Master reply read mailbox")
+                    .receive::<SyncManagerChannel>()
                     .await?;
 
                 if sm.status.mailbox_full {
                     break Ok(());
                 }
 
-                self.client.client.timeouts.loop_tick().await;
+                self.client.timeouts.loop_tick().await;
             }
         })
         .await
@@ -418,10 +424,10 @@ where
         })?;
 
         // Read acknowledgement from slave OUT mailbox
-        let response = Command::fprd(self.state.configured_address, read_mailbox.address)
-            .receive_slice(self.client.client, read_mailbox.len)
-            .await?
-            .wkc(1, "read OUT mailbox after write")?;
+        let response = self
+            .read(read_mailbox.address, "read OUT mailbox after write")
+            .receive_slice(read_mailbox.len)
+            .await?;
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
 
@@ -436,39 +442,49 @@ where
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
         H: CoeServiceRequest + Debug,
-        H::Response: for<'xx> EtherCatWireSized<'xx>,
+        H::Response: for<'xx> EtherCatWire<'xx>,
     {
         let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
 
         let counter = request.counter();
 
-        let arr = request.pack();
+        // let arr = request.pack();
+
+        // // Send data to slave IN mailbox
+        // Command::fpwr(self.state.configured_address, write_mailbox.address)
+        //     .send_receive_slice_len(
+        //         self.client.client,
+        //         arr.as_ref(),
+        //         // Need to write entire mailbox to latch it
+        //         write_mailbox.len,
+        //     )
+        //     .await?
+        //     .wkc(1, "SDO upload request")?;
 
         // Send data to slave IN mailbox
-        Command::fpwr(self.state.configured_address, write_mailbox.address)
-            .send_receive_slice_len(
-                self.client.client,
-                arr.as_ref(),
-                // Need to write entire mailbox to latch it
-                write_mailbox.len,
-            )
-            .await?
-            .wkc(1, "SDO upload request")?;
+        self.write(write_mailbox.address, "SDO upload request")
+            .with_len(write_mailbox.len)
+            .send(request)
+            .await?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
 
-        let headers_len = H::Response::BYTES;
+        // let headers_len = H::Response::BYTES;
 
-        let (headers, data) = response.split_at(headers_len);
+        // let (headers, data) = response.split_at(headers_len);
 
-        let headers = H::Response::unpack_from_slice(headers)?;
+        let headers = H::Response::unpack_from_slice(&response)?;
+
+        let headers_len = headers.packed_len();
+
+        let data = &response[headers_len..];
 
         if headers.is_aborted() {
             let code = AbortCode::from(u32::from_le_bytes(fmt::unwrap!(data[0..4].try_into())));
 
             fmt::error!(
                 "Mailbox error for slave {:#06x} (supports complete access: {}): {}",
-                self.client.configured_address,
+                self.configured_address,
                 self.state.config.mailbox.complete_access,
                 code
             );
@@ -510,26 +526,24 @@ where
         value: T,
     ) -> Result<(), Error>
     where
-        T: PduData,
+        T: for<'x> EtherCatWireSized<'x>,
     {
         let sub_index = sub_index.into();
 
         let counter = self.mailbox_counter();
 
-        if T::len() > 4 {
+        if T::BYTES > 4 {
             fmt::error!("Only 4 byte SDO writes or smaller are supported currently.");
 
             // TODO: Normal SDO download. Only expedited requests for now
             return Err(Error::Internal);
         }
 
-        let mut data = [0u8; 4];
+        let mut buf = [0u8; 4];
 
-        let len = usize::from(T::len());
+        value.pack_to_slice(&mut buf)?;
 
-        data[0..len].copy_from_slice(value.as_slice());
-
-        let request = coe::services::download(counter, index, sub_index, data, len as u8);
+        let request = coe::services::download(counter, index, sub_index, buf, T::BYTES as u8);
 
         fmt::trace!("CoE download");
 
@@ -637,21 +651,20 @@ where
     /// Note that currently this method only supports reads of up to 32 bytes.
     pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
     where
-        T: PduData,
+        T: for<'x> EtherCatWireSized<'x>,
     {
         let sub_index = sub_index.into();
 
-        // FIXME: Make this dynamic somehow
-        let mut buf = [0u8; 32];
+        let mut buf = T::buffer();
 
-        self.read_sdo_buf(index, sub_index, &mut buf)
+        self.read_sdo_buf(index, sub_index, buf.as_mut())
             .await
             .and_then(|data| {
-                T::try_from_slice(data).map_err(|_| {
+                T::unpack_from_slice(data).map_err(|_| {
                     fmt::error!(
                         "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
                         type_name::<T>(),
-                        T::len(),
+                        T::BYTES,
                         data,
                         data.len()
                     );
@@ -666,20 +679,30 @@ where
 impl<'a, S> SlaveRef<'a, S> {
     pub(crate) fn new(client: &'a Client<'a>, configured_address: u16, state: S) -> Self {
         Self {
-            client: SlaveClient::new(client, configured_address),
+            client,
+            configured_address,
             state,
         }
+    }
+
+    /// Get the configured station address of the slave device.
+    pub fn configured_address(&self) -> u16 {
+        self.configured_address
+    }
+
+    pub(crate) fn timeouts(&self) -> Timeouts {
+        self.client.timeouts
     }
 
     /// Get the EtherCAT state machine state of the slave.
     pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
         let status = self
-            .client
-            .read::<AlControl>(RegisterAddress::AlStatus.into(), "AL Status");
+            .read(RegisterAddress::AlStatus, "AL Status")
+            .receive::<AlControl>();
 
         let code = self
-            .client
-            .read::<AlStatusCode>(RegisterAddress::AlStatusCode.into(), "AL Status Code");
+            .read(RegisterAddress::AlStatusCode, "AL Status Code")
+            .receive::<AlStatusCode>();
 
         let (status, code) = embassy_futures::join::join(status, code).await;
 
@@ -690,7 +713,11 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     fn eeprom(&self) -> SlaveEeprom<DeviceEeprom> {
-        SlaveEeprom::new(DeviceEeprom::new(&self.client))
+        SlaveEeprom::new(DeviceEeprom::new(SlaveRef {
+            client: self.client,
+            configured_address: self.configured_address,
+            state: (),
+        }))
     }
 
     /// Read a register.
@@ -701,10 +728,9 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: for<'xx> EtherCatWireSized<'xx>,
     {
-        self.client
-            .read_ignore_wkc(register.into())
-            .await?
-            .wkc(1, "raw read")
+        self.read(register.into(), "Raw register read")
+            .receive()
+            .await
     }
 
     /// Write a register.
@@ -715,28 +741,41 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: for<'xx> EtherCatWire<'xx>,
     {
-        self.client
-            .write_ignore_wkc(register.into(), value)
-            .await?
-            .wkc(1, "raw write")
+        // self.client
+        //     .write_ignore_wkc(register.into(), value)
+        //     .await?
+        //     .wkc(1, "raw write")
+
+        self.write(register.into(), "Raw register read")
+            .send_receive(value)
+            .await
     }
 
     pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        crate::timer_factory::timeout(self.client.client.timeouts.state_transition, async {
+        crate::timer_factory::timeout(self.client.timeouts.state_transition, async {
             loop {
-                let (status, _working_counter) = self
-                    .client
-                    .read_ignore_wkc::<AlControl>(RegisterAddress::AlStatus.into())
+                let status = self
+                    .read(RegisterAddress::AlStatus, "Read AL status")
+                    .ignore_wkc()
+                    .receive::<AlControl>()
                     .await?;
 
                 if status.state == desired_state {
                     break Ok(());
                 }
 
-                self.client.client.timeouts.loop_tick().await;
+                self.client.timeouts.loop_tick().await;
             }
         })
         .await
+    }
+
+    pub(crate) fn write(&self, register: impl Into<u16>, context: &'static str) -> WrappedWrite {
+        Command::fpwr(self.configured_address, register.into()).wrap(&self.client, context)
+    }
+
+    pub(crate) fn read(&self, register: impl Into<u16>, context: &'static str) -> WrappedRead {
+        Command::fprd(self.configured_address, register.into()).wrap(&self.client, context)
     }
 
     pub(crate) async fn request_slave_state_nowait(
@@ -746,31 +785,24 @@ impl<'a, S> SlaveRef<'a, S> {
         fmt::debug!(
             "Set state {} for slave address {:#04x}",
             desired_state,
-            self.client.configured_address
+            self.configured_address
         );
 
         // Send state request
         let response = self
-            .client
-            .write_slice(
-                RegisterAddress::AlControl.into(),
-                &AlControl::new(desired_state).pack(),
-                "AL control",
-            )
-            .await
-            .and_then(|raw| {
-                AlControl::unpack_from_slice(&raw).map_err(|_| Error::StateTransition)
-            })?;
+            .write(RegisterAddress::AlControl, "AL control")
+            .send_receive::<AlControl>(AlControl::new(desired_state))
+            .await?;
 
         if response.error {
-            let error: AlStatusCode = self
-                .client
-                .read(RegisterAddress::AlStatus.into(), "AL status")
+            let error = self
+                .read(RegisterAddress::AlStatus, "AL status")
+                .receive::<AlStatusCode>()
                 .await?;
 
             fmt::error!(
                 "Error occurred transitioning slave {:#06x} to {:?}: {}",
-                self.client.configured_address,
+                self.configured_address,
                 desired_state,
                 error,
             );
@@ -790,19 +822,28 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
         // ETG1000.4 Table 48 – Slave information interface access
         // A value of 2 sets owner to Master (not PDI) and cancels access
-        self.client
-            .write::<u16>(
-                RegisterAddress::SiiConfig.into(),
-                2,
-                "Write SII config literal",
-            )
+        // self.client
+        //     .write::<u16>(
+        //         RegisterAddress::SiiConfig.into(),
+        //         2,
+        //         "Write SII config literal",
+        //     )
+        //     .await?;
+
+        self.write(RegisterAddress::SiiConfig, "Write SII config literal")
+            .send(2u16)
             .await?;
-        self.client
-            .write::<u16>(
-                RegisterAddress::SiiConfig.into(),
-                mode as u16,
-                "Write SII config mode",
-            )
+
+        // self.client
+        //     .write::<u16>(
+        //         RegisterAddress::SiiConfig.into(),
+        //         mode as u16,
+        //         "Write SII config mode",
+        //     )
+        //     .await?;
+
+        self.write(RegisterAddress::SiiConfig, "Write SII config mode")
+            .send(mode)
             .await?;
 
         Ok(())

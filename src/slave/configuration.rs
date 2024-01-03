@@ -44,7 +44,7 @@ where
 
         fmt::debug!(
             "Slave {:#06x} mailbox SMs configured. Transitioning to PRE-OP",
-            self.client.configured_address
+            self.configured_address
         );
 
         self.request_slave_state(SlaveState::PreOp).await?;
@@ -93,7 +93,7 @@ where
 
             fmt::debug!(
                 "Slave {:#06x} found sync managers {:?}",
-                self.client.configured_address,
+                self.configured_address,
                 sms
             );
 
@@ -238,13 +238,12 @@ where
             },
         };
 
-        self.client
-            .write(
-                RegisterAddress::sync_manager(sync_manager_index).into(),
-                sm_config,
-                "SM config",
-            )
-            .await?;
+        self.write(
+            RegisterAddress::sync_manager(sync_manager_index),
+            "SM config",
+        )
+        .send(sm_config)
+        .await?;
 
         fmt::debug!(
             "Slave {:#06x} SM{}: {}",
@@ -475,14 +474,16 @@ where
     ) -> Result<(), Error> {
         // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
         let mut fmmu_config = self
-            .client
-            .read_slice(
-                RegisterAddress::fmmu(fmmu_index as u8).into(),
-                16,
-                "read FMMU config",
-            )
-            .await
-            .and_then(|raw| Fmmu::unpack_from_slice(&raw).map_err(|_| Error::Internal))?;
+            .read(RegisterAddress::fmmu(fmmu_index as u8), "read FMMU config")
+            .receive::<Fmmu>()
+            .await?;
+        // .read_slice(
+        //     RegisterAddress::fmmu(fmmu_index as u8).into(),
+        //     16,
+        //     "read FMMU config",
+        // )
+        // .await
+        // .and_then(|raw| Fmmu::unpack_from_slice(&raw).map_err(|_| Error::Internal))?;
 
         // We can use the enable flag as a sentinel for existing config because EtherCrab inits
         // FMMUs to all zeroes on startup.
@@ -506,15 +507,10 @@ where
             }
         };
 
-        let mut fmmu_buf = [0u8; { Fmmu::BYTES }];
-
-        self.client
-            .write_slice(
-                RegisterAddress::fmmu(fmmu_index as u8).into(),
-                fmmu_config.pack_to_slice_unchecked(&mut fmmu_buf),
-                "PDI FMMU",
-            )
+        self.write(RegisterAddress::fmmu(fmmu_index as u8), "PDI FMMU")
+            .send(fmmu_config)
             .await?;
+
         fmt::debug!(
             "Slave {:#06x} FMMU{}: {}",
             self.state.configured_address,

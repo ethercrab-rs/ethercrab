@@ -1,5 +1,4 @@
-use crate::pdu_data::{PduData, PduRead};
-use ethercrab_wire::{EtherCatWire, WireError};
+use ethercrab_wire::EtherCatWire;
 
 /// Slave device register address abstraction.
 ///
@@ -262,22 +261,6 @@ pub struct PortDescriptors {
     port_3: PortType,
 }
 
-impl PduRead for PortDescriptors {
-    const LEN: u16 = 1;
-
-    type Error = WireError;
-
-    fn try_from_slice(buf: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(buf)
-    }
-}
-
-impl PduData for PortDescriptors {
-    fn as_slice(&self) -> &[u8] {
-        todo!()
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ethercrab_wire::EtherCatWire)]
 #[repr(u8)]
 pub enum PortType {
@@ -340,16 +323,6 @@ impl core::fmt::Display for SupportFlags {
         }
 
         Ok(())
-    }
-}
-
-impl PduRead for SupportFlags {
-    const LEN: u16 = 2;
-
-    type Error = WireError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
     }
 }
 

@@ -30,7 +30,7 @@ use heapless::FnvIndexMap;
 /// access to EtherCAT PDUs like `BRD`, `LRW`, etc.
 #[derive(Debug)]
 pub struct Client<'sto> {
-    pub(crate) pdu_loop: PduLoop<'sto>,
+    pdu_loop: PduLoop<'sto>,
     /// The total number of discovered slaves.
     ///
     /// Using an `AtomicU16` here only to satisfy `Sync` requirements, but it's only ever written to
@@ -78,7 +78,8 @@ impl<'sto> Client<'sto> {
 
         // Reset slaves to init
         Command::bwr(RegisterAddress::AlControl.into())
-            .send_slice(self, &AlControl::reset().pack())
+            .wrap(self, "")
+            .send(AlControl::reset())
             .await?;
 
         // Clear FMMUs. FMMU memory section is 0xff (255) bytes long - see ETG1000.4 Table 57
@@ -110,11 +111,13 @@ impl<'sto> Client<'sto> {
         // According to ETG1020, we'll use the mode where the DC reference clock is adjusted to the
         // master clock.
         Command::bwr(RegisterAddress::DcControlLoopParam3.into())
-            .send(self, 0x0c00u16)
+            .wrap(self, "")
+            .send(0x0c00u16)
             .await?;
         // Must be after param 3 so DC control unit is reset
         Command::bwr(RegisterAddress::DcControlLoopParam1.into())
-            .send(self, 0x1000u16)
+            .wrap(self, "")
+            .send(0x1000u16)
             .await?;
 
         fmt::debug!("--> Reset complete");
@@ -221,9 +224,9 @@ impl<'sto> Client<'sto> {
             let configured_address = BASE_SLAVE_ADDR.wrapping_add(slave_idx);
 
             Command::apwr(slave_idx, RegisterAddress::ConfiguredStationAddress.into())
-                .send(self, configured_address)
-                .await?
-                .wkc(1, "set station address")?;
+                .wrap(self, "set station address")
+                .send(configured_address)
+                .await?;
 
             let slave = Slave::new(self, usize::from(slave_idx), configured_address).await?;
 
@@ -367,15 +370,10 @@ impl<'sto> Client<'sto> {
 
     /// Count the number of slaves on the network.
     async fn count_slaves(&self) -> Result<u16, Error> {
-        let future = Command::brd(RegisterAddress::Type.into()).receive::<u8>(self);
-
-        let future = core::pin::pin!(future);
-
-        match select(future, timer(self.timeouts.pdu)).await {
-            Either::First(res) => res.map(|(_, working_counter)| working_counter),
-            // Timeout implies nothing was discovered
-            Either::Second(_timeout) => Ok(0),
-        }
+        Command::brd(RegisterAddress::Type.into())
+            .wrap(self, "")
+            .receive_wkc::<u8>()
+            .await
     }
 
     /// Get the number of discovered slaves in the EtherCAT network.
@@ -393,9 +391,10 @@ impl<'sto> Client<'sto> {
         timeout(self.timeouts.state_transition, async {
             loop {
                 let status = Command::brd(RegisterAddress::AlStatus.into())
-                    .receive::<AlControl>(self)
-                    .await?
-                    .wkc(num_slaves, "read all slaves state")?;
+                    .wrap(self, "read all slaves state")
+                    .with_wkc(num_slaves)
+                    .receive::<AlControl>()
+                    .await?;
 
                 fmt::trace!("Global AL status {:?}", status);
 
@@ -407,10 +406,13 @@ impl<'sto> Client<'sto> {
 
                     for slave_addr in BASE_SLAVE_ADDR..(BASE_SLAVE_ADDR + self.num_slaves() as u16)
                     {
-                        let (slave_status, _wkc) =
+                        let slave_status =
                             Command::fprd(slave_addr, RegisterAddress::AlStatusCode.into())
-                                .receive::<AlStatusCode>(self)
-                                .await?;
+                                .wrap(self, "")
+                                .ignore_wkc()
+                                .receive::<AlStatusCode>()
+                                .await
+                                .unwrap_or(AlStatusCode::UnspecifiedError);
 
                         fmt::error!("--> Slave {:#06x} status code {}", slave_addr, slave_status);
                     }
@@ -428,39 +430,57 @@ impl<'sto> Client<'sto> {
         .await
     }
 
-    pub(crate) async fn read_service(
+    pub(crate) async fn pdu(
         &self,
-        command: Reads,
-        len: u16,
+        command: Command,
+        data: impl EtherCatWire<'_>,
+        len_override: Option<u16>,
     ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
-        timeout(
-            self.timeouts.pdu,
-            self.pdu_loop.pdu_tx_readonly(
-                command,
-                len,
-                self.timeouts.pdu,
-                self.config.retry_behaviour,
-            ),
-        )
-        .await
-        .map(|response| response.into_data())
-    }
-
-    pub(crate) async fn write_service(
-        &self,
-        command: Writes,
-        value: &[u8],
-    ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
         self.pdu_loop
-            .pdu_tx_readwrite(
+            .send_packable(
                 command,
-                value,
+                data,
+                len_override,
                 self.timeouts.pdu,
                 self.config.retry_behaviour,
             )
             .await
-            .map(|response| response.into_data())
+            .map(|res| res.into_data())
     }
+
+    // pub(crate) async fn read_service(
+    //     &self,
+    //     command: Reads,
+    //     len: u16,
+    // ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
+    //     timeout(
+    //         self.timeouts.pdu,
+    //         self.pdu_loop.pdu_tx_readonly(
+    //             command,
+    //             len,
+    //             self.timeouts.pdu,
+    //             self.config.retry_behaviour,
+    //         ),
+    //     )
+    //     .await
+    //     .map(|response| response.into_data())
+    // }
+
+    // pub(crate) async fn write_service(
+    //     &self,
+    //     command: Writes,
+    //     value: &[u8],
+    // ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
+    //     self.pdu_loop
+    //         .pdu_tx_readwrite(
+    //             command,
+    //             value,
+    //             self.timeouts.pdu,
+    //             self.config.retry_behaviour,
+    //         )
+    //         .await
+    //         .map(|response| response.into_data())
+    // }
 
     // pub(crate) async fn write_service_with(
     //     &self,
@@ -478,23 +498,23 @@ impl<'sto> Client<'sto> {
     //         .map(|response| response.into_data())
     // }
 
-    pub(crate) async fn write_service_len(
-        &self,
-        command: Writes,
-        value: &[u8],
-        len: u16,
-    ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
-        self.pdu_loop
-            .pdu_tx_readwrite_len(
-                Command::Write(command),
-                value,
-                len,
-                self.timeouts.pdu,
-                self.config.retry_behaviour,
-            )
-            .await
-            .map(|response| response.into_data())
-    }
+    // pub(crate) async fn write_service_len(
+    //     &self,
+    //     command: Writes,
+    //     value: &[u8],
+    //     len: u16,
+    // ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
+    //     self.pdu_loop
+    //         .pdu_tx_readwrite_len(
+    //             Command::Write(command),
+    //             value,
+    //             len,
+    //             self.timeouts.pdu,
+    //             self.config.retry_behaviour,
+    //         )
+    //         .await
+    //         .map(|response| response.into_data())
+    // }
 
     pub(crate) fn max_frame_data(&self) -> usize {
         self.pdu_loop.max_frame_data()

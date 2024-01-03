@@ -1,5 +1,3 @@
-use crate::pdu_data::PduRead;
-
 /// AL (application layer) state for a single device.
 ///
 /// Read from register `0x0130` ([`RegisterAddress::AlStatus`](crate::register::RegisterAddress::AlStatus)).
@@ -44,15 +42,5 @@ impl core::fmt::Display for SlaveState {
             SlaveState::Op => f.write_str("Operational"),
             SlaveState::Other(value) => write!(f, "Other({:01x})", value),
         }
-    }
-}
-
-impl PduRead for SlaveState {
-    const LEN: u16 = u8::LEN;
-
-    type Error = core::convert::Infallible;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self::from(slice[0]))
     }
 }

@@ -72,6 +72,10 @@ macro_rules! impl_primitive_wire_field {
             fn pack(&self) -> Self::Arr {
                 self.to_le_bytes()
             }
+
+            fn buffer() -> Self::Arr {
+                [0u8; $size]
+            }
         }
     };
 }
@@ -113,6 +117,10 @@ impl EtherCatWireSized<'_> for bool {
     fn pack(&self) -> Self::Arr {
         [*self as u8; 1]
     }
+
+    fn buffer() -> Self::Arr {
+        [0u8; 1]
+    }
 }
 
 impl<'a> EtherCatWire<'a> for () {
@@ -135,6 +143,10 @@ impl EtherCatWireSized<'_> for () {
     type Arr = [u8; 0];
 
     fn pack(&self) -> Self::Arr {
+        [0u8; 0]
+    }
+
+    fn buffer() -> Self::Arr {
         [0u8; 0]
     }
 }
@@ -166,6 +178,10 @@ impl<const N: usize> EtherCatWireSized<'_> for [u8; N] {
 
     fn pack(&self) -> Self::Arr {
         *self
+    }
+
+    fn buffer() -> Self::Arr {
+        [0u8; N]
     }
 }
 
@@ -228,10 +244,13 @@ pub trait EtherCatWireSized<'a>: EtherCatWire<'a> {
     /// Used to define an array of the correct length. This type should ALWAYS be of the form `[u8;
     /// N]` where `N` is a fixed value or const generic as per the type this trait is implemented
     /// on.
-    type Arr: AsRef<[u8]>;
+    type Arr: AsRef<[u8]> + AsMut<[u8]>;
 
     /// Pack this item to a fixed sized array.
     fn pack(&self) -> Self::Arr;
+
+    /// Create a buffer sized to contain the packed representation of this item.
+    fn buffer() -> Self::Arr;
 }
 
 pub use ethercrab_wire_derive::EtherCatWire;

@@ -91,7 +91,7 @@ mod tests {
 
         let (rest, header) = FrameHeader::parse::<'_, nom::error::Error<_>>(raw).unwrap();
 
-        assert_eq!(rest, &[]);
+        assert!(rest.is_empty());
 
         assert_eq!(header.payload_len(), 0x3c);
         assert_eq!(header.protocol_type(), ProtocolType::DlPdu);

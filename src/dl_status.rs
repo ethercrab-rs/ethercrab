@@ -1,6 +1,3 @@
-use crate::pdu_data::PduRead;
-use ethercrab_wire::{EtherCatWire, WireError};
-
 #[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCatWire)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[wire(bits = 16)]
@@ -51,19 +48,10 @@ pub struct DlStatus {
     pub signal_port3: bool,
 }
 
-impl PduRead for DlStatus {
-    const LEN: u16 = 2;
-
-    type Error = WireError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ethercrab_wire::EtherCatWire;
 
     #[test]
     #[cfg_attr(miri, ignore)]

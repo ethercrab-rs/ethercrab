@@ -7,7 +7,7 @@ use crate::{
     fmt,
     pdu_loop::{CheckWorkingCounter, RxFrameDataBuf},
     register::RegisterAddress,
-    slave::slave_client::SlaveClient,
+    Client, Command, SlaveRef,
 };
 use ethercrab_wire::EtherCatWireSized;
 
@@ -20,12 +20,38 @@ pub(crate) const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 /// EEPROM data provider that communicates with a physical sub device.
 #[derive(Clone)]
 pub struct DeviceEeprom<'slave> {
-    client: &'slave SlaveClient<'slave>,
+    client: SlaveRef<'slave, ()>,
 }
 
 impl<'slave> DeviceEeprom<'slave> {
-    pub fn new(client: &'slave SlaveClient<'slave>) -> Self {
+    pub fn new(client: SlaveRef<'slave, ()>) -> Self {
         Self { client }
+    }
+
+    /// Wait for EEPROM read or write operation to finish and clear the busy flag.
+    async fn wait(&self) -> Result<(), Error> {
+        crate::timer_factory::timeout(self.client.timeouts().eeprom, async {
+            loop {
+                // let control =
+                //     Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
+                //         .wrap(self.client, "SII busy wait")
+                //         .receive::<SiiControl>()
+                //         .await?;
+
+                let control = self
+                    .client
+                    .read(RegisterAddress::SiiControl, "SII busy wait")
+                    .receive::<SiiControl>()
+                    .await?;
+
+                if !control.busy {
+                    break Ok(());
+                }
+
+                self.client.timeouts().loop_tick().await;
+            }
+        })
+        .await
     }
 }
 
@@ -36,7 +62,8 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
         let status = self
             .client
-            .read::<SiiControl>(RegisterAddress::SiiControl.into(), "Read SII control")
+            .read(RegisterAddress::SiiControl, "Read SII control")
+            .receive::<SiiControl>()
             .await?;
 
         // Clear errors
@@ -44,30 +71,21 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
             fmt::trace!("Resetting EEPROM error flags");
 
             self.client
-                .write_slice(
-                    RegisterAddress::SiiControl.into(),
-                    &status.error_reset().pack(),
-                    "Reset errors",
-                )
+                .write(RegisterAddress::SiiControl, "Reset errors")
+                .send(status.error_reset())
                 .await?;
         }
 
         self.client
-            .write(
-                RegisterAddress::SiiControl.into(),
-                SiiRequest::read(start_word),
-                "SII read setup",
-            )
+            .write(RegisterAddress::SiiControl, "SII read setup")
+            .send_receive(SiiRequest::read(start_word))
             .await?;
 
-        wait(self.client).await?;
+        self.wait().await?;
 
         self.client
-            .read_slice(
-                RegisterAddress::SiiData.into(),
-                status.read_size.chunk_len(),
-                "SII data",
-            )
+            .read(RegisterAddress::SiiData, "SII data")
+            .receive_slice(status.read_size.chunk_len())
             .await
             .map(|data| {
                 #[cfg(not(feature = "defmt"))]
@@ -78,22 +96,4 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
                 data
             })
     }
-}
-
-/// Wait for EEPROM read or write operation to finish and clear the busy flag.
-async fn wait(slave: &SlaveClient<'_>) -> Result<(), Error> {
-    crate::timer_factory::timeout(slave.timeouts().eeprom, async {
-        loop {
-            let control = slave
-                .read::<SiiControl>(RegisterAddress::SiiControl.into(), "SII busy wait")
-                .await?;
-
-            if !control.busy {
-                break Ok(());
-            }
-
-            slave.timeouts().loop_tick().await;
-        }
-    })
-    .await
 }

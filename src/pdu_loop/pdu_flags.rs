@@ -63,6 +63,10 @@ impl ethercrab_wire::EtherCatWireSized<'_> for PduFlags {
 
         buf
     }
+
+    fn buffer() -> Self::Arr {
+        [0u8; 2]
+    }
 }
 
 impl PduFlags {

@@ -1,4 +1,4 @@
-use crate::{pdu_data::PduRead, slave_state::SlaveState};
+use crate::slave_state::SlaveState;
 use ethercrab_wire::{EtherCatWire, WireError};
 
 /// The AL control/status word for an individual slave device.
@@ -35,16 +35,6 @@ impl AlControl {
             error: true,
             ..Default::default()
         }
-    }
-}
-
-impl PduRead for AlControl {
-    const LEN: u16 = u16::LEN;
-
-    type Error = WireError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Self::unpack_from_slice(slice)
     }
 }
 

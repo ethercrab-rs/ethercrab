@@ -10,7 +10,7 @@ pub fn generate_struct(
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let name = input.ident.clone();
 
-    let width_bytes = parsed.width.div_ceil(8);
+    let size_bytes = parsed.width.div_ceil(8);
 
     let fields_pack = parsed.fields.clone().into_iter().map(|field| {
         let name = field.name;
@@ -105,16 +105,16 @@ pub fn generate_struct(
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 #(#fields_pack)*
 
-                &buf[0..#width_bytes]
+                &buf[0..#size_bytes]
             }
 
             fn packed_len(&self) -> usize {
-                #width_bytes
+                #size_bytes
             }
 
 
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
-                if buf.len() < #width_bytes {
+                if buf.len() < #size_bytes {
                     return Err(::ethercrab_wire::WireError::Todo)
                 }
 
@@ -125,18 +125,22 @@ pub fn generate_struct(
         }
 
         impl ::ethercrab_wire::EtherCatWireSized<'_> for #name {
-            const BYTES: usize = #width_bytes;
+            const BYTES: usize = #size_bytes;
 
-            type Arr = [u8; #width_bytes];
+            type Arr = [u8; #size_bytes];
 
             fn pack(&self) -> Self::Arr {
                 // TODO: Optimise if only one byte in length
 
-                let mut buf = [0u8; #width_bytes];
+                let mut buf = [0u8; #size_bytes];
 
                 <Self as ::ethercrab_wire::EtherCatWire>::pack_to_slice_unchecked(self, &mut buf);
 
                 buf
+            }
+
+            fn buffer() -> Self::Arr {
+                [0u8; #size_bytes]
             }
         }
     };

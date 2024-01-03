@@ -5,7 +5,6 @@ use crate::{
     base_data_types::PrimitiveDataType,
     error::{EepromError, Error},
     fmt,
-    pdu_data::PduRead,
     sync_manager_channel::{self},
 };
 use ethercrab_wire::{EtherCatWire, EtherCatWireSized, WireError};
@@ -84,18 +83,6 @@ impl SiiControl {
             read: true,
             ..Default::default()
         }
-    }
-}
-
-impl PduRead for SiiControl {
-    const LEN: u16 = u16::LEN;
-
-    type Error = WireError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let res = Self::unpack_from_slice(slice)?;
-
-        Ok(res)
     }
 }
 

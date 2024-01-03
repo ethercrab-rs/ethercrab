@@ -194,6 +194,10 @@ pub fn generate_enum(
 
                 buf
             }
+
+            fn buffer() -> Self::Arr {
+                [0u8; #size_bytes]
+            }
         }
 
         #from_primitive_impl
