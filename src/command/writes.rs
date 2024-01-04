@@ -4,7 +4,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     Client,
 };
-use ethercrab_wire::EtherCrabWire;
+use ethercrab_wire::EtherCrabWireReadWrite;
 
 /// Write commands.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
@@ -102,16 +102,19 @@ impl<'client> WrappedWrite<'client> {
 
     /// Send a payload with a length set by [`with_len`](WrappedWrite::with_len), ignoring the
     /// response.
-    pub async fn send<'data>(self, data: impl EtherCrabWire) -> Result<(), Error> {
+    pub async fn send<'data>(self, data: impl EtherCrabWireReadWrite) -> Result<(), Error> {
         self.common(data, self.len_override).await?;
 
         Ok(())
     }
 
     /// Send a value, returning the response returned from the network.
-    pub async fn send_receive<'data, T>(self, value: impl EtherCrabWire) -> Result<T, Error>
+    pub async fn send_receive<'data, T>(
+        self,
+        value: impl EtherCrabWireReadWrite,
+    ) -> Result<T, Error>
     where
-        T: EtherCrabWire,
+        T: EtherCrabWireReadWrite,
     {
         self.common(value, None)
             .await
@@ -121,7 +124,7 @@ impl<'client> WrappedWrite<'client> {
     /// Similar to [`send_receive`](WrappedWrite::send_receive) but returns a slice.
     pub async fn send_receive_slice<'data>(
         self,
-        value: impl EtherCrabWire,
+        value: impl EtherCrabWireReadWrite,
     ) -> Result<RxFrameDataBuf<'data>, Error>
     where
         'client: 'data,
@@ -132,7 +135,7 @@ impl<'client> WrappedWrite<'client> {
     // Some manual monomorphisation
     async fn common(
         &self,
-        value: impl EtherCrabWire,
+        value: impl EtherCrabWireReadWrite,
         len_override: Option<u16>,
     ) -> Result<RxFrameDataBuf<'client>, Error> {
         self.client

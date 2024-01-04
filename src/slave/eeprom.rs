@@ -13,7 +13,7 @@ use crate::{
 };
 use core::{ops::RangeInclusive, str::FromStr};
 use embedded_io_async::Read;
-use ethercrab_wire::EtherCrabWire;
+use ethercrab_wire::EtherCrabWireRead;
 
 pub struct SlaveEeprom<P> {
     provider: P,

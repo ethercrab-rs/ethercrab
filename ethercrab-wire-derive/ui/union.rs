@@ -1,6 +1,6 @@
-use ethercrab_derive::EtherCrabWire;
+use ethercrab_derive::EtherCrabWireReadWrite;
 
-#[derive(EtherCrabWire)]
+#[derive(EtherCrabWireReadWrite)]
 union Whatever {
     i: u32,
     f: f32,

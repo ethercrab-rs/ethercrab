@@ -2,7 +2,7 @@ pub mod abort_code;
 pub mod services;
 
 /// Defined in ETG1000.6 5.6.1 Table 29 – CoE elements.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[wire(bytes = 2)]
 pub struct CoeHeader {
@@ -10,35 +10,8 @@ pub struct CoeHeader {
     pub service: CoeService,
 }
 
-// impl PackedStruct for CoeHeader {
-//     type ByteArray = [u8; 2];
-
-//     fn pack(&self) -> PackingResult<Self::ByteArray> {
-//         // NOTE: The spec hard codes this value for every CoE service to 0x00, however it's a
-//         // defined field so I'll leave it in the code to hopefully make things a bit clearer when
-//         // referring to the spec.
-//         let number = 0;
-//         let number = number & 0b1_1111_1111;
-
-//         let service = self.service as u16;
-
-//         let raw = number | (service << 12);
-
-//         Ok(raw.to_le_bytes())
-//     }
-
-//     fn unpack(src: &Self::ByteArray) -> PackingResult<Self> {
-//         let raw = u16::from_le_bytes(*src);
-
-//         let service =
-//             CoeService::from_primitive((raw >> 12) as u8).ok_or(PackingError::InvalidValue)?;
-
-//         Ok(Self { service })
-//     }
-// }
-
 /// Defined in ETG1000.6 Table 29 – CoE elements
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[repr(u8)]
 pub enum CoeService {
@@ -61,7 +34,7 @@ pub enum CoeService {
 }
 
 /// Defined in ETG1000.6 Section 5.6.2.1.1
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 1)]
 pub struct InitSdoFlags {
     #[wire(bits = 1)]
@@ -84,7 +57,7 @@ impl InitSdoFlags {
     pub const ABORT_REQUEST: u8 = 0x04;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 4)]
 pub struct InitSdoHeader {
     #[wire(bytes = 1)]
@@ -96,7 +69,7 @@ pub struct InitSdoHeader {
 }
 
 /// Defined in ETG1000.6 5.6.2.3.1
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 1)]
 pub struct SegmentSdoHeader {
     #[wire(bits = 1)]
@@ -156,7 +129,7 @@ impl From<u8> for SubIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireReadWriteSized};
 
     #[test]
     #[cfg_attr(miri, ignore)]

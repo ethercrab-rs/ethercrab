@@ -1,5 +1,5 @@
 use crate::LEN_MASK;
-use ethercrab_wire::WireError;
+use ethercrab_wire::{EtherCrabWireRead, WireError};
 
 /// PDU fields placed after ADP and ADO, e.g. `LEN`, `C` and `NEXT` fields in ETG1000.4 5.4.1.2
 /// Table 14 – Auto increment physical read (APRD).
@@ -17,7 +17,7 @@ pub struct PduFlags {
     is_not_last: bool,
 }
 
-impl ethercrab_wire::EtherCrabWire for PduFlags {
+impl ethercrab_wire::EtherCrabWireReadWrite for PduFlags {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let raw = self.length & LEN_MASK
             | (self.circulated as u16) << 14
@@ -29,7 +29,9 @@ impl ethercrab_wire::EtherCrabWire for PduFlags {
 
         buf
     }
+}
 
+impl EtherCrabWireRead for PduFlags {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
         let buf = buf.get(0..2).ok_or(WireError::Todo)?;
 
@@ -51,7 +53,7 @@ impl ethercrab_wire::EtherCrabWire for PduFlags {
     }
 }
 
-impl ethercrab_wire::EtherCrabWireSized for PduFlags {
+impl ethercrab_wire::EtherCrabWireReadWriteSized for PduFlags {
     const PACKED_LEN: usize = 2;
 
     type Buffer = [u8; 2];
@@ -59,7 +61,7 @@ impl ethercrab_wire::EtherCrabWireSized for PduFlags {
     fn pack(&self) -> Self::Buffer {
         let mut buf = [0u8; 2];
 
-        ethercrab_wire::EtherCrabWire::pack_to_slice_unchecked(self, &mut buf);
+        ethercrab_wire::EtherCrabWireReadWrite::pack_to_slice_unchecked(self, &mut buf);
 
         buf
     }
@@ -85,7 +87,7 @@ impl PduFlags {
 
 #[cfg(test)]
 mod tests {
-    use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
+    use ethercrab_wire::EtherCrabWireReadWriteSized;
 
     use super::*;
 

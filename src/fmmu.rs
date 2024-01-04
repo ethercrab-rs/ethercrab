@@ -4,7 +4,7 @@
 use core::fmt;
 
 /// ETG1000.4 Table 56 – Fieldbus memory management unit (FMMU) entity.
-#[derive(Default, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Default, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 16)]
 pub struct Fmmu {
@@ -82,7 +82,7 @@ impl fmt::Display for Fmmu {
 mod tests {
     use super::*;
     use core::mem;
-    use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWriteSized};
 
     #[test]
     fn default_is_zero() {

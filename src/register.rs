@@ -242,7 +242,7 @@ impl RegisterAddress {
     }
 }
 
-#[derive(Debug, ethercrab_wire::EtherCrabWire)]
+#[derive(Debug, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bits = 8)]
 pub struct PortDescriptors {
     #[wire(bits = 2)]
@@ -255,7 +255,7 @@ pub struct PortDescriptors {
     port_3: PortType,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[repr(u8)]
 pub enum PortType {
     NotImplemented = 0x00u8,
@@ -264,7 +264,7 @@ pub enum PortType {
     Mii = 0x03,
 }
 
-#[derive(Default, Clone, Debug, PartialEq, ethercrab_wire::EtherCrabWire)]
+#[derive(Default, Clone, Debug, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bits = 16)]
@@ -323,7 +323,7 @@ impl core::fmt::Display for SupportFlags {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::EtherCrabWire;
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
 
     #[test]
     #[cfg_attr(miri, ignore)]

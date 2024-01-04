@@ -9,7 +9,7 @@ pub const SM_BASE_ADDRESS: u16 = 0x1c10;
 /// Sync manager channel.
 ///
 /// Defined in ETG1000.4 6.7.2
-#[derive(Default, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Default, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bits = 64)]
 pub struct SyncManagerChannel {
@@ -61,7 +61,7 @@ impl fmt::Display for SyncManagerChannel {
     }
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bits = 8)]
 pub struct Control {
@@ -78,7 +78,7 @@ pub struct Control {
     // reserved1: bool
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bits = 8)]
 pub struct Status {
@@ -98,7 +98,7 @@ pub struct Status {
 }
 
 /// Described in ETG1000.4 6.7.2 Sync Manager Attributes
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bits = 16)]
 pub struct Enable {
@@ -128,7 +128,7 @@ pub struct Enable {
     // reserved6: u8,
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bits = 2)]
 #[repr(u8)]
@@ -138,7 +138,7 @@ pub enum OperationMode {
     Mailbox = 0x02,
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bits = 2)]
 #[repr(u8)]
@@ -154,7 +154,7 @@ pub enum Direction {
 ///
 /// In cyclic mode the buffers need to be tripled. It's unclear why from the spec but that's what it
 /// says.
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bits = 2)]
 #[repr(u8)]
@@ -173,7 +173,7 @@ pub enum BufferState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::EtherCrabWire;
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
 
     #[test]
     fn issue_49_decode_timeout_response() {

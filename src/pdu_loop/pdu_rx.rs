@@ -6,7 +6,7 @@ use crate::{
     pdu_loop::{frame_header::FrameHeader, pdu_flags::PduFlags},
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
-use ethercrab_wire::EtherCrabWire;
+use ethercrab_wire::EtherCrabWireRead;
 use nom::{
     bytes::complete::take,
     combinator::map_res,

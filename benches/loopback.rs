@@ -24,7 +24,7 @@ fn main() {
         b.to_async(rt).iter(|| async {
             let _: &[u8] = Command::lwr(0x1234_5678)
                 .wrap(client)
-                .send_receive_slice(DATA.as_ref())
+                .send_receive_slice(&DATA)
                 .await
                 .expect("write")
                 .deref();

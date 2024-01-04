@@ -1,4 +1,4 @@
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
@@ -10,7 +10,7 @@ pub enum Priority {
     Highest = 0x03,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
@@ -35,7 +35,7 @@ pub enum MailboxType {
 /// Mailbox header.
 ///
 /// Defined in ETG1000.6 under either `TMBXHEADER` or `MbxHeader` e.g. Table 29 - CoE Elements.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 6)]
 pub struct MailboxHeader {
@@ -62,7 +62,7 @@ pub struct MailboxHeader {
 mod tests {
     use super::*;
     use arbitrary::{Arbitrary, Unstructured};
-    use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWriteSized};
 
     // Manual impl because `counter` field is a special case
     impl<'a> Arbitrary<'a> for MailboxHeader {

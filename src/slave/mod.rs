@@ -34,7 +34,7 @@ use core::{
     ops::Deref,
     sync::atomic::{AtomicU8, Ordering},
 };
-use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireReadWriteSized};
 use nom::{bytes::complete::take, number::complete::le_u32};
 
 pub use self::pdi::SlavePdi;
@@ -442,7 +442,7 @@ where
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
         H: CoeServiceRequest + Debug,
-        H::Response: EtherCrabWire,
+        H::Response: EtherCrabWireRead,
     {
         let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
 
@@ -509,7 +509,7 @@ where
         value: T,
     ) -> Result<(), Error>
     where
-        T: EtherCrabWireSized,
+        T: EtherCrabWireReadWriteSized,
     {
         let sub_index = sub_index.into();
 
@@ -634,7 +634,7 @@ where
     /// Note that currently this method only supports reads of up to 32 bytes.
     pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
     where
-        T: EtherCrabWireSized,
+        T: EtherCrabWireReadWriteSized,
     {
         let sub_index = sub_index.into();
 
@@ -707,7 +707,7 @@ impl<'a, S> SlaveRef<'a, S> {
     /// break higher level interactions with EtherCrab.
     pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
     where
-        T: EtherCrabWireSized,
+        T: EtherCrabWireReadWriteSized,
     {
         self.read(register.into()).receive().await
     }
@@ -718,7 +718,7 @@ impl<'a, S> SlaveRef<'a, S> {
     /// break higher level interactions with EtherCrab.
     pub async fn register_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
     where
-        T: EtherCrabWire,
+        T: EtherCrabWireReadWrite,
     {
         self.write(register.into()).send_receive(value).await
     }

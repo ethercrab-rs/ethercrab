@@ -2,7 +2,7 @@
 ///
 /// Many more data types are defined, however this enum only lists the primitive types. Other types,
 /// e.g. ETG1020 Table 100 should be defined elsewhere.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PrimitiveDataType {

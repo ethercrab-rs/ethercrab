@@ -1,8 +1,8 @@
-use ethercrab_wire::EtherCrabWire;
+use ethercrab_wire::EtherCrabWireReadWrite;
 
 #[test]
 fn sync_manager_channel() {
-    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCrabWire)]
+    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCrabWireReadWrite)]
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[wire(bits = 8)]
     pub struct Control {
@@ -18,7 +18,7 @@ fn sync_manager_channel() {
         pub watchdog_enable: bool,
     }
 
-    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCrabWire)]
+    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCrabWireReadWrite)]
     #[wire(bits = 2)]
     #[repr(u8)]
     pub enum OperationMode {
@@ -27,7 +27,7 @@ fn sync_manager_channel() {
         Mailbox = 0x02,
     }
 
-    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCrabWire)]
+    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCrabWireReadWrite)]
     #[wire(bits = 2)]
     #[repr(u8)]
     pub enum Direction {
@@ -39,7 +39,7 @@ fn sync_manager_channel() {
 
 #[test]
 fn slave_state() {
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, EtherCrabWire)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, EtherCrabWireReadWrite)]
     #[repr(u8)]
     pub enum SlaveState {
         /// No state recorded/read/known.
@@ -62,7 +62,7 @@ fn slave_state() {
 
 #[test]
 fn arr() {
-    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCrabWire)]
+    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCrabWireReadWrite)]
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[wire(bytes = 4)]
     pub struct Control {
@@ -73,7 +73,7 @@ fn arr() {
 
 #[test]
 fn enum_u16() {
-    #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWire)]
+    #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[repr(u16)]
     pub enum AlStatusCode {
@@ -85,7 +85,9 @@ fn enum_u16() {
 
 #[test]
 fn enum_alternatives() {
-    #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWire)]
+    #[derive(
+        Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite,
+    )]
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[repr(u16)]
     pub enum Alternatives {
@@ -98,7 +100,7 @@ fn enum_alternatives() {
 
 #[test]
 fn enum_default_and_catch_all() {
-    #[derive(Default, Debug, Copy, Clone, ethercrab_wire::EtherCrabWire)]
+    #[derive(Default, Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[repr(u16)]
     pub enum AlStatusCode {
@@ -112,7 +114,7 @@ fn enum_default_and_catch_all() {
 
 #[test]
 fn enum_default_only() {
-    #[derive(Default, Debug, Copy, Clone, ethercrab_wire::EtherCrabWire)]
+    #[derive(Default, Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[repr(u16)]
     pub enum AlStatusCode {

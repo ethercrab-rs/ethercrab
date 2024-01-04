@@ -1,4 +1,4 @@
-#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWire)]
+#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[wire(bits = 16)]
 pub struct DlStatus {
@@ -51,7 +51,7 @@ pub struct DlStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::EtherCrabWire;
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
 
     #[test]
     #[cfg_attr(miri, ignore)]

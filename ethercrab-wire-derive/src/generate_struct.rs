@@ -84,7 +84,7 @@ pub fn generate_struct(
                     #name: {
                         let masked = (buf[#byte_start] & #mask) >> #bit_start;
 
-                        <#ty as ::ethercrab_wire::EtherCrabWire>::unpack_from_slice(&[masked])?
+                        <#ty as ::ethercrab_wire::EtherCrabWireRead>::unpack_from_slice(&[masked])?
                     }
                 }
             }
@@ -95,23 +95,24 @@ pub fn generate_struct(
             let end_byte = field.bytes.end;
 
             quote! {
-                #name: <#ty as ::ethercrab_wire::EtherCrabWire>::unpack_from_slice(&buf[#start_byte..#end_byte])?
+                #name: <#ty as ::ethercrab_wire::EtherCrabWireRead>::unpack_from_slice(&buf[#start_byte..#end_byte])?
             }
         }
     });
 
     let out = quote! {
-        impl ::ethercrab_wire::EtherCrabWire for #name {
+        impl ::ethercrab_wire::EtherCrabWireReadWrite for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 #(#fields_pack)*
 
                 &buf[0..#size_bytes]
             }
+        }
 
+        impl ::ethercrab_wire::EtherCrabWireRead for #name {
             fn packed_len(&self) -> usize {
                 #size_bytes
             }
-
 
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
                 if buf.len() < #size_bytes {
@@ -124,7 +125,7 @@ pub fn generate_struct(
             }
         }
 
-        impl ::ethercrab_wire::EtherCrabWireSized for #name {
+        impl ::ethercrab_wire::EtherCrabWireReadWriteSized for #name {
             const PACKED_LEN: usize = #size_bytes;
 
             type Buffer = [u8; #size_bytes];
@@ -134,7 +135,7 @@ pub fn generate_struct(
 
                 let mut buf = [0u8; #size_bytes];
 
-                <Self as ::ethercrab_wire::EtherCrabWire>::pack_to_slice_unchecked(self, &mut buf);
+                <Self as ::ethercrab_wire::EtherCrabWireReadWrite>::pack_to_slice_unchecked(self, &mut buf);
 
                 buf
             }

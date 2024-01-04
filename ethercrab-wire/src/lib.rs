@@ -20,11 +20,21 @@ mod error;
 mod impls;
 
 pub use error::WireError;
-pub use ethercrab_wire_derive::EtherCrabWire;
+pub use ethercrab_wire_derive::EtherCrabWireReadWrite;
+
+/// A type to be received from the wire, according to EtherCAT spec rules (packed bits, little
+/// endian).
+pub trait EtherCrabWireRead: Sized {
+    /// Unpack this type from the beginning of the given buffer.
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError>;
+
+    /// Get the length in bytes of this item when packed.
+    fn packed_len(&self) -> usize;
+}
 
 /// A type to be sent/received on the wire, according to EtherCAT spec rules (packed bits, little
 /// endian).
-pub trait EtherCrabWire: Sized {
+pub trait EtherCrabWireReadWrite: EtherCrabWireRead {
     /// Pack the type and write it into the beginning of `buf`.
     ///
     /// The default implementation of this method will return an error if the buffer is not long
@@ -43,17 +53,11 @@ pub trait EtherCrabWire: Sized {
     ///
     /// This method must panic if `buf` is too short to hold the packed data.
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8];
-
-    /// Unpack this type from the beginning of the given buffer.
-    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError>;
-
-    /// Get the length in bytes of this item when packed.
-    fn packed_len(&self) -> usize;
 }
 
 /// Implemented for types with a known size at compile time (pretty much everything that isn't a
 /// `&[u8]`).
-pub trait EtherCrabWireSized: EtherCrabWire {
+pub trait EtherCrabWireReadWriteSized: EtherCrabWireReadWrite {
     /// Packed size in bytes.
     const PACKED_LEN: usize;
 
@@ -70,7 +74,7 @@ pub trait EtherCrabWireSized: EtherCrabWire {
 }
 
 // // TODO: Figure this out:
-// // Bounds should be JUST EtherCrabWireSized
+// // Bounds should be JUST EtherCrabWireReadWriteSized
 // pub trait EtherCrabWireReadOnly {}
-// // Bounds should be EtherCrabWireReadOnly + EtherCrabWire
+// // Bounds should be EtherCrabWireReadOnly + EtherCrabWireReadWrite
 // pub trait EtherCrabWireReadWrite {}
