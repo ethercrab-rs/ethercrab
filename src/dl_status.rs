@@ -51,7 +51,7 @@ pub struct DlStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 
     #[test]
     #[cfg_attr(miri, ignore)]

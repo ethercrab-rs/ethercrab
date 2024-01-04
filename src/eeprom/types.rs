@@ -6,7 +6,7 @@ use crate::{
     error::{EepromError, Error},
     sync_manager_channel::{self},
 };
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWriteSized};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 use nom::{
     bytes::complete::take,
     combinator::{map, map_opt, map_res},
@@ -824,6 +824,7 @@ pub trait FromEeprom: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ethercrab_wire::EtherCrabWireWriteSized;
 
     #[test]
     fn sii_control_pack() {

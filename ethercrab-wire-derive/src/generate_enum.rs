@@ -153,7 +153,7 @@ pub fn generate_enum(
     };
 
     let out = quote! {
-        impl ::ethercrab_wire::EtherCrabWireReadWrite for #name {
+        impl ::ethercrab_wire::EtherCrabWireWrite for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 let mut buf = &mut buf[0..#size_bytes];
 
@@ -161,13 +161,25 @@ pub fn generate_enum(
 
                 buf
             }
-        }
 
-        impl ::ethercrab_wire::EtherCrabWireRead for #name {
             fn packed_len(&self) -> usize {
                 #size_bytes
             }
+        }
 
+        impl ::ethercrab_wire::EtherCrabWireRead for #name {
+            // fn unpack_from_slice_rest<'buf>(buf: &'buf [u8]) -> Result<(Self, &'buf [u8]), ::ethercrab_wire::WireError> {
+            //     if buf.len() < #size_bytes {
+            //         return Err(::ethercrab_wire::WireError::Todo)
+            //     }
+
+            //     let (buf, rest) = buf.split_at(#size_bytes);
+
+            //     match #repr_type::from_le_bytes(buf.try_into().unwrap()) {
+            //         #(#result_match_arms),*
+            //         #fallthrough,
+            //     }.map(|out| (out, rest))
+            // }
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
                 let raw = buf.get(0..#size_bytes).map(|bytes| {
                     #repr_type::from_le_bytes(bytes.try_into().unwrap())
@@ -180,21 +192,23 @@ pub fn generate_enum(
             }
         }
 
-        impl ::ethercrab_wire::EtherCrabWireReadWriteSized for #name {
+        impl ::ethercrab_wire::EtherCrabWireSized for #name {
             const PACKED_LEN: usize = #size_bytes;
 
             type Buffer = [u8; #size_bytes];
 
+            fn buffer() -> Self::Buffer {
+                [0u8; #size_bytes]
+            }
+        }
+
+        impl ::ethercrab_wire::EtherCrabWireWriteSized for #name {
             fn pack(&self) -> Self::Buffer {
                 let mut buf = [0u8; #size_bytes];
 
-                <Self as ::ethercrab_wire::EtherCrabWireReadWrite>::pack_to_slice_unchecked(self, &mut buf);
+                <Self as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(self, &mut buf);
 
                 buf
-            }
-
-            fn buffer() -> Self::Buffer {
-                [0u8; #size_bytes]
             }
         }
 

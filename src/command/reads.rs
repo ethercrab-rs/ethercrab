@@ -3,7 +3,9 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     Client,
 };
-use ethercrab_wire::EtherCrabWireReadWriteSized;
+use ethercrab_wire::{
+    EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireSized, EtherCrabWireWriteSized,
+};
 
 /// Read commands that send no data.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
@@ -106,7 +108,7 @@ impl<'client> WrappedRead<'client> {
     /// Receive data and decode into a `T`.
     pub async fn receive<T>(self) -> Result<T, Error>
     where
-        T: EtherCrabWireReadWriteSized,
+        T: EtherCrabWireRead + EtherCrabWireSized,
     {
         self.common(T::PACKED_LEN as u16)
             .await
@@ -132,7 +134,7 @@ impl<'client> WrappedRead<'client> {
     /// ignored.
     pub(crate) async fn receive_wkc<T>(&self) -> Result<u16, Error>
     where
-        T: EtherCrabWireReadWriteSized,
+        T: EtherCrabWireRead + EtherCrabWireSized,
     {
         self.common(T::PACKED_LEN as u16)
             .await

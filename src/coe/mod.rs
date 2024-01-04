@@ -129,7 +129,7 @@ impl From<u8> for SubIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireReadWriteSized};
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 
     #[test]
     #[cfg_attr(miri, ignore)]

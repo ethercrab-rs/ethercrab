@@ -34,7 +34,10 @@ use core::{
     ops::Deref,
     sync::atomic::{AtomicU8, Ordering},
 };
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireReadWriteSized};
+use ethercrab_wire::{
+    EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireWrite,
+    EtherCrabWireWriteSized,
+};
 use nom::{bytes::complete::take, number::complete::le_u32};
 
 pub use self::pdi::SlavePdi;
@@ -437,7 +440,7 @@ where
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
     /// and return as a slice.
     async fn send_coe_service<H>(
-        &self,
+        &'a self,
         request: H,
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
@@ -458,12 +461,8 @@ where
 
         let headers = H::Response::unpack_from_slice(&response)?;
 
-        let headers_len = headers.packed_len();
-
-        let data = &response[headers_len..];
-
         if headers.is_aborted() {
-            let code = AbortCode::from(u32::from_le_bytes(fmt::unwrap!(data[0..4].try_into())));
+            let code = AbortCode::from(u32::from_le_bytes(fmt::unwrap!(response[0..4].try_into())));
 
             fmt::error!(
                 "Mailbox error for slave {:#06x} (supports complete access: {}): {}",
@@ -493,7 +492,7 @@ where
                 sub_index: headers.sub_index(),
             }))
         } else {
-            response.trim_front(headers_len);
+            response.trim_front(H::Response::header_len());
 
             Ok((headers, response))
         }
@@ -509,13 +508,13 @@ where
         value: T,
     ) -> Result<(), Error>
     where
-        T: EtherCrabWireReadWriteSized,
+        T: EtherCrabWireWrite,
     {
         let sub_index = sub_index.into();
 
         let counter = self.mailbox_counter();
 
-        if T::PACKED_LEN > 4 {
+        if value.packed_len() > 4 {
             fmt::error!("Only 4 byte SDO writes or smaller are supported currently.");
 
             // TODO: Normal SDO download. Only expedited requests for now
@@ -526,7 +525,8 @@ where
 
         value.pack_to_slice(&mut buf)?;
 
-        let request = coe::services::download(counter, index, sub_index, buf, T::PACKED_LEN as u8);
+        let request =
+            coe::services::download(counter, index, sub_index, buf, value.packed_len() as u8);
 
         fmt::trace!("CoE download");
 
@@ -634,7 +634,7 @@ where
     /// Note that currently this method only supports reads of up to 32 bytes.
     pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
     where
-        T: EtherCrabWireReadWriteSized,
+        T: EtherCrabWireReadSized,
     {
         let sub_index = sub_index.into();
 
@@ -707,7 +707,7 @@ impl<'a, S> SlaveRef<'a, S> {
     /// break higher level interactions with EtherCrab.
     pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
     where
-        T: EtherCrabWireReadWriteSized,
+        T: EtherCrabWireReadSized,
     {
         self.read(register.into()).receive().await
     }

@@ -1,4 +1,4 @@
-use ethercrab_wire::EtherCrabWireReadWrite;
+use ethercrab_wire::{EtherCrabWireReadWrite, EtherCrabWireWrite};
 
 #[test]
 fn one_bit() {

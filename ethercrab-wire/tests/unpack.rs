@@ -1,4 +1,4 @@
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireWrite};
 
 #[test]
 fn basic_struct() {

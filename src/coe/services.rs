@@ -1,7 +1,7 @@
-use core::fmt::Display;
-
 use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SegmentSdoHeader, SubIndex};
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
+use core::fmt::Display;
+use ethercrab_wire::EtherCrabWireSized;
 
 /// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download
 /// request.
@@ -93,10 +93,12 @@ pub trait CoeServiceResponse {
     fn mailbox_type(&self) -> MailboxType;
     fn address(&self) -> u16;
     fn sub_index(&self) -> u8;
+
+    fn header_len() -> usize;
 }
 
 /// Must be implemented for any type used to send a CoE service.
-pub trait CoeServiceRequest: ethercrab_wire::EtherCrabWireReadWriteSized {
+pub trait CoeServiceRequest: ethercrab_wire::EtherCrabWireWrite {
     type Response: CoeServiceResponse;
 
     /// Get the auto increment counter value for this request.
@@ -120,6 +122,9 @@ impl CoeServiceResponse for SdoSegmented {
     fn sub_index(&self) -> u8 {
         0
     }
+    fn header_len() -> usize {
+        Self::PACKED_LEN
+    }
 }
 
 impl CoeServiceResponse for SdoNormal {
@@ -137,6 +142,9 @@ impl CoeServiceResponse for SdoNormal {
     }
     fn sub_index(&self) -> u8 {
         self.sdo_header.sub_index
+    }
+    fn header_len() -> usize {
+        Self::PACKED_LEN
     }
 }
 

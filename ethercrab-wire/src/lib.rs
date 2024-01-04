@@ -28,13 +28,21 @@ pub trait EtherCrabWireRead: Sized {
     /// Unpack this type from the beginning of the given buffer.
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError>;
 
-    /// Get the length in bytes of this item when packed.
-    fn packed_len(&self) -> usize;
+    // /// Unpack this type from the beginning of the given buffer.
+    // fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
+    //     let (self_, _rest) = Self::unpack_from_slice_rest(buf)?;
+
+    //     Ok(self_)
+    // }
+
+    // /// Unpack this type from the beginning of the given buffer, also returning any remaining
+    // /// buffer.
+    // fn unpack_from_slice_rest<'buf>(buf: &'buf [u8]) -> Result<(Self, &'buf [u8]), WireError>;
 }
 
 /// A type to be sent/received on the wire, according to EtherCAT spec rules (packed bits, little
 /// endian).
-pub trait EtherCrabWireReadWrite: EtherCrabWireRead {
+pub trait EtherCrabWireWrite {
     /// Pack the type and write it into the beginning of `buf`.
     ///
     /// The default implementation of this method will return an error if the buffer is not long
@@ -53,28 +61,37 @@ pub trait EtherCrabWireReadWrite: EtherCrabWireRead {
     ///
     /// This method must panic if `buf` is too short to hold the packed data.
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8];
+
+    /// Get the length in bytes of this item when packed.
+    fn packed_len(&self) -> usize;
 }
 
-/// Implemented for types with a known size at compile time (pretty much everything that isn't a
-/// `&[u8]`).
-pub trait EtherCrabWireReadWriteSized: EtherCrabWireReadWrite {
+/// A type that can be both written to the wire and read back from it.
+pub trait EtherCrabWireReadWrite: EtherCrabWireRead + EtherCrabWireWrite {}
+
+impl<T> EtherCrabWireReadWrite for T where T: EtherCrabWireRead + EtherCrabWireWrite {}
+
+/// Implemented for types with a known size at compile time.
+pub trait EtherCrabWireSized {
     /// Packed size in bytes.
     const PACKED_LEN: usize;
 
-    /// Used to define an array of the correct length. This type should ALWAYS be of the form `[u8;
-    /// N]` where `N` is a fixed value or const generic as per the type this trait is implemented
-    /// on.
+    /// Used to define an array of the correct length. This type should generlaly be of the form
+    /// `[u8; N]` where `N` is a fixed value or const generic as per the type this trait is
+    /// implemented on.
     type Buffer: AsRef<[u8]> + AsMut<[u8]>;
-
-    /// Pack this item to a fixed sized array.
-    fn pack(&self) -> Self::Buffer;
 
     /// Create a buffer sized to contain the packed representation of this item.
     fn buffer() -> Self::Buffer;
 }
 
-// // TODO: Figure this out:
-// // Bounds should be JUST EtherCrabWireReadWriteSized
-// pub trait EtherCrabWireReadOnly {}
-// // Bounds should be EtherCrabWireReadOnly + EtherCrabWireReadWrite
-// pub trait EtherCrabWireReadWrite {}
+/// Implemented for writeable types with a known size at compile time.
+pub trait EtherCrabWireWriteSized: EtherCrabWireSized {
+    /// Pack this item to a fixed sized array.
+    fn pack(&self) -> Self::Buffer;
+}
+
+/// A readable type that has a size known at compile time.
+pub trait EtherCrabWireReadSized: EtherCrabWireRead + EtherCrabWireSized {}
+
+impl<T> EtherCrabWireReadSized for T where T: EtherCrabWireRead + EtherCrabWireSized {}

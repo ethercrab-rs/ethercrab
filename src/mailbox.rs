@@ -62,7 +62,7 @@ pub struct MailboxHeader {
 mod tests {
     use super::*;
     use arbitrary::{Arbitrary, Unstructured};
-    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWriteSized};
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWriteSized};
 
     // Manual impl because `counter` field is a special case
     impl<'a> Arbitrary<'a> for MailboxHeader {

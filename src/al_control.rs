@@ -40,7 +40,7 @@ impl AlControl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWriteSized};
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWriteSized};
 
     #[test]
     fn al_control() {

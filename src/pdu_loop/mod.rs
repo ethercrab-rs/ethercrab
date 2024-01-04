@@ -15,7 +15,7 @@ use crate::{
 };
 use core::time::Duration;
 
-use ethercrab_wire::EtherCrabWireReadWrite;
+use ethercrab_wire::{EtherCrabWireReadWrite, EtherCrabWireWrite};
 pub use frame_element::received_frame::RxFrameDataBuf;
 pub use frame_element::sendable_frame::SendableFrame;
 pub use pdu_rx::PduRx;
@@ -134,7 +134,7 @@ impl<'sto> PduLoop<'sto> {
     pub(crate) async fn pdu_send(
         &self,
         command: Command,
-        data: impl EtherCrabWireReadWrite,
+        data: impl EtherCrabWireWrite,
         len_override: Option<u16>,
         timeout: Duration,
         retry_behaviour: RetryBehaviour,

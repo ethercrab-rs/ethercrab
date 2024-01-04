@@ -173,7 +173,7 @@ pub enum BufferState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 
     #[test]
     fn issue_49_decode_timeout_response() {

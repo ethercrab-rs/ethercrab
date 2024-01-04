@@ -17,7 +17,7 @@ pub struct PduFlags {
     is_not_last: bool,
 }
 
-impl ethercrab_wire::EtherCrabWireReadWrite for PduFlags {
+impl ethercrab_wire::EtherCrabWireWrite for PduFlags {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let raw = self.length & LEN_MASK
             | (self.circulated as u16) << 14
@@ -28,6 +28,10 @@ impl ethercrab_wire::EtherCrabWireReadWrite for PduFlags {
         buf.copy_from_slice(&raw.to_le_bytes());
 
         buf
+    }
+
+    fn packed_len(&self) -> usize {
+        2
     }
 }
 
@@ -47,27 +51,47 @@ impl EtherCrabWireRead for PduFlags {
             is_not_last,
         })
     }
+    // fn unpack_from_slice_rest<'buf>(buf: &'buf [u8]) -> Result<(Self, &'buf [u8]), WireError> {
+    //     if buf.len() < 2 {
+    //         return Err(WireError::Todo);
+    //     }
 
-    fn packed_len(&self) -> usize {
-        2
-    }
+    //     let (buf, rest) = buf.split_at(2);
+
+    //     let src = u16::from_le_bytes(buf.try_into().unwrap());
+
+    //     let length = src & LEN_MASK;
+    //     let circulated = (src >> 14) & 0x01 == 0x01;
+    //     let is_not_last = (src >> 15) & 0x01 == 0x01;
+
+    //     Ok((
+    //         Self {
+    //             length,
+    //             circulated,
+    //             is_not_last,
+    //         },
+    //         rest,
+    //     ))
+    // }
 }
 
-impl ethercrab_wire::EtherCrabWireReadWriteSized for PduFlags {
+impl ethercrab_wire::EtherCrabWireSized for PduFlags {
     const PACKED_LEN: usize = 2;
 
     type Buffer = [u8; 2];
 
+    fn buffer() -> Self::Buffer {
+        [0u8; 2]
+    }
+}
+
+impl ethercrab_wire::EtherCrabWireWriteSized for PduFlags {
     fn pack(&self) -> Self::Buffer {
         let mut buf = [0u8; 2];
 
-        ethercrab_wire::EtherCrabWireReadWrite::pack_to_slice_unchecked(self, &mut buf);
+        ethercrab_wire::EtherCrabWireWrite::pack_to_slice_unchecked(self, &mut buf);
 
         buf
-    }
-
-    fn buffer() -> Self::Buffer {
-        [0u8; 2]
     }
 }
 
@@ -87,7 +111,7 @@ impl PduFlags {
 
 #[cfg(test)]
 mod tests {
-    use ethercrab_wire::EtherCrabWireReadWriteSized;
+    use ethercrab_wire::EtherCrabWireWriteSized;
 
     use super::*;
 
