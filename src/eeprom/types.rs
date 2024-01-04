@@ -4,7 +4,6 @@ use crate::{
     all_consumed,
     base_data_types::PrimitiveDataType,
     error::{EepromError, Error},
-    fmt,
     sync_manager_channel::{self},
 };
 use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
@@ -815,7 +814,7 @@ pub trait FromEeprom: Sized {
             .map(|(_rest, parsed)| parsed)
             .map_err(|_e| {
                 #[cfg(feature = "std")]
-                fmt::error!("EEPROM object {:?} {}", core::any::type_name::<Self>(), _e);
+                crate::fmt::error!("EEPROM object {:?} {}", core::any::type_name::<Self>(), _e);
 
                 Error::Eeprom(EepromError::Decode)
             })
