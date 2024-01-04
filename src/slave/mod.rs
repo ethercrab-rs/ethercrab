@@ -536,12 +536,16 @@ where
         Ok(())
     }
 
-    async fn read_sdo_buf<'buf>(
-        &self,
-        index: u16,
-        sub_index: impl Into<SubIndex>,
-        buf: &'buf mut [u8],
-    ) -> Result<&'buf [u8], Error> {
+    /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
+    pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
+    where
+        T: EtherCrabWireReadSized,
+    {
+        let sub_index = sub_index.into();
+
+        let mut storage = T::buffer();
+        let buf = storage.as_mut();
+
         let sub_index = sub_index.into();
 
         let request = coe::services::upload(self.mailbox_counter(), index, sub_index);
@@ -553,15 +557,10 @@ where
 
         // Expedited transfers where the data is 4 bytes or less long, denoted in the SDO header
         // size value.
-        if headers.sdo_header.flags.expedited_transfer {
+        let response_payload = if headers.sdo_header.flags.expedited_transfer {
             let data_len = 4usize.saturating_sub(usize::from(headers.sdo_header.flags.size));
-            let data = &data[0..data_len];
 
-            let buf = &mut buf[0..data_len];
-
-            buf.copy_from_slice(data);
-
-            Ok(buf)
+            &data[0..data_len]
         }
         // Data is either a normal upload or a segmented upload
         else {
@@ -581,11 +580,7 @@ where
             if complete_size <= u32::from(data_length) {
                 let (_rest, data) = take(data_length)(data)?;
 
-                let buf = &mut buf[0..usize::from(data_length)];
-
-                buf.copy_from_slice(data);
-
-                Ok(buf)
+                data
             }
             // If it's a segmented upload, we must make subsequent requests to load all segment data
             // from the read mailbox.
@@ -623,37 +618,21 @@ where
                     toggle = !toggle;
                 }
 
-                Ok(&buf[0..total_len])
+                &buf[0..total_len]
             }
-        }
-    }
+        };
 
-    /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
-    ///
-    /// Note that currently this method only supports reads of up to 32 bytes.
-    pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
-    where
-        T: EtherCrabWireReadSized,
-    {
-        let sub_index = sub_index.into();
+        T::unpack_from_slice(response_payload).map_err(|_| {
+            fmt::error!(
+                "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
+                type_name::<T>(),
+                T::PACKED_LEN,
+                data,
+                data.len()
+            );
 
-        let mut buf = T::buffer();
-
-        self.read_sdo_buf(index, sub_index, buf.as_mut())
-            .await
-            .and_then(|data| {
-                T::unpack_from_slice(data).map_err(|_| {
-                    fmt::error!(
-                        "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
-                        type_name::<T>(),
-                        T::PACKED_LEN,
-                        data,
-                        data.len()
-                    );
-
-                    Error::Pdu(PduError::Decode)
-                })
-            })
+            Error::Pdu(PduError::Decode)
+        })
     }
 }
 
