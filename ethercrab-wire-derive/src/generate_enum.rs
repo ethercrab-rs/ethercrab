@@ -142,7 +142,20 @@ pub fn generate_enum(
             }
         }
     } else {
-        quote! {}
+        let match_arms = result_match_arms.clone();
+
+        quote! {
+            impl TryFrom<#repr_type> for #name {
+                type Error = ::ethercrab_wire::WireError;
+
+                fn try_from(value: #repr_type) -> Result<Self, Self::Error> {
+                    match value {
+                        #(#match_arms),*
+                        _other => Err(::ethercrab_wire::WireError::Todo)
+                    }
+                }
+            }
+        }
     };
 
     let size_bytes = match repr_type.to_string().as_str() {
