@@ -54,15 +54,11 @@ where
             // places eventually.
             let sms = if self.state.config.mailbox.complete_access {
                 // Up to 16 sync managers as per ETG1000.4 Table 59
-                let mut sms_buf = [0u8; 16];
-
-                let sms = self
-                    .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
-                    .await?
-                    .iter()
-                    .map(|sm| SyncManagerType::from(*sm));
-
-                heapless::Vec::from_iter(sms)
+                self.sdo_read::<heapless::Vec<SyncManagerType, 16>>(
+                    SM_TYPE_ADDRESS,
+                    SubIndex::Complete,
+                )
+                .await?
             } else {
                 let num_indices = self
                     .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
@@ -72,13 +68,10 @@ where
 
                 for index in 1..=num_indices {
                     let sm = self
-                        .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(index))
-                        .await
-                        .map(|sm| {
-                            fmt::trace!("Sync manager {} at sub-index {}", sm, index);
+                        .sdo_read::<SyncManagerType>(SM_TYPE_ADDRESS, SubIndex::Index(index))
+                        .await?;
 
-                            SyncManagerType::from(sm)
-                        })?;
+                    fmt::trace!("Sync manager {:?} at sub-index {}", sm, index);
 
                     sms.push(sm).map_err(|_| {
                         fmt::error!("More than 16 sync manager types deteced");
