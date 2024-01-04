@@ -1,7 +1,8 @@
 //! Builtin implementations for various types.
 
 use crate::{
-    EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized, WireError,
+    EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized, EtherCrabWireWrite,
+    EtherCrabWireWriteSized, WireError,
 };
 
 macro_rules! impl_primitive_wire_field {
@@ -176,41 +177,6 @@ impl<const N: usize> EtherCrabWireWrite for [u8; N] {
     }
 }
 
-impl<const N: usize> EtherCrabWireRead for [u8; N] {
-    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-        let chunk = buf.get(0..N).ok_or(WireError::Todo)?;
-
-        chunk.try_into().map_err(|_e| WireError::Todo)
-    }
-    // fn unpack_from_slice_rest<'buf>(buf: &'buf [u8]) -> Result<(Self, &'buf [u8]), WireError> {
-    //     if buf.len() < N {
-    //         return Err(WireError::Todo);
-    //     }
-
-    //     let (chunk, rest) = buf.split_at(N);
-
-    //     let out = chunk.try_into().map_err(|_e| WireError::Todo)?;
-
-    //     Ok((out, rest))
-    // }
-}
-
-impl<const N: usize> EtherCrabWireSized for [u8; N] {
-    const PACKED_LEN: usize = N;
-
-    type Buffer = [u8; N];
-
-    fn buffer() -> Self::Buffer {
-        [0u8; N]
-    }
-}
-
-impl<const N: usize> EtherCrabWireWriteSized for [u8; N] {
-    fn pack(&self) -> Self::Buffer {
-        *self
-    }
-}
-
 impl EtherCrabWireWrite for &[u8] {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let buf = &mut buf[0..self.len()];
@@ -236,5 +202,62 @@ where
 
     fn packed_len(&self) -> usize {
         EtherCrabWireWrite::packed_len(*self)
+    }
+}
+
+// Blanket impl for arrays of known-sized types
+impl<const N: usize, T> EtherCrabWireRead for [T; N]
+where
+    T: EtherCrabWireReadSized,
+{
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
+        if buf.len() < T::PACKED_LEN * N {
+            return Err(WireError::Todo);
+        }
+
+        heapless::Vec::<T, N>::unpack_from_slice(buf)
+            .and_then(|res| res.into_array().map_err(|_e| WireError::Todo))
+    }
+}
+
+// Heapless crate support
+impl<const N: usize, T> EtherCrabWireRead for heapless::Vec<T, N>
+where
+    T: EtherCrabWireReadSized,
+{
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
+        buf.chunks_exact(T::PACKED_LEN)
+            .map(T::unpack_from_slice)
+            .collect::<Result<heapless::Vec<_, N>, WireError>>()
+    }
+}
+
+// MSRV: generic_const_exprs: When we can do `N * T::PACKED_LEN`, this specific impl bounded on
+// TryFrom<u8> can go away.
+impl<const N: usize, T> EtherCrabWireSized for [T; N]
+where
+    T: TryFrom<u8>,
+{
+    const PACKED_LEN: usize = N;
+
+    type Buffer = [u8; N];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; N]
+    }
+}
+
+// MSRV: generic_const_exprs: When we can do `N * T::PACKED_LEN`, this specific impl bounded on
+// TryFrom<u8> can go away.
+impl<const N: usize, T> EtherCrabWireSized for heapless::Vec<T, N>
+where
+    T: TryFrom<u8>,
+{
+    const PACKED_LEN: usize = N;
+
+    type Buffer = [u8; N];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; N]
     }
 }

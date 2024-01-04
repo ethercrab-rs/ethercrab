@@ -1,4 +1,4 @@
-use ethercrab_wire::EtherCrabWireReadWrite;
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
 
 #[test]
 fn sync_manager_channel() {
@@ -57,6 +57,26 @@ fn slave_state() {
         /// State is a combination of above variants or is an unknown value.
         #[wire(catch_all)]
         Other(u8),
+    }
+}
+
+#[test]
+fn bare_enum() {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, EtherCrabWireReadWrite)]
+    #[repr(u8)]
+    pub enum SlaveState {
+        /// No state recorded/read/known.
+        None = 0x00,
+        /// EtherCAT `INIT` state.
+        Init = 0x01,
+        /// EtherCAT `PRE-OP` state.
+        PreOp = 0x02,
+        /// EtherCAT `BOOT` state.
+        Bootstrap = 0x03,
+        /// EtherCAT `SAFE-OP` state.
+        SafeOp = 0x04,
+        /// EtherCAT `OP` state.
+        Op = 0x8,
     }
 }
 
@@ -122,4 +142,43 @@ fn enum_default_only() {
         #[default]
         Something = 0x0001,
     }
+}
+
+#[test]
+fn heapless_vec() {
+    #[derive(
+        Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite,
+    )]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[repr(u8)]
+    pub enum SyncManagerType {
+        /// Not used or unknown.
+        #[default]
+        Unknown = 0x00,
+        /// Used for writing into the slave.
+        MailboxWrite = 0x01,
+        /// Used for reading from the slave.
+        MailboxRead = 0x02,
+        /// Used for process data outputs from master.
+        ProcessDataWrite = 0x03,
+        /// Used for process data inputs to master.
+        ProcessDataRead = 0x04,
+    }
+
+    let data = [0x00u8, 0x04u8, 0x02u8];
+
+    let result = heapless::Vec::<SyncManagerType, 16>::unpack_from_slice(&data);
+
+    assert_eq!(
+        result,
+        Ok(heapless::Vec::try_from(
+            [
+                SyncManagerType::Unknown,
+                SyncManagerType::ProcessDataRead,
+                SyncManagerType::MailboxRead,
+            ]
+            .as_ref()
+        )
+        .unwrap())
+    )
 }
