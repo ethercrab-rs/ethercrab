@@ -96,7 +96,7 @@ pub trait CoeServiceResponse {
 }
 
 /// Must be implemented for any type used to send a CoE service.
-pub trait CoeServiceRequest: for<'a> ethercrab_wire::EtherCrabWireSized<'a> {
+pub trait CoeServiceRequest: ethercrab_wire::EtherCrabWireSized {
     type Response: CoeServiceResponse;
 
     /// Get the auto increment counter value for this request.

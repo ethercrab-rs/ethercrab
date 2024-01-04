@@ -24,7 +24,7 @@ pub use ethercrab_wire_derive::EtherCrabWire;
 
 /// A type to be sent/received on the wire, according to EtherCAT spec rules (packed bits, little
 /// endian).
-pub trait EtherCrabWire<'a>: Sized {
+pub trait EtherCrabWire: Sized {
     /// Pack the type and write it into the beginning of `buf`.
     ///
     /// The default implementation of this method will return an error if the buffer is not long
@@ -45,7 +45,7 @@ pub trait EtherCrabWire<'a>: Sized {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8];
 
     /// Unpack this type from the beginning of the given buffer.
-    fn unpack_from_slice(buf: &'a [u8]) -> Result<Self, WireError>;
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError>;
 
     /// Get the length in bytes of this item when packed.
     fn packed_len(&self) -> usize;
@@ -53,7 +53,7 @@ pub trait EtherCrabWire<'a>: Sized {
 
 /// Implemented for types with a known size at compile time (pretty much everything that isn't a
 /// `&[u8]`).
-pub trait EtherCrabWireSized<'a>: EtherCrabWire<'a> {
+pub trait EtherCrabWireSized: EtherCrabWire {
     /// Packed size in bytes.
     const PACKED_LEN: usize;
 
@@ -68,3 +68,9 @@ pub trait EtherCrabWireSized<'a>: EtherCrabWire<'a> {
     /// Create a buffer sized to contain the packed representation of this item.
     fn buffer() -> Self::Buffer;
 }
+
+// // TODO: Figure this out:
+// // Bounds should be JUST EtherCrabWireSized
+// pub trait EtherCrabWireReadOnly {}
+// // Bounds should be EtherCrabWireReadOnly + EtherCrabWire
+// pub trait EtherCrabWireReadWrite {}

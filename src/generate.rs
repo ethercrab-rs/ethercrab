@@ -23,7 +23,7 @@ pub fn le_u8(value: u8, buf: &mut [u8]) -> &mut [u8] {
 /// Write a packed struct into the slice.
 pub fn write_packed<T>(value: T, buf: &mut [u8]) -> &mut [u8]
 where
-    T: for<'a> ethercrab_wire::EtherCrabWire<'a>,
+    T: ethercrab_wire::EtherCrabWire,
 {
     let (buf, rest) = buf.split_at_mut(value.packed_len());
 

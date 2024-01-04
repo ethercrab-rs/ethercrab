@@ -153,7 +153,7 @@ pub fn generate_enum(
     };
 
     let out = quote! {
-        impl ::ethercrab_wire::EtherCrabWire<'_> for #name {
+        impl ::ethercrab_wire::EtherCrabWire for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 let mut buf = &mut buf[0..#size_bytes];
 
@@ -178,7 +178,7 @@ pub fn generate_enum(
             }
         }
 
-        impl ::ethercrab_wire::EtherCrabWireSized<'_> for #name {
+        impl ::ethercrab_wire::EtherCrabWireSized for #name {
             const PACKED_LEN: usize = #size_bytes;
 
             type Buffer = [u8; #size_bytes];

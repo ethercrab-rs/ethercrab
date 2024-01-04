@@ -3,7 +3,6 @@ use crate::{
     fmt,
     pdu_loop::{frame_element::FrameState, PduResponse},
 };
-
 use core::{ops::Deref, ptr::NonNull};
 
 /// A frame element where response data has been received from the EtherCAT network.

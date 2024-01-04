@@ -4,7 +4,7 @@ use crate::{EtherCrabWire, EtherCrabWireSized, WireError};
 
 macro_rules! impl_primitive_wire_field {
     ($ty:ty, $size:expr) => {
-        impl EtherCrabWire<'_> for $ty {
+        impl EtherCrabWire for $ty {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 let chunk = &mut buf[0..$size];
 
@@ -33,7 +33,7 @@ macro_rules! impl_primitive_wire_field {
             }
         }
 
-        impl EtherCrabWireSized<'_> for $ty {
+        impl EtherCrabWireSized for $ty {
             const PACKED_LEN: usize = $size;
 
             type Buffer = [u8; $size];
@@ -58,7 +58,7 @@ impl_primitive_wire_field!(i16, 2);
 impl_primitive_wire_field!(i32, 4);
 impl_primitive_wire_field!(i64, 8);
 
-impl<'a> EtherCrabWire<'a> for bool {
+impl EtherCrabWire for bool {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         buf[0] = *self as u8;
 
@@ -78,7 +78,7 @@ impl<'a> EtherCrabWire<'a> for bool {
     }
 }
 
-impl EtherCrabWireSized<'_> for bool {
+impl EtherCrabWireSized for bool {
     const PACKED_LEN: usize = 1;
 
     type Buffer = [u8; Self::PACKED_LEN];
@@ -92,7 +92,7 @@ impl EtherCrabWireSized<'_> for bool {
     }
 }
 
-impl<'a> EtherCrabWire<'a> for () {
+impl EtherCrabWire for () {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         &buf[0..0]
     }
@@ -106,7 +106,7 @@ impl<'a> EtherCrabWire<'a> for () {
     }
 }
 
-impl EtherCrabWireSized<'_> for () {
+impl EtherCrabWireSized for () {
     const PACKED_LEN: usize = 0;
 
     type Buffer = [u8; 0];
@@ -120,7 +120,7 @@ impl EtherCrabWireSized<'_> for () {
     }
 }
 
-impl<const N: usize> EtherCrabWire<'_> for [u8; N] {
+impl<const N: usize> EtherCrabWire for [u8; N] {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let buf = &mut buf[0..N];
 
@@ -140,7 +140,7 @@ impl<const N: usize> EtherCrabWire<'_> for [u8; N] {
     }
 }
 
-impl<const N: usize> EtherCrabWireSized<'_> for [u8; N] {
+impl<const N: usize> EtherCrabWireSized for [u8; N] {
     const PACKED_LEN: usize = N;
 
     type Buffer = [u8; N];
@@ -151,23 +151,5 @@ impl<const N: usize> EtherCrabWireSized<'_> for [u8; N] {
 
     fn buffer() -> Self::Buffer {
         [0u8; N]
-    }
-}
-
-impl<'a> EtherCrabWire<'a> for &'a [u8] {
-    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        let buf = &mut buf[0..self.len()];
-
-        buf.copy_from_slice(self);
-
-        buf
-    }
-
-    fn unpack_from_slice(buf: &'a [u8]) -> Result<&'a [u8], WireError> {
-        Ok(buf)
-    }
-
-    fn packed_len(&self) -> usize {
-        self.len()
     }
 }

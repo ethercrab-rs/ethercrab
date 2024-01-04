@@ -106,7 +106,7 @@ impl<'client> WrappedRead<'client> {
     /// Receive data and decode into a `T`.
     pub async fn receive<T>(self) -> Result<T, Error>
     where
-        T: for<'a> EtherCrabWireSized<'a>,
+        T: EtherCrabWireSized,
     {
         self.common(T::PACKED_LEN as u16)
             .await
@@ -132,7 +132,7 @@ impl<'client> WrappedRead<'client> {
     /// ignored.
     pub(crate) async fn receive_wkc<T>(&self) -> Result<u16, Error>
     where
-        T: for<'a> EtherCrabWireSized<'a>,
+        T: EtherCrabWireSized,
     {
         self.common(T::PACKED_LEN as u16)
             .await

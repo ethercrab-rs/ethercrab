@@ -101,7 +101,7 @@ pub fn generate_struct(
     });
 
     let out = quote! {
-        impl ::ethercrab_wire::EtherCrabWire<'_> for #name {
+        impl ::ethercrab_wire::EtherCrabWire for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 #(#fields_pack)*
 
@@ -124,7 +124,7 @@ pub fn generate_struct(
             }
         }
 
-        impl ::ethercrab_wire::EtherCrabWireSized<'_> for #name {
+        impl ::ethercrab_wire::EtherCrabWireSized for #name {
             const PACKED_LEN: usize = #size_bytes;
 
             type Buffer = [u8; #size_bytes];

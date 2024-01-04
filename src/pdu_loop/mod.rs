@@ -134,7 +134,7 @@ impl<'sto> PduLoop<'sto> {
     pub(crate) async fn pdu_send(
         &self,
         command: Command,
-        data: impl EtherCrabWire<'_>,
+        data: impl EtherCrabWire,
         len_override: Option<u16>,
         timeout: Duration,
         retry_behaviour: RetryBehaviour,

@@ -17,7 +17,7 @@ pub struct PduFlags {
     is_not_last: bool,
 }
 
-impl ethercrab_wire::EtherCrabWire<'_> for PduFlags {
+impl ethercrab_wire::EtherCrabWire for PduFlags {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let raw = self.length & LEN_MASK
             | (self.circulated as u16) << 14
@@ -51,7 +51,7 @@ impl ethercrab_wire::EtherCrabWire<'_> for PduFlags {
     }
 }
 
-impl ethercrab_wire::EtherCrabWireSized<'_> for PduFlags {
+impl ethercrab_wire::EtherCrabWireSized for PduFlags {
     const PACKED_LEN: usize = 2;
 
     type Buffer = [u8; 2];
