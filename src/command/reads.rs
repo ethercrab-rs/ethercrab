@@ -1,9 +1,9 @@
 use crate::{
     error::Error,
-    pdu_loop::{CheckWorkingCounter, RxFrameDataBuf},
+    pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     Client,
 };
-use ethercrab_wire::{EtherCrabWire, EtherCrabWireSized};
+use ethercrab_wire::EtherCrabWireSized;
 
 /// Read commands that send no data.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
@@ -88,13 +88,27 @@ impl<'client> WrappedRead<'client> {
         }
     }
 
+    // Some manual monomorphisation
+    async fn common(&self, len: u16) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
+        self.client
+            .pdu_loop
+            .pdu_send(
+                self.command.into(),
+                (),
+                Some(len),
+                self.client.timeouts.pdu,
+                self.client.config.retry_behaviour,
+            )
+            .await
+            .map(|res| res.into_data())
+    }
+
     /// Receive data and decode into a `T`.
     pub async fn receive<T>(self) -> Result<T, Error>
     where
         T: for<'a> EtherCrabWireSized<'a>,
     {
-        self.client
-            .pdu(self.command.into(), (), Some(T::PACKED_LEN as u16))
+        self.common(T::PACKED_LEN as u16)
             .await
             .and_then(|(data, wkc)| {
                 let data = T::unpack_from_slice(&data)?;
@@ -106,10 +120,7 @@ impl<'client> WrappedRead<'client> {
 
     /// Receive a given number of bytes and return it as a slice.
     pub async fn receive_slice(self, len: u16) -> Result<RxFrameDataBuf<'client>, Error> {
-        self.client
-            .pdu(self.command.into(), (), Some(len))
-            .await?
-            .maybe_wkc(self.wkc)
+        self.common(len).await?.maybe_wkc(self.wkc)
     }
 
     /// Receive only the working counter.
@@ -121,10 +132,9 @@ impl<'client> WrappedRead<'client> {
     /// ignored.
     pub(crate) async fn receive_wkc<T>(&self) -> Result<u16, Error>
     where
-        T: for<'a> EtherCrabWire<'a> + Default,
+        T: for<'a> EtherCrabWireSized<'a>,
     {
-        self.client
-            .pdu(self.command.into(), T::default(), None)
+        self.common(T::PACKED_LEN as u16)
             .await
             .map(|(_data, wkc)| wkc)
     }

@@ -1,3 +1,5 @@
+
+
 use crate::{
     error::{Error, PduError},
     fmt,
@@ -100,12 +102,10 @@ impl<'client> WrappedWrite<'client> {
         }
     }
 
-    /// Send a payload with a set length, ignoring the response.
+    /// Send a payload with a length set by [`with_len`](WrappedWrite::with_len), ignoring the
+    /// response.
     pub async fn send<'data>(self, data: impl EtherCrabWire<'_>) -> Result<(), Error> {
-        self.client
-            .pdu(self.command.into(), data, self.len_override)
-            .await?
-            .maybe_wkc(self.wkc)?;
+        self.common(data, self.len_override).await?;
 
         Ok(())
     }
@@ -115,15 +115,9 @@ impl<'client> WrappedWrite<'client> {
     where
         T: for<'a> EtherCrabWire<'a>,
     {
-        self.client
-            .pdu(self.command.into(), value, None)
+        self.common(value, None)
             .await
-            .and_then(|(data, wkc)| {
-                let data = T::unpack_from_slice(&data)?;
-
-                Ok((data, wkc))
-            })?
-            .maybe_wkc(self.wkc)
+            .and_then(|data| Ok(T::unpack_from_slice(&data)?))
     }
 
     /// Similar to [`send_receive`](WrappedWrite::send_receive) but returns a slice.
@@ -134,12 +128,33 @@ impl<'client> WrappedWrite<'client> {
     where
         'client: 'data,
     {
+        self.common(value, None).await
+    }
+
+    // Some manual monomorphisation
+    async fn common(
+        &self,
+        value: impl EtherCrabWire<'_>,
+        len_override: Option<u16>,
+    ) -> Result<RxFrameDataBuf<'client>, Error> {
         self.client
-            .pdu(self.command.into(), value, None)
-            .await?
+            .pdu_loop
+            .pdu_send(
+                self.command.into(),
+                value,
+                len_override,
+                self.client.timeouts.pdu,
+                self.client.config.retry_behaviour,
+            )
+            .await
+            .map(|res| res.into_data())?
             .maybe_wkc(self.wkc)
     }
 
+    /// Send a slice, reading `read_back_len` bytes into the beginning of the provided slice.
+    ///
+    /// This is pretty much only useful for group TX/RX which returns bytes like `IIIIOOOO`, where
+    /// `I` is where the sub devices write their input data to.
     pub(crate) async fn send_receive_slice_mut<'buf>(
         self,
         value: &'buf mut [u8],
@@ -154,8 +169,16 @@ impl<'client> WrappedWrite<'client> {
 
         let (data, wkc) = self
             .client
-            .pdu(self.command.into(), value.as_ref(), None)
-            .await?;
+            .pdu_loop
+            .pdu_send_slice(
+                self.command.into(),
+                value,
+                self.len_override,
+                self.client.timeouts.pdu,
+                self.client.config.retry_behaviour,
+            )
+            .await
+            .map(|res| res.into_data())?;
 
         if data.len() != value.len() {
             fmt::error!(

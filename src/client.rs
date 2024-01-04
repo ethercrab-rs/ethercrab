@@ -6,7 +6,7 @@ use crate::{
     error::{Error, Item},
     fmt,
     pdi::PdiOffset,
-    pdu_loop::{PduLoop, PduResponse, RxFrameDataBuf},
+    pdu_loop::PduLoop,
     register::RegisterAddress,
     slave::Slave,
     slave_group::{self, SlaveGroupHandle},
@@ -18,7 +18,6 @@ use core::{
     ops::Range,
     sync::atomic::{AtomicU16, Ordering},
 };
-use ethercrab_wire::EtherCrabWire;
 use heapless::FnvIndexMap;
 
 /// The main EtherCAT master instance.
@@ -27,7 +26,7 @@ use heapless::FnvIndexMap;
 /// access to EtherCAT PDUs like `BRD`, `LRW`, etc.
 #[derive(Debug)]
 pub struct Client<'sto> {
-    pdu_loop: PduLoop<'sto>,
+    pub(crate) pdu_loop: PduLoop<'sto>,
     /// The total number of discovered slaves.
     ///
     /// Using an `AtomicU16` here only to satisfy `Sync` requirements, but it's only ever written to
@@ -428,24 +427,6 @@ impl<'sto> Client<'sto> {
             }
         })
         .await
-    }
-
-    pub(crate) async fn pdu(
-        &self,
-        command: Command,
-        data: impl EtherCrabWire<'_>,
-        len_override: Option<u16>,
-    ) -> Result<PduResponse<RxFrameDataBuf<'_>>, Error> {
-        self.pdu_loop
-            .pdu_send(
-                command,
-                data,
-                len_override,
-                self.timeouts.pdu,
-                self.config.retry_behaviour,
-            )
-            .await
-            .map(|res| res.into_data())
     }
 
     pub(crate) fn max_frame_data(&self) -> usize {
