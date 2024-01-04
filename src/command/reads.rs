@@ -109,13 +109,9 @@ impl<'client> WrappedRead<'client> {
         T: EtherCrabWireRead + EtherCrabWireSized,
     {
         self.common(T::PACKED_LEN as u16)
-            .await
-            .and_then(|(data, wkc)| {
-                let data = T::unpack_from_slice(&data)?;
-
-                Ok((data, wkc))
-            })?
+            .await?
             .maybe_wkc(self.wkc)
+            .and_then(|data| Ok(T::unpack_from_slice(&data)?))
     }
 
     /// Receive a given number of bytes and return it as a slice.
