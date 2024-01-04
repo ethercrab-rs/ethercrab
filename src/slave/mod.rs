@@ -36,7 +36,6 @@ use core::{
 };
 use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireWrite,
-    EtherCrabWireWriteSized,
 };
 use nom::{bytes::complete::take, number::complete::le_u32};
 

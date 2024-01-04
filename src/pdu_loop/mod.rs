@@ -15,7 +15,7 @@ use crate::{
 };
 use core::time::Duration;
 
-use ethercrab_wire::{EtherCrabWireReadWrite, EtherCrabWireWrite};
+use ethercrab_wire::EtherCrabWireWrite;
 pub use frame_element::received_frame::RxFrameDataBuf;
 pub use frame_element::sendable_frame::SendableFrame;
 pub use pdu_rx::PduRx;

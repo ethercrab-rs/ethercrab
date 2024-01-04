@@ -4,7 +4,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     Client,
 };
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireWrite};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 
 /// Write commands.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]

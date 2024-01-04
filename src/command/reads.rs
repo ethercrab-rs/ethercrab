@@ -3,9 +3,7 @@ use crate::{
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     Client,
 };
-use ethercrab_wire::{
-    EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireSized, EtherCrabWireWriteSized,
-};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// Read commands that send no data.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]

@@ -210,3 +210,31 @@ impl<const N: usize> EtherCrabWireWriteSized for [u8; N] {
         *self
     }
 }
+
+impl EtherCrabWireWrite for &[u8] {
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+        let buf = &mut buf[0..self.len()];
+
+        buf.copy_from_slice(self);
+
+        buf
+    }
+
+    fn packed_len(&self) -> usize {
+        self.len()
+    }
+}
+
+// Blanket impl for references
+impl<T> EtherCrabWireWrite for &T
+where
+    T: EtherCrabWireWrite,
+{
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+        EtherCrabWireWrite::pack_to_slice_unchecked(*self, buf)
+    }
+
+    fn packed_len(&self) -> usize {
+        EtherCrabWireWrite::packed_len(*self)
+    }
+}
