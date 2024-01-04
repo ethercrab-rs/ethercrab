@@ -102,12 +102,10 @@ async fn main() -> Result<(), Error> {
 
         // Increment every output byte for every slave device by one
         for mut slave in group.iter(&client) {
-            for byte in slave.outputs_raw_mut().iter_mut() {
-                *byte = byte.wrapping_add(1);
-            }
+            let (_i, o) = slave.io_raw_mut();
 
-            if slave.name() == "EL1018" {
-                println!("{:#010b}", slave.inputs_raw()[0]);
+            for byte in o.iter_mut() {
+                *byte = byte.wrapping_add(1);
             }
         }
 
