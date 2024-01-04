@@ -52,9 +52,6 @@ pub struct ChunkReader<P> {
     /// The last byte address we're allowed to access.
     end: u16,
 
-    /// Extra data that was read from the device but not returned by calls to `read()`.
-    cache: heapless::Vec<u8, 8>,
-
     /// Position of last data that was actually asked for, e.g. the next byte after the current
     /// cache.
     ///
@@ -71,9 +68,7 @@ where
         Self {
             reader,
             pos: start_word * 2,
-            // len: len_bytes,
             end: start_word * 2 + len_words * 2,
-            cache: heapless::Vec::new(),
             read_pointer: start_word,
         }
     }
@@ -103,33 +98,6 @@ where
             self.pos,
             self.read_pointer,
         );
-
-        // Take next chunk so we can prepopulate the cache for the next read.
-        let res = self.reader.read_chunk(self.read_pointer).await?;
-        self.read_pointer += res.len() as u16 / 2;
-
-        // If the new logical position is odd, we must discard the first byte of the read chunk as
-        // it is word-aligned (i.e. even bytes).
-        let discard = usize::from(self.pos % 2);
-
-        let trimmed = &res[discard..];
-
-        #[cfg(not(feature = "defmt"))]
-        fmt::trace!(
-            "--> Discard {} bytes, cache from {:02x?} -> {:02x?}",
-            discard,
-            res.deref(),
-            trimmed
-        );
-        #[cfg(feature = "defmt")]
-        fmt::trace!(
-            "--> Discard {} bytes, cache from {=[u8]} -> {=[u8]}",
-            discard,
-            res.deref(),
-            trimmed
-        );
-
-        self.cache = fmt::unwrap!(heapless::Vec::from_slice(trimmed));
 
         Ok(())
     }
@@ -165,71 +133,38 @@ where
             return Ok(0);
         }
 
-        let buf_len = buf.len();
-
         // We can't read past the end of the chunk, so clamp the buffer's length to the remaining
         // part of the chunk if necessary.
-        let buf = &mut buf[0..buf_len.min(max_read)];
+        let mut buf = &mut buf[0..requested_read_len.min(max_read)];
 
-        // If there's any current cached data, split off existing cache buffer and write into result
-        // buf
-        let (cached, cache_rest) = self.cache.split_at(buf.len().min(self.cache.len()));
-
-        if !cached.is_empty() {
-            #[cfg(not(feature = "defmt"))]
-            fmt::trace!(
-                "--> Cache has existing data: {:02x?} : {:02x?}",
-                cached,
-                cache_rest
-            );
-            #[cfg(feature = "defmt")]
-            fmt::trace!(
-                "--> Cache has existing data: {=[u8]} : {=[u8]}",
-                cached,
-                cache_rest
-            );
-        }
-
-        // Make sure the bit of the buffer we're copying into matches the cache chunk length
-        let (start, mut buf) = buf.split_at_mut(cached.len());
-
-        start.copy_from_slice(cached);
-
-        // Move byte position further along the EEPROM address space by however much cache we've
-        // taken.
-        bytes_read += cached.len();
-
-        // Re-store any remaining cached data ready for the next read.
-        //
-        // This should never panic as the source data is the same type, so it can be at most exactly
-        // the same length, or shorter.
-        self.cache = fmt::unwrap!(heapless::Vec::from_slice(cache_rest));
-
-        // If there is more to read, read chunks from provider until buffer is full. The remaining
-        // `buf` will be empty if the cache completely fulfilled our request so this loop won't
-        // execute in that case.
         while !buf.is_empty() {
-            let res = self.reader.read_chunk(self.read_pointer).await?;
-            self.read_pointer += res.len() as u16 / 2;
+            let res = self.reader.read_chunk(self.pos / 2).await?;
 
             let chunk = res.deref();
 
+            // If position is odd, we must skip the first received byte as the reader operates on
+            // WORD addresses.
+            let skip = usize::from(self.pos % 2);
+
+            // Fix any odd addressing offsets
+            let chunk = &chunk[skip..];
+
             // Buffer is full after reading this chunk into it. We're done.
             if buf.len() < chunk.len() {
-                let (chunk, into_cache) = chunk.split_at(buf.len());
+                let (chunk, _rest) = chunk.split_at(buf.len());
 
                 bytes_read += chunk.len();
+                self.pos += chunk.len() as u16;
 
                 buf.copy_from_slice(chunk);
 
-                // Unwrap: logic bug! The returned chunk must be either 4 or 8 bytes, and we have a
-                // vec of 8 bytes in length, so this should not fail if everything is correct.
-                self.cache = fmt::unwrap!(heapless::Vec::from_slice(into_cache));
+                self.read_pointer += chunk.len() as u16 / 2;
 
                 break;
             }
 
             bytes_read += chunk.len();
+            self.pos += chunk.len() as u16;
 
             // Buffer is not full. Write another chunk into the beginning of it.
             let (buf_start, buf_rest) = buf.split_at_mut(chunk.len());
@@ -248,8 +183,6 @@ where
             requested_read_len,
             self.pos
         );
-
-        self.pos += bytes_read as u16;
 
         Ok(bytes_read)
     }
@@ -298,6 +231,47 @@ mod tests {
             r.skip_ahead_bytes(10000).await,
             Err(Error::Eeprom(EepromError::SectionOverrun)),
             "10000 bytes"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_single_bytes() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/el2828.hex"), 0, 32);
+
+        let expected = [
+            0x04u8, 0x01, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, // First 8
+            0x00u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe2, 0x00, // Second 8
+        ];
+
+        let actual = vec![
+            // First 8
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            // Second 8
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+            r.read_byte().await.unwrap(),
+        ];
+
+        assert_eq!(
+            expected,
+            actual.as_slice(),
+            "Expected:\n{:#04x?}\n\nActual: \n{:#04x?}",
+            expected,
+            actual
         );
     }
 }
