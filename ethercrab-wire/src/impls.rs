@@ -9,6 +9,10 @@ macro_rules! impl_primitive_wire_field {
     ($ty:ty, $size:expr) => {
         impl EtherCrabWireWrite for $ty {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+                // This unsafe doesn't save us any binary space at all in the stm32-embassy example
+                // so we won't use it.
+                // let chunk = unsafe { buf.get_unchecked_mut(0..$size) };
+
                 let chunk = &mut buf[0..$size];
 
                 chunk.copy_from_slice(&self.to_le_bytes());
@@ -35,6 +39,24 @@ macro_rules! impl_primitive_wire_field {
                     .ok_or(WireError::Todo)
                     .and_then(|raw| raw.try_into().map_err(|_| WireError::Todo))
                     .map(Self::from_le_bytes)
+
+                // TODO: Write a very quick blog post on the fact that this doesn't improve
+                // generated code at all, and how nice Rust is!
+                //
+                // Godbolt here:
+                // https://godbolt.org/#z:OYLghAFBqd5TKALEBjA9gEwKYFFMCWALugE4A0BIEAZgQDbYB2AhgLbYgDkAjF%2BTXRMiAZVQtGIHgBYBQogFUAztgAKAD24AGfgCsp5eiyahSAVyVFyKxqiIEh1ZpgDC6embZMQAJgAc5M4AMgRM2AByngBG2KQgAMzkAA7oSsQOTG4eXr4BKWn2QiFhkWwxcYk22HYZIkQspERZnt7%2B1ti2hUx1DUTFEdGxCdb1jc05bZa9/aXlCQCU1uhmpKicXACkPvFgYBsArABCTOgA%2BpaYBwAiG1oAgrd3FtgA1BiknGhCAG6xRCAgAAqpAAngBJYToDbxQ6PR5JMxRF40JgvMxMJIsVAAa1ONFI6DY53oBDWpySjBYSmMRAgUTMNBALy2ADYDoczH5rvMXgBaaG4F4AJWwSjM9CI0JcZniPnILwg8wFzIA7LD7i9NS96TQAHTAbC0rS63XSJUarWW3XoXFkKDzc13S1W4yYU5EJDMCAbFUuUgsADuPpcL39Ad1RFBp1CJEVurYLCSp1ipG9vtOwYVDsdzq18cTEBlPgB%2BMJp0YpyiIKIosdPquXEW9G4%2B343i4OnI6G4QosRBeSmWq1eW3ifHI/w7jcW2JA%2By0hm40n4bDnC/bne7XH4ShAC8nOkWcFgKAwbCSDFilGoZ4vjDipB4KvnAgYNdIu7p2n4UVCDRB3Djr%2BrCggA8lEujVJO45nhwwigUw9AAVO5A4PSwAuBI9C7rw/A4AmJiSChhAfDUvw4Z22DqNUZg1oB/Axh036GAQUT%2BqCbg4MxkYEKuuGLDQRjAEoABqBDYAGoFJMw9FyMIYgSJwMhyYoKgaMx%2Bg8IYximH2LFRLukCLOgSRdDhvKgXyvKjAa/YetE3wqmwvInGEvLYCwv78OgvykKQBA4IZUCsBwIDYIQXTkN8EhmOsPhaD4fAOu0nQZE4TCuO4LQGMEoQDGUQxafk6RCOM3hFakJVMDMgxxFpVQ1EIPRjFlOT1R0UG1KMfR5bMhUjL0ZUGFMjQ1QVdWLIOKxrFITYtm2zFbqGfaoC8PC6s%2BupaAq%2BDEGQzLbDw8z8Ae07kJ6LA4HEirkLOL7Nlwy7kBu3ncDue4Tt%2ByUPT4K5rs9i1vZ9U5Hogx7IF8OC7SQFBULQl4hes46CPJ4iSMpKOqWomgofocpGCYIDmJYKWdY4EDOENWm5SUtVzsklVdFTDMFBkY1zPspONd03XMw1XTNT1tPjfTI1NK15UDaNvV0/sk1DjNmzbLs7InOcRCXPsNz3I8zxvGQnwYEwvn/ECoIQiQ0Lqk8Kj6x8AJIDGALoh8WJIJ5Fboqgno4uFVtwvcCJIiiaIYliuKlkSSgkmSrAEL8dIMkyrLspy3J8sqIpihKUpFvKirKj61uWgQNDagyuqMEwirMvEIbSKqxe5qGhorKiuB%2BfaSowo8lr1gHTpaow/YNKQtdXC8CZEN75c0OyxqmtcEZRjG6A10XvfN6B2IQKPPLQjc8SCqP5Cb7mAD058vCIdwAGK4ICACaTIAOqvN71TYi8HqvDqNCxAOAgAAvV4nkfLYDPs6DuqZTj73iIfQU6JqT/0bqHV23sPbYFOF7H22JwrrxVFcU%2BFpNT9x7jrEhLxt6FllCWAkRIKxVhrEoXefkHRwkIY2RcXBWwAxQluXslgBwKxHNsX6wNDyLAuldagM5/oPSequF8L0uxA13PuL65BwYQFPISO8V44a3kvA%2BJ8L46ASliJ%2BKIzFgL/lkrYsCEEoKyVgswIgCEkLMTQmYDCWEcLjnwjpIinYSKdXIsxKiNE6K4UoMIJiKESRsX/JxdYnYeJ8SSgIISolxKSWku2ZG8gFLo1kJjZQ2MNK%2BG0oTYmVhElBWMqZDI5lLK8msg0Wy38kAOSci5IQ2B3KeQIN5Xy/lArwAgIjMKEUMhRRinFBKSVJodW5ulTK2RJY03ynMCqrNSoSwMMVLo7N%2Br8y6oNA57VUpNW6icuqUtxYbOGrcmWIsjpLGmpwHwc0eELX4dwZalhVrrU2ttCA0N9qjm%2BSdL6UiPIyJundBcCi/mbjUR9U631uDiKUeuQG24JFnQevEVFr0CWYsWL5NIjhpBAA%3D%3D
+
+                // if buf.len() < $size {
+                //     return Err(WireError::Todo);
+                // }
+
+                // let arr = match buf[0..$size].try_into() {
+                //     Ok(arr) => arr,
+                //     // SAFETY: We check the buffer size above
+                //     Err(_) => unsafe { unreachable_unchecked() },
+                // };
+
+                // Ok(<$ty>::from_le_bytes(arr))
             }
 
             // fn unpack_from_slice_rest<'buf>(
