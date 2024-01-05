@@ -13,7 +13,7 @@ use crate::{
 };
 use core::{ops::RangeInclusive, str::FromStr};
 use embedded_io_async::Read;
-use ethercrab_wire::EtherCrabWireRead;
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 pub struct SlaveEeprom<P> {
     provider: P,
@@ -228,44 +228,46 @@ where
 
         fmt::trace!("Get {:?} PDUs", direction);
 
-        if let Some(mut reader) = self.category(CategoryType::from(direction)).await? {
-            let mut buf = [0u8; { Pdo::STORAGE_SIZE }];
+        let Some(mut reader) = self.category(CategoryType::from(direction)).await? else {
+            return Ok(pdos);
+        };
 
-            while reader.read(&mut buf).await? == Pdo::STORAGE_SIZE {
-                let mut pdo = Pdo::parse(&buf).map_err(|e| {
-                    fmt::error!("PDO: {:?}", e);
+        let mut buf = Pdo::buffer();
 
-                    Error::Eeprom(EepromError::Decode)
-                })?;
+        while reader.read(&mut buf).await? == buf.len() {
+            let mut pdo = Pdo::unpack_from_slice(&buf).map_err(|e| {
+                fmt::error!("PDO: {:?}", e);
 
-                fmt::trace!("Range {:?} value {}", valid_range, pdo.index);
+                e
+            })?;
 
-                if !valid_range.contains(&pdo.index) {
-                    fmt::error!("Invalid PDO range");
+            fmt::trace!("Range {:?} value {}", valid_range, pdo.index);
 
-                    return Err(Error::Eeprom(EepromError::Decode));
-                }
+            if !valid_range.contains(&pdo.index) {
+                fmt::error!("Invalid PDO range");
 
-                for _ in 0..pdo.num_entries {
-                    let mut buf = [0u8; { PdoEntry::STORAGE_SIZE }];
+                return Err(Error::Eeprom(EepromError::Decode));
+            }
 
-                    let entry = reader.read_exact(&mut buf).await.and_then(|_| {
-                        let entry = PdoEntry::parse(&buf).map_err(|e| {
-                            fmt::error!("PDO entry: {:?}", e);
+            for _ in 0..pdo.num_entries {
+                let mut buf = [0u8; { PdoEntry::STORAGE_SIZE }];
 
-                            Error::Eeprom(EepromError::Decode)
-                        })?;
+                let entry = reader.read_exact(&mut buf).await.and_then(|_| {
+                    let entry = PdoEntry::parse(&buf).map_err(|e| {
+                        fmt::error!("PDO entry: {:?}", e);
 
-                        Ok(entry)
+                        Error::Eeprom(EepromError::Decode)
                     })?;
 
-                    pdo.entries
-                        .push(entry)
-                        .map_err(|_| Error::Capacity(Item::PdoEntry))?;
-                }
+                    Ok(entry)
+                })?;
 
-                pdos.push(pdo).map_err(|_| Error::Capacity(Item::Pdo))?;
+                pdo.entries
+                    .push(entry)
+                    .map_err(|_| Error::Capacity(Item::PdoEntry))?;
             }
+
+            pdos.push(pdo).map_err(|_| Error::Capacity(Item::Pdo))?;
         }
 
         fmt::debug!("Discovered PDOs:\n{:#?}", pdos);

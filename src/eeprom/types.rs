@@ -6,7 +6,7 @@ use crate::{
     error::{EepromError, Error},
     sync_manager_channel::{self},
 };
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 use nom::{
     bytes::complete::take,
     combinator::{map, map_opt, map_res},
@@ -538,16 +538,26 @@ pub enum SyncManagerType {
 }
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bytes = 8)]
 pub struct Pdo {
+    #[wire(bytes = 2)]
     pub(crate) index: u16,
+    #[wire(bytes = 1)]
     pub(crate) num_entries: u8,
+    #[wire(bytes = 1)]
     pub(crate) sync_manager: u8,
+    #[wire(bytes = 1)]
     pub(crate) dc_sync: u8,
     /// Index into EEPROM Strings section for PDO name.
+    #[wire(bytes = 1)]
     pub(crate) name_string_idx: u8,
+    #[wire(bytes = 2)]
     pub(crate) flags: PdoFlags,
+
+    // NOTE: This field is skipped during parsing from the wire and is populated later.
+    #[wire(skip)]
     pub(crate) entries: heapless::Vec<PdoEntry, 16>,
 }
 
@@ -576,33 +586,33 @@ impl Pdo {
     }
 }
 
-impl FromEeprom for Pdo {
-    const STORAGE_SIZE: usize = 8;
+// impl Pdo {
+//     pub const STORAGE_SIZE: usize = 8;
 
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, index) = le_u16(i)?;
-        let (i, num_entries) = le_u8(i)?;
-        let (i, sync_manager) = le_u8(i)?;
-        let (i, dc_sync) = le_u8(i)?;
-        let (i, name_string_idx) = le_u8(i)?;
-        let (i, flags) = map_opt(le_u16, PdoFlags::from_bits)(i)?;
+//     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
+//         let (i, index) = le_u16(i)?;
+//         let (i, num_entries) = le_u8(i)?;
+//         let (i, sync_manager) = le_u8(i)?;
+//         let (i, dc_sync) = le_u8(i)?;
+//         let (i, name_string_idx) = le_u8(i)?;
+//         let (i, flags) = map_opt(le_u16, PdoFlags::from_bits)(i)?;
 
-        all_consumed(i)?;
+//         all_consumed(i)?;
 
-        Ok((
-            i,
-            Self {
-                index,
-                num_entries,
-                sync_manager,
-                dc_sync,
-                name_string_idx,
-                flags,
-                entries: heapless::Vec::new(),
-            },
-        ))
-    }
-}
+//         Ok((
+//             i,
+//             Self {
+//                 index,
+//                 num_entries,
+//                 sync_manager,
+//                 dc_sync,
+//                 name_string_idx,
+//                 flags,
+//                 entries: heapless::Vec::new(),
+//             },
+//         ))
+//     }
+// }
 
 #[derive(Clone, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -693,6 +703,34 @@ bitflags::bitflags! {
         const PDO_DIS_AUTO_EXCLUDE = 0x4000;
         /// Reserved (PdoWritable)
         const PDO_WRITABLE = 0x8000;
+    }
+}
+
+impl EtherCrabWireSized for PdoFlags {
+    const PACKED_LEN: usize = 2;
+
+    type Buffer = [u8; Self::PACKED_LEN];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; Self::PACKED_LEN]
+    }
+}
+
+impl EtherCrabWireRead for PdoFlags {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
+        u16::unpack_from_slice(&buf)
+            .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::Todo))
+    }
+}
+
+// TODO: PdoFlags should be readonly
+impl EtherCrabWireWrite for PdoFlags {
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+        self.bits().pack_to_slice_unchecked(buf)
+    }
+
+    fn packed_len(&self) -> usize {
+        2
     }
 }
 
