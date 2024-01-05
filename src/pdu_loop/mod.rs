@@ -98,7 +98,7 @@ impl<'sto> PduLoop<'sto> {
     }
 
     /// Tell the packet sender there are PDUs ready to send.
-    fn wake_sender(&self) {
+    pub(crate) fn wake_sender(&self) {
         self.storage.tx_waker.wake();
     }
 
@@ -159,54 +159,6 @@ impl<'sto> PduLoop<'sto> {
             // SAFETY: We ensure the payload length is at least the length of the packed input data
             // above, as well as the data to be written is not longer than the payload buffer.
             data.pack_to_slice_unchecked(payload);
-
-            let frame = frame.mark_sendable();
-
-            self.wake_sender();
-
-            match crate::timer_factory::timeout(timeout, frame).await {
-                Ok(result) => return Ok(result),
-                Err(Error::Timeout) => {
-                    fmt::error!("Frame {} timed out", frame_idx);
-
-                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
-                    // state to `None`, ready for reuse.
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        Err(Error::Timeout)
-    }
-
-    pub(crate) async fn pdu_send_slice(
-        &self,
-        command: Command,
-        data: &[u8],
-        len_override: Option<u16>,
-        timeout: Duration,
-        retry_behaviour: RetryBehaviour,
-    ) -> Result<ReceivedFrame<'_>, Error> {
-        for _ in 0..retry_behaviour.loop_counts() {
-            // Length of data to populate in the send buffer
-            let send_data_len = data.len() as u16;
-
-            // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
-            // inputs in the remaining buffer.
-            let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
-
-            let mut frame = self.storage.alloc_frame(command, total_payload_len)?;
-
-            let frame_idx = frame.index();
-
-            let payload = frame
-                .buf_mut()
-                .get_mut(0..usize::from(send_data_len))
-                .ok_or(Error::Pdu(PduError::TooLong))?;
-
-            // SAFETY: We ensure the payload length is at least the length of the packed input data
-            // above, as well as the data to be written is not longer than the payload buffer.
-            payload.copy_from_slice(data);
 
             let frame = frame.mark_sendable();
 
@@ -344,7 +296,7 @@ mod tests {
             let mut written_packet = Vec::new();
             written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
-            let mut frame_fut = pin!(pdu_loop.pdu_send_slice(
+            let mut frame_fut = pin!(pdu_loop.pdu_send(
                 Command::fpwr(0x5678, 0x1234).into(),
                 &data,
                 None,

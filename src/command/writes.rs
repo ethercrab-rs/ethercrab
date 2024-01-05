@@ -114,7 +114,8 @@ impl<'client> WrappedWrite<'client> {
         T: EtherCrabWireRead,
     {
         self.common(value, None)
-            .await
+            .await?
+            .maybe_wkc(self.wkc)
             .and_then(|data| Ok(T::unpack_from_slice(&data)?))
     }
 
@@ -126,7 +127,7 @@ impl<'client> WrappedWrite<'client> {
     where
         'client: 'data,
     {
-        self.common(value, None).await
+        self.common(value, None).await?.maybe_wkc(self.wkc)
     }
 
     // Some manual monomorphisation
@@ -134,7 +135,7 @@ impl<'client> WrappedWrite<'client> {
         &self,
         value: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-    ) -> Result<RxFrameDataBuf<'client>, Error> {
+    ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
         self.client
             .pdu_loop
             .pdu_send(
@@ -145,8 +146,7 @@ impl<'client> WrappedWrite<'client> {
                 self.client.config.retry_behaviour,
             )
             .await
-            .map(|res| res.into_data())?
-            .maybe_wkc(self.wkc)
+            .map(|res| res.into_data())
     }
 
     /// Send a slice, reading `read_back_len` bytes into the beginning of the provided slice.
@@ -165,18 +165,7 @@ impl<'client> WrappedWrite<'client> {
             self.client.max_frame_data()
         );
 
-        let (data, wkc) = self
-            .client
-            .pdu_loop
-            .pdu_send_slice(
-                self.command.into(),
-                value,
-                self.len_override,
-                self.client.timeouts.pdu,
-                self.client.config.retry_behaviour,
-            )
-            .await
-            .map(|res| res.into_data())?;
+        let (data, wkc) = self.common(value.as_ref(), self.len_override).await?;
 
         if data.len() != value.len() {
             fmt::error!(
