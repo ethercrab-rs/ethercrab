@@ -28,7 +28,7 @@ linux-test *args:
      cargo test {{args}}
 
 linux-bench *args:
-     cargo bench --features __internals --no-run {{args}}
+     cargo bench --features __internals {{args}}
      sudo echo
      fd . --type executable ./target/release/deps -x sudo setcap cap_net_raw=pe
      cargo bench --features __internals {{args}}

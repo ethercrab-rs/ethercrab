@@ -22,6 +22,7 @@ pub struct DeviceEeprom<'slave> {
 }
 
 impl<'slave> DeviceEeprom<'slave> {
+    /// Create a new EEPROM reader instance.
     pub fn new(client: SlaveRef<'slave, ()>) -> Self {
         Self { client }
     }

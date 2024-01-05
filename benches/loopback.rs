@@ -24,6 +24,7 @@ fn main() {
         b.to_async(rt).iter(|| async {
             let _: &[u8] = Command::lwr(0x1234_5678)
                 .wrap(client)
+                .ignore_wkc()
                 .send_receive_slice(&DATA)
                 .await
                 .expect("write")

@@ -4,4 +4,3 @@
 
 pub use crate::eeprom::device_reader::DeviceEeprom;
 pub use crate::eeprom::EepromDataProvider;
-pub use crate::slave::slave_client::SlaveClient;

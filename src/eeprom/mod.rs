@@ -15,6 +15,7 @@ pub mod file_reader;
 /// A data source for EEPROM reads.
 pub trait EepromDataProvider: Clone {
     /// Read a chunk of either 4 or 8 bytes from the backing store.
+    #[cfg_attr(feature = "__internals", allow(async_fn_in_trait))]
     async fn read_chunk(&mut self, start_word: u16) -> Result<impl Deref<Target = [u8]>, Error>;
 }
 
