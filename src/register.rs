@@ -254,7 +254,7 @@ pub enum PortType {
 #[derive(Default, Clone, Debug, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary, ethercrab_wire::EtherCrabWireWrite))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[wire(bits = 16)]
+#[wire(bytes = 2)]
 pub struct SupportFlags {
     #[wire(bits = 1)]
     pub fmmu_supports_bit_ops: bool,

@@ -118,9 +118,7 @@ pub struct Enable {
     /// Set to `true` to enable DC 0 events from local writes.
     #[wire(bits = 1)]
     pub enable_dc_event_local_write: bool,
-    // ---
-    // Second byte (little endian, so first index)
-    // ---
+
     #[wire(bits = 1)]
     pub channel_pdi_disabled: bool,
     #[wire(bits = 1, post_skip = 6)]
