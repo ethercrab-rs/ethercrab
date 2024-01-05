@@ -30,9 +30,9 @@ const LRW: u8 = 0x0c;
 /// create them.
 ///
 /// A `Command` won't do much on its own. To perform network operations with the command it must be
-/// wrapped with either [`WrappedRead`] or [`WrappedWrite`]. These structs add a [`Client`]` and
-/// expose many different read/write operations. See the methods on [`WrappedRead`] and
-/// [`WrappedWrite`] for more.
+/// wrapped with either [`WrappedRead`] or [`WrappedWrite`]. These structs add a
+/// [`Client`](crate::Client) and expose many different read/write operations. See the methods on
+/// [`WrappedRead`] and [`WrappedWrite`] for more.
 ///
 /// # Examples
 ///

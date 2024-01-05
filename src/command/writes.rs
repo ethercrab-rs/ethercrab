@@ -87,7 +87,7 @@ impl<'client> WrappedWrite<'client> {
 
     /// Do not return an error if the working counter is different from the expected value.
     ///
-    /// The default value is `1` and can be overridden with [`with_wkc`](WrappedRead::with_wkc).
+    /// The default value is `1` and can be overridden with [`with_wkc`](WrappedWrite::with_wkc).
     pub fn ignore_wkc(self) -> Self {
         Self { wkc: None, ..self }
     }
