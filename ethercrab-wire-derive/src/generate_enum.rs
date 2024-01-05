@@ -114,7 +114,7 @@ pub fn generate_enum(
         }
     } else {
         quote! {
-            _other => { Err(::ethercrab_wire::WireError::Todo) }
+            _other => { Err(::ethercrab_wire::WireError::InvalidValue) }
         }
     };
 
@@ -156,7 +156,7 @@ pub fn generate_enum(
                 fn try_from(value: #repr_type) -> Result<Self, Self::Error> {
                     match value {
                         #(#match_arms),*
-                        _other => Err(::ethercrab_wire::WireError::Todo)
+                        _other => Err(::ethercrab_wire::WireError::InvalidValue)
                     }
                 }
             }
@@ -201,7 +201,10 @@ pub fn generate_enum(
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
                 let raw = buf.get(0..#size_bytes).map(|bytes| {
                     #repr_type::from_le_bytes(bytes.try_into().unwrap())
-                }).ok_or(::ethercrab_wire::WireError::Todo)?;
+                }).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort {
+                    expected: #size_bytes,
+                    got: buf.len(),
+                })?;
 
                 match raw {
                     #(#result_match_arms),*

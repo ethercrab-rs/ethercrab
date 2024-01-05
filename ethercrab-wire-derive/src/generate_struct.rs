@@ -130,25 +130,15 @@ pub fn generate_struct(
 
         impl ::ethercrab_wire::EtherCrabWireRead for #name {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
-                let buf = buf.get(0..#size_bytes).ok_or(::ethercrab_wire::WireError::Todo)?;
+                let buf = buf.get(0..#size_bytes).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort {
+                    expected: #size_bytes,
+                    got: buf.len(),
+                })?;
 
                 Ok(Self {
                     #(#fields_unpack),*
                 })
             }
-            // fn unpack_from_slice_rest<'buf>(buf: &'buf [u8]) -> Result<(Self, &'buf [u8]), ::ethercrab_wire::WireError> {
-            //     if buf.len() < #size_bytes {
-            //         return Err(::ethercrab_wire::WireError::Todo)
-            //     }
-
-            //     let (buf, rest) = buf.split_at(#size_bytes);
-
-            //     let out = Self {
-            //         #(#fields_unpack),*
-            //     };
-
-            //     Ok((out, rest))
-            // }
         }
 
         impl ::ethercrab_wire::EtherCrabWireSized for #name {

@@ -22,7 +22,10 @@ macro_rules! impl_primitive_wire_field {
 
             fn pack_to_slice<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], WireError> {
                 if buf.len() < $size {
-                    return Err(WireError::Todo);
+                    return Err(WireError::WriteBufferTooShort {
+                        expected: $size,
+                        got: buf.len(),
+                    });
                 }
 
                 Ok(self.pack_to_slice_unchecked(buf))
@@ -36,8 +39,14 @@ macro_rules! impl_primitive_wire_field {
         impl EtherCrabWireRead for $ty {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
                 buf.get(0..$size)
-                    .ok_or(WireError::Todo)
-                    .and_then(|raw| raw.try_into().map_err(|_| WireError::Todo))
+                    .ok_or(WireError::ReadBufferTooShort {
+                        expected: $size,
+                        got: buf.len(),
+                    })
+                    .map(|raw| match raw.try_into() {
+                        Ok(res) => res,
+                        Err(_) => unreachable!(),
+                    })
                     .map(Self::from_le_bytes)
 
                 // TODO: Write a very quick blog post on the fact that this doesn't improve
@@ -116,7 +125,10 @@ impl EtherCrabWireWrite for bool {
 impl EtherCrabWireRead for bool {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
         if buf.is_empty() {
-            return Err(WireError::Todo);
+            return Err(WireError::ReadBufferTooShort {
+                expected: 1,
+                got: 0,
+            });
         }
 
         Ok(buf[0] == 1)
@@ -234,11 +246,14 @@ where
 {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
         if buf.len() < T::PACKED_LEN * N {
-            return Err(WireError::Todo);
+            return Err(WireError::ReadBufferTooShort {
+                expected: T::PACKED_LEN * N,
+                got: buf.len(),
+            });
         }
 
         heapless::Vec::<T, N>::unpack_from_slice(buf)
-            .and_then(|res| res.into_array().map_err(|_e| WireError::Todo))
+            .and_then(|res| res.into_array().map_err(|_e| WireError::ArrayLength))
     }
 }
 
@@ -248,9 +263,16 @@ where
     T: EtherCrabWireReadSized,
 {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-        buf.chunks_exact(T::PACKED_LEN)
+        let res = buf
+            .chunks_exact(T::PACKED_LEN)
+            .take(N)
             .map(T::unpack_from_slice)
-            .collect::<Result<heapless::Vec<_, N>, WireError>>()
+            .collect::<Result<heapless::Vec<_, N>, WireError>>();
+
+        match res {
+            Ok(res) => Ok(res),
+            Err(_) => unreachable!(),
+        }
     }
 }
 

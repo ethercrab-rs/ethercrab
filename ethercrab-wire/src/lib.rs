@@ -49,7 +49,10 @@ pub trait EtherCrabWireWrite {
     /// enough.
     fn pack_to_slice<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], WireError> {
         if buf.len() < self.packed_len() {
-            return Err(WireError::Todo);
+            return Err(WireError::WriteBufferTooShort {
+                expected: self.packed_len(),
+                got: buf.len(),
+            });
         }
 
         Ok(self.pack_to_slice_unchecked(buf))

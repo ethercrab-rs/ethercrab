@@ -37,7 +37,10 @@ impl ethercrab_wire::EtherCrabWireWrite for PduFlags {
 
 impl EtherCrabWireRead for PduFlags {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-        let buf = buf.get(0..2).ok_or(WireError::Todo)?;
+        let buf = buf.get(0..2).ok_or(WireError::ReadBufferTooShort {
+            expected: 2,
+            got: buf.len(),
+        })?;
 
         let src = u16::from_le_bytes(buf.try_into().unwrap());
 
@@ -51,28 +54,6 @@ impl EtherCrabWireRead for PduFlags {
             is_not_last,
         })
     }
-    // fn unpack_from_slice_rest<'buf>(buf: &'buf [u8]) -> Result<(Self, &'buf [u8]), WireError> {
-    //     if buf.len() < 2 {
-    //         return Err(WireError::Todo);
-    //     }
-
-    //     let (buf, rest) = buf.split_at(2);
-
-    //     let src = u16::from_le_bytes(buf.try_into().unwrap());
-
-    //     let length = src & LEN_MASK;
-    //     let circulated = (src >> 14) & 0x01 == 0x01;
-    //     let is_not_last = (src >> 15) & 0x01 == 0x01;
-
-    //     Ok((
-    //         Self {
-    //             length,
-    //             circulated,
-    //             is_not_last,
-    //         },
-    //         rest,
-    //     ))
-    // }
 }
 
 impl ethercrab_wire::EtherCrabWireSized for PduFlags {
