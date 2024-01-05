@@ -19,7 +19,7 @@ path = "src/lib.rs"
 [dependencies]
 proc-macro2 = "1.0.73"
 quote = "1.0.34"
-syn = { version = "2.0.44", features = ["full"] }
+syn = { version = "2.0.44", features = ["full", "extra-traits"] }
 
 [dev-dependencies]
 trybuild = "1.0.86"

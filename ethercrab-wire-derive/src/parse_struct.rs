@@ -1,4 +1,4 @@
-use crate::help::{attr_exists, bit_width_attr, usize_attr};
+use crate::help::{all_valid_attrs, attr_exists, bit_width_attr, usize_attr};
 use std::ops::Range;
 use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
 
@@ -38,6 +38,8 @@ pub fn parse_struct(
 ) -> syn::Result<StructStuff> {
     // --- Struct attributes
 
+    all_valid_attrs(&attrs, &["bits", "bytes"])?;
+
     let width = bit_width_attr(&attrs)?;
 
     let Some(width) = width else {
@@ -61,6 +63,19 @@ pub fn parse_struct(
     let mut field_stuff = Vec::new();
 
     for field in fields {
+        all_valid_attrs(
+            &field.attrs,
+            &[
+                "bits",
+                "bytes",
+                "skip",
+                "pre_skip",
+                "pre_skip_bytes",
+                "post_skip",
+                "post_skip_bytes",
+            ],
+        )?;
+
         // Unwrap: this is a named-field struct so the field will always have a name.
         let field_name = field.ident.unwrap();
         let field_width = bit_width_attr(&field.attrs)?;

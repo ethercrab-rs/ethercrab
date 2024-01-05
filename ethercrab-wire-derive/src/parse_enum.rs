@@ -1,4 +1,6 @@
-use crate::help::{attr_exists, enum_repr_ty, variant_alternatives, variant_is_default};
+use crate::help::{
+    all_valid_attrs, attr_exists, enum_repr_ty, variant_alternatives, variant_is_default,
+};
 use syn::{DataEnum, DeriveInput, Expr, ExprLit, Ident, Lit};
 
 // TODO: Rename all these `*Stuff` fields lol
@@ -28,6 +30,8 @@ pub fn parse_enum(
 ) -> syn::Result<EnumStuff> {
     // let width = bit_width_attr(&attrs)?;
 
+    all_valid_attrs(&attrs, &["bits", "bytes"])?;
+
     let repr = enum_repr_ty(&attrs, &ident)?;
 
     let allowed = ["u8", "u16", "u32"];
@@ -56,6 +60,8 @@ pub fn parse_enum(
     let mut default_variant = None;
 
     for variant in e.variants {
+        all_valid_attrs(&variant.attrs, &["alternatives", "catch_all"])?;
+
         let ident = variant.ident;
 
         let variant_discriminant = match variant.discriminant {
