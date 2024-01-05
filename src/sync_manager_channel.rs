@@ -11,7 +11,7 @@ pub const SM_BASE_ADDRESS: u16 = 0x1c10;
 /// Defined in ETG1000.4 6.7.2
 #[derive(Default, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[wire(bits = 64)]
+#[wire(bytes = 8)]
 pub struct SyncManagerChannel {
     #[wire(bytes = 2)]
     pub physical_start_address: u16,
@@ -80,7 +80,7 @@ pub struct Control {
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[wire(bits = 8)]
+#[wire(bytes = 1)]
 pub struct Status {
     #[wire(bits = 1)]
     pub has_write_event: bool,
@@ -100,7 +100,7 @@ pub struct Status {
 /// Described in ETG1000.4 6.7.2 Sync Manager Attributes
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[wire(bits = 16)]
+#[wire(bytes = 2)]
 pub struct Enable {
     #[wire(bits = 1)]
     pub enable: bool,

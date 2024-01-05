@@ -43,29 +43,6 @@ impl Debug for SlaveIdentity {
     }
 }
 
-// impl FromEeprom for SlaveIdentity {
-//     const STORAGE_SIZE: usize = 16;
-
-//     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-//         let (i, vendor_id) = le_u32(i)?;
-//         let (i, product_id) = le_u32(i)?;
-//         let (i, revision) = le_u32(i)?;
-//         let (i, serial) = le_u32(i)?;
-
-//         all_consumed(i)?;
-
-//         Ok((
-//             i,
-//             Self {
-//                 vendor_id,
-//                 product_id,
-//                 revision,
-//                 serial,
-//             },
-//         ))
-//     }
-// }
-
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct SlaveConfig {
     pub io: IoRanges,

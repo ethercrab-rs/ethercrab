@@ -275,12 +275,12 @@ pub enum FmmuUsage {
 /// ETG1020 Table 10 "FMMU_EX"
 ///
 /// NOTE: Most fields defined are discarded from this struct as they are unused in Ethercrab.
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[wire(bytes = 1)]
+#[wire(bytes = 3)]
 pub struct FmmuEx {
     /// Sync manager index.
-    #[wire(bytes = 1)]
+    #[wire(pre_skip_bytes = 1, bytes = 1, post_skip_bytes = 1)]
     pub sync_manager: u8,
 }
 
@@ -854,5 +854,15 @@ mod tests {
         let raw = [2u8, 0, 1, 4, 2, 0, 0, 0, 0, 0, 0, 0, 48, 248, 3, 0, 0, 0];
 
         assert_eq!(SiiGeneral::unpack_from_slice(&raw), Ok(expected))
+    }
+
+    #[test]
+    fn fmmu_ex() {
+        let data = [0xaa, 0xbb, 0xcc];
+
+        assert_eq!(
+            FmmuEx::unpack_from_slice(&data),
+            Ok(FmmuEx { sync_manager: 0xbb })
+        );
     }
 }

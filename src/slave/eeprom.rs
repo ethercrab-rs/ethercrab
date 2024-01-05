@@ -821,4 +821,14 @@ mod tests {
 
         assert_eq!(image, Ok(None));
     }
+
+    #[tokio::test]
+    async fn akd_fmmu_ex() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        let fmmu_ex = e.fmmu_mappings().await.expect("Get FMMU_EX");
+
+        // None of the EEPROM dumps I have contain any FMMU_EX records :(
+        assert_eq!(fmmu_ex, heapless::Vec::<FmmuEx, 16>::new());
+    }
 }
