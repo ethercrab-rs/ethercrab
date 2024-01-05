@@ -61,7 +61,7 @@ mod tests {
 
             let packed = status.pack_to_slice(&mut buf).expect("Pack");
 
-            let unpacked = DlStatus::unpack_from_slice(&packed).expect("Unpack");
+            let unpacked = DlStatus::unpack_from_slice(packed).expect("Unpack");
 
             pretty_assertions::assert_eq!(status, unpacked);
 

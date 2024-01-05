@@ -320,7 +320,7 @@ mod tests {
 
             let packed = status.pack_to_slice(&mut buf).expect("Pack");
 
-            let unpacked = SupportFlags::unpack_from_slice(&packed).expect("Unpack");
+            let unpacked = SupportFlags::unpack_from_slice(packed).expect("Unpack");
 
             pretty_assertions::assert_eq!(status, unpacked);
 

@@ -401,7 +401,7 @@ impl EtherCrabWireSized for Flags {
 
 impl EtherCrabWireRead for Flags {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
-        u8::unpack_from_slice(&buf)
+        u8::unpack_from_slice(buf)
             .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
     }
 }
@@ -436,7 +436,7 @@ impl EtherCrabWireSized for CoeDetails {
 
 impl EtherCrabWireRead for CoeDetails {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
-        u8::unpack_from_slice(&buf)
+        u8::unpack_from_slice(buf)
             .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
     }
 }
@@ -495,7 +495,7 @@ impl EtherCrabWireSized for SyncManagerEnable {
 
 impl EtherCrabWireRead for SyncManagerEnable {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
-        u8::unpack_from_slice(&buf)
+        u8::unpack_from_slice(buf)
             .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
     }
 }
@@ -655,7 +655,7 @@ impl EtherCrabWireSized for PdoFlags {
 
 impl EtherCrabWireRead for PdoFlags {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
-        u16::unpack_from_slice(&buf)
+        u16::unpack_from_slice(buf)
             .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
     }
 }
@@ -701,7 +701,7 @@ impl EtherCrabWireSized for MailboxProtocols {
 
 impl EtherCrabWireRead for MailboxProtocols {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
-        u16::unpack_from_slice(&buf)
+        u16::unpack_from_slice(buf)
             .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
     }
 }

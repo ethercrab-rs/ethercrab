@@ -9,7 +9,7 @@ pub const MY_ATTRIBUTE: &str = "wire";
 
 fn my_attributes(attrs: &[syn::Attribute]) -> impl Iterator<Item = &syn::Attribute> {
     attrs
-        .into_iter()
+        .iter()
         .filter(|attr| attr.path().is_ident(MY_ATTRIBUTE))
 }
 

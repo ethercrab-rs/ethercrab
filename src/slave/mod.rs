@@ -546,8 +546,6 @@ where
         let mut storage = T::buffer();
         let buf = storage.as_mut();
 
-        let sub_index = sub_index.into();
-
         let request = coe::services::upload(self.mailbox_counter(), index, sub_index);
 
         fmt::trace!("CoE upload {:#06x} {:?}", index, sub_index);
@@ -727,11 +725,11 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     pub(crate) fn write(&self, register: impl Into<u16>) -> WrappedWrite {
-        Command::fpwr(self.configured_address, register.into()).wrap(&self.client)
+        Command::fpwr(self.configured_address, register.into()).wrap(self.client)
     }
 
     pub(crate) fn read(&self, register: impl Into<u16>) -> WrappedRead {
-        Command::fprd(self.configured_address, register.into()).wrap(&self.client)
+        Command::fprd(self.configured_address, register.into()).wrap(self.client)
     }
 
     pub(crate) async fn request_slave_state_nowait(

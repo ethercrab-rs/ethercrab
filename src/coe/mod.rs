@@ -139,7 +139,7 @@ mod tests {
 
             let packed = status.pack_to_slice_unchecked(&mut buf);
 
-            let unpacked = CoeHeader::unpack_from_slice(&packed).expect("Unpack");
+            let unpacked = CoeHeader::unpack_from_slice(packed).expect("Unpack");
 
             pretty_assertions::assert_eq!(status, unpacked);
 

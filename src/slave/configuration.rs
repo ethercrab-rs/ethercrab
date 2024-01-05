@@ -425,13 +425,6 @@ where
             .read(RegisterAddress::fmmu(fmmu_index as u8))
             .receive::<Fmmu>()
             .await?;
-        // .read_slice(
-        //     RegisterAddress::fmmu(fmmu_index as u8).into(),
-        //     16,
-        //     "read FMMU config",
-        // )
-        // .await
-        // .and_then(|raw| Fmmu::unpack_from_slice(&raw).map_err(|_| Error::Internal))?;
 
         // We can use the enable flag as a sentinel for existing config because EtherCrab inits
         // FMMUs to all zeroes on startup.
@@ -465,8 +458,9 @@ where
             fmmu_index,
             fmmu_config
         );
-        fmt::trace!("{:#?}", fmmu_config);
+
         *global_offset = global_offset.increment_byte_aligned(sm_bit_len);
+
         Ok(())
     }
 
