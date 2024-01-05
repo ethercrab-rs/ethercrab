@@ -164,8 +164,6 @@ pub fn generate_struct(
 
         impl ::ethercrab_wire::EtherCrabWireWriteSized for #name {
             fn pack(&self) -> Self::Buffer {
-                // TODO: Optimise if only one byte in length
-
                 let mut buf = [0u8; #size_bytes];
 
                 <Self as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(self, &mut buf);

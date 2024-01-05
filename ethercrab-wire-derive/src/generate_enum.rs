@@ -73,7 +73,13 @@ pub fn generate_enum(
             }
         }
     } else {
-        quote! {}
+        quote! {
+            impl From<#name> for #repr_type {
+                fn from(value: #name) -> Self {
+                    value as #repr_type
+                }
+            }
+        }
     };
 
     let match_arms = primitive_variants.clone().map(|variant| {
