@@ -110,7 +110,7 @@ where
         let fmmu_usage = self.eeprom().fmmus().await?;
         let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
-        let (state, _status_code) = self.status().await?;
+        let state = self.state().await?;
 
         if state != SlaveState::PreOp {
             fmt::error!(

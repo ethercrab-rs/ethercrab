@@ -655,17 +655,23 @@ impl<'a, S> SlaveRef<'a, S> {
         self.client.timeouts
     }
 
-    /// Get the EtherCAT state machine state of the slave.
-    pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
-        let status = self.read(RegisterAddress::AlStatus).receive::<AlControl>();
+    /// Get the sub device status.
+    pub(crate) async fn state(&self) -> Result<SlaveState, Error> {
+        self.read(RegisterAddress::AlStatus)
+            .receive::<AlControl>()
+            .await
+            .map(|ctl| ctl.state)
+    }
 
+    /// Get the EtherCAT state machine state of the sub device.
+    pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
         let code = self
             .read(RegisterAddress::AlStatusCode)
             .receive::<AlStatusCode>();
 
-        let (status, code) = embassy_futures::join::join(status, code).await;
+        let (status, code) = embassy_futures::join::join(self.state(), code).await;
 
-        let status = status.map(|ctl| ctl.state)?;
+        let status = status?;
         let code = code?;
 
         Ok((status, code))
