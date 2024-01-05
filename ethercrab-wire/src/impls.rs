@@ -84,6 +84,18 @@ macro_rules! impl_primitive_wire_field {
                 self.to_le_bytes()
             }
         }
+
+        // MSRV: generic_const_exprs: Once we can do `N * T::PACKED_BYTES` this impl can go away and
+        // be replaced by a single generic one.
+        impl<const N: usize> EtherCrabWireSized for [$ty; N] {
+            const PACKED_LEN: usize = N * $size;
+
+            type Buffer = [u8; N];
+
+            fn buffer() -> Self::Buffer {
+                [0u8; N]
+            }
+        }
     };
 }
 
@@ -248,26 +260,11 @@ where
     }
 }
 
-// MSRV: generic_const_exprs: When we can do `N * T::PACKED_LEN`, this specific impl bounded on
-// TryFrom<u8> can go away.
-impl<const N: usize, T> EtherCrabWireSized for [T; N]
-where
-    T: TryFrom<u8>,
-{
-    const PACKED_LEN: usize = N;
-
-    type Buffer = [u8; N];
-
-    fn buffer() -> Self::Buffer {
-        [0u8; N]
-    }
-}
-
-// MSRV: generic_const_exprs: When we can do `N * T::PACKED_LEN`, this specific impl bounded on
-// TryFrom<u8> can go away.
+// MSRV: generic_const_exprs: When we can do `N * T::PACKED_LEN`, this specific impl for `u8` can be
+// replaced with `T: EtherCrabWireSized`.
 impl<const N: usize, T> EtherCrabWireSized for heapless::Vec<T, N>
 where
-    T: TryFrom<u8>,
+    T: Into<u8>,
 {
     const PACKED_LEN: usize = N;
 

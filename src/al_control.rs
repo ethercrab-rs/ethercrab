@@ -5,7 +5,7 @@ use crate::slave_state::SlaveState;
 /// Defined in ETG1000.6 Table 9 - AL Control Description.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[wire(bits = 16)]
+#[wire(bytes = 2)]
 pub struct AlControl {
     /// AL status.
     #[wire(bits = 4)]
