@@ -114,7 +114,7 @@ where
         if state != SlaveState::PreOp {
             fmt::error!(
                 "Slave {:#06x} is in invalid state {}. Expected {}",
-                self.state.configured_address,
+                self.configured_address,
                 state,
                 SlaveState::PreOp
             );
@@ -122,7 +122,7 @@ where
             return Err(Error::InvalidState {
                 expected: SlaveState::PreOp,
                 actual: state,
-                configured_address: self.state.configured_address,
+                configured_address: self.configured_address,
             });
         }
 
@@ -130,7 +130,7 @@ where
 
         fmt::debug!(
             "Slave {:#06x} has CoE: {:?}",
-            self.state.configured_address,
+            self.configured_address,
             has_coe
         );
 
@@ -161,7 +161,7 @@ where
 
         fmt::debug!(
             "Slave {:#06x} PDI inputs: {:?} ({} bytes), outputs: {:?} ({} bytes)",
-            self.state.configured_address,
+            self.configured_address,
             self.state.config.io.input,
             self.state.config.io.input.len(),
             self.state.config.io.output,
@@ -195,7 +195,7 @@ where
 
         fmt::debug!(
             "Slave {:#06x} SM{}: {}",
-            self.state.configured_address,
+            self.configured_address,
             sync_manager_index,
             sm_config
         );
@@ -213,14 +213,14 @@ where
 
         fmt::trace!(
             "Slave {:#06x} Mailbox configuration: {:#?}",
-            self.state.configured_address,
+            self.configured_address,
             mailbox_config
         );
 
         if !mailbox_config.has_mailbox() {
             fmt::trace!(
                 "Slave {:#06x} has no valid mailbox configuration",
-                self.state.configured_address
+                self.configured_address
             );
 
             return Ok(());
@@ -454,7 +454,7 @@ where
 
         fmt::debug!(
             "Slave {:#06x} FMMU{}: {}",
-            self.state.configured_address,
+            self.configured_address,
             fmmu_index,
             fmmu_config
         );

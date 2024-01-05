@@ -385,7 +385,7 @@ where
         .map_err(|e| {
             fmt::error!(
                 "Mailbox IN ready error for slave {:#06x}: {}",
-                self.state.configured_address,
+                self.configured_address,
                 e
             );
 
@@ -418,7 +418,7 @@ where
         .map_err(|e| {
             fmt::error!(
                 "Response mailbox IN error for slave {:#06x}: {}",
-                self.state.configured_address,
+                self.configured_address,
                 e
             );
 
