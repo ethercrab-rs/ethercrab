@@ -3,15 +3,15 @@ use std::ops::Range;
 use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
 
 #[derive(Clone)]
-pub struct StructStuff {
+pub struct StructMeta {
     /// Width in bits on the wire.
     pub width_bits: usize,
 
-    pub fields: Vec<FieldStuff>,
+    pub fields: Vec<FieldMeta>,
 }
 
 #[derive(Clone)]
-pub struct FieldStuff {
+pub struct FieldMeta {
     pub vis: Visibility,
     pub name: Ident,
     pub ty: Type,
@@ -36,7 +36,7 @@ pub struct FieldStuff {
 pub fn parse_struct(
     s: DataStruct,
     DeriveInput { attrs, ident, .. }: DeriveInput,
-) -> syn::Result<StructStuff> {
+) -> syn::Result<StructMeta> {
     // --- Struct attributes
 
     all_valid_attrs(&attrs, &["bits", "bytes"])?;
@@ -61,7 +61,7 @@ pub fn parse_struct(
 
     let mut total_field_width = 0;
 
-    let mut field_stuff = Vec::new();
+    let mut field_meta = Vec::new();
 
     for field in fields {
         all_valid_attrs(
@@ -111,7 +111,7 @@ pub fn parse_struct(
             _ => None,
         };
 
-        let stuff = FieldStuff {
+        let meta = FieldMeta {
             name: field_name,
             vis: field.vis,
             ty: field.ty,
@@ -137,21 +137,21 @@ pub fn parse_struct(
         if !skip {
             let Some(field_width) = field_width else {
                 return Err(syn::Error::new(
-                    stuff.name.span(),
+                    meta.name.span(),
                     "Field must have a width attribute, e.g. #[wire(bits = 4)]",
                 ));
             };
 
-            if stuff.bytes.len() > 1 && (bit_offset > 0 || field_width % 8 > 0) {
+            if meta.bytes.len() > 1 && (bit_offset > 0 || field_width % 8 > 0) {
                 return Err(syn::Error::new(
-                    stuff.name.span(),
+                    meta.name.span(),
                     format!("Multibyte fields must be byte-aligned at start and end. Current bit position {}", total_field_width),
                 ));
             }
 
-            if stuff.bits.len() < 8 && stuff.bytes.len() > 1 {
+            if meta.bits.len() < 8 && meta.bytes.len() > 1 {
                 return Err(syn::Error::new(
-                    stuff.name.span(),
+                    meta.name.span(),
                     "Fields smaller than 8 bits may not cross byte boundaries",
                 ));
             }
@@ -163,7 +163,7 @@ pub fn parse_struct(
             total_field_width += skip;
         }
 
-        field_stuff.push(stuff);
+        field_meta.push(meta);
     }
 
     if total_field_width != width {
@@ -176,8 +176,8 @@ pub fn parse_struct(
         ));
     }
 
-    Ok(StructStuff {
+    Ok(StructMeta {
         width_bits: width,
-        fields: field_stuff,
+        fields: field_meta,
     })
 }

@@ -1,11 +1,11 @@
-use crate::parse_struct::StructStuff;
+use crate::parse_struct::StructMeta;
 use proc_macro2::{Ident, Span};
 use quote::quote;
 use std::str::FromStr;
 use syn::DeriveInput;
 
 pub fn generate_struct_write(
-    parsed: StructStuff,
+    parsed: StructMeta,
     input: &DeriveInput,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let name = input.ident.clone();
@@ -89,7 +89,7 @@ pub fn generate_struct_write(
 }
 
 pub fn generate_struct_read(
-    parsed: StructStuff,
+    parsed: StructMeta,
     input: &DeriveInput,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let name = input.ident.clone();

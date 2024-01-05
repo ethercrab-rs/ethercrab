@@ -1,10 +1,10 @@
-use crate::parse_enum::EnumStuff;
+use crate::parse_enum::EnumMeta;
 use quote::quote;
 use std::str::FromStr;
 use syn::DeriveInput;
 
 pub fn generate_enum_write(
-    parsed: EnumStuff,
+    parsed: EnumMeta,
     input: &DeriveInput,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let name = input.ident.clone();
@@ -78,7 +78,7 @@ pub fn generate_enum_write(
 }
 
 pub fn generate_enum_read(
-    parsed: EnumStuff,
+    parsed: EnumMeta,
     input: &DeriveInput,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let name = input.ident.clone();

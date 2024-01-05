@@ -3,21 +3,20 @@ use crate::help::{
 };
 use syn::{DataEnum, DeriveInput, Expr, ExprLit, Ident, Lit};
 
-// TODO: Rename all these `*Stuff` fields lol
 #[derive(Clone)]
-pub struct EnumStuff {
+pub struct EnumMeta {
     /// Width in bits on the wire.
     // pub width: usize,
     pub repr_type: Ident,
 
-    pub variants: Vec<VariantStuff>,
+    pub variants: Vec<VariantMeta>,
 
-    pub catch_all: Option<VariantStuff>,
-    pub default_variant: Option<VariantStuff>,
+    pub catch_all: Option<VariantMeta>,
+    pub default_variant: Option<VariantMeta>,
 }
 
 #[derive(Clone)]
-pub struct VariantStuff {
+pub struct VariantMeta {
     pub name: Ident,
     pub discriminant: u32,
     pub catch_all: bool,
@@ -28,7 +27,7 @@ pub struct VariantStuff {
 pub fn parse_enum(
     e: DataEnum,
     DeriveInput { attrs, ident, .. }: DeriveInput,
-) -> syn::Result<EnumStuff> {
+) -> syn::Result<EnumMeta> {
     // let width = bit_width_attr(&attrs)?;
 
     all_valid_attrs(&attrs, &["bits", "bytes"])?;
@@ -89,7 +88,7 @@ pub fn parse_enum(
             ));
         }
 
-        let record = VariantStuff {
+        let record = VariantMeta {
             name: ident.clone(),
             discriminant: variant_discriminant,
             catch_all: is_catch_all,
@@ -124,7 +123,7 @@ pub fn parse_enum(
         variants.push(record.clone());
 
         for alternative in alternatives {
-            let alt = VariantStuff {
+            let alt = VariantMeta {
                 name: ident.clone(),
                 discriminant: alternative,
                 alternatives: Vec::new(),
@@ -138,7 +137,7 @@ pub fn parse_enum(
         }
     }
 
-    Ok(EnumStuff {
+    Ok(EnumMeta {
         // width,
         repr_type: repr,
         variants,
