@@ -47,8 +47,7 @@ pub fn generate_struct(
                 buf[#byte_start] |= (res << #bit_start) & #mask;
             }
         }
-        // Assumption: multi-byte fields are byte-aligned. This should be validated during
-        // parse.
+        // Assumption: multi-byte fields are byte-aligned. This should be validated during parse.
         else {
             let byte_end = field.bytes.end;
 
