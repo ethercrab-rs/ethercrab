@@ -1,5 +1,5 @@
 /// Defined in ETG1000.6 Table 41 – SDO Abort Codes
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[repr(u32)]

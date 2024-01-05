@@ -5,7 +5,7 @@ use crate::{
 use core::fmt::{self, Debug};
 
 /// Slave identity information (vendor ID, product ID, etc).
-#[derive(Default, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Default, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 16)]
 pub struct SlaveIdentity {

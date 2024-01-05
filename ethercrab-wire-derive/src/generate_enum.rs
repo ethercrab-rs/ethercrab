@@ -46,42 +46,6 @@ pub fn generate_enum_write(
         }
     };
 
-    let into_primitive_impl = if parsed.catch_all.is_some() {
-        let match_arms_from = parsed.variants.clone().into_iter().map(|variant| {
-            let value =
-                proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
-            let variant_name = variant.name;
-
-            if variant.catch_all {
-                quote! {
-                    #name::#variant_name (value) => { value }
-                }
-            } else {
-                quote! {
-                    #name::#variant_name => { #value }
-                }
-            }
-        });
-
-        quote! {
-            impl From<#name> for #repr_type {
-                fn from(value: #name) -> Self {
-                    match value {
-                        #(#match_arms_from),*
-                    }
-                }
-            }
-        }
-    } else {
-        quote! {
-            impl From<#name> for #repr_type {
-                fn from(value: #name) -> Self {
-                    value as #repr_type
-                }
-            }
-        }
-    };
-
     let out = quote! {
         impl ::ethercrab_wire::EtherCrabWireWrite for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
@@ -107,7 +71,7 @@ pub fn generate_enum_write(
             }
         }
 
-        #into_primitive_impl
+
     };
 
     Ok(out)
@@ -168,7 +132,7 @@ pub fn generate_enum_read(
         }
     });
 
-    let from_primitive_impl = if let Some(catch_all_variant) = parsed.catch_all {
+    let from_primitive_impl = if let Some(catch_all_variant) = &parsed.catch_all {
         let catch_all = catch_all_variant.name.clone();
         let match_arms = match_arms.clone();
 
@@ -213,6 +177,42 @@ pub fn generate_enum_read(
         }
     };
 
+    let into_primitive_impl = if parsed.catch_all.is_some() {
+        let match_arms_from = parsed.variants.clone().into_iter().map(|variant| {
+            let value =
+                proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
+            let variant_name = variant.name;
+
+            if variant.catch_all {
+                quote! {
+                    #name::#variant_name (value) => { value }
+                }
+            } else {
+                quote! {
+                    #name::#variant_name => { #value }
+                }
+            }
+        });
+
+        quote! {
+            impl From<#name> for #repr_type {
+                fn from(value: #name) -> Self {
+                    match value {
+                        #(#match_arms_from),*
+                    }
+                }
+            }
+        }
+    } else {
+        quote! {
+            impl From<#name> for #repr_type {
+                fn from(value: #name) -> Self {
+                    value as #repr_type
+                }
+            }
+        }
+    };
+
     let out = quote! {
         impl ::ethercrab_wire::EtherCrabWireRead for #name {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
@@ -241,6 +241,7 @@ pub fn generate_enum_read(
         }
 
         #from_primitive_impl
+        #into_primitive_impl
     };
 
     Ok(out)

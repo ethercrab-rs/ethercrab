@@ -62,7 +62,7 @@ pub fn ether_crab_wire(input: TokenStream) -> TokenStream {
 
 /// Items that can only be read from the wire.
 #[proc_macro_derive(EtherCrabWireRead, attributes(wire))]
-pub fn ether_crab_wire_readonly(input: TokenStream) -> TokenStream {
+pub fn ether_crab_wire_read(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let res = match input.clone().data {
@@ -71,6 +71,32 @@ pub fn ether_crab_wire_readonly(input: TokenStream) -> TokenStream {
         }
         Data::Struct(s) => {
             parse_struct(s, input.clone()).and_then(|parsed| generate_struct_read(parsed, &input))
+        }
+        Data::Union(_) => Err(syn::Error::new(
+            input.ident.span(),
+            "Unions are not supported",
+        )),
+    };
+
+    let res = match res {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+
+    TokenStream::from(res)
+}
+
+/// Items that can only be written to the wire.
+#[proc_macro_derive(EtherCrabWireWrite, attributes(wire))]
+pub fn ether_crab_wire_write(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let res = match input.clone().data {
+        Data::Enum(e) => {
+            parse_enum(e, input.clone()).and_then(|parsed| generate_enum_write(parsed, &input))
+        }
+        Data::Struct(s) => {
+            parse_struct(s, input.clone()).and_then(|parsed| generate_struct_write(parsed, &input))
         }
         Data::Union(_) => Err(syn::Error::new(
             input.ident.span(),

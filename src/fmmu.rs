@@ -82,12 +82,7 @@ impl fmt::Display for Fmmu {
 mod tests {
     use super::*;
     use core::mem;
-    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWriteSized};
-
-    #[test]
-    fn default_is_zero() {
-        assert_eq!(Fmmu::default().pack(), [0u8; 16]);
-    }
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
     #[test]
     fn size() {
