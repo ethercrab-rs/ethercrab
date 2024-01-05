@@ -4,7 +4,7 @@ use crate::{
     base_data_types::PrimitiveDataType,
     sync_manager_channel::{self},
 };
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 pub const TX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
 pub const RX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1600..=0x17ff;
@@ -113,7 +113,7 @@ pub enum SiiAddressSize {
     U16 = 0x01,
 }
 
-#[derive(ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 6)]
 pub struct SiiRequest {
     #[wire(bytes = 2)]
@@ -146,7 +146,7 @@ impl SiiRequest {
 /// SII register address.
 ///
 /// Defined in ETG1000.6 Table 16 or ETG2010 Table 2
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
 #[repr(u16)]
 pub enum SiiCoding {
     /// PDI Control
@@ -222,7 +222,7 @@ pub enum SiiCoding {
 /// Defined in ETG1000.6 Table 19.
 ///
 /// Additional information also in ETG1000.6 Table 17.
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum CategoryType {
@@ -261,7 +261,7 @@ impl From<PdoType> for CategoryType {
 }
 
 /// ETG1000.6 Table 23
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FmmuUsage {
@@ -275,7 +275,7 @@ pub enum FmmuUsage {
 /// ETG1020 Table 10 "FMMU_EX"
 ///
 /// NOTE: Most fields defined are discarded from this struct as they are unused in Ethercrab.
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 1)]
 pub struct FmmuEx {
@@ -322,21 +322,10 @@ impl EtherCrabWireRead for PortStatuses {
     }
 }
 
-// TODO: PortStatuses should be readonly
-impl EtherCrabWireWrite for PortStatuses {
-    fn pack_to_slice_unchecked<'buf>(&self, _buf: &'buf mut [u8]) -> &'buf [u8] {
-        unreachable!("PortStatuses are readonly!")
-    }
-
-    fn packed_len(&self) -> usize {
-        Self::PACKED_LEN
-    }
-}
-
 /// SII "General" category.
 ///
 /// Defined in ETG1000.6 Table 21
-#[derive(Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[wire(bytes = 18)]
 pub struct SiiGeneral {
     #[wire(bytes = 1)]
@@ -376,7 +365,7 @@ pub struct SiiGeneral {
     // reserved2: [u8; 12]
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PortStatus {
@@ -417,17 +406,6 @@ impl EtherCrabWireRead for Flags {
     }
 }
 
-// TODO: Flags should be readonly
-impl EtherCrabWireWrite for Flags {
-    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        self.bits().pack_to_slice_unchecked(buf)
-    }
-
-    fn packed_len(&self) -> usize {
-        Self::PACKED_LEN
-    }
-}
-
 bitflags::bitflags! {
     #[derive(Debug, PartialEq, Eq)]
     pub struct CoeDetails: u8 {
@@ -463,18 +441,7 @@ impl EtherCrabWireRead for CoeDetails {
     }
 }
 
-// TODO: CoeDetails should be readonly
-impl EtherCrabWireWrite for CoeDetails {
-    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        self.bits().pack_to_slice_unchecked(buf)
-    }
-
-    fn packed_len(&self) -> usize {
-        Self::PACKED_LEN
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 8)]
 pub struct SyncManager {
@@ -533,17 +500,6 @@ impl EtherCrabWireRead for SyncManagerEnable {
     }
 }
 
-// TODO: SyncManagerEnable should be readonly
-impl EtherCrabWireWrite for SyncManagerEnable {
-    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        self.bits().pack_to_slice_unchecked(buf)
-    }
-
-    fn packed_len(&self) -> usize {
-        Self::PACKED_LEN
-    }
-}
-
 // Can't derive, so manual impl
 #[cfg(feature = "defmt")]
 impl defmt::Format for SyncManagerEnable {
@@ -552,7 +508,7 @@ impl defmt::Format for SyncManagerEnable {
     }
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum SyncManagerType {
@@ -570,7 +526,7 @@ pub enum SyncManagerType {
 }
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
-#[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 8)]
 pub struct Pdo {
@@ -618,7 +574,7 @@ impl Pdo {
     }
 }
 
-#[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 8)]
 pub struct PdoEntry {
@@ -704,17 +660,6 @@ impl EtherCrabWireRead for PdoFlags {
     }
 }
 
-// TODO: PdoFlags should be readonly
-impl EtherCrabWireWrite for PdoFlags {
-    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        self.bits().pack_to_slice_unchecked(buf)
-    }
-
-    fn packed_len(&self) -> usize {
-        2
-    }
-}
-
 // Can't derive, so manual impl
 #[cfg(feature = "defmt")]
 impl defmt::Format for PdoFlags {
@@ -761,17 +706,6 @@ impl EtherCrabWireRead for MailboxProtocols {
     }
 }
 
-// TODO: MailboxProtocols should be readonly
-impl EtherCrabWireWrite for MailboxProtocols {
-    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        self.bits().pack_to_slice_unchecked(buf)
-    }
-
-    fn packed_len(&self) -> usize {
-        2
-    }
-}
-
 // Can't derive, so manual impl
 #[cfg(feature = "defmt")]
 impl defmt::Format for MailboxProtocols {
@@ -780,7 +714,7 @@ impl defmt::Format for MailboxProtocols {
     }
 }
 
-#[derive(Copy, Clone, Default, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Copy, Clone, Default, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 10)]
 pub struct DefaultMailbox {
@@ -862,6 +796,38 @@ mod tests {
         let packed = SiiRequest::read(0x1234).pack();
 
         assert_eq!(packed, [0x00, 0x01, 0x34, 0x12, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn sii_control_unpack() {
+        let ctl = SiiControl {
+            access: SiiAccess::ReadWrite,
+            emulate_sii: false,
+            read_size: SiiReadSize::Octets8,
+            address_type: SiiAddressSize::U8,
+            read: false,
+            write: false,
+            reload: false,
+            checksum_error: false,
+            device_info_error: false,
+            command_error: false,
+            write_error: false,
+            busy: true,
+        };
+
+        assert_eq!(
+            SiiControl::unpack_from_slice(&[0b0100_0001, 0b1000_0000]),
+            Ok(ctl)
+        );
+    }
+
+    #[test]
+    fn sii_request_read_unpack() {
+        let packed = SiiRequest::read(0x1234);
+
+        let buf = [0x00, 0x01, 0x34, 0x12, 0x00, 0x00];
+
+        assert_eq!(SiiRequest::unpack_from_slice(&buf), Ok(packed));
     }
 
     #[test]

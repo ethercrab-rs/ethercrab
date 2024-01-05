@@ -20,7 +20,7 @@ mod error;
 mod impls;
 
 pub use error::WireError;
-pub use ethercrab_wire_derive::EtherCrabWireReadWrite;
+pub use ethercrab_wire_derive::{EtherCrabWireRead, EtherCrabWireReadWrite};
 
 /// A type to be received from the wire, according to EtherCAT spec rules (packed bits, little
 /// endian).

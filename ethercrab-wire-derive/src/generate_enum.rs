@@ -3,18 +3,18 @@ use quote::quote;
 use std::str::FromStr;
 use syn::DeriveInput;
 
-pub fn generate_enum(
+pub fn generate_enum_write(
     parsed: EnumStuff,
     input: &DeriveInput,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let name = input.ident.clone();
     let repr_type = parsed.repr_type;
-
-    let primitive_variants = parsed
-        .variants
-        .clone()
-        .into_iter()
-        .filter(|variant| !variant.catch_all);
+    let size_bytes = match repr_type.to_string().as_str() {
+        "u8" => 1usize,
+        "u16" => 2,
+        "u32" => 4,
+        invalid => unreachable!("Invalid repr {}", invalid),
+    };
 
     let pack = if parsed.catch_all.is_some() {
         let match_arms = parsed.variants.clone().into_iter().map(|variant| {
@@ -82,14 +82,55 @@ pub fn generate_enum(
         }
     };
 
-    let match_arms = primitive_variants.clone().map(|variant| {
-        let value = proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
-        let variant_name = variant.name;
+    let out = quote! {
+        impl ::ethercrab_wire::EtherCrabWireWrite for #name {
+            fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+                let mut buf = &mut buf[0..#size_bytes];
 
-        quote! {
-            #value => { Self::#variant_name }
+                #pack
+
+                buf
+            }
+
+            fn packed_len(&self) -> usize {
+                #size_bytes
+            }
         }
-    });
+
+        impl ::ethercrab_wire::EtherCrabWireWriteSized for #name {
+            fn pack(&self) -> Self::Buffer {
+                let mut buf = [0u8; #size_bytes];
+
+                <Self as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(self, &mut buf);
+
+                buf
+            }
+        }
+
+        #into_primitive_impl
+    };
+
+    Ok(out)
+}
+
+pub fn generate_enum_read(
+    parsed: EnumStuff,
+    input: &DeriveInput,
+) -> Result<proc_macro2::TokenStream, syn::Error> {
+    let name = input.ident.clone();
+    let repr_type = parsed.repr_type;
+    let size_bytes = match repr_type.to_string().as_str() {
+        "u8" => 1usize,
+        "u16" => 2,
+        "u32" => 4,
+        invalid => unreachable!("Invalid repr {}", invalid),
+    };
+
+    let primitive_variants = parsed
+        .variants
+        .clone()
+        .into_iter()
+        .filter(|variant| !variant.catch_all);
 
     let result_match_arms = primitive_variants.clone().map(|variant| {
         let value = proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
@@ -117,6 +158,15 @@ pub fn generate_enum(
             _other => { Err(::ethercrab_wire::WireError::InvalidValue) }
         }
     };
+
+    let match_arms = primitive_variants.clone().map(|variant| {
+        let value = proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
+        let variant_name = variant.name;
+
+        quote! {
+            #value => { Self::#variant_name }
+        }
+    });
 
     let from_primitive_impl = if let Some(catch_all_variant) = parsed.catch_all {
         let catch_all = catch_all_variant.name.clone();
@@ -163,41 +213,8 @@ pub fn generate_enum(
         }
     };
 
-    let size_bytes = match repr_type.to_string().as_str() {
-        "u8" => 1usize,
-        "u16" => 2,
-        "u32" => 4,
-        invalid => unreachable!("Invalid repr {}", invalid),
-    };
-
     let out = quote! {
-        impl ::ethercrab_wire::EtherCrabWireWrite for #name {
-            fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-                let mut buf = &mut buf[0..#size_bytes];
-
-                #pack
-
-                buf
-            }
-
-            fn packed_len(&self) -> usize {
-                #size_bytes
-            }
-        }
-
         impl ::ethercrab_wire::EtherCrabWireRead for #name {
-            // fn unpack_from_slice_rest<'buf>(buf: &'buf [u8]) -> Result<(Self, &'buf [u8]), ::ethercrab_wire::WireError> {
-            //     if buf.len() < #size_bytes {
-            //         return Err(::ethercrab_wire::WireError::Todo)
-            //     }
-
-            //     let (buf, rest) = buf.split_at(#size_bytes);
-
-            //     match #repr_type::from_le_bytes(buf.try_into().unwrap()) {
-            //         #(#result_match_arms),*
-            //         #fallthrough,
-            //     }.map(|out| (out, rest))
-            // }
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
                 let raw = buf.get(0..#size_bytes).map(|bytes| {
                     #repr_type::from_le_bytes(bytes.try_into().unwrap())
@@ -223,18 +240,7 @@ pub fn generate_enum(
             }
         }
 
-        impl ::ethercrab_wire::EtherCrabWireWriteSized for #name {
-            fn pack(&self) -> Self::Buffer {
-                let mut buf = [0u8; #size_bytes];
-
-                <Self as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(self, &mut buf);
-
-                buf
-            }
-        }
-
         #from_primitive_impl
-        #into_primitive_impl
     };
 
     Ok(out)

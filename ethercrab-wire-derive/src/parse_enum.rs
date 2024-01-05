@@ -4,6 +4,7 @@ use crate::help::{
 use syn::{DataEnum, DeriveInput, Expr, ExprLit, Ident, Lit};
 
 // TODO: Rename all these `*Stuff` fields lol
+#[derive(Clone)]
 pub struct EnumStuff {
     /// Width in bits on the wire.
     // pub width: usize,

@@ -74,16 +74,6 @@ pub fn generate_struct_write(
             }
         }
 
-        impl ::ethercrab_wire::EtherCrabWireSized for #name {
-            const PACKED_LEN: usize = #size_bytes;
-
-            type Buffer = [u8; #size_bytes];
-
-            fn buffer() -> Self::Buffer {
-                [0u8; #size_bytes]
-            }
-        }
-
         impl ::ethercrab_wire::EtherCrabWireWriteSized for #name {
             fn pack(&self) -> Self::Buffer {
                 let mut buf = [0u8; #size_bytes];
@@ -169,6 +159,16 @@ pub fn generate_struct_read(
                 Ok(Self {
                     #(#fields_unpack),*
                 })
+            }
+        }
+
+        impl ::ethercrab_wire::EtherCrabWireSized for #name {
+            const PACKED_LEN: usize = #size_bytes;
+
+            type Buffer = [u8; #size_bytes];
+
+            fn buffer() -> Self::Buffer {
+                [0u8; #size_bytes]
             }
         }
     };
