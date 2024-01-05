@@ -272,16 +272,6 @@ pub enum FmmuUsage {
     SyncManagerStatus = 0x03,
 }
 
-// impl FromEeprom for FmmuUsage {
-//     const STORAGE_SIZE: usize = 1;
-
-//     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-//         let (i, usage) = map_res(take(1usize), FmmuUsage::unpack_from_slice)(i)?;
-
-//         Ok((i, usage))
-//     }
-// }
-
 /// ETG1020 Table 10 "FMMU_EX"
 ///
 /// NOTE: Most fields defined are discarded from this struct as they are unused in Ethercrab.
@@ -293,20 +283,6 @@ pub struct FmmuEx {
     #[wire(bytes = 1)]
     pub sync_manager: u8,
 }
-
-// impl FromEeprom for FmmuEx {
-//     const STORAGE_SIZE: usize = 3;
-
-//     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-//         let (i, _becore) = le_u8(i)?;
-//         let (i, sync_manager) = le_u8(i)?;
-//         let (i, _after) = le_u8(i)?;
-
-//         all_consumed(i)?;
-
-//         Ok((i, Self { sync_manager }))
-//     }
-// }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -328,24 +304,6 @@ impl EtherCrabWireRead for PortStatuses {
         let Some(&[lo, hi]) = buf.get(0..Self::PACKED_LEN) else {
             return Err(ethercrab_wire::WireError::Todo);
         };
-
-        // dbg!(hi, lo);
-
-        // {
-        //     let raw = dbg!(u16::unpack_from_slice(buf))?;
-
-        //     let p1 = raw & 0x0f;
-        //     let p2 = (raw >> 4) & 0x0f;
-        //     let p3 = (raw >> 8) & 0x0f;
-        //     let p4 = (raw >> 12) & 0x0f;
-
-        //     dbg!([
-        //         PortStatus::from(p1 as u8),
-        //         PortStatus::from(p2 as u8),
-        //         PortStatus::from(p3 as u8),
-        //         PortStatus::from(p4 as u8),
-        //     ]);
-        // }
 
         let p1 = lo & 0x0f;
         let p2 = (lo >> 4) & 0x0f;
@@ -414,65 +372,6 @@ pub struct SiiGeneral {
     pub(crate) physical_memory_addr: u16,
     // reserved2: [u8; 12]
 }
-
-// impl FromEeprom for SiiGeneral {
-//     const STORAGE_SIZE: usize = 16;
-
-//     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-//         let (i, group_string_idx) = le_u8(i)?;
-//         let (i, image_string_idx) = le_u8(i)?;
-//         let (i, order_string_idx) = le_u8(i)?;
-//         let (i, name_string_idx) = le_u8(i)?;
-//         let (i, _reserved) = le_u8(i)?;
-//         let (i, coe_details) = map_opt(le_u8, CoeDetails::from_bits)(i)?;
-//         let (i, foe_enabled) = map(le_u8, |num| num != 0)(i)?;
-//         let (i, eoe_enabled) = map(le_u8, |num| num != 0)(i)?;
-
-//         // Reserved, ignored
-//         let (i, _soe_channels) = le_u8(i)?;
-//         let (i, _ds402_channels) = le_u8(i)?;
-//         let (i, _sysman_class) = le_u8(i)?;
-
-//         let (i, flags) = map_opt(le_u8, Flags::from_bits)(i)?;
-//         let (i, ebus_current) = le_i16(i)?;
-
-//         let (i, ports) = map(le_u16, |raw| {
-//             let p1 = raw & 0x0f;
-//             let p2 = (raw >> 4) & 0x0f;
-//             let p3 = (raw >> 8) & 0x0f;
-//             let p4 = (raw >> 12) & 0x0f;
-
-//             [
-//                 PortStatus::from(p1 as u8),
-//                 PortStatus::from(p2 as u8),
-//                 PortStatus::from(p3 as u8),
-//                 PortStatus::from(p4 as u8),
-//             ]
-//         })(i)?;
-
-//         // let (i, physical_memory_addr) = le_u16(i)?;
-//         let physical_memory_addr = 0;
-
-//         all_consumed(i)?;
-
-//         Ok((
-//             i,
-//             Self {
-//                 group_string_idx,
-//                 image_string_idx,
-//                 order_string_idx,
-//                 name_string_idx,
-//                 coe_details,
-//                 foe_enabled,
-//                 eoe_enabled,
-//                 flags,
-//                 ebus_current,
-//                 ports,
-//                 physical_memory_addr,
-//             },
-//         ))
-//     }
-// }
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -600,37 +499,6 @@ impl core::fmt::Debug for SyncManager {
     }
 }
 
-// impl FromEeprom for SyncManager {
-//     const STORAGE_SIZE: usize = 8;
-
-//     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-//         let (i, start_addr) = le_u16(i)?;
-//         let (i, length) = le_u16(i)?;
-//         let (i, control) = map_res(le_u8, |byte| {
-//             sync_manager_channel::Control::unpack_from_slice(&[byte])
-//         })(i)?;
-
-//         // Ignored
-//         let (i, _status) = le_u8(i)?;
-
-//         let (i, enable) = map_opt(le_u8, SyncManagerEnable::from_bits)(i)?;
-//         let (i, usage_type) = map(le_u8, SyncManagerType::from)(i)?;
-
-//         all_consumed(i)?;
-
-//         Ok((
-//             i,
-//             Self {
-//                 start_addr,
-//                 length,
-//                 control,
-//                 enable,
-//                 usage_type,
-//             },
-//         ))
-//     }
-// }
-
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub struct SyncManagerEnable: u8 {
@@ -747,34 +615,6 @@ impl Pdo {
     }
 }
 
-// impl Pdo {
-//     pub const STORAGE_SIZE: usize = 8;
-
-//     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-//         let (i, index) = le_u16(i)?;
-//         let (i, num_entries) = le_u8(i)?;
-//         let (i, sync_manager) = le_u8(i)?;
-//         let (i, dc_sync) = le_u8(i)?;
-//         let (i, name_string_idx) = le_u8(i)?;
-//         let (i, flags) = map_opt(le_u16, PdoFlags::from_bits)(i)?;
-
-//         all_consumed(i)?;
-
-//         Ok((
-//             i,
-//             Self {
-//                 index,
-//                 num_entries,
-//                 sync_manager,
-//                 dc_sync,
-//                 name_string_idx,
-//                 flags,
-//                 entries: heapless::Vec::new(),
-//             },
-//         ))
-//     }
-// }
-
 #[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 8)]
@@ -806,36 +646,6 @@ impl core::fmt::Debug for PdoEntry {
             .finish()
     }
 }
-
-// impl FromEeprom for PdoEntry {
-//     const STORAGE_SIZE: usize = 8;
-
-//     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-//         let (i, index) = le_u16(i)?;
-//         let (i, sub_index) = le_u8(i)?;
-//         let (i, name_string_idx) = le_u8(i)?;
-//         let (i, data_type) = map_res(
-//             take(PrimitiveDataType::PACKED_LEN),
-//             PrimitiveDataType::unpack_from_slice,
-//         )(i)?;
-//         let (i, data_length_bits) = le_u8(i)?;
-//         let (i, flags) = le_u16(i)?;
-
-//         all_consumed(i)?;
-
-//         Ok((
-//             i,
-//             Self {
-//                 index,
-//                 sub_index,
-//                 name_string_idx,
-//                 data_type,
-//                 data_length_bits,
-//                 flags,
-//             },
-//         ))
-//     }
-// }
 
 bitflags::bitflags! {
     /// Defined in ETG2010 Table 14 offset 0x0006.
@@ -995,31 +805,6 @@ impl DefaultMailbox {
     }
 }
 
-// impl FromEeprom for DefaultMailbox {
-//     const STORAGE_SIZE: usize = 10;
-
-//     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-//         let (i, receive_offset) = le_u16(i)?;
-//         let (i, receive_size) = le_u16(i)?;
-//         let (i, send_offset) = le_u16(i)?;
-//         let (i, send_size) = le_u16(i)?;
-//         let (i, supported_protocols) = map_opt(le_u16, MailboxProtocols::from_bits)(i)?;
-
-//         all_consumed(i)?;
-
-//         Ok((
-//             i,
-//             Self {
-//                 slave_receive_offset: receive_offset,
-//                 slave_receive_size: receive_size,
-//                 slave_send_offset: send_offset,
-//                 slave_send_size: send_size,
-//                 supported_protocols,
-//             },
-//         ))
-//     }
-// }
-
 impl core::fmt::Debug for DefaultMailbox {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("MailboxConfig")
@@ -1043,23 +828,6 @@ impl core::fmt::Debug for DefaultMailbox {
             .finish()
     }
 }
-
-// pub trait FromEeprom: Sized {
-//     const STORAGE_SIZE: usize;
-
-//     fn parse_fields(i: &[u8]) -> IResult<&[u8], Self>;
-
-//     fn parse(i: &[u8]) -> Result<Self, Error> {
-//         Self::parse_fields(i)
-//             .map(|(_rest, parsed)| parsed)
-//             .map_err(|_e| {
-//                 #[cfg(feature = "std")]
-//                 crate::fmt::error!("EEPROM object {:?} {}", core::any::type_name::<Self>(), _e);
-
-//                 Error::Eeprom(EepromError::Decode)
-//             })
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
