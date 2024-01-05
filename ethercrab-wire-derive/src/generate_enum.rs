@@ -1,6 +1,6 @@
 use crate::parse_enum::EnumStuff;
 use quote::quote;
-use std::str::FromStr;
+use std::{f32::consts::E, str::FromStr};
 use syn::DeriveInput;
 
 pub fn generate_enum(
@@ -16,65 +16,64 @@ pub fn generate_enum(
         .into_iter()
         .filter(|variant| !variant.catch_all);
 
-    let (pack, into_primitive_impl) = match &parsed.catch_all {
-        Some(_catch_all_variant) => {
-            let match_arms = parsed.variants.clone().into_iter().map(|variant| {
-                let value =
-                    proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
-                let variant_name = variant.name;
+    let pack = if parsed.catch_all.is_some() {
+        let match_arms = parsed.variants.clone().into_iter().map(|variant| {
+            let value =
+                proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
+            let variant_name = variant.name;
 
-                if variant.catch_all {
-                    quote! {
-                        #name::#variant_name (value) => { *value }
-                    }
-                } else {
-                    quote! {
-                        #name::#variant_name => { #value }
-                    }
-                }
-            });
-
-            let match_arms_from = parsed.variants.clone().into_iter().map(|variant| {
-                let value =
-                    proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
-                let variant_name = variant.name;
-
-                if variant.catch_all {
-                    quote! {
-                        #name::#variant_name (value) => { value }
-                    }
-                } else {
-                    quote! {
-                        #name::#variant_name => { #value }
-                    }
-                }
-            });
-
-            (
+            if variant.catch_all {
                 quote! {
-                    let value: #repr_type = match self {
-                        #(#match_arms),*
-                    };
-
-                    buf.copy_from_slice(&value.to_le_bytes());
-                },
+                    #name::#variant_name (value) => { *value }
+                }
+            } else {
                 quote! {
-                    impl From<#name> for #repr_type {
-                        fn from(value: #name) -> Self {
-                            match value {
-                                #(#match_arms_from),*
-                            }
-                        }
-                    }
-                },
-            )
+                    #name::#variant_name => { #value }
+                }
+            }
+        });
+
+        quote! {
+            let value: #repr_type = match self {
+                #(#match_arms),*
+            };
+
+            buf.copy_from_slice(&value.to_le_bytes());
         }
-        None => (
-            quote! {
-                buf.copy_from_slice(&(*self as #repr_type).to_le_bytes());
-            },
-            quote! {},
-        ),
+    } else {
+        quote! {
+            buf.copy_from_slice(&(*self as #repr_type).to_le_bytes());
+        }
+    };
+
+    let into_primitive_impl = if parsed.catch_all.is_some() {
+        let match_arms_from = parsed.variants.clone().into_iter().map(|variant| {
+            let value =
+                proc_macro2::TokenStream::from_str(&variant.discriminant.to_string()).unwrap();
+            let variant_name = variant.name;
+
+            if variant.catch_all {
+                quote! {
+                    #name::#variant_name (value) => { value }
+                }
+            } else {
+                quote! {
+                    #name::#variant_name => { #value }
+                }
+            }
+        });
+
+        quote! {
+            impl From<#name> for #repr_type {
+                fn from(value: #name) -> Self {
+                    match value {
+                        #(#match_arms_from),*
+                    }
+                }
+            }
+        }
+    } else {
+        quote! {}
     };
 
     let match_arms = primitive_variants.clone().map(|variant| {
