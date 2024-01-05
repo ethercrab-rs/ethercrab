@@ -17,6 +17,14 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#139](https://github.com/ethercrab-rs/ethercrab/pull/139) Remove `PduRead` and
   `PduData` traits. These are replaced with the `derive`-able `EtherCrabWireRead`
   `EtherCrabWireReadWrite` traits respectively.
+
+  Some pertinent trait bounds changes in the public API:
+
+  - `SlaveRef::sdo_read` from `PduData` to `EtherCrabWireWrite`
+  - `SlaveRef::sdo_write` from `PduData` to `EtherCrabWireReadSized`
+  - `SlaveRef::register_read` from `PduData` to `EtherCrabWireWrite`
+  - `SlaveRef::register_write` from `PduData` to `EtherCrabWireReadWrite`
+
 - **(breaking)** [#139](https://github.com/ethercrab-rs/ethercrab/pull/139) Remove the `context`
   field from `Error::WorkingCounter`. The output from EtherCrab's error logging should be used
   instead.
