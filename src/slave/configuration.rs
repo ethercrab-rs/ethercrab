@@ -108,7 +108,6 @@ where
     ) -> Result<PdiOffset, Error> {
         let sync_managers = self.eeprom().sync_managers().await?;
         let fmmu_usage = self.eeprom().fmmus().await?;
-        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
         let state = self.state().await?;
 
@@ -135,70 +134,30 @@ where
             has_coe
         );
 
+        let range = if has_coe {
+            self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
+                .await?
+        } else {
+            self.configure_pdos_eeprom(&sync_managers, &fmmu_usage, direction, &mut global_offset)
+                .await?
+        };
+
         match direction {
             PdoDirection::MasterRead => {
-                let pdos = self.eeprom().master_read_pdos().await?;
-
-                fmt::trace!("Slave inputs PDOs {:#?}", pdos);
-
-                let input_range = if has_coe {
-                    self.configure_pdos_coe(
-                        &sync_managers,
-                        &fmmu_usage,
-                        PdoDirection::MasterRead,
-                        &mut global_offset,
-                    )
-                    .await?
-                } else {
-                    self.configure_pdos_eeprom(
-                        &sync_managers,
-                        &pdos,
-                        &fmmu_sm_mappings,
-                        &fmmu_usage,
-                        PdoDirection::MasterRead,
-                        &mut global_offset,
-                    )
-                    .await?
-                };
-
                 self.state.config.io.input = PdiSegment {
-                    bytes: (input_range.bytes.start - group_start_address as usize)
-                        ..(input_range.bytes.end - group_start_address as usize),
-                    ..input_range
+                    bytes: (range.bytes.start - group_start_address as usize)
+                        ..(range.bytes.end - group_start_address as usize),
+                    ..range
                 };
             }
             PdoDirection::MasterWrite => {
-                let pdos = self.eeprom().master_write_pdos().await?;
-
-                fmt::trace!("Slave outputs PDOs {:#?}", pdos);
-
-                let output_range = if has_coe {
-                    self.configure_pdos_coe(
-                        &sync_managers,
-                        &fmmu_usage,
-                        PdoDirection::MasterWrite,
-                        &mut global_offset,
-                    )
-                    .await?
-                } else {
-                    self.configure_pdos_eeprom(
-                        &sync_managers,
-                        &pdos,
-                        &fmmu_sm_mappings,
-                        &fmmu_usage,
-                        PdoDirection::MasterWrite,
-                        &mut global_offset,
-                    )
-                    .await?
-                };
-
                 self.state.config.io.output = PdiSegment {
-                    bytes: (output_range.bytes.start - group_start_address as usize)
-                        ..(output_range.bytes.end - group_start_address as usize),
-                    ..output_range
+                    bytes: (range.bytes.start - group_start_address as usize)
+                        ..(range.bytes.end - group_start_address as usize),
+                    ..range
                 };
             }
-        }
+        };
 
         fmt::debug!(
             "Slave {:#06x} PDI inputs: {:?} ({} bytes), outputs: {:?} ({} bytes)",
@@ -515,12 +474,29 @@ where
     async fn configure_pdos_eeprom(
         &self,
         sync_managers: &[SyncManager],
-        pdos: &[Pdo],
-        fmmu_sm_mappings: &[FmmuEx],
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
+        let pdos = match direction {
+            PdoDirection::MasterRead => {
+                let read_pdos = self.eeprom().master_read_pdos().await?;
+
+                fmt::trace!("Slave inputs PDOs {:#?}", read_pdos);
+
+                read_pdos
+            }
+            PdoDirection::MasterWrite => {
+                let write_pdos = self.eeprom().master_write_pdos().await?;
+
+                fmt::trace!("Slave outputs PDOs {:#?}", write_pdos);
+
+                write_pdos
+            }
+        };
+
+        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
+
         let start_offset = *offset;
         let mut total_bit_len = 0;
 
@@ -586,6 +562,7 @@ where
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum PdoDirection {
     MasterRead,
     MasterWrite,
