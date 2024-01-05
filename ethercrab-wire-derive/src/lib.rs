@@ -20,7 +20,7 @@ mod parse_enum;
 mod parse_struct;
 
 use generate_enum::generate_enum;
-use generate_struct::generate_struct;
+use generate_struct::{generate_struct_read, generate_struct_write};
 use parse_enum::parse_enum;
 use parse_struct::parse_struct;
 use proc_macro::TokenStream;
@@ -35,9 +35,13 @@ pub fn ether_crab_wire(input: TokenStream) -> TokenStream {
         Data::Enum(e) => {
             parse_enum(e, input.clone()).and_then(|parsed| generate_enum(parsed, &input))
         }
-        Data::Struct(s) => {
-            parse_struct(s, input.clone()).and_then(|parsed| generate_struct(parsed, &input))
-        }
+        Data::Struct(s) => parse_struct(s, input.clone()).and_then(|parsed| {
+            let mut tokens = generate_struct_write(parsed.clone(), &input)?;
+
+            tokens.extend(generate_struct_read(parsed, &input)?);
+
+            Ok(tokens)
+        }),
         Data::Union(_) => Err(syn::Error::new(
             input.ident.span(),
             "Unions are not supported",

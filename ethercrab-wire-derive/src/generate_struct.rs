@@ -4,13 +4,12 @@ use quote::quote;
 use std::str::FromStr;
 use syn::DeriveInput;
 
-pub fn generate_struct(
+pub fn generate_struct_write(
     parsed: StructStuff,
     input: &DeriveInput,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let name = input.ident.clone();
-
-    let size_bytes = parsed.width.div_ceil(8);
+    let size_bytes = parsed.width_bits.div_ceil(8);
 
     let fields_pack = parsed.fields.clone().into_iter().map(|field| {
         let name = field.name;
@@ -56,6 +55,55 @@ pub fn generate_struct(
             }
         }
     });
+
+    let out = quote! {
+        impl ::ethercrab_wire::EtherCrabWireWrite for #name {
+            fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+                let buf = match buf.get_mut(0..#size_bytes) {
+                    Some(buf) => buf,
+                    None => unreachable!()
+                };
+
+                #(#fields_pack)*
+
+                buf
+            }
+
+            fn packed_len(&self) -> usize {
+                #size_bytes
+            }
+        }
+
+        impl ::ethercrab_wire::EtherCrabWireSized for #name {
+            const PACKED_LEN: usize = #size_bytes;
+
+            type Buffer = [u8; #size_bytes];
+
+            fn buffer() -> Self::Buffer {
+                [0u8; #size_bytes]
+            }
+        }
+
+        impl ::ethercrab_wire::EtherCrabWireWriteSized for #name {
+            fn pack(&self) -> Self::Buffer {
+                let mut buf = [0u8; #size_bytes];
+
+                <Self as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(self, &mut buf);
+
+                buf
+            }
+        }
+    };
+
+    Ok(out)
+}
+
+pub fn generate_struct_read(
+    parsed: StructStuff,
+    input: &DeriveInput,
+) -> Result<proc_macro2::TokenStream, syn::Error> {
+    let name = input.ident.clone();
+    let size_bytes = parsed.width_bits.div_ceil(8);
 
     let fields_unpack = parsed.fields.clone().into_iter().map(|field| {
         let ty = field.ty;
@@ -111,23 +159,6 @@ pub fn generate_struct(
     });
 
     let out = quote! {
-        impl ::ethercrab_wire::EtherCrabWireWrite for #name {
-            fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-                let buf = match buf.get_mut(0..#size_bytes) {
-                    Some(buf) => buf,
-                    None => unreachable!()
-                };
-
-                #(#fields_pack)*
-
-                buf
-            }
-
-            fn packed_len(&self) -> usize {
-                #size_bytes
-            }
-        }
-
         impl ::ethercrab_wire::EtherCrabWireRead for #name {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
                 let buf = buf.get(0..#size_bytes).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort {
@@ -138,26 +169,6 @@ pub fn generate_struct(
                 Ok(Self {
                     #(#fields_unpack),*
                 })
-            }
-        }
-
-        impl ::ethercrab_wire::EtherCrabWireSized for #name {
-            const PACKED_LEN: usize = #size_bytes;
-
-            type Buffer = [u8; #size_bytes];
-
-            fn buffer() -> Self::Buffer {
-                [0u8; #size_bytes]
-            }
-        }
-
-        impl ::ethercrab_wire::EtherCrabWireWriteSized for #name {
-            fn pack(&self) -> Self::Buffer {
-                let mut buf = [0u8; #size_bytes];
-
-                <Self as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(self, &mut buf);
-
-                buf
             }
         }
     };

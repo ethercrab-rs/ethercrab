@@ -2,9 +2,10 @@ use crate::help::{all_valid_attrs, attr_exists, bit_width_attr, usize_attr};
 use std::ops::Range;
 use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
 
+#[derive(Clone)]
 pub struct StructStuff {
     /// Width in bits on the wire.
-    pub width: usize,
+    pub width_bits: usize,
 
     pub fields: Vec<FieldStuff>,
 }
@@ -176,7 +177,7 @@ pub fn parse_struct(
     }
 
     Ok(StructStuff {
-        width,
+        width_bits: width,
         fields: field_stuff,
     })
 }
