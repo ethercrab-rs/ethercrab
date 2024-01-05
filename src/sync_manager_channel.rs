@@ -63,7 +63,7 @@ impl fmt::Display for SyncManagerChannel {
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[wire(bits = 8)]
+#[wire(bytes = 1)]
 pub struct Control {
     #[wire(bits = 2)]
     pub operation_mode: OperationMode,

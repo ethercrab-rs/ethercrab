@@ -2,8 +2,8 @@ use super::{Slave, SlaveRef};
 use crate::{
     coe::SubIndex,
     eeprom::types::{
-        CoeDetails, FmmuEx, FmmuUsage, MailboxProtocols, Pdo, SiiOwner, SyncManager,
-        SyncManagerEnable, SyncManagerType,
+        CoeDetails, FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable,
+        SyncManagerType,
     },
     error::{Error, Item},
     fmmu::Fmmu,

@@ -68,8 +68,13 @@ pub fn parse_struct(
         // Whether to ignore this field when sending AND receiving
         let skip = attr_exists(&field.attrs, "skip")?;
 
-        let pre_skip = usize_attr(&field.attrs, "pre_skip")?.filter(|_| !skip);
-        let post_skip = usize_attr(&field.attrs, "post_skip")?.filter(|_| !skip);
+        let pre_skip = usize_attr(&field.attrs, "pre_skip")?
+            .or(usize_attr(&field.attrs, "pre_skip_bytes")?.map(|bytes| bytes * 8))
+            .filter(|_| !skip);
+
+        let post_skip = usize_attr(&field.attrs, "post_skip")?
+            .or(usize_attr(&field.attrs, "post_skip_bytes")?.map(|bytes| bytes * 8))
+            .filter(|_| !skip);
 
         if let Some(skip) = pre_skip {
             total_field_width += skip;
