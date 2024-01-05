@@ -42,8 +42,14 @@ An EtherCAT master written in Rust.
   currently designed around EtherCrab's internal needs and may be rough and/or buggy. Use with
   caution, and expect breaking changes.
 
-- [#139](https://github.com/ethercrab-rs/ethercrab/pull/139) Along with `EtherCrabWireRead`
-  `EtherCrabWireReadWrite`, add the derive-able `EtherCrabWireWrite` trait.
+- [#139](https://github.com/ethercrab-rs/ethercrab/pull/139) Add the following traits for dealing
+  with packing/unpacking data:
+
+  - `EtherCrabWireRead`
+  - `EtherCrabWireReadSized`
+  - `EtherCrabWireReadWrite`
+  - `EtherCrabWireSized`
+  - `EtherCrabWireWrite`
 
 ## [0.3.5] - 2023-12-22
 

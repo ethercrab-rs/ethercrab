@@ -197,6 +197,10 @@ pub use client::Client;
 pub use client_config::{ClientConfig, RetryBehaviour};
 pub use coe::SubIndex;
 pub use command::{Command, Reads, WrappedRead, WrappedWrite, Writes};
+pub use ethercrab_wire::{
+    EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
+    EtherCrabWireWrite,
+};
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::RegisterAddress;
 pub use slave::{Slave, SlaveIdentity, SlavePdi, SlaveRef};
