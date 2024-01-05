@@ -1,5 +1,5 @@
 use crate::LEN_MASK;
-use ethercrab_wire::{EtherCrabWireRead, WireError};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, WireError};
 
 /// PDU fields placed after ADP and ADO, e.g. `LEN`, `C` and `NEXT` fields in ETG1000.4 5.4.1.2
 /// Table 14 – Auto increment physical read (APRD).
@@ -31,16 +31,18 @@ impl ethercrab_wire::EtherCrabWireWrite for PduFlags {
     }
 
     fn packed_len(&self) -> usize {
-        2
+        <Self as EtherCrabWireSized>::PACKED_LEN
     }
 }
 
 impl EtherCrabWireRead for PduFlags {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-        let buf = buf.get(0..2).ok_or(WireError::ReadBufferTooShort {
-            expected: 2,
-            got: buf.len(),
-        })?;
+        let buf = buf.get(0..<Self as EtherCrabWireSized>::PACKED_LEN).ok_or(
+            WireError::ReadBufferTooShort {
+                expected: <Self as EtherCrabWireSized>::PACKED_LEN,
+                got: buf.len(),
+            },
+        )?;
 
         let src = u16::from_le_bytes(buf.try_into().unwrap());
 
@@ -56,19 +58,19 @@ impl EtherCrabWireRead for PduFlags {
     }
 }
 
-impl ethercrab_wire::EtherCrabWireSized for PduFlags {
+impl EtherCrabWireSized for PduFlags {
     const PACKED_LEN: usize = 2;
 
-    type Buffer = [u8; 2];
+    type Buffer = [u8; Self::PACKED_LEN];
 
     fn buffer() -> Self::Buffer {
-        [0u8; 2]
+        [0u8; Self::PACKED_LEN]
     }
 }
 
 impl ethercrab_wire::EtherCrabWireWriteSized for PduFlags {
     fn pack(&self) -> Self::Buffer {
-        let mut buf = [0u8; 2];
+        let mut buf = [0u8; Self::PACKED_LEN];
 
         ethercrab_wire::EtherCrabWireWrite::pack_to_slice_unchecked(self, &mut buf);
 
