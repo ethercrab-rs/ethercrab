@@ -114,15 +114,14 @@ pub fn generate_struct(
     let out = quote! {
         impl ::ethercrab_wire::EtherCrabWireWrite for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-                // TODO: This results in smaller binaries on godbolt. Measure!
-                // let buf = match buf.get_mut(0..#size_bytes) {
-                //     Some(buf) => buf,
-                //     None => unreachable!()
-                // };
+                let buf = match buf.get_mut(0..#size_bytes) {
+                    Some(buf) => buf,
+                    None => unreachable!()
+                };
 
                 #(#fields_pack)*
 
-                &buf[0..#size_bytes]
+                buf
             }
 
             fn packed_len(&self) -> usize {
