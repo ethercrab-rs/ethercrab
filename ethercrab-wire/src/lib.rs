@@ -27,17 +27,6 @@ pub use ethercrab_wire_derive::{EtherCrabWireRead, EtherCrabWireReadWrite, Ether
 pub trait EtherCrabWireRead: Sized {
     /// Unpack this type from the beginning of the given buffer.
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError>;
-
-    // /// Unpack this type from the beginning of the given buffer.
-    // fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-    //     let (self_, _rest) = Self::unpack_from_slice_rest(buf)?;
-
-    //     Ok(self_)
-    // }
-
-    // /// Unpack this type from the beginning of the given buffer, also returning any remaining
-    // /// buffer.
-    // fn unpack_from_slice_rest<'buf>(buf: &'buf [u8]) -> Result<(Self, &'buf [u8]), WireError>;
 }
 
 /// A type to be sent/received on the wire, according to EtherCAT spec rules (packed bits, little

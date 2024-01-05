@@ -11,14 +11,39 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Bump MSRV to 1.75.0
 - [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Refactor sub device EEPROM reader to be
   more efficient when skipping sections of the device EEPROM map.
-- **(breaking)** (technically) [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Fix typo
+- **(breaking)** (technically) [#139](https://github.com/ethercrab-rs/ethercrab/pull/139) Fix typo
   in name `AlStatusCode::ApplicationControllerAvailableI` ->
   `AlStatusCode::ApplicationControllerAvailable`
-- **(breaking)** [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Remove `PduRead` and
-  `PduData` traits. These are replaced with the `derive`-able `EtherCrabWireWrite` trait.
-- **(breaking)** [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Remove the `context`
+- **(breaking)** [#139](https://github.com/ethercrab-rs/ethercrab/pull/139) Remove `PduRead` and
+  `PduData` traits. These are replaced with the `derive`-able `EtherCrabWireRead`
+  `EtherCrabWireReadWrite` traits respectively.
+- **(breaking)** [#139](https://github.com/ethercrab-rs/ethercrab/pull/139) Remove the `context`
   field from `Error::WorkingCounter`. The output from EtherCrab's error logging should be used
   instead.
+- **(breaking)** [#139](https://github.com/ethercrab-rs/ethercrab/pull/139) Introduce a new
+  `Command` API around `Reads`/`Writes`
+
+  - The new `wrap()` method must now be called on `Writes` and `Reads` to get access to the
+    `send*`/`receive*` methods.
+  - `Writes::send_slice` was removed. Instead, use `WrappedWrite::send` and pass the slice in as
+    before.
+  - The `send*`/`receive*` methods no longer return a tuple where the second item is the response
+    working counter.
+
+    The expected working counter value can be configured with the `ignore_wkc` and `with_wkc`
+    methods on `WrappedRead` and `WrappedWrite`.
+
+### Added
+
+- [#139](https://github.com/ethercrab-rs/ethercrab/pull/139) Added the `ethercat-wire` and
+  `ethercat-wire-derive` crates.
+
+  These crates are **EXPERIMENTAL**. They may be improved for public use in the future but are
+  currently designed around EtherCrab's internal needs and may be rough and/or buggy. Use with
+  caution, and expect breaking changes.
+
+- [#139](https://github.com/ethercrab-rs/ethercrab/pull/139) Along with `EtherCrabWireRead`
+  `EtherCrabWireReadWrite`, add the derive-able `EtherCrabWireWrite` trait.
 
 ## [0.3.5] - 2023-12-22
 

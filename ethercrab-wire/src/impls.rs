@@ -67,20 +67,6 @@ macro_rules! impl_primitive_wire_field {
 
                 // Ok(<$ty>::from_le_bytes(arr))
             }
-
-            // fn unpack_from_slice_rest<'buf>(
-            //     buf: &'buf [u8],
-            // ) -> Result<(Self, &'buf [u8]), WireError> {
-            //     if buf.len() < $size {
-            //         return Err(WireError::Todo);
-            //     }
-
-            //     let (raw, rest) = buf.split_at($size);
-
-            //     raw.try_into()
-            //         .map_err(|_| WireError::Todo)
-            //         .map(|n| (Self::from_le_bytes(n), rest))
-            // }
         }
 
         impl EtherCrabWireSized for $ty {
@@ -133,16 +119,6 @@ impl EtherCrabWireRead for bool {
 
         Ok(buf[0] == 1)
     }
-
-    // fn unpack_from_slice_rest<'buf>(buf: &'buf [u8]) -> Result<(Self, &'buf [u8]), WireError> {
-    //     if buf.is_empty() {
-    //         return Err(WireError::Todo);
-    //     }
-
-    //     let (buf, rest) = buf.split_at(1);
-
-    //     Ok((buf[0] == 1, rest))
-    // }
 }
 
 impl EtherCrabWireSized for bool {
@@ -175,10 +151,6 @@ impl EtherCrabWireRead for () {
     fn unpack_from_slice(_buf: &[u8]) -> Result<Self, WireError> {
         Ok(())
     }
-
-    // fn unpack_from_slice_rest<'buf>(buf: &'buf [u8]) -> Result<(Self, &'buf [u8]), WireError> {
-    //     Ok(((), buf))
-    // }
 }
 
 impl EtherCrabWireSized for () {
