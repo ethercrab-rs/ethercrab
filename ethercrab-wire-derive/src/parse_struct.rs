@@ -1,4 +1,4 @@
-use crate::help::{bit_width_attr, usize_attr};
+use crate::help::{attr_exists, bit_width_attr, usize_attr};
 use std::ops::Range;
 use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
 
@@ -28,6 +28,8 @@ pub struct FieldStuff {
 
     pub pre_skip: Option<usize>,
     pub post_skip: Option<usize>,
+
+    pub skip: bool,
 }
 
 pub fn parse_struct(
@@ -50,7 +52,7 @@ pub fn parse_struct(
     let Fields::Named(FieldsNamed { named: fields, .. }) = s.fields else {
         return Err(syn::Error::new(
             ident.span(),
-            "Only structs with named fields are supported.",
+            "Only structs with named fields can be derived.",
         ));
     };
 
@@ -63,54 +65,32 @@ pub fn parse_struct(
         let field_name = field.ident.unwrap();
         let field_width = bit_width_attr(&field.attrs)?;
 
-        let pre_skip = usize_attr(&field.attrs, "pre_skip")?;
-        let post_skip = usize_attr(&field.attrs, "post_skip")?;
+        // Whether to ignore this field when sending AND receiving
+        let skip = attr_exists(&field.attrs, "skip")?;
+
+        let pre_skip = usize_attr(&field.attrs, "pre_skip")?.filter(|_| !skip);
+        let post_skip = usize_attr(&field.attrs, "post_skip")?.filter(|_| !skip);
 
         if let Some(skip) = pre_skip {
             total_field_width += skip;
         }
 
-        let Some(field_width) = field_width else {
-            return Err(syn::Error::new(
-                field_name.span(),
-                "Field must have a width attribute, e.g. #[wire(bits = 4)]",
-            ));
-        };
-
-        // TODO: Check bit lengths actually fit in the given type
-
         let bit_start = total_field_width;
-        let bit_end = total_field_width + field_width;
+        let bit_end = field_width
+            .map(|w| total_field_width + w)
+            .unwrap_or(total_field_width);
         let byte_start = bit_start / 8;
         let byte_end = bit_end.div_ceil(8);
         let bytes = byte_start..byte_end;
         let bit_offset = bit_start % 8;
         let bits = bit_start..bit_end;
 
-        if bytes.len() > 1 && (bit_offset > 0 || field_width % 8 > 0) {
-            return Err(syn::Error::new(
-                field_name.span(),
-                "Multibyte fields must be byte-aligned at start and end",
-            ));
-        }
-
-        if bits.len() < 8 && bytes.len() > 1 {
-            return Err(syn::Error::new(
-                field_name.span(),
-                "Fields smaller than 8 bits may not cross byte boundaries",
-            ));
-        }
-
         let ty_name = match field.ty.clone() {
             Type::Path(path) => path.path.get_ident().cloned(),
             _ => None,
         };
 
-        if let Some(skip) = post_skip {
-            total_field_width += skip;
-        }
-
-        field_stuff.push(FieldStuff {
+        let stuff = FieldStuff {
             name: field_name,
             vis: field.vis,
             ty: field.ty,
@@ -128,9 +108,41 @@ pub fn parse_struct(
 
             pre_skip,
             post_skip,
-        });
 
-        total_field_width += field_width;
+            skip,
+        };
+
+        // Validation if we're not skipping this field
+        if !skip {
+            let Some(field_width) = field_width else {
+                return Err(syn::Error::new(
+                    stuff.name.span(),
+                    "Field must have a width attribute, e.g. #[wire(bits = 4)]",
+                ));
+            };
+
+            if stuff.bytes.len() > 1 && (bit_offset > 0 || field_width % 8 > 0) {
+                return Err(syn::Error::new(
+                    stuff.name.span(),
+                    format!("Multibyte fields must be byte-aligned at start and end. Current bit position {}", total_field_width),
+                ));
+            }
+
+            if stuff.bits.len() < 8 && stuff.bytes.len() > 1 {
+                return Err(syn::Error::new(
+                    stuff.name.span(),
+                    "Fields smaller than 8 bits may not cross byte boundaries",
+                ));
+            }
+
+            total_field_width += field_width;
+        }
+
+        if let Some(skip) = post_skip {
+            total_field_width += skip;
+        }
+
+        field_stuff.push(stuff);
     }
 
     if total_field_width != width {

@@ -38,6 +38,30 @@ fn sync_manager_channel() {
 }
 
 #[test]
+fn pdo() {
+    #[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[wire(bytes = 6)]
+    pub struct Pdo {
+        #[wire(bytes = 2)]
+        pub(crate) index: u16,
+        #[wire(bytes = 1)]
+        pub(crate) num_entries: u8,
+        #[wire(bytes = 1)]
+        pub(crate) sync_manager: u8,
+        #[wire(bytes = 1)]
+        pub(crate) dc_sync: u8,
+        /// Index into EEPROM Strings section for PDO name.
+        #[wire(bytes = 1)]
+        pub(crate) name_string_idx: u8,
+
+        // NOTE: This field is skipped during parsing from the wire and is populated later.
+        #[wire(skip)]
+        pub(crate) entries: heapless::Vec<u8, 16>,
+    }
+}
+
+#[test]
 fn slave_state() {
     #[derive(Debug, Copy, Clone, PartialEq, Eq, EtherCrabWireReadWrite)]
     #[repr(u8)]

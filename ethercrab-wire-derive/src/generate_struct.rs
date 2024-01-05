@@ -14,8 +14,13 @@ pub fn generate_struct(
 
     let fields_pack = parsed.fields.clone().into_iter().map(|field| {
         let name = field.name;
+        let field_ty = field.ty;
         let byte_start = field.bytes.start;
         let bit_start = field.bit_offset;
+
+        if field.skip {
+            return quote! {};
+        }
 
         let ty_name = field
             .ty_name
@@ -37,7 +42,7 @@ pub fn generate_struct(
 
             quote! {
                 let mut field_buf = [0u8; 1];
-                let res = self.#name.pack_to_slice_unchecked(&mut field_buf)[0];
+                let res = <#field_ty as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(&self.#name, &mut field_buf)[0];
 
                 buf[#byte_start] |= (res << #bit_start) & #mask;
             }
@@ -48,7 +53,7 @@ pub fn generate_struct(
             let byte_end = field.bytes.end;
 
             quote! {
-                self.#name.pack_to_slice_unchecked(&mut buf[#byte_start..#byte_end]);
+                <#field_ty as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(&self.#name, &mut buf[#byte_start..#byte_end]);
             }
         }
     });
@@ -61,6 +66,12 @@ pub fn generate_struct(
         let ty_name = field
             .ty_name
             .unwrap_or_else(|| Ident::new("UnknownTypeStopLookingAtMe", Span::call_site()));
+
+        if field.skip {
+            return quote! {
+                #name: Default::default()
+            }
+        }
 
         if field.bits.len() <= 8 {
             let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
@@ -103,6 +114,12 @@ pub fn generate_struct(
     let out = quote! {
         impl ::ethercrab_wire::EtherCrabWireWrite for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+                // TODO: This results in smaller binaries on godbolt. Measure!
+                // let buf = match buf.get_mut(0..#size_bytes) {
+                //     Some(buf) => buf,
+                //     None => unreachable!()
+                // };
+
                 #(#fields_pack)*
 
                 &buf[0..#size_bytes]
@@ -115,9 +132,7 @@ pub fn generate_struct(
 
         impl ::ethercrab_wire::EtherCrabWireRead for #name {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
-                if buf.len() < #size_bytes {
-                    return Err(::ethercrab_wire::WireError::Todo)
-                }
+                let buf = buf.get(0..#size_bytes).ok_or(::ethercrab_wire::WireError::Todo)?;
 
                 Ok(Self {
                     #(#fields_unpack),*

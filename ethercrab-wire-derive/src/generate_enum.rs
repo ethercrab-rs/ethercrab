@@ -1,6 +1,6 @@
 use crate::parse_enum::EnumStuff;
 use quote::quote;
-use std::{f32::consts::E, str::FromStr};
+use std::str::FromStr;
 use syn::DeriveInput;
 
 pub fn generate_enum(
