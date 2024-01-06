@@ -1,7 +1,7 @@
 use super::FrameBox;
 use crate::{
     error::{Error, PduError},
-    generate::{le_u16, le_u8, skip, write_packed, write_slice},
+    generate::{skip, write_packed},
     pdu_loop::{
         frame_element::{FrameElement, FrameState},
         frame_header::FrameHeader,
@@ -83,8 +83,8 @@ impl<'sto> SendableFrame<'sto> {
         unsafe { self.inner.frame() }.flags.len() + pdu_overhead
     }
 
-    /// The length in bytes required to hold the full Ethernet II frame, containing an EtherCAT
-    /// payload.
+    /// The length in bytes required to hold the full Ethernet II frame which includes an EtherCAT
+    /// payload (header and data).
     // Clippy: We don't care if the frame is empty or not
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
@@ -92,6 +92,8 @@ impl<'sto> SendableFrame<'sto> {
     }
 
     /// The length in bytes required to hold a full EtherCAT frame.
+    ///
+    /// This does NOT include the EtherNET header length.
     fn ethernet_payload_len(&self) -> usize {
         usize::from(self.ethercat_payload_len()) + mem::size_of::<FrameHeader>()
     }
@@ -101,16 +103,16 @@ impl<'sto> SendableFrame<'sto> {
 
         let header = FrameHeader::pdu(self.ethercat_payload_len());
 
-        let buf = le_u16(header.0, buf);
+        let buf = write_packed(header.0, buf);
 
-        let buf = le_u8(frame.command.code(), buf);
-        let buf = le_u8(frame.index, buf);
+        let buf = write_packed(frame.command.code(), buf);
+        let buf = write_packed(frame.index, buf);
 
         // Write address and register data
-        let buf = write_slice(&frame.command.address(), buf);
+        let buf = write_packed(&frame.command, buf);
 
         let buf = write_packed(frame.flags, buf);
-        let buf = le_u16(frame.irq, buf);
+        let buf = write_packed(frame.irq, buf);
 
         // Probably a read; the data area of the frame to send could be any old garbage, so we'll
         // skip over it.
@@ -119,11 +121,11 @@ impl<'sto> SendableFrame<'sto> {
         }
         // Probably a write
         else {
-            write_slice(data, buf)
+            write_packed(data, buf)
         };
 
         // Working counter is always zero when sending
-        let buf = le_u16(0u16, buf);
+        let buf = write_packed(0u16, buf);
 
         buf
     }

@@ -3,7 +3,8 @@
 mod reads;
 mod writes;
 
-use crate::{fmt, generate::le_u16};
+use crate::fmt;
+use ethercrab_wire::EtherCrabWireWrite;
 use nom::{combinator::map, sequence::pair, IResult};
 
 pub use reads::{Reads, WrappedRead};
@@ -93,6 +94,37 @@ pub enum Command {
 
     /// Write commands.
     Write(Writes),
+}
+
+impl EtherCrabWireWrite for Command {
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+        match *self {
+            Command::Nop => &buf[0..0],
+
+            Command::Read(Reads::Aprd { address, register })
+            | Command::Read(Reads::Brd { address, register })
+            | Command::Read(Reads::Fprd { address, register })
+            | Command::Read(Reads::Frmw { address, register })
+            | Command::Write(Writes::Apwr { address, register })
+            | Command::Write(Writes::Fpwr { address, register })
+            | Command::Write(Writes::Bwr { address, register }) => {
+                address.pack_to_slice_unchecked(&mut buf[0..2]);
+                register.pack_to_slice_unchecked(&mut buf[2..4]);
+
+                &buf[0..4]
+            }
+            Command::Read(Reads::Lrd { address })
+            | Command::Write(Writes::Lwr { address })
+            | Command::Write(Writes::Lrw { address }) => {
+                address.pack_to_slice_unchecked(&mut buf[0..4])
+            }
+        }
+    }
+
+    fn packed_len(&self) -> usize {
+        // Either 2 u16 or 1 u32 = 4 bytes
+        4
+    }
 }
 
 impl core::fmt::Display for Command {
@@ -221,33 +253,6 @@ impl Command {
                 Writes::Lwr { .. } => LWR,
                 Writes::Lrw { .. } => LRW,
             },
-        }
-    }
-
-    /// Get the address value for the command.
-    pub(crate) fn address(&self) -> [u8; 4] {
-        let mut arr = [0x00u8; 4];
-
-        let buf = arr.as_mut_slice();
-
-        match *self {
-            Command::Nop => arr,
-
-            Command::Read(Reads::Aprd { address, register })
-            | Command::Read(Reads::Brd { address, register })
-            | Command::Read(Reads::Fprd { address, register })
-            | Command::Read(Reads::Frmw { address, register })
-            | Command::Write(Writes::Apwr { address, register })
-            | Command::Write(Writes::Fpwr { address, register })
-            | Command::Write(Writes::Bwr { address, register }) => {
-                let buf = le_u16(address, buf);
-                let _buf = le_u16(register, buf);
-
-                arr
-            }
-            Command::Read(Reads::Lrd { address })
-            | Command::Write(Writes::Lwr { address })
-            | Command::Write(Writes::Lrw { address }) => address.to_le_bytes(),
         }
     }
 
