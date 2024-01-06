@@ -136,17 +136,25 @@ impl<'client> WrappedWrite<'client> {
         value: impl EtherCrabWireWrite,
         len_override: Option<u16>,
     ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
-        self.client
-            .pdu_loop
-            .pdu_send(
-                self.command.into(),
-                value,
-                len_override,
-                self.client.timeouts.pdu,
-                self.client.config.retry_behaviour,
-            )
-            .await
-            .map(|res| res.into_data())
+        for _ in 0..self.client.config.retry_behaviour.loop_counts() {
+            let (frame, frame_idx) =
+                self.client
+                    .pdu_loop
+                    .pdu_send(self.command.into(), &value, len_override)?;
+
+            match crate::timer_factory::timeout(self.client.timeouts.pdu, frame).await {
+                Ok(result) => return Ok(result.into_data()),
+                Err(Error::Timeout) => {
+                    fmt::error!("Frame {} timed out", frame_idx);
+
+                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
+                    // state to `None`, ready for reuse.
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(Error::Timeout)
     }
 
     /// Send a slice, reading `read_back_len` bytes into the beginning of the provided slice.

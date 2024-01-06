@@ -7,13 +7,10 @@ mod pdu_tx;
 pub mod storage;
 
 use crate::{
-    client_config::RetryBehaviour,
     command::Command,
     error::{Error, PduError},
-    fmt,
     pdu_loop::storage::PduStorageRef,
 };
-use core::time::Duration;
 
 use ethercrab_wire::EtherCrabWireWrite;
 pub use frame_element::received_frame::RxFrameDataBuf;
@@ -131,52 +128,43 @@ impl<'sto> PduLoop<'sto> {
     /// case, `data` will be a slice of length `4` containing the outputs to send, and
     /// `len_override` will be `Some(10)`. This makes the latter 6 bytes available for writing the
     /// PDU response into.
-    pub(crate) async fn pdu_send(
+    pub(crate) fn pdu_send(
         &self,
         command: Command,
         data: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-        timeout: Duration,
-        retry_behaviour: RetryBehaviour,
-    ) -> Result<ReceivedFrame<'_>, Error> {
-        for _ in 0..retry_behaviour.loop_counts() {
-            // Length of data to populate in the send buffer
-            let send_data_len = data.packed_len() as u16;
+    ) -> Result<
+        (
+            impl core::future::Future<Output = Result<ReceivedFrame<'_>, Error>>,
+            u8,
+        ),
+        Error,
+    > {
+        // Length of data to populate in the send buffer
+        let send_data_len = data.packed_len() as u16;
 
-            // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
-            // inputs in the remaining buffer.
-            let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
+        // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
+        // inputs in the remaining buffer.
+        let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
 
-            let mut frame = self.storage.alloc_frame(command, total_payload_len)?;
+        let mut frame = self.storage.alloc_frame(command, total_payload_len)?;
 
-            let frame_idx = frame.index();
+        let frame_idx = frame.index();
 
-            let payload = frame
-                .buf_mut()
-                .get_mut(0..usize::from(send_data_len))
-                .ok_or(Error::Pdu(PduError::TooLong))?;
+        let payload = frame
+            .buf_mut()
+            .get_mut(0..usize::from(send_data_len))
+            .ok_or(Error::Pdu(PduError::TooLong))?;
 
-            // SAFETY: We ensure the payload length is at least the length of the packed input data
-            // above, as well as the data to be written is not longer than the payload buffer.
-            data.pack_to_slice_unchecked(payload);
+        // SAFETY: We ensure the payload length is at least the length of the packed input data
+        // above, as well as the data to be written is not longer than the payload buffer.
+        data.pack_to_slice_unchecked(payload);
 
-            let frame = frame.mark_sendable();
+        let frame = frame.mark_sendable();
 
-            self.wake_sender();
+        self.wake_sender();
 
-            match crate::timer_factory::timeout(timeout, frame).await {
-                Ok(result) => return Ok(result),
-                Err(Error::Timeout) => {
-                    fmt::error!("Frame {} timed out", frame_idx);
-
-                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
-                    // state to `None`, ready for reuse.
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        Err(Error::Timeout)
+        Ok((frame, frame_idx))
     }
 }
 
@@ -212,9 +200,9 @@ mod tests {
                 .into(),
                 (),
                 Some(16),
-                Duration::from_secs(0),
-                RetryBehaviour::None,
             )
+            .unwrap()
+            .0
             .await;
 
         // Just make sure the read timed out
@@ -296,13 +284,12 @@ mod tests {
             let mut written_packet = Vec::new();
             written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
-            let mut frame_fut = pin!(pdu_loop.pdu_send(
-                Command::fpwr(0x5678, 0x1234).into(),
-                &data,
-                None,
-                Duration::from_secs(1),
-                RetryBehaviour::None
-            ));
+            let mut frame_fut = pin!(
+                pdu_loop
+                    .pdu_send(Command::fpwr(0x5678, 0x1234).into(), &data, None,)
+                    .unwrap()
+                    .0
+            );
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -587,13 +574,9 @@ mod tests {
             fmt::info!("Send PDU {i}");
 
             let result = pdu_loop
-                .pdu_send(
-                    Command::fpwr(0x1000, 0x980).into(),
-                    data,
-                    None,
-                    Duration::from_secs(1),
-                    RetryBehaviour::None,
-                )
+                .pdu_send(Command::fpwr(0x1000, 0x980).into(), data, None)
+                .unwrap()
+                .0
                 .await
                 .unwrap()
                 .wkc(0)

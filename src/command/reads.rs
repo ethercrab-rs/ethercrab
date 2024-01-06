@@ -1,5 +1,6 @@
 use crate::{
     error::Error,
+    fmt,
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     Client,
 };
@@ -90,17 +91,25 @@ impl<'client> WrappedRead<'client> {
 
     // Some manual monomorphisation
     async fn common(&self, len: u16) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
-        self.client
-            .pdu_loop
-            .pdu_send(
-                self.command.into(),
-                (),
-                Some(len),
-                self.client.timeouts.pdu,
-                self.client.config.retry_behaviour,
-            )
-            .await
-            .map(|res| res.into_data())
+        for _ in 0..self.client.config.retry_behaviour.loop_counts() {
+            let (frame, frame_idx) =
+                self.client
+                    .pdu_loop
+                    .pdu_send(self.command.into(), (), Some(len))?;
+
+            match crate::timer_factory::timeout(self.client.timeouts.pdu, frame).await {
+                Ok(result) => return Ok(result.into_data()),
+                Err(Error::Timeout) => {
+                    fmt::error!("Frame {} timed out", frame_idx);
+
+                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
+                    // state to `None`, ready for reuse.
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(Error::Timeout)
     }
 
     /// Receive data and decode into a `T`.
