@@ -25,7 +25,6 @@ use crate::{
     register::SupportFlags,
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
-    sync_manager_channel::SyncManagerChannel,
     Timeouts, WrappedRead, WrappedWrite,
 };
 use core::{
@@ -342,18 +341,20 @@ where
                 e
             })?;
 
-        let mailbox_read_sm = u16::from(RegisterAddress::sync_manager(read_mailbox.sync_manager));
-        let mailbox_write_sm = u16::from(RegisterAddress::sync_manager(write_mailbox.sync_manager));
+        let mailbox_read_sm_status =
+            RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
+        let mailbox_write_sm_status =
+            RegisterAddress::sync_manager_status(write_mailbox.sync_manager);
 
         // Ensure slave OUT (master IN) mailbox is empty
         {
-            let sm = self
-                .read(mailbox_read_sm)
-                .receive::<SyncManagerChannel>()
+            let sm_status = self
+                .read(mailbox_read_sm_status)
+                .receive::<crate::sync_manager_channel::Status>()
                 .await?;
 
             // If flag is set, read entire mailbox to clear it
-            if sm.status.mailbox_full {
+            if sm_status.mailbox_full {
                 fmt::debug!(
                     "Slave {:#06x} OUT mailbox not empty. Clearing.",
                     self.configured_address()
@@ -369,12 +370,12 @@ where
         // Wait for slave IN mailbox to be available to receive data from master
         crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
             loop {
-                let sm = self
-                    .read(mailbox_write_sm)
-                    .receive::<SyncManagerChannel>()
+                let sm_status = self
+                    .read(mailbox_write_sm_status)
+                    .receive::<crate::sync_manager_channel::Status>()
                     .await?;
 
-                if !sm.status.mailbox_full {
+                if !sm_status.mailbox_full {
                     break Ok(());
                 }
 
@@ -397,17 +398,17 @@ where
 
     /// Wait for a mailbox response
     async fn coe_response(&self, read_mailbox: &Mailbox) -> Result<RxFrameDataBuf<'_>, Error> {
-        let mailbox_read_sm = u16::from(RegisterAddress::sync_manager(read_mailbox.sync_manager));
+        let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
 
         // Wait for slave OUT mailbox to be ready
         crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
             loop {
-                let sm = self
+                let sm_status = self
                     .read(mailbox_read_sm)
-                    .receive::<SyncManagerChannel>()
+                    .receive::<crate::sync_manager_channel::Status>()
                     .await?;
 
-                if sm.status.mailbox_full {
+                if sm_status.mailbox_full {
                     break Ok(());
                 }
 

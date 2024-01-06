@@ -240,6 +240,13 @@ impl RegisterAddress {
             index => unreachable!("Bad SM index {}", index),
         }
     }
+
+    /// Sync manager status register by SM index.
+    ///
+    /// The status register is the 5th byte after the start of the SM.
+    pub fn sync_manager_status(index: u8) -> u16 {
+        u16::from(Self::sync_manager(index)) + 5
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
