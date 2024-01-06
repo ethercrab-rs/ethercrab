@@ -10,7 +10,6 @@ use ethercrab_wire::EtherCrabWireRead;
 use nom::{
     bytes::complete::take,
     combinator::map_res,
-    error::context,
     number::complete::{le_u16, u8},
 };
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
@@ -56,7 +55,7 @@ impl<'sto> PduRx<'sto> {
 
         let i = raw_packet.payload();
 
-        let (i, header) = context("header", FrameHeader::parse)(i)?;
+        let (i, header) = FrameHeader::parse(i)?;
 
         // Only take as much as the header says we should
         let (_rest, i) = take(header.payload_len())(i)?;
