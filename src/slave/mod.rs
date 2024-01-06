@@ -263,8 +263,8 @@ impl Slave {
 /// slave device's process data.
 #[derive(Debug)]
 pub struct SlaveRef<'a, S> {
-    client: &'a Client<'a>,
-    configured_address: u16,
+    pub(crate) client: &'a Client<'a>,
+    pub(crate) configured_address: u16,
     state: S,
 }
 
@@ -650,10 +650,6 @@ impl<'a, S> SlaveRef<'a, S> {
         self.configured_address
     }
 
-    pub(crate) fn timeouts(&self) -> Timeouts {
-        self.client.timeouts
-    }
-
     /// Get the sub device status.
     pub(crate) async fn state(&self) -> Result<SlaveState, Error> {
         self.read(RegisterAddress::AlStatus)
@@ -677,11 +673,7 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     fn eeprom(&self) -> SlaveEeprom<DeviceEeprom> {
-        SlaveEeprom::new(DeviceEeprom::new(SlaveRef {
-            client: self.client,
-            configured_address: self.configured_address,
-            state: (),
-        }))
+        SlaveEeprom::new(DeviceEeprom::new(self.client, self.configured_address))
     }
 
     /// Read a register.

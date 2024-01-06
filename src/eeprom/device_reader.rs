@@ -6,7 +6,7 @@ use crate::{
     error::Error,
     fmt,
     register::RegisterAddress,
-    SlaveRef,
+    Client, Command,
 };
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
@@ -18,30 +18,34 @@ pub(crate) const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 /// EEPROM data provider that communicates with a physical sub device.
 #[derive(Clone)]
 pub struct DeviceEeprom<'slave> {
-    client: SlaveRef<'slave, ()>,
+    client: &'slave Client<'slave>,
+    configured_address: u16,
 }
 
 impl<'slave> DeviceEeprom<'slave> {
     /// Create a new EEPROM reader instance.
-    pub fn new(client: SlaveRef<'slave, ()>) -> Self {
-        Self { client }
+    pub fn new(client: &'slave Client<'slave>, configured_address: u16) -> Self {
+        Self {
+            client,
+            configured_address,
+        }
     }
 
     /// Wait for EEPROM read or write operation to finish and clear the busy flag.
     async fn wait(&self) -> Result<(), Error> {
-        crate::timer_factory::timeout(self.client.timeouts().eeprom, async {
+        crate::timer_factory::timeout(self.client.timeouts.eeprom, async {
             loop {
-                let control = self
-                    .client
-                    .read(RegisterAddress::SiiControl)
-                    .receive::<SiiControl>()
-                    .await?;
+                let control =
+                    Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
+                        .wrap(self.client)
+                        .receive::<SiiControl>()
+                        .await?;
 
                 if !control.busy {
                     break Ok(());
                 }
 
-                self.client.timeouts().loop_tick().await;
+                self.client.timeouts.loop_tick().await;
             }
         })
         .await
@@ -53,9 +57,8 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
         &mut self,
         start_word: u16,
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
-        let status = self
-            .client
-            .read(RegisterAddress::SiiControl)
+        let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
+            .wrap(self.client)
             .receive::<SiiControl>()
             .await?;
 
@@ -63,21 +66,21 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
         if status.has_error() {
             fmt::trace!("Resetting EEPROM error flags");
 
-            self.client
-                .write(RegisterAddress::SiiControl)
+            Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
+                .wrap(self.client)
                 .send(status.error_reset())
                 .await?;
         }
 
-        self.client
-            .write(RegisterAddress::SiiControl)
+        Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
+            .wrap(self.client)
             .send_receive(SiiRequest::read(start_word))
             .await?;
 
         self.wait().await?;
 
-        self.client
-            .read(RegisterAddress::SiiData)
+        Command::fprd(self.configured_address, RegisterAddress::SiiData.into())
+            .wrap(self.client)
             .receive_slice(status.read_size.chunk_len())
             .await
             .map(|data| {
