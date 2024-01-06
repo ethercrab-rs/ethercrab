@@ -34,9 +34,9 @@ use core::{
     sync::atomic::{AtomicU8, Ordering},
 };
 use ethercrab_wire::{
-    EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireWrite,
+    EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
+    EtherCrabWireWrite,
 };
-use nom::{bytes::complete::take, number::complete::le_u32};
 
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
@@ -565,7 +565,8 @@ where
         else {
             let data_length = headers.header.length.saturating_sub(0x0a);
 
-            let (data, complete_size) = le_u32(data)?;
+            let complete_size = u32::unpack_from_slice(data)?;
+            let data = &data[u32::PACKED_LEN..];
 
             // The provided buffer isn't long enough to contain all mailbox data.
             if complete_size > buf.len() as u32 {
@@ -577,9 +578,7 @@ where
 
             // If it's a normal upload, the response payload is returned in the initial mailbox read
             if complete_size <= u32::from(data_length) {
-                let (_rest, data) = take(data_length)(data)?;
-
-                data
+                &data[0..usize::from(data_length)]
             }
             // If it's a segmented upload, we must make subsequent requests to load all segment data
             // from the read mailbox.
