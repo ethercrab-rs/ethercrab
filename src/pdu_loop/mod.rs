@@ -319,7 +319,6 @@ mod tests {
                     .expect("send");
 
                 // Munge fake sent frame into a fake received frame
-
                 {
                     let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
                     frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
@@ -337,7 +336,7 @@ mod tests {
 
             let result = rx.receive_frame(&written_packet);
 
-            assert!(result.is_ok());
+            assert_eq!(result, Ok(()));
 
             // The frame has received a response at this point so should be ready to get the data
             // from
@@ -460,12 +459,12 @@ mod tests {
         let data_bytes = data.to_le_bytes();
 
         let poller = poll_fn(|ctx| {
-            let mut frame_fut = pin!(pdu_loop.pdu_tx_readwrite(
-                Command::fpwr(0x6789, 0x1234),
-                &data_bytes,
-                Duration::from_secs(1),
-                RetryBehaviour::None
-            ));
+            let mut frame_fut = pin!(
+                pdu_loop
+                    .pdu_send(Command::fpwr(0x6789, 0x1234).into(), &data_bytes, None)
+                    .expect("Create sendable frame fut")
+                    .0
+            );
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't

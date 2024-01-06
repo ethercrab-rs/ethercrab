@@ -1,25 +1,58 @@
 //! An EtherCAT frame.
 
 use crate::LEN_MASK;
-use nom::{
-    combinator::{map, verify},
-    error::ParseError,
-    IResult,
-};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[repr(u8)]
 enum ProtocolType {
     DlPdu = 0x01u8,
-    NetworkVariables = 0x04,
-    Mailbox = 0x05,
-    #[wire(catch_all)]
-    Unknown(u8),
+    // Not currently supported.
+    // NetworkVariables = 0x04,
+    // Mailbox = 0x05,
+    // #[wire(catch_all)]
+    // Unknown(u8),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct FrameHeader(pub u16);
+pub struct FrameHeader {
+    pub payload_len: u16,
+    protocol: ProtocolType,
+}
+
+impl EtherCrabWireSized for FrameHeader {
+    const PACKED_LEN: usize = 2;
+
+    type Buffer = [u8; 2];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; 2]
+    }
+}
+
+impl EtherCrabWireRead for FrameHeader {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
+        let raw = u16::unpack_from_slice(buf)?;
+
+        Ok(Self {
+            payload_len: raw & LEN_MASK,
+            protocol: ProtocolType::try_from((raw >> 12) as u8)?,
+        })
+    }
+}
+
+impl EtherCrabWireWrite for FrameHeader {
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+        // Protocol in last 4 bits
+        let raw = self.payload_len | (self.protocol as u16) << 12;
+
+        raw.pack_to_slice_unchecked(buf)
+    }
+
+    fn packed_len(&self) -> usize {
+        Self::PACKED_LEN
+    }
+}
 
 impl FrameHeader {
     /// Create a new PDU frame header.
@@ -30,32 +63,11 @@ impl FrameHeader {
             LEN_MASK
         );
 
-        let len = len & LEN_MASK;
-
-        let protocol_type = u16::from(u8::from(ProtocolType::DlPdu)) << 12;
-
-        Self(len | protocol_type)
-    }
-
-    /// Remove and parse an EtherCAT frame header from the given buffer.
-    pub fn parse<'a, E>(i: &'a [u8]) -> IResult<&[u8], Self, E>
-    where
-        E: ParseError<&'a [u8]>,
-    {
-        verify(map(nom::number::complete::le_u16, Self), |self_| {
-            self_.protocol_type() == ProtocolType::DlPdu
-        })(i)
-    }
-
-    /// The length of the payload contained in this frame.
-    pub fn payload_len(&self) -> u16 {
-        self.0 & LEN_MASK
-    }
-
-    fn protocol_type(&self) -> ProtocolType {
-        let raw = (self.0 >> 12) as u8 & 0b1111;
-
-        raw.into()
+        Self {
+            payload_len: len & LEN_MASK,
+            // Only support DlPdu (for now?)
+            protocol: ProtocolType::DlPdu,
+        }
     }
 }
 
@@ -67,33 +79,33 @@ mod tests {
     fn pdu_header() {
         let header = FrameHeader::pdu(0x28);
 
-        let packed = header.0;
+        let mut buf = [0u8; 2];
 
-        let expected = 0b0001_0000_0010_1000;
+        let packed = header.pack_to_slice_unchecked(&mut buf);
 
-        assert_eq!(packed, expected, "{packed:016b} == {expected:016b}");
+        let expected = &0b0001_0000_0010_1000u16.to_le_bytes();
+
+        assert_eq!(packed, expected);
     }
 
     #[test]
     fn decode_pdu_len() {
-        let raw = 0b0001_0000_0010_1000;
+        let raw = 0b0001_0000_0010_1000u16;
 
-        let header = FrameHeader(raw);
+        let header = FrameHeader::unpack_from_slice(&raw.to_le_bytes()).unwrap();
 
-        assert_eq!(header.payload_len(), 0x28);
-        assert_eq!(header.protocol_type(), ProtocolType::DlPdu);
+        assert_eq!(header.payload_len, 0x28);
+        assert_eq!(header.protocol, ProtocolType::DlPdu);
     }
 
     #[test]
     fn parse() {
         // Header from packet #39, soem-slaveinfo-ek1100-only.pcapng
-        let raw = &[0x3c, 0x10];
+        let raw = [0x3cu8, 0x10];
 
-        let (rest, header) = FrameHeader::parse::<'_, nom::error::Error<_>>(raw).unwrap();
+        let header = FrameHeader::unpack_from_slice(&raw).unwrap();
 
-        assert!(rest.is_empty());
-
-        assert_eq!(header.payload_len(), 0x3c);
-        assert_eq!(header.protocol_type(), ProtocolType::DlPdu);
+        assert_eq!(header.payload_len, 0x3c);
+        assert_eq!(header.protocol, ProtocolType::DlPdu);
     }
 }

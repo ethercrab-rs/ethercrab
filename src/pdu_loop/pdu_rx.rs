@@ -6,12 +6,7 @@ use crate::{
     pdu_loop::{frame_header::FrameHeader, pdu_flags::PduFlags},
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
-use ethercrab_wire::EtherCrabWireRead;
-use nom::{
-    bytes::complete::take,
-    combinator::map_res,
-    number::complete::{le_u16, u8},
-};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 /// EtherCAT frame receive adapter.
@@ -46,8 +41,8 @@ impl<'sto> PduRx<'sto> {
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self. As per
         // <https://github.com/OpenEtherCATsociety/SOEM/issues/585#issuecomment-1013688786>, the
         // first slave will set the second bit of the MSB of the MAC address (U/L bit). This means
-        // if we send e.g. 10:10:10:10:10:10, we receive 12:10:10:10:10:10 which is useful for this
-        // filtering.
+        // if we send e.g. 10:10:10:10:10:10, we receive 12:10:10:10:10:10 which passes through this
+        // filter.
         if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == self.source_mac
         {
             return Ok(());
@@ -55,71 +50,104 @@ impl<'sto> PduRx<'sto> {
 
         let i = raw_packet.payload();
 
-        let (i, header) = FrameHeader::parse(i)?;
+        let header = FrameHeaderRaw::unpack_from_slice(i).map_err(|e| {
+            fmt::error!("Failed to parse frame header: {}", e);
 
-        // Only take as much as the header says we should
-        let (_rest, i) = take(header.payload_len())(i)?;
+            e
+        })?;
 
-        let (i, command_code) = u8(i)?;
-        let (i, index) = u8(i)?;
+        let (data, working_counter) = header.data_wkc(i).map_err(|e| {
+            fmt::error!("Could not get frame data/wkc: {}", e);
+
+            e
+        })?;
+
+        let command = header.command()?;
+
+        let FrameHeaderRaw {
+            index, flags, irq, ..
+        } = header;
+
+        fmt::trace!(
+            "Received frame with index {} ({:#04x}), WKC {}",
+            index,
+            index,
+            working_counter,
+        );
 
         let mut frame = self
             .storage
             .claim_receiving(index)
-            .ok_or_else(|| PduError::InvalidIndex(usize::from(index)))?;
+            .ok_or(PduError::InvalidIndex(index))?;
 
-        (|| {
-            if frame.index() != index {
-                return Err(Error::Pdu(PduError::Validation(
-                    PduValidationError::IndexMismatch {
-                        sent: frame.index(),
-                        received: index,
-                    },
-                )));
-            }
+        if frame.index() != index {
+            return Err(Error::Pdu(PduError::Validation(
+                PduValidationError::IndexMismatch {
+                    sent: frame.index(),
+                    received: index,
+                },
+            )));
+        }
 
-            let (i, command) = Command::parse(command_code, i)?;
+        // Check for weird bugs where a slave might return a different command than the one sent for
+        // this PDU index.
+        if command.code() != frame.command().code() {
+            return Err(Error::Pdu(PduError::Validation(
+                PduValidationError::CommandMismatch {
+                    sent: command,
+                    received: frame.command(),
+                },
+            )));
+        }
 
-            // Check for weird bugs where a slave might return a different command than the one sent for
-            // this PDU index.
-            if command.code() != frame.command().code() {
-                return Err(Error::Pdu(PduError::Validation(
-                    PduValidationError::CommandMismatch {
-                        sent: command,
-                        received: frame.command(),
-                    },
-                )));
-            }
+        let frame_data = frame.buf_mut();
 
-            let (i, flags) = map_res(take(2usize), PduFlags::unpack_from_slice)(i)?;
-            let (i, irq) = le_u16(i)?;
-            let (i, data) = take(flags.length)(i)?;
-            let (i, working_counter) = le_u16(i)?;
+        frame_data[0..usize::from(flags.len())].copy_from_slice(data);
 
-            fmt::trace!(
-                "Received frame with index {} ({:#04x}), WKC {}",
-                index,
-                index,
-                working_counter,
-            );
+        frame.mark_received(flags, irq, working_counter)?;
 
-            // `_i` should be empty as we `take()`d an exact amount above.
-            debug_assert_eq!(i.len(), 0, "trailing data in received frame");
+        Ok(())
+    }
+}
 
-            let frame_data = frame.buf_mut();
+#[derive(ethercrab_wire::EtherCrabWireRead)]
+#[wire(bytes = 12)]
+struct FrameHeaderRaw {
+    #[wire(bytes = 2)]
+    header: FrameHeader,
 
-            frame_data[0..usize::from(flags.len())].copy_from_slice(data);
+    // NOTE: The following fields are included in the header length field value.
+    #[wire(bytes = 1)]
+    command_code: u8,
+    #[wire(bytes = 1)]
+    index: u8,
+    #[wire(bytes = 4)]
+    command_raw: [u8; 4],
+    #[wire(bytes = 2)]
+    flags: PduFlags,
+    #[wire(bytes = 2)]
+    irq: u16,
+}
 
-            frame.mark_received(flags, irq, working_counter)?;
+impl FrameHeaderRaw {
+    fn data_wkc<'buf>(&self, buf: &'buf [u8]) -> Result<(&'buf [u8], u16), Error> {
+        // Jump past header in the buffer
+        let header_offset = FrameHeaderRaw::PACKED_LEN;
 
-            Ok(())
-        })()
-        .map_err(|e| {
-            fmt::error!("Parse frame failed: {}", e);
+        // The length of the PDU data body. There are two bytes after this that hold the working
+        // counter, but are not counted as part of the PDU length from the header.
+        let data_end = usize::from(self.header.payload_len);
 
-            frame.release_receiving_claim();
+        let data = buf.get(header_offset..data_end).ok_or(PduError::Decode)?;
+        let wkc = buf
+            .get(data_end..)
+            .ok_or(Error::Pdu(PduError::Decode))
+            .and_then(|raw| Ok(u16::unpack_from_slice(raw)?))?;
 
-            e
-        })
+        Ok((data, wkc))
+    }
+
+    fn command(&self) -> Result<Command, Error> {
+        Command::parse_code_data(self.command_code, self.command_raw)
     }
 }

@@ -75,11 +75,6 @@ impl<'sto> ReceivingFrame<'sto> {
     pub fn command(&self) -> Command {
         unsafe { self.inner.frame() }.command
     }
-
-    /// Set frame state back to `Sent` from `Receiving`.
-    pub(crate) fn release_receiving_claim(&self) {
-        unsafe { FrameElement::set_state(self.inner.frame, FrameState::Sent) };
-    }
 }
 
 pub struct ReceiveFrameFut<'sto> {

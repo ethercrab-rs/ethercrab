@@ -9,7 +9,7 @@ use crate::{
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::future::Future;
-use core::mem;
+use ethercrab_wire::EtherCrabWireSized;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 /// An EtherCAT frame that is ready to be sent over the network.
@@ -95,7 +95,7 @@ impl<'sto> SendableFrame<'sto> {
     ///
     /// This does NOT include the EtherNET header length.
     fn ethernet_payload_len(&self) -> usize {
-        usize::from(self.ethercat_payload_len()) + mem::size_of::<FrameHeader>()
+        usize::from(self.ethercat_payload_len()) + FrameHeader::PACKED_LEN
     }
 
     fn write_ethernet_payload<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
@@ -103,13 +103,13 @@ impl<'sto> SendableFrame<'sto> {
 
         let header = FrameHeader::pdu(self.ethercat_payload_len());
 
-        let buf = write_packed(header.0, buf);
+        let buf = write_packed(header, buf);
 
         let buf = write_packed(frame.command.code(), buf);
         let buf = write_packed(frame.index, buf);
 
         // Write address and register data
-        let buf = write_packed(&frame.command, buf);
+        let buf = write_packed(frame.command, buf);
 
         let buf = write_packed(frame.flags, buf);
         let buf = write_packed(frame.irq, buf);

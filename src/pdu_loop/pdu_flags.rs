@@ -37,14 +37,7 @@ impl ethercrab_wire::EtherCrabWireWrite for PduFlags {
 
 impl EtherCrabWireRead for PduFlags {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-        let buf = buf.get(0..<Self as EtherCrabWireSized>::PACKED_LEN).ok_or(
-            WireError::ReadBufferTooShort {
-                expected: <Self as EtherCrabWireSized>::PACKED_LEN,
-                got: buf.len(),
-            },
-        )?;
-
-        let src = u16::from_le_bytes(buf.try_into().unwrap());
+        let src = u16::unpack_from_slice(buf)?;
 
         let length = src & LEN_MASK;
         let circulated = (src >> 14) & 0x01 == 0x01;
