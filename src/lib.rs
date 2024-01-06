@@ -199,7 +199,7 @@ pub use coe::SubIndex;
 pub use command::{Command, Reads, WrappedRead, WrappedWrite, Writes};
 pub use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
-    EtherCrabWireWrite,
+    EtherCrabWireWrite, EtherCrabWireWriteSized,
 };
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::RegisterAddress;
