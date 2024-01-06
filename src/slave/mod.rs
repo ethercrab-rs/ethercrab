@@ -25,7 +25,7 @@ use crate::{
     register::SupportFlags,
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
-    Timeouts, WrappedRead, WrappedWrite,
+    WrappedRead, WrappedWrite,
 };
 use core::{
     any::type_name,
