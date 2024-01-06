@@ -458,6 +458,94 @@ mod tests {
         );
     }
 
+    #[test]
+    // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
+    #[cfg_attr(miri, ignore)]
+    fn receive_frame() {
+        // let _ = env_logger::builder().is_test(true).try_init();
+
+        let ethernet_packet = [
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
+            0x12, 0x10, 0x10, 0x10, 0x10, 0x10, // Return to master address
+            0x88, 0xa4, // EtherCAT ethertype
+            0x10, 0x10, // EtherCAT frame header: type PDU, length 4 (plus header)
+            0x05, // Command: FPWR
+            0x00, // Frame index 0
+            0x89, 0x67, // Slave address,
+            0x34, 0x12, // Register address
+            0x04, 0x00, // Flags, 4 byte length
+            0x00, 0x00, // IRQ
+            0xdd, 0xcc, 0xbb, 0xaa, // Our payload, LE
+            0x00, 0x00, // Working counter
+        ];
+
+        // 1 frame, up to 128 bytes payload
+        let storage = PduStorage::<1, 128>::new();
+
+        let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
+
+        let data = 0xAABBCCDDu32;
+        let data_bytes = data.to_le_bytes();
+
+        let poller = poll_fn(|ctx| {
+            let mut frame_fut = pin!(pdu_loop.pdu_tx_readwrite(
+                Command::fpwr(0x6789, 0x1234),
+                &data_bytes,
+                Duration::from_secs(1),
+                RetryBehaviour::None
+            ));
+
+            // Poll future up to first await point. This gets the frame ready and marks it as
+            // sendable so TX can pick it up, but we don't want to wait for the response so we won't
+            // poll it again.
+            assert!(
+                matches!(frame_fut.as_mut().poll(ctx), Poll::Pending),
+                "frame fut should be pending"
+            );
+
+            let mut packet_buf = [0u8; 1536];
+
+            let frame = tx.next_sendable_frame().expect("need a frame");
+
+            let send_fut = pin!(async move {
+                frame
+                    .send(&mut packet_buf, |bytes| async {
+                        // written_packet.copy_from_slice(bytes);
+
+                        Ok(bytes.len())
+                    })
+                    .await
+                    .expect("send");
+            });
+
+            let Poll::Ready(_) = send_fut.poll(ctx) else {
+                panic!("no send")
+            };
+
+            // ---
+
+            let result = rx.receive_frame(&ethernet_packet);
+
+            assert_eq!(result, Ok(()));
+
+            // The frame has received a response at this point so should be ready to get the data
+            // from
+            match frame_fut.poll(ctx) {
+                Poll::Ready(Ok(frame)) => {
+                    assert_eq!(frame.into_data().0.deref(), &data_bytes);
+                }
+                Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
+                Poll::Pending => panic!("frame future still pending"),
+            }
+
+            // We should only ever be going through this loop once as the number of individual
+            // `poll()` calls is calculated.
+            Poll::Ready(())
+        });
+
+        smol::block_on(poller);
+    }
+
     // Test the whole TX/RX loop with multiple threads
     #[tokio::test]
     async fn parallel() {
