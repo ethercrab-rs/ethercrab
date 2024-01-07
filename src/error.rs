@@ -200,7 +200,7 @@ pub enum PduError {
     /// Failed to create an Ethernet II frame.
     CreateFrame,
     /// A frame index was given that does not point to a frame.
-    InvalidIndex(usize),
+    InvalidIndex(u8),
     /// A received frame is invalid.
     Validation(PduValidationError),
     /// A frame is not ready to be reused.
