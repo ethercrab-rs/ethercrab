@@ -238,7 +238,6 @@ where
             .write_slice(
                 RegisterAddress::sync_manager(sync_manager_index).into(),
                 &sm_config.pack(),
-                "SM config",
             )
             .await?;
 
@@ -472,11 +471,7 @@ where
         // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
         let mut fmmu_config = self
             .client
-            .read_slice(
-                RegisterAddress::fmmu(fmmu_index as u8).into(),
-                16,
-                "read FMMU config",
-            )
+            .read_slice(RegisterAddress::fmmu(fmmu_index as u8).into(), 16)
             .await
             .and_then(|raw| Fmmu::unpack_from_slice(&raw).map_err(|_| Error::Internal))?;
 
@@ -506,7 +501,6 @@ where
             .write_slice(
                 RegisterAddress::fmmu(fmmu_index as u8).into(),
                 &fmmu_config.pack(),
-                "PDI FMMU",
             )
             .await?;
         fmt::debug!(

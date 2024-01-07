@@ -21,7 +21,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
     Command::bwr(RegisterAddress::DcTimePort0.into())
         .send_receive(client, 0u32)
         .await?
-        .wkc(num_slaves_with_dc as u16, "Broadcast time")?;
+        .wkc(num_slaves_with_dc as u16)?;
 
     // Read receive times for all slaves and store on slave structs
     for slave in slaves.iter_mut().filter(|slave| slave.flags.dc_supported) {
@@ -39,7 +39,6 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
                 RegisterAddress::DcTimePort0.into(),
                 // 4 u32
                 4 * 4,
-                "Port receive times",
             )
             .await
             .map(|slice| {
