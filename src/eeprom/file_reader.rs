@@ -72,7 +72,11 @@ impl<const CHUNK: usize> EepromDataProvider for EepromFile<CHUNK> {
 
         let buf = &mut self.buf[0..buf_len];
 
-        assert!(buf_len == 4 || buf_len == 8);
+        assert!(
+            buf_len == 4 || buf_len == 8,
+            "Expected buf len of 4 or 8, got {}",
+            buf_len
+        );
 
         self.file
             .read_exact(buf)
