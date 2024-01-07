@@ -241,7 +241,8 @@ where
     }
 }
 
-// Heapless crate support
+// --- heapless::Vec ---
+
 impl<const N: usize, T> EtherCrabWireRead for heapless::Vec<T, N>
 where
     T: EtherCrabWireReadSized,
@@ -272,6 +273,16 @@ where
 
     fn buffer() -> Self::Buffer {
         [0u8; N]
+    }
+}
+
+// --- heapless::String ---
+
+impl<const N: usize> EtherCrabWireRead for heapless::String<N> {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
+        core::str::from_utf8(buf)
+            .map_err(|_| WireError::InvalidUtf8)
+            .and_then(|s| Self::try_from(s).map_err(|_| WireError::ArrayLength))
     }
 }
 

@@ -25,6 +25,8 @@ pub enum WireError {
     InvalidValue,
     /// Failed to create an array of the correct length.
     ArrayLength,
+    /// Valid UTF8 input data is required to decode to a string.
+    InvalidUtf8,
 }
 
 #[cfg(feature = "std")]
@@ -45,6 +47,7 @@ impl core::fmt::Display for WireError {
             ),
             WireError::InvalidValue => f.write_str("Invalid decoded value"),
             WireError::ArrayLength => f.write_str("Incorrect array length"),
+            WireError::InvalidUtf8 => f.write_str("Invalid UTF8"),
         }
     }
 }
