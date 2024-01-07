@@ -111,7 +111,7 @@ impl<'sto> PduRx<'sto> {
 }
 
 /// PDU frame header, command, index, flags and IRQ.
-#[derive(Copy, Clone, Hash, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[wire(bytes = 12)]
 pub struct FramePreamble {
     #[wire(bytes = 2)]
@@ -150,5 +150,55 @@ impl FramePreamble {
 
     fn command(&self) -> Result<Command, Error> {
         Command::parse_code_data(self.command_code, self.command_raw)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pdu_loop::frame_header::ProtocolType::DlPdu;
+    use core::hash::Hash;
+    use std::collections::hash_map::DefaultHasher;
+
+    // Just a sanity check...
+    #[test]
+    fn preamble_eq() {
+        let a = FramePreamble {
+            header: FrameHeader {
+                payload_len: 13,
+                protocol: DlPdu,
+            },
+            command_code: 7,
+            index: 0,
+            command_raw: [0, 0, 0, 0],
+            flags: PduFlags {
+                length: 1,
+                circulated: false,
+                is_not_last: false,
+            },
+            irq: 0,
+        };
+
+        let b = FramePreamble {
+            header: FrameHeader {
+                payload_len: 13,
+                protocol: DlPdu,
+            },
+            command_code: 7,
+            index: 0,
+            command_raw: [0, 0, 0, 0],
+            flags: PduFlags {
+                length: 1,
+                circulated: false,
+                is_not_last: false,
+            },
+            irq: 0,
+        };
+
+        assert_eq!(a, b);
+
+        let mut state = DefaultHasher::new();
+
+        assert_eq!(a.hash(&mut state), b.hash(&mut state));
     }
 }

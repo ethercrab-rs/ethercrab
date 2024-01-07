@@ -11,10 +11,10 @@ pub struct PduFlags {
     ///
     /// 0: Frame is not circulating,
     /// 1: Frame has circulated once
-    circulated: bool,
+    pub(crate) circulated: bool,
     /// 0: last EtherCAT PDU in EtherCAT frame
     /// 1: EtherCAT PDU in EtherCAT frame follows
-    is_not_last: bool,
+    pub(crate) is_not_last: bool,
 }
 
 impl ethercrab_wire::EtherCrabWireWrite for PduFlags {
