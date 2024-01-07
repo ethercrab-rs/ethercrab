@@ -1,6 +1,6 @@
 //! Functions used to populate buffers with multiple values.
 //!
-//! Like cookie_factory but much simpler and will quite happily panic.
+//! Like cookie_factory but much simpler and will **quite happily panic**.
 
 /// Write a packed struct into the slice.
 pub fn write_packed<T>(value: T, buf: &mut [u8]) -> &mut [u8]

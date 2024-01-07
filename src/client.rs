@@ -224,7 +224,6 @@ impl<'sto> Client<'sto> {
 
             Command::apwr(slave_idx, RegisterAddress::ConfiguredStationAddress.into())
                 .wrap(self)
-                .with_wkc(1)
                 .send(configured_address)
                 .await?;
 
@@ -411,7 +410,8 @@ impl<'sto> Client<'sto> {
                                 .wrap(self)
                                 .ignore_wkc()
                                 .receive::<AlStatusCode>()
-                                .await?;
+                                .await
+                                .unwrap_or(AlStatusCode::UnspecifiedError);
 
                         fmt::error!("--> Slave {:#06x} status code {}", slave_addr, slave_status);
                     }

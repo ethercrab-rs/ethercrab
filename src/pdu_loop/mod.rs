@@ -203,10 +203,11 @@ mod tests {
             Duration::from_secs(0),
             pdu_loop
                 .pdu_send(
-                    Command::Read(Reads::Brd {
+                    Reads::Brd {
                         address: 0,
                         register: 0,
-                    }),
+                    }
+                    .into(),
                     (),
                     Some(16),
                 )
@@ -296,7 +297,7 @@ mod tests {
 
             let mut frame_fut = pin!(
                 pdu_loop
-                    .pdu_send(Command::Write(Command::fpwr(0x5678, 0x1234)), &data, None,)
+                    .pdu_send(Command::fpwr(0x5678, 0x1234).into(), &data, None,)
                     .unwrap()
                     .0
             );
@@ -466,11 +467,7 @@ mod tests {
         let poller = poll_fn(|ctx| {
             let mut frame_fut = pin!(
                 pdu_loop
-                    .pdu_send(
-                        Command::Write(Command::fpwr(0x6789, 0x1234)),
-                        &data_bytes,
-                        None
-                    )
+                    .pdu_send(Command::fpwr(0x6789, 0x1234).into(), &data_bytes, None)
                     .expect("Create sendable frame fut")
                     .0
             );
@@ -587,7 +584,7 @@ mod tests {
             fmt::info!("Send PDU {i}");
 
             let result = pdu_loop
-                .pdu_send(Command::Write(Command::fpwr(0x1000, 0x980)), data, None)
+                .pdu_send(Command::fpwr(0x1000, 0x980).into(), data, None)
                 .unwrap()
                 .0
                 .await
