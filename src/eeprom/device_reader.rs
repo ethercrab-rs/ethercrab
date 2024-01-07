@@ -22,6 +22,7 @@ pub struct DeviceEeprom<'slave> {
 }
 
 impl<'slave> DeviceEeprom<'slave> {
+    /// Create a new device EEPROM instance.
     pub fn new(client: &'slave SlaveClient<'slave>) -> Self {
         Self { client }
     }
