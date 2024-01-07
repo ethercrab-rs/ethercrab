@@ -6,13 +6,12 @@ use crate::{
     pdu_loop::{frame_header::FrameHeader, pdu_flags::PduFlags},
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 use nom::{
     bytes::complete::take,
     combinator::map_res,
-    error::context,
     number::complete::{le_u16, u8},
 };
-use packed_struct::PackedStructSlice;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 /// EtherCAT frame receive adapter.
@@ -56,10 +55,13 @@ impl<'sto> PduRx<'sto> {
 
         let i = raw_packet.payload();
 
-        let (i, header) = context("header", FrameHeader::parse)(i)?;
+        let (i, header) = map_res(
+            take(FrameHeader::PACKED_LEN),
+            FrameHeader::unpack_from_slice,
+        )(i)?;
 
         // Only take as much as the header says we should
-        let (_rest, i) = take(header.payload_len())(i)?;
+        let (_rest, i) = take(header.payload_len)(i)?;
 
         let (i, command_code) = u8(i)?;
         let (i, index) = u8(i)?;

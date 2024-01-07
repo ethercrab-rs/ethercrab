@@ -1,44 +1,21 @@
-use crate::{error::WrappedPackingError, fmt, pdu_data::PduRead, slave_state::SlaveState};
-use packed_struct::prelude::*;
+use crate::slave_state::SlaveState;
 
 /// The AL control/status word for an individual slave device.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+///
+/// Defined in ETG1000.6 Table 9 - AL Control Description.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bytes = 2)]
 pub struct AlControl {
     /// AL status.
+    #[wire(bits = 4)]
     pub state: SlaveState,
     /// Error flag.
+    #[wire(bits = 1)]
     pub error: bool,
     /// ID request flag.
+    #[wire(bits = 1, post_skip = 10)]
     pub id_request: bool,
-}
-
-impl PackedStruct for AlControl {
-    type ByteArray = [u8; 2];
-
-    fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
-        let byte = (u8::from(self.state) & 0x0f)
-            | ((self.error as u8) << 4)
-            | ((self.id_request as u8) << 5);
-
-        Ok([byte, 0])
-    }
-
-    fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
-        let byte = src[0];
-
-        fmt::trace!("AL raw byte {:#010b} (slice {:?})", byte, src);
-
-        let state = SlaveState::from(byte & 0x0f);
-        let error = (byte & (1 << 4)) > 0;
-        let id_request = (byte & (1 << 5)) > 0;
-
-        Ok(Self {
-            state,
-            error,
-            id_request,
-        })
-    }
 }
 
 impl AlControl {
@@ -60,21 +37,10 @@ impl AlControl {
     }
 }
 
-impl PduRead for AlControl {
-    const LEN: u16 = u16::LEN;
-
-    type Error = WrappedPackingError;
-
-    // Clippy: allow this because it's required in no_std
-    #[allow(clippy::needless_question_mark)]
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self::unpack_from_slice(slice)?)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWriteSized};
 
     #[test]
     fn al_control() {
@@ -84,7 +50,7 @@ mod tests {
             id_request: false,
         };
 
-        let packed = value.pack().unwrap();
+        let packed = value.pack();
 
         assert_eq!(packed, [0x04 | 0x10, 0x00]);
     }

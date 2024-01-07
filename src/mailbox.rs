@@ -1,6 +1,4 @@
-use packed_struct::prelude::*;
-
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
@@ -12,7 +10,7 @@ pub enum Priority {
     Highest = 0x03,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
@@ -37,23 +35,25 @@ pub enum MailboxType {
 /// Mailbox header.
 ///
 /// Defined in ETG1000.6 under either `TMBXHEADER` or `MbxHeader` e.g. Table 29 - CoE Elements.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PackedStruct)]
-#[packed_struct(size_bytes = "6", bit_numbering = "msb0", endian = "lsb")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bytes = 6)]
 pub struct MailboxHeader {
     /// Mailbox data payload length.
-    #[packed_field(bytes = "0..=1")]
+    #[wire(bytes = 2)]
     pub length: u16,
-    #[packed_field(bytes = "2..=3")]
+    #[wire(bytes = 2)]
     pub address: u16,
     // reserved6: u8,
-    #[packed_field(bits = "38..=39", ty = "enum")]
+    #[wire(pre_skip = 6, bits = 2)]
     pub priority: Priority,
-    #[packed_field(bits = "44..=47", ty = "enum")]
+    // #[wire(bits = 4)]
+    // pub type: u8
+    #[wire(bits = 4)]
     pub mailbox_type: MailboxType,
     /// Mailbox counter from 1 to 7 inclusive. Wraps around to 1 when count exceeds 7. 0 is
     /// reserved.
-    #[packed_field(bits = "41..=43")]
+    #[wire(bits = 3, post_skip = 1)]
     pub counter: u8,
     // _reserved1: u8
 }
@@ -62,6 +62,7 @@ pub struct MailboxHeader {
 mod tests {
     use super::*;
     use arbitrary::{Arbitrary, Unstructured};
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWriteSized};
 
     // Manual impl because `counter` field is a special case
     impl<'a> Arbitrary<'a> for MailboxHeader {
@@ -130,7 +131,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn mailbox_header_fuzz() {
         heckcheck::check(|status: MailboxHeader| {
-            let packed = status.pack().expect("Pack");
+            let packed = status.pack();
 
             let unpacked = MailboxHeader::unpack_from_slice(&packed).expect("Unpack");
 
@@ -152,8 +153,7 @@ mod tests {
             counter: 3,
             mailbox_type: MailboxType::Coe,
         }
-        .pack()
-        .unwrap();
+        .pack();
 
         assert_eq!(packed, expected);
     }
@@ -171,7 +171,7 @@ mod tests {
             counter: 2,
         };
 
-        let parsed = MailboxHeader::unpack(&raw).unwrap();
+        let parsed = MailboxHeader::unpack_from_slice(&raw).unwrap();
 
         assert_eq!(parsed, expected);
     }

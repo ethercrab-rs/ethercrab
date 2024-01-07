@@ -19,8 +19,8 @@ use core::{
     sync::atomic::{AtomicU16, Ordering},
 };
 use embassy_futures::select::{select, Either};
+use ethercrab_wire::{EtherCrabWireWrite, EtherCrabWireWriteSized};
 use heapless::FnvIndexMap;
-use packed_struct::PackedStruct;
 
 /// The main EtherCAT master instance.
 ///
@@ -76,12 +76,7 @@ impl<'sto> Client<'sto> {
 
         // Reset slaves to init
         Command::bwr(RegisterAddress::AlControl.into())
-            .send_slice(
-                self,
-                &fmt::unwrap!(AlControl::reset()
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from)),
-            )
+            .send_slice(self, &AlControl::reset().pack())
             .await?;
 
         // Clear FMMUs. FMMU memory section is 0xff (255) bytes long - see ETG1000.4 Table 57
@@ -452,7 +447,7 @@ impl<'sto> Client<'sto> {
     pub(crate) async fn write_service(
         &self,
         command: Writes,
-        value: &[u8],
+        value: impl EtherCrabWireWrite,
     ) -> Result<(RxFrameDataBuf<'_>, u16), Error> {
         self.pdu_loop
             .pdu_tx_readwrite(

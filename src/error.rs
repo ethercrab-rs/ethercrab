@@ -2,7 +2,6 @@
 
 use crate::{coe::abort_code::AbortCode, command::Command, fmt, SlaveState};
 use core::{cell::BorrowError, num::TryFromIntError, str::Utf8Error};
-use packed_struct::PackingError;
 
 /// An EtherCrab error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -89,6 +88,9 @@ pub enum Error {
         /// Slave address.
         configured_address: u16,
     },
+
+    /// An error occurred encoding or decoding an item.
+    Wire(ethercrab_wire::WireError),
 }
 
 #[cfg(feature = "std")]
@@ -152,6 +154,7 @@ impl core::fmt::Display for Error {
                 "slave {:#06x} state is invalid: {}, expected {}",
                 configured_address, actual, expected
             ),
+            Error::Wire(e) => write!(f, "wire encode/decode error: {}", e),
         }
     }
 }
@@ -417,15 +420,6 @@ where
     }
 }
 
-impl From<PackingError> for Error {
-    #[allow(unused)]
-    fn from(e: PackingError) -> Self {
-        fmt::error!("Packing error");
-
-        Self::Pdu(PduError::Decode)
-    }
-}
-
 impl From<TryFromIntError> for Error {
     fn from(_e: TryFromIntError) -> Self {
         fmt::error!("Integer conversion error");
@@ -433,36 +427,8 @@ impl From<TryFromIntError> for Error {
         Self::IntegerTypeConversion
     }
 }
-
-#[cfg(not(feature = "defmt"))]
-pub use packed_struct::PackingError as WrappedPackingError;
-
-/// A wrapper around [`packed_struct::PackingError`] to allow for support for `defmt::Format`.
-#[cfg(feature = "defmt")]
-#[derive(Debug, Copy, Clone)]
-pub struct WrappedPackingError(pub PackingError);
-
-#[cfg(feature = "defmt")]
-impl From<PackingError> for WrappedPackingError {
-    fn from(value: PackingError) -> Self {
-        Self(value)
-    }
-}
-
-#[cfg(feature = "defmt")]
-impl defmt::Format for WrappedPackingError {
-    fn format(&self, f: defmt::Formatter) {
-        match self.0 {
-            PackingError::InvalidValue => defmt::write!(f, "Invalid value"),
-            PackingError::BitsError => defmt::write!(f, "Bits error"),
-            PackingError::BufferTooSmall => defmt::write!(f, "Buffer too small"),
-            PackingError::BufferSizeMismatch { .. } => defmt::write!(f, "Buffer size mismatched"),
-            PackingError::NotImplemented => defmt::write!(f, "Not implemented"),
-            PackingError::InstanceRequiredForSize => defmt::write!(f, "This structure's packing size can't be determined statically, an instance is required."),
-            PackingError::BufferModMismatch { .. } => defmt::write!(f, "The structure's size is not a multiple of the item's size"),
-            PackingError::SliceIndexingError { .. } => defmt::write!(f, "Failed to index into a slice"),
-            PackingError::MoreThanOneDynamicType => defmt::write!(f, "Only one dynamically sized type is supported in the tuple"),
-            PackingError::InternalError => defmt::write!(f, "Internal error"),
-        }
+impl From<ethercrab_wire::WireError> for Error {
+    fn from(value: ethercrab_wire::WireError) -> Self {
+        Self::Wire(value)
     }
 }

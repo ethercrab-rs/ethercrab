@@ -21,7 +21,7 @@ use crate::{
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::MailboxType,
-    pdu_data::{PduData, PduRead},
+    pdu_data::PduData,
     pdu_loop::{CheckWorkingCounter, RxFrameDataBuf},
     register::RegisterAddress,
     register::SupportFlags,
@@ -35,8 +35,10 @@ use core::{
     ops::Deref,
     sync::atomic::{AtomicU8, Ordering},
 };
-use nom::{bytes::complete::take, number::complete::le_u32};
-use packed_struct::{PackedStruct, PackedStructInfo, PackedStructSlice};
+use ethercrab_wire::{
+    EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
+    EtherCrabWireWriteSized,
+};
 
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
@@ -436,20 +438,22 @@ where
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
         H: CoeServiceRequest + Debug,
-        <H as PackedStruct>::ByteArray: AsRef<[u8]>,
+        H::Response: EtherCrabWireRead,
     {
         let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
 
         let counter = request.counter();
 
+        // TODO: Make this dynamic
+        let mut buf = [0u8; 32];
+
+        let req = request.pack_to_slice(&mut buf)?;
+
         // Send data to slave IN mailbox
         Command::fpwr(self.state.configured_address, write_mailbox.address)
             .send_receive_slice_len(
                 self.client.client,
-                fmt::unwrap!(request
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from))
-                .as_ref(),
+                req,
                 // Need to write entire mailbox to latch it
                 write_mailbox.len,
             )
@@ -458,24 +462,10 @@ where
 
         let mut response = self.coe_response(&read_mailbox).await?;
 
-        let headers_len = H::Response::packed_bits() / 8;
-
-        let (headers, data) = response.split_at(headers_len);
-
-        // Clippy: The WrappedPackingError conversion is a noop in std but in no_std/defmt land it's
-        // required for the `defmt::Format` impl.
-        #[allow(clippy::useless_conversion)]
-        let headers = H::Response::unpack_from_slice(headers).map_err(|e| {
-            fmt::error!(
-                "Failed to unpack mailbox response headers: {}",
-                crate::error::WrappedPackingError::from(e)
-            );
-
-            e
-        })?;
+        let headers = H::Response::unpack_from_slice(&response)?;
 
         if headers.is_aborted() {
-            let code = AbortCode::from(u32::from_le_bytes(fmt::unwrap!(data[0..4].try_into())));
+            let code = AbortCode::from(u32::from_le_bytes(fmt::unwrap!(response[0..4].try_into())));
 
             fmt::error!(
                 "Mailbox error for slave {:#06x} (supports complete access: {}): {}",
@@ -505,7 +495,7 @@ where
                 sub_index: headers.sub_index(),
             }))
         } else {
-            response.trim_front(headers_len);
+            response.trim_front(H::Response::header_len());
 
             Ok((headers, response))
         }
@@ -551,13 +541,18 @@ where
         Ok(())
     }
 
-    async fn read_sdo_buf<'buf>(
-        &self,
-        index: u16,
-        sub_index: impl Into<SubIndex>,
-        buf: &'buf mut [u8],
-    ) -> Result<&'buf [u8], Error> {
+    /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
+    ///
+    /// Note that currently this method only supports reads of up to 32 bytes.
+    /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
+    pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
+    where
+        T: EtherCrabWireReadSized,
+    {
         let sub_index = sub_index.into();
+
+        let mut storage = T::buffer();
+        let buf = storage.as_mut();
 
         let request = coe::services::upload(self.mailbox_counter(), index, sub_index);
 
@@ -568,21 +563,17 @@ where
 
         // Expedited transfers where the data is 4 bytes or less long, denoted in the SDO header
         // size value.
-        if headers.sdo_header.flags.expedited_transfer {
+        let response_payload = if headers.sdo_header.flags.expedited_transfer {
             let data_len = 4usize.saturating_sub(usize::from(headers.sdo_header.flags.size));
-            let data = &data[0..data_len];
 
-            let buf = &mut buf[0..data_len];
-
-            buf.copy_from_slice(data);
-
-            Ok(buf)
+            &data[0..data_len]
         }
         // Data is either a normal upload or a segmented upload
         else {
             let data_length = headers.header.length.saturating_sub(0x0a);
 
-            let (data, complete_size) = le_u32(data)?;
+            let complete_size = u32::unpack_from_slice(data)?;
+            let data = &data[u32::PACKED_LEN..];
 
             // The provided buffer isn't long enough to contain all mailbox data.
             if complete_size > buf.len() as u32 {
@@ -594,13 +585,7 @@ where
 
             // If it's a normal upload, the response payload is returned in the initial mailbox read
             if complete_size <= u32::from(data_length) {
-                let (_rest, data) = take(data_length)(data)?;
-
-                let buf = &mut buf[0..usize::from(data_length)];
-
-                buf.copy_from_slice(data);
-
-                Ok(buf)
+                &data[0..usize::from(data_length)]
             }
             // If it's a segmented upload, we must make subsequent requests to load all segment data
             // from the read mailbox.
@@ -638,38 +623,21 @@ where
                     toggle = !toggle;
                 }
 
-                Ok(&buf[0..total_len])
+                &buf[0..total_len]
             }
-        }
-    }
+        };
 
-    /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
-    ///
-    /// Note that currently this method only supports reads of up to 32 bytes.
-    pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
-    where
-        T: PduData,
-    {
-        let sub_index = sub_index.into();
+        T::unpack_from_slice(response_payload).map_err(|_| {
+            fmt::error!(
+                "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
+                type_name::<T>(),
+                T::PACKED_LEN,
+                data,
+                data.len()
+            );
 
-        // FIXME: Make this dynamic somehow
-        let mut buf = [0u8; 32];
-
-        self.read_sdo_buf(index, sub_index, &mut buf)
-            .await
-            .and_then(|data| {
-                T::try_from_slice(data).map_err(|_| {
-                    fmt::error!(
-                        "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
-                        type_name::<T>(),
-                        T::len(),
-                        data,
-                        data.len()
-                    );
-
-                    Error::Pdu(PduError::Decode)
-                })
-            })
+            Error::Pdu(PduError::Decode)
+        })
     }
 }
 
@@ -710,7 +678,7 @@ impl<'a, S> SlaveRef<'a, S> {
     /// break higher level interactions with EtherCrab.
     pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
     where
-        T: PduRead,
+        T: EtherCrabWireReadSized,
     {
         self.client
             .read_ignore_wkc(register.into())
@@ -724,7 +692,7 @@ impl<'a, S> SlaveRef<'a, S> {
     /// break higher level interactions with EtherCrab.
     pub async fn register_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
     where
-        T: PduData,
+        T: EtherCrabWireReadWrite,
     {
         self.client
             .write_ignore_wkc(register.into(), value)
@@ -765,9 +733,7 @@ impl<'a, S> SlaveRef<'a, S> {
             .client
             .write_slice(
                 RegisterAddress::AlControl.into(),
-                &fmt::unwrap!(AlControl::new(desired_state)
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from)),
+                &AlControl::new(desired_state).pack(),
                 "AL control",
             )
             .await

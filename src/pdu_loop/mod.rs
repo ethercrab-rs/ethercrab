@@ -16,6 +16,7 @@ use crate::{
 };
 use core::time::Duration;
 
+use ethercrab_wire::EtherCrabWireWrite;
 pub use frame_element::received_frame::RxFrameDataBuf;
 pub use frame_element::sendable_frame::SendableFrame;
 pub use pdu_rx::PduRx;
@@ -125,14 +126,13 @@ impl<'sto> PduLoop<'sto> {
     pub(crate) async fn pdu_tx_readwrite_len(
         &self,
         command: Command,
-        send_data: &[u8],
+        send_data: impl EtherCrabWireWrite,
         data_length: u16,
         timeout: Duration,
         retry_behaviour: RetryBehaviour,
     ) -> Result<ReceivedFrame<'_>, Error> {
         for _ in 0..retry_behaviour.loop_counts() {
-            let send_data_len = send_data.len();
-            let payload_length = u16::try_from(send_data.len())?.max(data_length);
+            let payload_length = u16::try_from(send_data.packed_len())?.max(data_length);
 
             let mut frame = self.storage.alloc_frame(command, data_length)?;
 
@@ -143,7 +143,9 @@ impl<'sto> PduLoop<'sto> {
                 .get_mut(0..usize::from(payload_length))
                 .ok_or(Error::Pdu(PduError::TooLong))?;
 
-            payload[0..send_data_len].copy_from_slice(send_data);
+            // SAFETY: We ensure the payload length is at least the length of the packed input data
+            // above, as well as the data to be written is not longer than the payload buffer.
+            send_data.pack_to_slice_unchecked(payload);
 
             let frame = frame.mark_sendable();
 
@@ -171,14 +173,16 @@ impl<'sto> PduLoop<'sto> {
     pub async fn pdu_tx_readwrite<'a>(
         &'a self,
         command: Writes,
-        send_data: &[u8],
+        send_data: impl EtherCrabWireWrite,
         timeout: Duration,
         retry_behaviour: RetryBehaviour,
     ) -> Result<ReceivedFrame<'_>, Error> {
+        let len = send_data.packed_len() as u16;
+
         self.pdu_tx_readwrite_len(
             Command::Write(command),
             send_data,
-            send_data.len().try_into()?,
+            len,
             timeout,
             retry_behaviour,
         )
