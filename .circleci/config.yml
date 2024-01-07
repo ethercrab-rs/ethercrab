@@ -1,4 +1,4 @@
-target_steps: &target_steps
+target_steps_std: &target_steps_std
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
     - image: cimg/rust:1.72
@@ -26,7 +26,7 @@ target_steps: &target_steps
     - run: rustup target add $TARGET || true
     - run: cargo fmt --all -- --check
     - run: just check-readmes
-    - run: cargo test --target $TARGET
+    - run: cargo test --target $TARGET --workspace
     - run: cargo bench --no-run --target $TARGET
     - run: cargo build --target $TARGET --examples --release
     - run: cargo build --target $TARGET --no-default-features
@@ -125,7 +125,7 @@ jobs:
     resource_class: large
     environment:
       - TARGET: "x86_64-unknown-linux-gnu"
-    <<: *target_steps
+    <<: *target_steps_std
 
   miri-x86_64-unknown-linux-gnu:
     resource_class: large
