@@ -395,21 +395,6 @@ impl From<smoltcp::wire::Error> for Error {
     }
 }
 
-impl<I> From<nom::Err<nom::error::Error<I>>> for Error
-where
-    I: core::fmt::Debug,
-{
-    #[allow(unused)]
-    fn from(e: nom::Err<nom::error::Error<I>>) -> Self {
-        #[cfg(feature = "defmt")]
-        defmt::error!("Nom error");
-        #[cfg(not(feature = "defmt"))]
-        fmt::error!("Nom error");
-
-        Self::Pdu(PduError::Decode)
-    }
-}
-
 impl From<TryFromIntError> for Error {
     fn from(_e: TryFromIntError) -> Self {
         fmt::error!("Integer conversion error");
@@ -417,6 +402,7 @@ impl From<TryFromIntError> for Error {
         Self::IntegerTypeConversion
     }
 }
+
 impl From<ethercrab_wire::WireError> for Error {
     fn from(value: ethercrab_wire::WireError) -> Self {
         Self::Wire(value)

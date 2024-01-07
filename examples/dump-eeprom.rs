@@ -8,7 +8,7 @@ use embedded_io_async::Read;
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    internals::{ChunkReader, DeviceEeprom, SlaveClient},
+    internals::{ChunkReader, DeviceEeprom},
     std::tx_rx_task,
     Client, ClientConfig, PduStorage, SlaveGroupState, Timeouts,
 };
@@ -80,12 +80,10 @@ async fn main() -> Result<(), Error> {
 
     let base_address = 0x1000;
 
-    let slave_client = SlaveClient::new(&client, base_address + index);
-
     let mut len_buf = [0u8; 2];
 
     // ETG2020 page 7: 0x003e is the EEPROM address size register in kilobit minus 1 (u16).
-    ChunkReader::new(DeviceEeprom::new(&slave_client), 0x003e, 2)
+    ChunkReader::new(DeviceEeprom::new(&client, base_address + index), 0x003e, 2)
         .read_exact(&mut len_buf)
         .await
         .expect("Could not read EEPROM len");
@@ -95,7 +93,7 @@ async fn main() -> Result<(), Error> {
 
     log::info!("--> Device EEPROM is {} bytes long", len);
 
-    let mut provider = ChunkReader::new(DeviceEeprom::new(&slave_client), 0, len);
+    let mut provider = ChunkReader::new(DeviceEeprom::new(&client, base_address + index), 0, len);
 
     let mut buf = vec![0u8; usize::from(len)];
 
@@ -106,24 +104,4 @@ async fn main() -> Result<(), Error> {
     log::info!("Done, wrote {} bytes to stdout", buf.len());
 
     Ok(())
-
-    // let slave_client = SlaveClient::new(&client, base_address + index);
-
-    // let provider = DeviceEeprom::new(&slave_client);
-
-    // let len = provider.len().await.expect("Len");
-
-    // log::info!("--> Device EEPROM is {} bytes long", len);
-
-    // let mut reader = provider.reader();
-
-    // let mut buf = vec![0u8; usize::from(len)];
-
-    // reader.read_exact(&mut buf).await.expect("Read exact");
-
-    // std::io::stdout().write_all(&buf[..]).expect("Stdout write");
-
-    // log::info!("Done, wrote {} bytes", buf.len());
-
-    // Ok(())
 }

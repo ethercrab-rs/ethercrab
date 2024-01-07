@@ -290,10 +290,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
 
                 for slave in self.inner().slaves.iter().map(|slave| slave.borrow()) {
                     // TODO: Add a way to queue up a bunch of PDUs and send all at once
-                    let (slave_state, _al_status_code) =
-                        SlaveRef::new(client, slave.configured_address, slave)
-                            .status()
-                            .await?;
+                    let slave_state = SlaveRef::new(client, slave.configured_address, slave)
+                        .state()
+                        .await?;
 
                     if slave_state != desired_state {
                         all_transitioned = false;

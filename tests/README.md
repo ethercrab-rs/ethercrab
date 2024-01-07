@@ -7,7 +7,17 @@ Uses Wireshark captures of known-good runs as replays to test for regressions ag
 Captures should be run in debug mode to make sure everything has time to breathe. If this is not
 done, the replays can fail in weird and confusing ways.
 
-### Local machine (terminal method)
+### With `just`
+
+From the repository root, run e.g.
+
+```bash
+just capture-replay replay-ek1100-el2828-el2889 enx00e04c680066
+```
+
+The replay name must **exactly** match the name of a file in `tests/` (without the `.rs`) extension.
+
+### Manually on local machine (terminal method)
 
 `sudo apt install -y tshark`
 
@@ -38,3 +48,5 @@ Use `tshark` to filter out only EtherCAT packets from provided dumps:
 ```bash
 tshark -r EL1014.pcapng -Y 'ecat' -w issue-63-el1014.pcapng
 ```
+
+This isn't required if the original capture is filtered with `-f 'ether proto 0x88a4'`.
