@@ -1,9 +1,9 @@
 //! Utilities to replay Wireshark captures as part of regression/integration tests.
 
-use ethercrab::{error::Error, std::tx_rx_task, PduRx, PduTx};
+use ethercrab::{error::Error, internals::FramePreamble, std::tx_rx_task, PduRx, PduTx};
 use pcap_file::pcapng::{Block, PcapNgReader};
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
-use std::{fs::File, future::Future, pin::Pin, task::Poll};
+use std::{collections::HashMap, fs::File, future::Future, pin::Pin, task::Poll};
 
 pub fn spawn_tx_rx(capture_file_path: &str, tx: PduTx<'static>, rx: PduRx<'static>) {
     let interface = std::env::var("INTERFACE");
@@ -27,6 +27,8 @@ struct DummyTxRxFut<'a> {
     rx: PduRx<'a>,
 
     capture_file: PcapNgReader<File>,
+
+    frames: HashMap<FramePreamble, ()>,
 
     /// Packet number from Wireshark capture.
     packet_number: usize,
