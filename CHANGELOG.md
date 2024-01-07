@@ -40,6 +40,12 @@ An EtherCAT master written in Rust.
   - `EtherCrabWireSized`
   - `EtherCrabWireWrite`
 
+### Fixed
+
+- **(breaking)** (technically) [#143](https://github.com/ethercrab-rs/ethercrab/pull/143) Fix typo
+  in name `AlStatusCode::ApplicationControllerAvailableI` ->
+  `AlStatusCode::ApplicationControllerAvailable`
+
 ## [0.3.5] - 2023-12-22
 
 ### Changed
