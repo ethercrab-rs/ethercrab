@@ -13,7 +13,7 @@ linux-test *args:
 
     set -e
 
-    OUT=$(cargo test --no-run 2>&1 | tee /dev/tty | grep -oE '\(target/.+\)' | sed 's/[)(]//g')
+    OUT=$(cargo test --features '__internals' --no-run 2>&1 | tee /dev/tty | grep -oE '\(target/.+\)' | sed 's/[)(]//g')
     # BINS=$(echo $OUT)
 
     mapfile -t BINS < <( echo "$OUT" )
@@ -25,7 +25,7 @@ linux-test *args:
     done
 
     # We've now setcap'd everything so we should be able to run this again without perm issues
-    cargo test {{args}}
+    cargo test --features '__internals' {{args}}
 
 linux-bench *args:
      cargo bench --features __internals {{args}}

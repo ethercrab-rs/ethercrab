@@ -158,32 +158,8 @@ impl FramePreamble {
     ///
     /// Please do not use outside the replay tests.
     #[doc(hidden)]
+    #[allow(unused)]
     pub fn test_only_hacked_equal(&self, other: &Self) -> bool {
-        // use std::hash::Hash;
-
-        // #[deny(unused)]
-        // let FramePreamble {
-        //     header,
-        //     command_code,
-        //     index,
-        //     command_raw,
-        //     flags,
-        //     irq,
-        // } = *self;
-
-        // header.hash(state);
-        // command_code.hash(state);
-        // index.hash(state);
-
-        // // BRDs can have a different returned `command_raw` so we'll ignore `command_raw` for hashing in this case. 7 is the magic number for BRD command code.
-        // if command_code != 7 {
-        //     command_raw.hash(state)
-        // }
-
-        // flags.hash(state);
-        // irq.hash(state);
-
-        // self.header == other.header
         self.command_code == other.command_code
             && self.index == other.index
             && if matches!(self.command_code, 4 | 5) {
@@ -200,6 +176,7 @@ impl FramePreamble {
     ///
     /// Please do not use outside replay tests.
     #[doc(hidden)]
+    #[allow(unused)]
     pub fn test_only_hacked_hash(&self, state: &mut impl core::hash::Hasher) {
         use core::hash::Hash;
 
