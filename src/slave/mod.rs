@@ -21,7 +21,7 @@ use crate::{
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::MailboxType,
-    pdu_loop::{CheckWorkingCounter, RxFrameDataBuf},
+    pdu_loop::RxFrameDataBuf,
     register::RegisterAddress,
     register::SupportFlags,
     slave::{ports::Ports, types::SlaveConfig},
@@ -354,7 +354,9 @@ where
                 );
 
                 Command::fprd(self.state.configured_address, read_mailbox.address)
-                    .receive_slice(self.client.client, read_mailbox.len)
+                    .wrap(self.client.client)
+                    .ignore_wkc()
+                    .receive_slice(read_mailbox.len)
                     .await?;
             }
         }
@@ -420,9 +422,10 @@ where
 
         // Read acknowledgement from slave OUT mailbox
         let response = Command::fprd(self.state.configured_address, read_mailbox.address)
-            .receive_slice(self.client.client, read_mailbox.len)
-            .await?
-            .wkc(1)?;
+            .wrap(self.client.client)
+            .with_wkc(1)
+            .receive_slice(read_mailbox.len)
+            .await?;
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
 
@@ -450,14 +453,12 @@ where
 
         // Send data to slave IN mailbox
         Command::fpwr(self.state.configured_address, write_mailbox.address)
-            .send_receive_slice_len(
-                self.client.client,
-                req,
-                // Need to write entire mailbox to latch it
-                write_mailbox.len,
-            )
-            .await?
-            .wkc(1)?;
+            .wrap(self.client.client)
+            .with_wkc(1)
+            // Need to write entire mailbox to latch it
+            .with_len(write_mailbox.len)
+            .send(req)
+            .await?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
 
@@ -678,7 +679,7 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: EtherCrabWireReadSized,
     {
-        self.client.read_ignore_wkc(register.into()).await?.wkc(1)
+        self.client.read(register.into()).await
     }
 
     /// Write a register.
@@ -689,16 +690,13 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: EtherCrabWireReadWrite,
     {
-        self.client
-            .write_ignore_wkc(register.into(), value)
-            .await?
-            .wkc(1)
+        self.client.write_read(register.into(), value).await
     }
 
     pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         crate::timer_factory::timeout(self.client.client.timeouts.state_transition, async {
             loop {
-                let (status, _working_counter) = self
+                let status = self
                     .client
                     .read_ignore_wkc::<AlControl>(RegisterAddress::AlStatus.into())
                     .await?;

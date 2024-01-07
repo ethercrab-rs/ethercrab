@@ -104,8 +104,9 @@ async fn main() -> Result<(), Error> {
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Dynamic drift compensation
-        let (_reference_time, _wkc) = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
-            .receive::<u64>(&client)
+        let _ = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
+            .wrap(&client)
+            .receive::<u64>()
             .await?;
 
         for mut slave in group.iter(&client) {

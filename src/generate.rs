@@ -2,24 +2,6 @@
 //!
 //! Like cookie_factory but much simpler and will quite happily panic.
 
-/// Write a `u16`, little-endian.
-pub fn le_u16(value: u16, buf: &mut [u8]) -> &mut [u8] {
-    let (buf, rest) = buf.split_at_mut(2);
-
-    buf.copy_from_slice(&value.to_le_bytes());
-
-    rest
-}
-
-/// Write a `u8`.
-pub fn le_u8(value: u8, buf: &mut [u8]) -> &mut [u8] {
-    let (buf, rest) = buf.split_at_mut(1);
-
-    buf[0] = value;
-
-    rest
-}
-
 /// Write a packed struct into the slice.
 pub fn write_packed<T>(value: T, buf: &mut [u8]) -> &mut [u8]
 where
@@ -28,15 +10,6 @@ where
     let (buf, rest) = buf.split_at_mut(value.packed_len());
 
     value.pack_to_slice_unchecked(buf);
-
-    rest
-}
-
-/// Write a slice into the buffer.
-pub fn write_slice<'buf>(value: &[u8], buf: &'buf mut [u8]) -> &'buf mut [u8] {
-    let (buf, rest) = buf.split_at_mut(value.len());
-
-    buf.copy_from_slice(value);
 
     rest
 }

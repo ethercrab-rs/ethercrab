@@ -1,11 +1,9 @@
 use super::{FrameBox, FrameElement, PduFrame};
 use crate::{
-    error::Error,
     fmt,
     pdu_loop::{frame_element::FrameState, PduResponse},
 };
-
-use core::{ops::Deref, ptr::NonNull};
+use core::{marker::PhantomData, ops::Deref, ptr::NonNull};
 
 /// A frame element where response data has been received from the EtherCAT network.
 ///
@@ -21,18 +19,15 @@ impl<'sto> ReceivedFrame<'sto> {
         unsafe { self.inner.frame() }.working_counter
     }
 
-    /// Retrieve the frame's data.
-    ///
-    /// If the working counter of the received frame does not match the given expected value, this
-    /// method will return an [`Error::WorkingCounter`] error.
-    pub fn wkc(self, expected: u16) -> Result<RxFrameDataBuf<'sto>, Error> {
+    #[cfg(test)]
+    pub fn wkc(self, expected: u16) -> Result<RxFrameDataBuf<'sto>, crate::error::Error> {
         let frame = self.frame();
         let act_wc = frame.working_counter;
 
         if act_wc == expected {
             Ok(self.into_data_buf())
         } else {
-            Err(Error::WorkingCounter {
+            Err(crate::error::Error::WorkingCounter {
                 expected,
                 received: act_wc,
             })
@@ -55,12 +50,11 @@ impl<'sto> ReceivedFrame<'sto> {
         let len: usize = self.frame().flags.len().into();
 
         let sptr = unsafe { FrameElement::buf_ptr(self.inner.frame) };
-        let eptr = unsafe { NonNull::new_unchecked(sptr.as_ptr().add(len)) };
 
         RxFrameDataBuf {
-            _frame: self,
+            _lt: PhantomData,
             data_start: sptr,
-            data_end: eptr,
+            len,
         }
     }
 }
@@ -83,9 +77,9 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
 }
 
 pub struct RxFrameDataBuf<'sto> {
-    _frame: ReceivedFrame<'sto>,
+    _lt: PhantomData<&'sto ()>,
     data_start: NonNull<u8>,
-    data_end: NonNull<u8>,
+    len: usize,
 }
 
 impl<'sto> core::fmt::Debug for RxFrameDataBuf<'sto> {
@@ -113,21 +107,19 @@ impl<'sto> Deref for RxFrameDataBuf<'sto> {
     // magic.
     fn deref(&self) -> &Self::Target {
         let len = self.len();
+
         unsafe { core::slice::from_raw_parts(self.data_start.as_ptr(), len) }
     }
 }
 
 impl<'sto> RxFrameDataBuf<'sto> {
     pub fn len(&self) -> usize {
-        (self.data_end.as_ptr() as usize) - (self.data_start.as_ptr() as usize)
+        self.len
     }
 
     pub fn trim_front(&mut self, ct: usize) {
-        let sz = self.len();
-        if ct > sz {
-            self.data_start = self.data_end;
-        } else {
-            self.data_start = unsafe { NonNull::new_unchecked(self.data_start.as_ptr().add(ct)) };
-        }
+        let ct = ct.min(self.len());
+
+        self.data_start = unsafe { NonNull::new_unchecked(self.data_start.as_ptr().add(ct)) };
     }
 }
