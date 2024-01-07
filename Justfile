@@ -71,7 +71,7 @@ capture-replay test_file_name interface *args:
 
     cargo build --features '__internals' --tests --release
     sudo echo
-    fd . --type executable ./target/debug -x sudo setcap cap_net_raw=pe
+    fd . --type executable ./target/debug/deps -x sudo setcap cap_net_raw=pe
     fd . --type executable ./target/release -x sudo setcap cap_net_raw=pe
 
     tshark -Q -w "tests/${test_file}.pcapng" --interface {{interface}} -f 'ether proto 0x88a4' &

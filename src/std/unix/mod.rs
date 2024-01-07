@@ -37,22 +37,6 @@ impl Future for TxRxFut<'_> {
 
         while let Some(frame) = self.tx.next_sendable_frame() {
             let res = frame.send_blocking(&mut buf, |data| {
-                #[cfg(feature = "__internals")]
-                {
-                    // Epic hack to make data writable
-                    let data: &mut [u8] = unsafe {
-                        core::slice::from_raw_parts_mut(data.as_ptr() as *mut u8, data.len())
-                    };
-
-                    let mut frame = smoltcp::wire::EthernetFrame::new_unchecked(data);
-
-                    // For benchmarks, change the first octet of the source MAC address so the packet
-                    // isn't filtered out as a sent frame but is treated as a received frame instead.
-                    frame.set_src_addr(smoltcp::wire::EthernetAddress([
-                        0x12, 0x10, 0x10, 0x10, 0x10, 0x10,
-                    ]))
-                }
-
                 match Pin::new(&mut self.socket).poll_write(ctx, data) {
                     Poll::Ready(Ok(bytes_written)) => {
                         if bytes_written != data.len() {

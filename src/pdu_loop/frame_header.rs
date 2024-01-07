@@ -3,7 +3,7 @@
 use crate::LEN_MASK;
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[repr(u8)]
 pub(crate) enum ProtocolType {
     DlPdu = 0x01u8,
@@ -14,7 +14,7 @@ pub(crate) enum ProtocolType {
     // Unknown(u8),
 }
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FrameHeader {
     pub(crate) payload_len: u16,
     pub(crate) protocol: ProtocolType,

@@ -111,7 +111,7 @@ impl<'sto> PduRx<'sto> {
 }
 
 /// PDU frame header, command, index, flags and IRQ.
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
 #[wire(bytes = 12)]
 pub struct FramePreamble {
     #[wire(bytes = 2)]
@@ -151,18 +151,145 @@ impl FramePreamble {
     fn command(&self) -> Result<Command, Error> {
         Command::parse_code_data(self.command_code, self.command_raw)
     }
+
+    /// A hacked equality check used for replay tests only.
+    ///
+    /// It treats `command_raw` specially as this can change in responses.
+    ///
+    /// Please do not use outside the replay tests.
+    #[doc(hidden)]
+    pub fn test_only_hacked_equal(&self, other: &Self) -> bool {
+        // use std::hash::Hash;
+
+        // #[deny(unused)]
+        // let FramePreamble {
+        //     header,
+        //     command_code,
+        //     index,
+        //     command_raw,
+        //     flags,
+        //     irq,
+        // } = *self;
+
+        // header.hash(state);
+        // command_code.hash(state);
+        // index.hash(state);
+
+        // // BRDs can have a different returned `command_raw` so we'll ignore `command_raw` for hashing in this case. 7 is the magic number for BRD command code.
+        // if command_code != 7 {
+        //     command_raw.hash(state)
+        // }
+
+        // flags.hash(state);
+        // irq.hash(state);
+
+        // self.header == other.header
+        self.command_code == other.command_code
+            && self.index == other.index
+            && if matches!(self.command_code, 4 | 5) {
+                self.command_raw == other.command_raw &&
+                self.header == other.header
+            } else {
+                true
+            }
+            // && self.flags == other.flags
+            && self.irq == other.irq
+    }
+
+    /// Similar to [`test_only_hacked_equal`].
+    ///
+    /// Please do not use outside replay tests.
+    #[doc(hidden)]
+    pub fn test_only_hacked_hash(&self, state: &mut impl core::hash::Hasher) {
+        use core::hash::Hash;
+
+        let FramePreamble {
+            header,
+            command_code,
+            index,
+            command_raw,
+            flags: _,
+            irq,
+        } = *self;
+
+        // header.hash(state);
+        command_code.hash(state);
+        index.hash(state);
+
+        if matches!(command_code, 4 | 5) {
+            header.payload_len.hash(state);
+            command_raw.hash(state);
+        }
+
+        // flags.hash(state);
+        irq.hash(state);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::pdu_loop::frame_header::ProtocolType::DlPdu;
-    use core::hash::Hash;
-    use std::collections::hash_map::DefaultHasher;
+    use core::hash::{Hash, Hasher};
+    use std::collections::{hash_map::DefaultHasher, HashMap};
+
+    // These shouldn't be derived for general use, just for testing
+    impl Eq for FramePreamble {}
+    impl PartialEq for FramePreamble {
+        fn eq(&self, other: &Self) -> bool {
+            self.test_only_hacked_equal(&other)
+        }
+    }
+    impl Hash for FramePreamble {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.test_only_hacked_hash(state);
+        }
+    }
 
     // Just a sanity check...
     #[test]
     fn preamble_eq() {
+        let a = FramePreamble {
+            header: FrameHeader {
+                payload_len: 13,
+                protocol: DlPdu,
+            },
+            command_code: 2,
+            index: 0,
+            command_raw: [0, 0, 0, 0],
+            flags: PduFlags {
+                length: 1,
+                circulated: false,
+                is_not_last: false,
+            },
+            irq: 0,
+        };
+
+        let b = FramePreamble {
+            header: FrameHeader {
+                payload_len: 13,
+                protocol: DlPdu,
+            },
+            command_code: 2,
+            index: 0,
+            command_raw: [0, 0, 0, 0],
+            flags: PduFlags {
+                length: 1,
+                circulated: false,
+                is_not_last: false,
+            },
+            irq: 0,
+        };
+
+        assert_eq!(a, b);
+
+        let mut state = DefaultHasher::new();
+
+        assert_eq!(a.hash(&mut state), b.hash(&mut state));
+    }
+
+    #[test]
+    fn preamble_brd_eq() {
         let a = FramePreamble {
             header: FrameHeader {
                 payload_len: 13,
@@ -186,7 +313,7 @@ mod tests {
             },
             command_code: 7,
             index: 0,
-            command_raw: [0, 0, 0, 0],
+            command_raw: [1, 0, 0, 0],
             flags: PduFlags {
                 length: 1,
                 circulated: false,
@@ -195,10 +322,103 @@ mod tests {
             irq: 0,
         };
 
+        // Different `command_raw` but `command_code` is BRD so the equality should still hold.
         assert_eq!(a, b);
 
-        let mut state = DefaultHasher::new();
+        let mut state_a = DefaultHasher::new();
+        let mut state_b = DefaultHasher::new();
 
-        assert_eq!(a.hash(&mut state), b.hash(&mut state));
+        a.hash(&mut state_a);
+        b.hash(&mut state_b);
+
+        // Hashes remain equal because we look up by sent preamble, not the potentially modified
+        // receive.
+        assert_eq!(state_a.finish(), state_b.finish());
+    }
+
+    #[test]
+    fn find_brd() {
+        let mut map = HashMap::new();
+
+        map.insert(
+            FramePreamble {
+                header: FrameHeader {
+                    payload_len: 13,
+                    protocol: DlPdu,
+                },
+                command_code: 7,
+                index: 0,
+                command_raw: [3, 0, 0, 0],
+                flags: PduFlags {
+                    length: 1,
+                    circulated: false,
+                    is_not_last: false,
+                },
+                irq: 0,
+            },
+            1234usize,
+        );
+
+        assert_eq!(
+            map.get(&FramePreamble {
+                header: FrameHeader {
+                    payload_len: 13,
+                    protocol: DlPdu,
+                },
+                command_code: 7,
+                index: 0,
+                command_raw: [0, 0, 0, 0],
+                flags: PduFlags {
+                    length: 1,
+                    circulated: false,
+                    is_not_last: false,
+                },
+                irq: 0,
+            }),
+            Some(&1234usize)
+        );
+    }
+
+    #[test]
+    fn find_bwr() {
+        let mut map = HashMap::new();
+
+        map.insert(
+            FramePreamble {
+                header: FrameHeader {
+                    payload_len: 14,
+                    protocol: DlPdu,
+                },
+                command_code: 8,
+                index: 1,
+                command_raw: [3, 0, 32, 1],
+                flags: PduFlags {
+                    length: 2,
+                    circulated: false,
+                    is_not_last: false,
+                },
+                irq: 0,
+            },
+            1234usize,
+        );
+
+        assert_eq!(
+            map.get(&FramePreamble {
+                header: FrameHeader {
+                    payload_len: 14,
+                    protocol: DlPdu,
+                },
+                command_code: 8,
+                index: 1,
+                command_raw: [0, 0, 32, 1],
+                flags: PduFlags {
+                    length: 2,
+                    circulated: false,
+                    is_not_last: false,
+                },
+                irq: 0,
+            }),
+            Some(&1234usize)
+        );
     }
 }
