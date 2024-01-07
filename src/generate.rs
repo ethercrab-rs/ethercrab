@@ -2,9 +2,6 @@
 //!
 //! Like cookie_factory but much simpler and will quite happily panic.
 
-use crate::fmt;
-use packed_struct::{PackedStructInfo, PackedStructSlice};
-
 /// Write a `u16`, little-endian.
 pub fn le_u16(value: u16, buf: &mut [u8]) -> &mut [u8] {
     let (buf, rest) = buf.split_at_mut(2);
@@ -26,13 +23,11 @@ pub fn le_u8(value: u8, buf: &mut [u8]) -> &mut [u8] {
 /// Write a packed struct into the slice.
 pub fn write_packed<T>(value: T, buf: &mut [u8]) -> &mut [u8]
 where
-    T: PackedStructSlice + PackedStructInfo,
+    T: ethercrab_wire::EtherCrabWireWrite,
 {
-    let (buf, rest) = buf.split_at_mut(T::packed_bits() / 8);
+    let (buf, rest) = buf.split_at_mut(value.packed_len());
 
-    fmt::unwrap!(value
-        .pack_to_slice(buf)
-        .map_err(crate::error::WrappedPackingError::from));
+    value.pack_to_slice_unchecked(buf);
 
     rest
 }
@@ -48,7 +43,7 @@ pub fn write_slice<'buf>(value: &[u8], buf: &'buf mut [u8]) -> &'buf mut [u8] {
 
 /// Skip `n` bytes.
 pub fn skip(len: usize, buf: &mut [u8]) -> &mut [u8] {
-    let (_, rest) = buf.split_at_mut(len);
+    let len = len.min(buf.len());
 
-    rest
+    &mut buf[len..]
 }
