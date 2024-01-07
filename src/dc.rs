@@ -4,7 +4,6 @@ use crate::{
     command::Command,
     error::Error,
     fmt,
-    pdu_loop::CheckWorkingCounter,
     register::RegisterAddress,
     slave::{ports::Topology, slave_client::SlaveClient, Slave},
     Client,
@@ -19,9 +18,10 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
     // Latch receive times into all ports of all slaves.
     Command::bwr(RegisterAddress::DcTimePort0.into())
-        .send_receive(client, 0u32)
-        .await?
-        .wkc(num_slaves_with_dc as u16)?;
+        .wrap(client)
+        .with_wkc(num_slaves_with_dc as u16)
+        .send_receive(0u32)
+        .await?;
 
     // Read receive times for all slaves and store on slave structs
     for slave in slaves.iter_mut().filter(|slave| slave.flags.dc_supported) {
@@ -30,7 +30,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
         // NOTE: Defined as a u64, not i64, in the spec
         // TODO: Remember why this is i64 here. SOEM uses i64 I think, and I seem to remember things
         // breaking/being weird if it wasn't i64? Was it something to do with wraparound/overflow?
-        let (dc_receive_time, _wkc) = sl
+        let dc_receive_time = sl
             .read_ignore_wkc::<i64>(RegisterAddress::DcReceiveTime.into())
             .await?;
 
@@ -83,14 +83,18 @@ async fn write_dc_parameters(
         slave.configured_address,
         RegisterAddress::DcSystemTimeOffset.into(),
     )
-    .send::<i64>(client, -dc_receive_time + now_nanos)
+    .wrap(client)
+    .ignore_wkc()
+    .send(-dc_receive_time + now_nanos)
     .await?;
 
     Command::fpwr(
         slave.configured_address,
         RegisterAddress::DcSystemTimeTransmissionDelay.into(),
     )
-    .send::<u32>(client, slave.propagation_delay)
+    .wrap(client)
+    .ignore_wkc()
+    .send(slave.propagation_delay)
     .await?;
 
     Ok(())
@@ -427,11 +431,12 @@ pub(crate) async fn run_dc_static_sync(
     // Static drift compensation - distribute reference clock through network until slave clocks
     // settle
     for _ in 0..iterations {
-        let (_reference_time, _wkc) = Command::frmw(
+        Command::frmw(
             dc_reference_slave.configured_address,
             RegisterAddress::DcSystemTime.into(),
         )
-        .receive::<u64>(client)
+        .wrap(client)
+        .receive_wkc::<u64>()
         .await?;
     }
 

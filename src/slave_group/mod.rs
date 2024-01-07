@@ -532,7 +532,8 @@ where
         );
 
         let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
-            .send_receive_slice_mut(client, self.pdi_mut(), self.read_pdi_len)
+            .wrap(client)
+            .send_receive_slice_mut(self.pdi_mut(), self.read_pdi_len)
             .await?;
 
         Ok(wkc)

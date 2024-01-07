@@ -7,14 +7,10 @@ mod pdu_tx;
 pub mod storage;
 
 use crate::{
-    client_config::RetryBehaviour,
     command::Command,
     error::{Error, PduError},
-    fmt,
     pdu_loop::storage::PduStorageRef,
-    Reads, Writes,
 };
-use core::time::Duration;
 
 use ethercrab_wire::EtherCrabWireWrite;
 pub use frame_element::received_frame::RxFrameDataBuf;
@@ -25,10 +21,16 @@ pub use storage::PduStorage;
 
 use self::frame_element::received_frame::ReceivedFrame;
 
+#[cfg(feature = "__internals")]
+pub use pdu_rx::FramePreamble;
+
 pub type PduResponse<T> = (T, u16);
 
 pub trait CheckWorkingCounter<T> {
     fn wkc(self, expected: u16) -> Result<T, Error>;
+
+    /// Ignores working counter if it is `None`.
+    fn maybe_wkc(self, expected: Option<u16>) -> Result<T, Error>;
 }
 
 impl<T> CheckWorkingCounter<T> for PduResponse<T> {
@@ -40,6 +42,13 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
                 expected,
                 received: self.1,
             })
+        }
+    }
+
+    fn maybe_wkc(self, expected: Option<u16>) -> Result<T, Error> {
+        match expected {
+            Some(expected) => self.wkc(expected),
+            None => Ok(self.0),
         }
     }
 }
@@ -89,7 +98,7 @@ impl<'sto> PduLoop<'sto> {
     }
 
     /// Tell the packet sender there are PDUs ready to send.
-    fn wake_sender(&self) {
+    pub(crate) fn wake_sender(&self) {
         self.storage.tx_waker.wake();
     }
 
@@ -112,98 +121,56 @@ impl<'sto> PduLoop<'sto> {
 
     /// Send data to and read data back from the slave devices.
     ///
-    /// Unlike [`pdu_tx_readwrite`](crate::pdu_loop::PduLoop::pdu_tx_readwrite), this method allows
-    /// overriding the minimum data length of the payload.
+    /// This method allows overriding the minimum data length of the payload.
     ///
-    /// The PDU data length will be the larger of `send_data.len()` and `data_length`. If a larger
-    /// response than `send_data` is desired, set the expected response length in `data_length`.
+    /// The PDU data length will be the larger of the payload data length and the length override
+    /// (if provided). If a larger **response** than the sent data is desired, set the expected
+    /// response length in `len_override`.
     ///
     /// This is useful for e.g. sending a 10 byte PDI with 4 output bytes and 6 input bytes. In this
-    /// case, `send_data` will be a slice of length `4` containing the outputs to send, and
-    /// `data_length` will be `10`. This makes the latter 6 bytes available for writing the PDU
-    /// response into.
-    pub(crate) async fn pdu_tx_readwrite_len(
-        &self,
-        command: Command,
-        send_data: impl EtherCrabWireWrite,
-        data_length: u16,
-        timeout: Duration,
-        retry_behaviour: RetryBehaviour,
-    ) -> Result<ReceivedFrame<'_>, Error> {
-        for _ in 0..retry_behaviour.loop_counts() {
-            let payload_length = u16::try_from(send_data.packed_len())?.max(data_length);
-
-            let mut frame = self.storage.alloc_frame(command, data_length)?;
-
-            let frame_idx = frame.index();
-
-            let payload = frame
-                .buf_mut()
-                .get_mut(0..usize::from(payload_length))
-                .ok_or(Error::Pdu(PduError::TooLong))?;
-
-            // SAFETY: We ensure the payload length is at least the length of the packed input data
-            // above, as well as the data to be written is not longer than the payload buffer.
-            send_data.pack_to_slice_unchecked(payload);
-
-            let frame = frame.mark_sendable();
-
-            self.wake_sender();
-
-            match crate::timer_factory::timeout(timeout, frame).await {
-                Ok(result) => return Ok(result),
-                Err(Error::Timeout) => {
-                    fmt::error!("Frame {} timed out", frame_idx);
-
-                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
-                    // state to `None`, ready for reuse.
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        Err(Error::Timeout)
-    }
-
-    /// Send data to and read data back from multiple slaves.
+    /// case, `data` will be a slice of length `4` containing the outputs to send, and
+    /// `len_override` will be `Some(10)`. This makes the latter 6 bytes available for writing the
+    /// PDU response into.
     // NOTE: Should be `pub(crate)` but the benchmarks need this internal method so we'll just hide
     // it instead.
     #[doc(hidden)]
-    pub async fn pdu_tx_readwrite<'a>(
-        &'a self,
-        command: Writes,
-        send_data: impl EtherCrabWireWrite,
-        timeout: Duration,
-        retry_behaviour: RetryBehaviour,
-    ) -> Result<ReceivedFrame<'_>, Error> {
-        let len = send_data.packed_len() as u16;
-
-        self.pdu_tx_readwrite_len(
-            Command::Write(command),
-            send_data,
-            len,
-            timeout,
-            retry_behaviour,
-        )
-        .await
-    }
-
-    /// Send a PDU to read data back from one or more slave devices.
-    pub(crate) async fn pdu_tx_readonly(
+    pub fn pdu_send(
         &self,
-        command: Reads,
-        data_length: u16,
-        timeout: Duration,
-        retry_behaviour: RetryBehaviour,
-    ) -> Result<ReceivedFrame<'_>, Error> {
-        self.pdu_tx_readwrite_len(
-            Command::Read(command),
-            &[],
-            data_length,
-            timeout,
-            retry_behaviour,
-        )
-        .await
+        command: Command,
+        data: impl EtherCrabWireWrite,
+        len_override: Option<u16>,
+    ) -> Result<
+        (
+            impl core::future::Future<Output = Result<ReceivedFrame<'_>, Error>>,
+            u8,
+        ),
+        Error,
+    > {
+        // Length of data to populate in the send buffer
+        let send_data_len = data.packed_len() as u16;
+
+        // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
+        // inputs in the remaining buffer.
+        let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
+
+        let mut frame = self.storage.alloc_frame(command, total_payload_len)?;
+
+        let frame_idx = frame.index();
+
+        let payload = frame
+            .buf_mut()
+            .get_mut(0..usize::from(send_data_len))
+            .ok_or(Error::Pdu(PduError::TooLong))?;
+
+        // SAFETY: We ensure the payload length is at least the length of the packed input data
+        // above, as well as the data to be written is not longer than the payload buffer.
+        data.pack_to_slice_unchecked(payload);
+
+        let frame = frame.mark_sendable();
+
+        self.wake_sender();
+
+        Ok((frame, frame_idx))
     }
 }
 
@@ -216,8 +183,11 @@ mod tests {
             created_frame::CreatedFrame, sendable_frame::SendableFrame, FrameBox, FrameElement,
             FrameState,
         },
+        Command, Reads,
     };
-    use core::{future::poll_fn, marker::PhantomData, ops::Deref, pin::pin, task::Poll};
+    use core::{
+        future::poll_fn, marker::PhantomData, ops::Deref, pin::pin, task::Poll, time::Duration,
+    };
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
@@ -229,17 +199,21 @@ mod tests {
         static STORAGE: PduStorage<1, 16> = PduStorage::new();
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
 
-        let send_result = pdu_loop
-            .pdu_tx_readonly(
-                Reads::Brd {
-                    address: 0,
-                    register: 0,
-                },
-                16,
-                Duration::from_secs(0),
-                RetryBehaviour::None,
-            )
-            .await;
+        let send_result = crate::timer_factory::timeout(
+            Duration::from_secs(0),
+            pdu_loop
+                .pdu_send(
+                    Command::Read(Reads::Brd {
+                        address: 0,
+                        register: 0,
+                    }),
+                    (),
+                    Some(16),
+                )
+                .unwrap()
+                .0,
+        )
+        .await;
 
         // Just make sure the read timed out
         assert_eq!(send_result.unwrap_err(), Error::Timeout);
@@ -320,12 +294,12 @@ mod tests {
             let mut written_packet = Vec::new();
             written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
-            let mut frame_fut = pin!(pdu_loop.pdu_tx_readwrite(
-                Command::fpwr(0x5678, 0x1234),
-                &data,
-                Duration::from_secs(1),
-                RetryBehaviour::None
-            ));
+            let mut frame_fut = pin!(
+                pdu_loop
+                    .pdu_send(Command::Write(Command::fpwr(0x5678, 0x1234)), &data, None,)
+                    .unwrap()
+                    .0
+            );
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -350,7 +324,6 @@ mod tests {
                     .expect("send");
 
                 // Munge fake sent frame into a fake received frame
-
                 {
                     let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
                     frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
@@ -368,7 +341,7 @@ mod tests {
 
             let result = rx.receive_frame(&written_packet);
 
-            assert!(result.is_ok());
+            assert_eq!(result, Ok(()));
 
             // The frame has received a response at this point so should be ready to get the data
             // from
@@ -491,12 +464,16 @@ mod tests {
         let data_bytes = data.to_le_bytes();
 
         let poller = poll_fn(|ctx| {
-            let mut frame_fut = pin!(pdu_loop.pdu_tx_readwrite(
-                Command::fpwr(0x6789, 0x1234),
-                &data_bytes,
-                Duration::from_secs(1),
-                RetryBehaviour::None
-            ));
+            let mut frame_fut = pin!(
+                pdu_loop
+                    .pdu_send(
+                        Command::Write(Command::fpwr(0x6789, 0x1234)),
+                        &data_bytes,
+                        None
+                    )
+                    .expect("Create sendable frame fut")
+                    .0
+            );
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -610,12 +587,9 @@ mod tests {
             fmt::info!("Send PDU {i}");
 
             let result = pdu_loop
-                .pdu_tx_readwrite(
-                    Command::fpwr(0x1000, 0x980),
-                    &data,
-                    Duration::from_secs(1),
-                    RetryBehaviour::None,
-                )
+                .pdu_send(Command::Write(Command::fpwr(0x1000, 0x980)), data, None)
+                .unwrap()
+                .0
                 .await
                 .unwrap()
                 .wkc(0)
