@@ -1,9 +1,17 @@
 //! Utilities to replay Wireshark captures as part of regression/integration tests.
 
-use ethercrab::{error::Error, std::tx_rx_task, PduRx, PduTx};
+use ethercrab::{error::Error, internals::FramePreamble, std::tx_rx_task, PduRx, PduTx};
+use ethercrab_wire::EtherCrabWireRead;
 use pcap_file::pcapng::{Block, PcapNgReader};
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
-use std::{fs::File, future::Future, pin::Pin, task::Poll};
+use std::{
+    collections::{HashMap, VecDeque},
+    fs::File,
+    future::Future,
+    hash::Hasher,
+    pin::Pin,
+    task::Poll,
+};
 
 pub fn spawn_tx_rx(capture_file_path: &str, tx: PduTx<'static>, rx: PduRx<'static>) {
     let interface = std::env::var("INTERFACE");
@@ -22,71 +30,32 @@ pub fn spawn_tx_rx(capture_file_path: &str, tx: PduTx<'static>, rx: PduRx<'stati
     };
 }
 
+const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
+const REPLY_ADDR: EthernetAddress = EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]);
+
+#[derive(Debug)]
+struct PreambleHash(pub FramePreamble);
+
+impl Eq for PreambleHash {}
+
+impl PartialEq for PreambleHash {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.test_only_hacked_equal(&other.0)
+    }
+}
+
+impl core::hash::Hash for PreambleHash {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.test_only_hacked_hash(state);
+    }
+}
+
 struct DummyTxRxFut<'a> {
     tx: PduTx<'a>,
     rx: PduRx<'a>,
-
-    capture_file: PcapNgReader<File>,
-
-    /// Packet number from Wireshark capture.
-    packet_number: usize,
-}
-
-impl<'a> DummyTxRxFut<'a> {
-    const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
-    const REPLY_ADDR: EthernetAddress = EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]);
-
-    fn next_line(&mut self) -> EthernetFrame<Vec<u8>> {
-        while let Some(block) = self.capture_file.next_block() {
-            self.packet_number += 1;
-
-            // Check if there is no error
-            let block = block.expect("Block error");
-
-            let raw = match block {
-                Block::EnhancedPacket(block) => {
-                    let buf = block.data.to_owned();
-
-                    let buf2 = buf.iter().copied().collect::<Vec<_>>();
-
-                    EthernetFrame::new_checked(buf2).expect("Failed to parse block")
-                }
-                Block::InterfaceDescription(_) | Block::InterfaceStatistics(_) => continue,
-                other => panic!(
-                    "Frame {} is not correct type: {:?}",
-                    self.packet_number, other
-                ),
-            };
-
-            if raw.src_addr() != Self::MASTER_ADDR && raw.src_addr() != Self::REPLY_ADDR {
-                panic!(
-                    "Frame {} does not have EtherCAT address (has {:?} instead)",
-                    self.packet_number,
-                    raw.src_addr()
-                );
-            }
-
-            return raw;
-        }
-
-        unreachable!("only had {} blocks", self.packet_number);
-    }
-
-    fn next_line_is_send(&mut self) -> EthernetFrame<Vec<u8>> {
-        let next = self.next_line();
-
-        assert_eq!(next.src_addr(), Self::MASTER_ADDR);
-
-        next
-    }
-
-    fn next_line_is_reply(&mut self) -> EthernetFrame<Vec<u8>> {
-        let next = self.next_line();
-
-        assert_eq!(next.src_addr(), Self::REPLY_ADDR);
-
-        next
-    }
+    // The hashmap here is an optimisation over just a straight vec to improve popping performance.
+    pdu_sends: HashMap<PreambleHash, VecDeque<(EthernetFrame<Vec<u8>>, usize)>>,
+    pdu_responses: HashMap<PreambleHash, VecDeque<(EthernetFrame<Vec<u8>>, usize)>>,
 }
 
 impl Future for DummyTxRxFut<'_> {
@@ -98,19 +67,47 @@ impl Future for DummyTxRxFut<'_> {
         let mut buf = [0u8; 1536];
 
         while let Some(frame) = self.tx.next_sendable_frame() {
-            let expected = self.next_line_is_send();
+            // let expected = self.next_line_is_send();
+
+            let mut sent_preamble = None;
 
             frame
                 .send_blocking(&mut buf, |got| {
-                    assert_eq!(expected.as_ref(), got, "TX line {}", self.packet_number);
+                    let frame = EthernetFrame::new_unchecked(got);
+
+                    let got_preamble = FramePreamble::unpack_from_slice(frame.payload())
+                        .map(PreambleHash)
+                        .expect("Bad preamble");
+
+                    let (expected, tx_packet_number) = self
+                        .pdu_sends
+                        .get_mut(&got_preamble)
+                        .expect("Sent preamble not found in dump")
+                        .pop_front()
+                        .expect("Not enough packets for this preamble");
+
+                    assert_eq!(
+                        expected.as_ref(),
+                        got,
+                        "TX line {}, search header {:?}",
+                        tx_packet_number,
+                        got_preamble
+                    );
+
+                    sent_preamble = Some(got_preamble);
 
                     Ok(got.len())
                 })
                 .expect("Failed to send");
 
-            // ---
+            let sent_preamble = sent_preamble.expect("No send preamble");
 
-            let expected = self.next_line_is_reply();
+            let (expected, _rx_packet_number) = self
+                .pdu_responses
+                .get_mut(&sent_preamble)
+                .expect("Receive preamble not found in dump")
+                .pop_front()
+                .expect("Not enough packets for this preamble");
 
             self.rx.receive_frame(expected.as_ref()).expect("Frame RX")
         }
@@ -125,15 +122,71 @@ pub fn dummy_tx_rx_task(
     pdu_tx: PduTx<'static>,
     pdu_rx: PduRx<'static>,
 ) -> Result<impl Future<Output = Result<(), Error>>, std::io::Error> {
-    let file_in = File::open(capture_file_path).expect("Error opening file");
-    let pcapng_reader = PcapNgReader::new(file_in).expect("Failed to init PCAP reader");
+    // let file_in = File::open(capture_file_path).expect("Error opening file");
+    let file_in2 = File::open(capture_file_path).expect("Error opening file");
+    // let pcapng_reader = PcapNgReader::new(file_in).expect("Failed to init PCAP reader");
+    let mut pcapng_reader2 = PcapNgReader::new(file_in2).expect("Failed to init PCAP reader");
+
+    let mut packet_number = 0;
+    let mut pdu_responses = HashMap::new();
+    let mut pdu_sends = HashMap::new();
+
+    while let Some(block) = pcapng_reader2.next_block() {
+        // Indexed from 1 in the Wireshark UI
+        packet_number += 1;
+
+        // Check if there is no error
+        let block = block.expect("Block error");
+
+        let (raw, preamble) = match block {
+            Block::EnhancedPacket(block) => {
+                let buf = block.data.to_owned();
+
+                let buf2 = buf.iter().copied().collect::<Vec<_>>();
+
+                let mut f = EthernetFrame::new_checked(buf2).expect("Failed to parse block");
+
+                assert_eq!(
+                    u16::from(f.ethertype()),
+                    0x88a4,
+                    "packet {} is not an EtherCAT frame",
+                    packet_number
+                );
+
+                let preamble = FramePreamble::unpack_from_slice(f.payload_mut())
+                    .map(PreambleHash)
+                    .expect("Invalid frame header");
+
+                (f, preamble)
+            }
+            Block::InterfaceDescription(_) | Block::InterfaceStatistics(_) => continue,
+            other => panic!("Frame {} is not correct type: {:?}", packet_number, other),
+        };
+
+        if raw.src_addr() == MASTER_ADDR {
+            pdu_sends
+                .entry(preamble)
+                .or_insert(VecDeque::new())
+                .push_back((raw, packet_number));
+        } else if raw.src_addr() == REPLY_ADDR {
+            pdu_responses
+                .entry(preamble)
+                .or_insert(VecDeque::new())
+                .push_back((raw, packet_number));
+        } else {
+            panic!(
+                "Frame {} does not have EtherCAT address (has {:?} instead)",
+                packet_number,
+                raw.src_addr()
+            );
+        }
+    }
 
     let task = DummyTxRxFut {
         tx: pdu_tx,
         rx: pdu_rx,
-        capture_file: pcapng_reader,
-        // Indexed from 1 in the Wireshark UI
-        packet_number: 1,
+        pdu_sends,
+        pdu_responses,
     };
 
     Ok(task)
