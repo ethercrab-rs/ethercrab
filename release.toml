@@ -5,5 +5,7 @@ pre-release-replacements = [
   { file = "CHANGELOG.md", search = "<!-- next-header -->", replace = "<!-- next-header -->\n\n## [Unreleased] - ReleaseDate" },
   { file = "CHANGELOG.md", search = "<!-- next-url -->", replace = "<!-- next-url -->\n[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/{{tag_name}}...HEAD" },
 ]
-pre-release-commit-message = "Commit new release"
-tag-message = "Release {{crate_name}} {{version}}"
+pre-release-commit-message = "Release {{crate_name}} v{{version}}"
+tag-message = "Release {{crate_name}} v{{version}}"
+allow-branch = ["master"]
+tag-prefix = "{{crate_name}}-"
