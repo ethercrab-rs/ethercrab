@@ -69,7 +69,7 @@ impl<'sto> PduRx<'sto> {
         let mut frame = self
             .storage
             .claim_receiving(index)
-            .ok_or_else(|| PduError::InvalidIndex(usize::from(index)))?;
+            .ok_or(PduError::InvalidIndex(index))?;
 
         (|| {
             if frame.index() != index {

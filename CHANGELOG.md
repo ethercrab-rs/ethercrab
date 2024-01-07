@@ -22,6 +22,10 @@ An EtherCAT master written in Rust.
   - `SlaveRef::register_read` from `PduData` to `EtherCrabWireWrite`
   - `SlaveRef::register_write` from `PduData` to `EtherCrabWireReadWrite`
 
+- **(breaking)** [#144](https://github.com/ethercrab-rs/ethercrab/pull/144)
+  `PduError::InvalidIndex(usize)` is now a `PduError::InvalidIndex(u8)` as the EtherCAT index field
+  is itself onl a `u8`.
+
 ### Added
 
 - [#141](https://github.com/ethercrab-rs/ethercrab/pull/141) Added the `ethercat-wire` and
