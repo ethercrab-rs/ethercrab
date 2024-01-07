@@ -5,8 +5,8 @@ use crate::{
     error::Error,
     fmt,
     register::RegisterAddress,
-    slave::{ports::Topology, slave_client::SlaveClient, Slave},
-    Client,
+    slave::{ports::Topology, Slave},
+    Client, SlaveRef,
 };
 
 /// Send a broadcast to all slaves to latch in DC receive time, then store it on the slave structs.
@@ -25,33 +25,21 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
     // Read receive times for all slaves and store on slave structs
     for slave in slaves.iter_mut().filter(|slave| slave.flags.dc_supported) {
-        let sl = SlaveClient::new(client, slave.configured_address);
+        let sl = SlaveRef::new(client, slave.configured_address, ());
 
         // NOTE: Defined as a u64, not i64, in the spec
         // TODO: Remember why this is i64 here. SOEM uses i64 I think, and I seem to remember things
         // breaking/being weird if it wasn't i64? Was it something to do with wraparound/overflow?
         let dc_receive_time = sl
-            .read_ignore_wkc::<i64>(RegisterAddress::DcReceiveTime.into())
+            .read(RegisterAddress::DcReceiveTime)
+            .ignore_wkc()
+            .receive::<i64>()
             .await?;
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
-            .read_slice(
-                RegisterAddress::DcTimePort0.into(),
-                // 4 u32
-                4 * 4,
-            )
+            .read(RegisterAddress::DcTimePort0)
+            .receive::<[u32; 4]>()
             .await
-            .map(|slice| {
-                let chunks = slice.chunks_exact(4);
-
-                let mut res = [0u32; 4];
-
-                for (i, chunk) in chunks.enumerate() {
-                    res[i] = u32::from_le_bytes(fmt::unwrap!(chunk.try_into()));
-                }
-
-                res
-            })
             .map_err(|e| {
                 fmt::error!(
                     "Failed to read DC times for slave {:#06x}: {}",

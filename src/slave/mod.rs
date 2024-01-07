@@ -2,7 +2,6 @@ pub(crate) mod configuration;
 mod eeprom;
 pub mod pdi;
 pub mod ports;
-pub(crate) mod slave_client;
 mod types;
 
 use crate::{
@@ -26,7 +25,7 @@ use crate::{
     register::SupportFlags,
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
-    sync_manager_channel::SyncManagerChannel,
+    WrappedRead, WrappedWrite,
 };
 use core::{
     any::type_name,
@@ -36,13 +35,13 @@ use core::{
 };
 use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
-    EtherCrabWireWrite, EtherCrabWireWriteSized,
+    EtherCrabWireWrite,
 };
 
 pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
 pub use self::types::SlaveIdentity;
-use self::{eeprom::SlaveEeprom, slave_client::SlaveClient, types::Mailbox};
+use self::{eeprom::SlaveEeprom, types::Mailbox};
 
 /// Slave device metadata. See [`SlaveRef`] for richer behaviour.
 #[derive(Debug)]
@@ -165,13 +164,13 @@ impl Slave {
         });
 
         let flags = slave_ref
-            .client
-            .read::<SupportFlags>(RegisterAddress::SupportFlags.into())
+            .read(RegisterAddress::SupportFlags)
+            .receive::<SupportFlags>()
             .await?;
 
         let ports = slave_ref
-            .client
-            .read::<DlStatus>(RegisterAddress::DlStatus.into())
+            .read(RegisterAddress::DlStatus)
+            .receive::<DlStatus>()
             .await
             .map(|dl_status| {
                 // NOTE: dc_receive_times are populated during DC initialisation
@@ -264,8 +263,19 @@ impl Slave {
 /// slave device's process data.
 #[derive(Debug)]
 pub struct SlaveRef<'a, S> {
-    client: SlaveClient<'a>,
+    pub(crate) client: &'a Client<'a>,
+    pub(crate) configured_address: u16,
     state: S,
+}
+
+impl<'a> Clone for SlaveRef<'a, ()> {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client,
+            configured_address: self.configured_address,
+            state: (),
+        }
+    }
 }
 
 impl<'a, S> SlaveRef<'a, S>
@@ -280,11 +290,6 @@ where
     /// Get additional identifying details for the slave device.
     pub fn identity(&self) -> SlaveIdentity {
         self.state.identity
-    }
-
-    /// Get the configured station address of the slave device.
-    pub fn configured_address(&self) -> u16 {
-        self.state.configured_address
     }
 
     /// Get the network propagation delay of this device in nanoseconds.
@@ -336,25 +341,26 @@ where
                 e
             })?;
 
-        let mailbox_read_sm = u16::from(RegisterAddress::sync_manager(read_mailbox.sync_manager));
-        let mailbox_write_sm = u16::from(RegisterAddress::sync_manager(write_mailbox.sync_manager));
+        let mailbox_read_sm_status =
+            RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
+        let mailbox_write_sm_status =
+            RegisterAddress::sync_manager_status(write_mailbox.sync_manager);
 
         // Ensure slave OUT (master IN) mailbox is empty
         {
-            let sm = self
-                .client
-                .read::<SyncManagerChannel>(mailbox_read_sm)
+            let sm_status = self
+                .read(mailbox_read_sm_status)
+                .receive::<crate::sync_manager_channel::Status>()
                 .await?;
 
             // If flag is set, read entire mailbox to clear it
-            if sm.status.mailbox_full {
+            if sm_status.mailbox_full {
                 fmt::debug!(
                     "Slave {:#06x} OUT mailbox not empty. Clearing.",
                     self.configured_address()
                 );
 
-                Command::fprd(self.state.configured_address, read_mailbox.address)
-                    .wrap(self.client.client)
+                self.read(read_mailbox.address)
                     .ignore_wkc()
                     .receive_slice(read_mailbox.len)
                     .await?;
@@ -362,25 +368,25 @@ where
         }
 
         // Wait for slave IN mailbox to be available to receive data from master
-        crate::timer_factory::timeout(self.client.client.timeouts.mailbox_echo, async {
+        crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
             loop {
-                let sm = self
-                    .client
-                    .read::<SyncManagerChannel>(mailbox_write_sm)
+                let sm_status = self
+                    .read(mailbox_write_sm_status)
+                    .receive::<crate::sync_manager_channel::Status>()
                     .await?;
 
-                if !sm.status.mailbox_full {
+                if !sm_status.mailbox_full {
                     break Ok(());
                 }
 
-                self.client.client.timeouts.loop_tick().await;
+                self.client.timeouts.loop_tick().await;
             }
         })
         .await
         .map_err(|e| {
             fmt::error!(
                 "Mailbox IN ready error for slave {:#06x}: {}",
-                self.state.configured_address,
+                self.configured_address,
                 e
             );
 
@@ -392,28 +398,28 @@ where
 
     /// Wait for a mailbox response
     async fn coe_response(&self, read_mailbox: &Mailbox) -> Result<RxFrameDataBuf<'_>, Error> {
-        let mailbox_read_sm = u16::from(RegisterAddress::sync_manager(read_mailbox.sync_manager));
+        let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
 
         // Wait for slave OUT mailbox to be ready
-        crate::timer_factory::timeout(self.client.client.timeouts.mailbox_echo, async {
+        crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
             loop {
-                let sm = self
-                    .client
-                    .read::<SyncManagerChannel>(mailbox_read_sm)
+                let sm_status = self
+                    .read(mailbox_read_sm)
+                    .receive::<crate::sync_manager_channel::Status>()
                     .await?;
 
-                if sm.status.mailbox_full {
+                if sm_status.mailbox_full {
                     break Ok(());
                 }
 
-                self.client.client.timeouts.loop_tick().await;
+                self.client.timeouts.loop_tick().await;
             }
         })
         .await
         .map_err(|e| {
             fmt::error!(
                 "Response mailbox IN error for slave {:#06x}: {}",
-                self.state.configured_address,
+                self.configured_address,
                 e
             );
 
@@ -421,9 +427,8 @@ where
         })?;
 
         // Read acknowledgement from slave OUT mailbox
-        let response = Command::fprd(self.state.configured_address, read_mailbox.address)
-            .wrap(self.client.client)
-            .with_wkc(1)
+        let response = self
+            .read(read_mailbox.address)
             .receive_slice(read_mailbox.len)
             .await?;
 
@@ -435,7 +440,7 @@ where
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
     /// and return as a slice.
     async fn send_coe_service<H>(
-        &self,
+        &'a self,
         request: H,
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
@@ -446,18 +451,10 @@ where
 
         let counter = request.counter();
 
-        // TODO: Make this dynamic
-        let mut buf = [0u8; 32];
-
-        let req = request.pack_to_slice(&mut buf)?;
-
         // Send data to slave IN mailbox
-        Command::fpwr(self.state.configured_address, write_mailbox.address)
-            .wrap(self.client.client)
-            .with_wkc(1)
-            // Need to write entire mailbox to latch it
+        self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
-            .send(req)
+            .send(request)
             .await?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
@@ -469,7 +466,7 @@ where
 
             fmt::error!(
                 "Mailbox error for slave {:#06x} (supports complete access: {}): {}",
-                self.client.configured_address,
+                self.configured_address,
                 self.state.config.mailbox.complete_access,
                 code
             );
@@ -540,9 +537,6 @@ where
         Ok(())
     }
 
-    /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
-    ///
-    /// Note that currently this method only supports reads of up to 32 bytes.
     /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
     pub async fn sdo_read<T>(&self, index: u16, sub_index: impl Into<SubIndex>) -> Result<T, Error>
     where
@@ -644,31 +638,41 @@ where
 impl<'a, S> SlaveRef<'a, S> {
     pub(crate) fn new(client: &'a Client<'a>, configured_address: u16, state: S) -> Self {
         Self {
-            client: SlaveClient::new(client, configured_address),
+            client,
+            configured_address,
             state,
         }
     }
 
-    /// Get the EtherCAT state machine state of the slave.
+    /// Get the configured station address of the slave device.
+    pub fn configured_address(&self) -> u16 {
+        self.configured_address
+    }
+
+    /// Get the sub device status.
+    pub(crate) async fn state(&self) -> Result<SlaveState, Error> {
+        self.read(RegisterAddress::AlStatus)
+            .receive::<AlControl>()
+            .await
+            .map(|ctl| ctl.state)
+    }
+
+    /// Get the EtherCAT state machine state of the sub device.
     pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
-        let status = self
-            .client
-            .read::<AlControl>(RegisterAddress::AlStatus.into());
-
         let code = self
-            .client
-            .read::<AlStatusCode>(RegisterAddress::AlStatusCode.into());
+            .read(RegisterAddress::AlStatusCode)
+            .receive::<AlStatusCode>();
 
-        let (status, code) = embassy_futures::join::join(status, code).await;
+        let (status, code) = embassy_futures::join::join(self.state(), code).await;
 
-        let status = status.map(|ctl| ctl.state)?;
+        let status = status?;
         let code = code?;
 
         Ok((status, code))
     }
 
     fn eeprom(&self) -> SlaveEeprom<DeviceEeprom> {
-        SlaveEeprom::new(DeviceEeprom::new(&self.client))
+        SlaveEeprom::new(DeviceEeprom::new(self.client, self.configured_address))
     }
 
     /// Read a register.
@@ -679,7 +683,7 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: EtherCrabWireReadSized,
     {
-        self.client.read(register.into()).await
+        self.read(register.into()).receive().await
     }
 
     /// Write a register.
@@ -690,25 +694,34 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: EtherCrabWireReadWrite,
     {
-        self.client.write_read(register.into(), value).await
+        self.write(register.into()).send_receive(value).await
     }
 
     pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        crate::timer_factory::timeout(self.client.client.timeouts.state_transition, async {
+        crate::timer_factory::timeout(self.client.timeouts.state_transition, async {
             loop {
                 let status = self
-                    .client
-                    .read_ignore_wkc::<AlControl>(RegisterAddress::AlStatus.into())
+                    .read(RegisterAddress::AlStatus)
+                    .ignore_wkc()
+                    .receive::<AlControl>()
                     .await?;
 
                 if status.state == desired_state {
                     break Ok(());
                 }
 
-                self.client.client.timeouts.loop_tick().await;
+                self.client.timeouts.loop_tick().await;
             }
         })
         .await
+    }
+
+    pub(crate) fn write(&self, register: impl Into<u16>) -> WrappedWrite {
+        Command::fpwr(self.configured_address, register.into()).wrap(self.client)
+    }
+
+    pub(crate) fn read(&self, register: impl Into<u16>) -> WrappedRead {
+        Command::fprd(self.configured_address, register.into()).wrap(self.client)
     }
 
     pub(crate) async fn request_slave_state_nowait(
@@ -718,27 +731,24 @@ impl<'a, S> SlaveRef<'a, S> {
         fmt::debug!(
             "Set state {} for slave address {:#04x}",
             desired_state,
-            self.client.configured_address
+            self.configured_address
         );
 
         // Send state request
         let response = self
-            .client
-            .write_slice(
-                RegisterAddress::AlControl.into(),
-                &AlControl::new(desired_state).pack(),
-            )
-            .await
-            .and_then(|raw| {
-                AlControl::unpack_from_slice(&raw).map_err(|_| Error::StateTransition)
-            })?;
+            .write(RegisterAddress::AlControl)
+            .send_receive::<AlControl>(AlControl::new(desired_state))
+            .await?;
 
         if response.error {
-            let error: AlStatusCode = self.client.read(RegisterAddress::AlStatus.into()).await?;
+            let error = self
+                .read(RegisterAddress::AlStatus)
+                .receive::<AlStatusCode>()
+                .await?;
 
             fmt::error!(
                 "Error occurred transitioning slave {:#06x} to {:?}: {}",
-                self.client.configured_address,
+                self.configured_address,
                 desired_state,
                 error,
             );
@@ -758,12 +768,9 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
         // ETG1000.4 Table 48 – Slave information interface access
         // A value of 2 sets owner to Master (not PDI) and cancels access
-        self.client
-            .write::<u16>(RegisterAddress::SiiConfig.into(), 2)
-            .await?;
-        self.client
-            .write::<u16>(RegisterAddress::SiiConfig.into(), mode as u16)
-            .await?;
+        self.write(RegisterAddress::SiiConfig).send(2u16).await?;
+
+        self.write(RegisterAddress::SiiConfig).send(mode).await?;
 
         Ok(())
     }
