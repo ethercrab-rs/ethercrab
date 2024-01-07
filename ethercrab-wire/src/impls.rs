@@ -274,3 +274,13 @@ where
         [0u8; N]
     }
 }
+
+impl<const N: usize> EtherCrabWireSized for heapless::String<N> {
+    const PACKED_LEN: usize = N;
+
+    type Buffer = [u8; N];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; N]
+    }
+}
