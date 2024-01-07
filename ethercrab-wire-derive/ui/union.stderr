@@ -1,5 +1,5 @@
 error: Unions are not supported
- --> ui/union.rs:4:7
+ --> ui/union.rs:2:7
   |
-4 | union Whatever {
+2 | union Whatever {
   |       ^^^^^^^^
