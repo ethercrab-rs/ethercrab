@@ -12,6 +12,24 @@ An EtherCAT master written in Rust.
 - [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Refactor sub device EEPROM reader to be
   more efficient when skipping sections of the device EEPROM map.
 
+### Added
+
+- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Added the `ethercat-wire` and
+  `ethercat-wire-derive` crates.
+
+  These crates are **EXPERIMENTAL**. They may be improved for public use in the future but are
+  currently designed around EtherCrab's internal needs and may be rough and/or buggy. Use with
+  caution, and expect breaking changes.
+
+- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Re-export the following traits from
+  `ethercrab-wire` for dealing with packing/unpacking data:
+
+  - `EtherCrabWireRead`
+  - `EtherCrabWireReadSized`
+  - `EtherCrabWireReadWrite`
+  - `EtherCrabWireSized`
+  - `EtherCrabWireWrite`
+
 ## [0.3.5] - 2023-12-22
 
 ### Changed
