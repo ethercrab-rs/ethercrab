@@ -33,13 +33,17 @@ linux-bench *args:
      fd . --type executable ./target/release/deps -x sudo setcap cap_net_raw=pe
      cargo bench --features __internals {{args}}
 
-generate-readme:
-     cargo readme > README.md
+_generate-readme path:
+     cargo readme --project-root "{{path}}" --template README.tpl --output README.md
      # Remove unprocessed doc links
      sed -i 's/\[\(`[^`]*`\)] /\1 /g' README.md
 
-check-readme: (generate-readme)
-     git diff --quiet --exit-code README.md
+_check-readme path: (_generate-readme path)
+     git diff --quiet --exit-code "{{path}}/README.md"
+
+check-readmes: (_check-readme ".") (_check-readme "./ethercrab-wire") (_check-readme "./ethercrab-wire-derive")
+
+generate-readmes: (_generate-readme ".") (_generate-readme "./ethercrab-wire") (_generate-readme "./ethercrab-wire-derive")
 
 dump-eeprom *args:
      cargo build --example dump-eeprom --features "std __internals" --release && \
