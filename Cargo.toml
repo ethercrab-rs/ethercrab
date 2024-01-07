@@ -13,6 +13,9 @@ exclude = ["dumps", "doc", "NOTES.md", "SPECNOTES.md"]
 resolver = "2"
 rust-version = "1.75"
 
+[workspace]
+members = ["ethercrab-wire", "ethercrab-wire-derive"]
+
 [package.metadata.docs.rs]
 default-target = "x86_64-unknown-linux-gnu"
 targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu"]
@@ -41,6 +44,7 @@ smoltcp = { version = "0.11.0", default-features = false, features = [
     "socket-raw",
     "medium-ethernet",
 ] }
+ethercrab-wire = { version = "0.0.0", path = "./ethercrab-wire" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.34.0", features = ["std"], optional = true }
@@ -85,6 +89,7 @@ defmt = [
     "smoltcp/defmt",
     "embedded-io-async/defmt-03",
     "heapless/defmt-03",
+    "ethercrab-wire/defmt-03",
 ]
 log = ["dep:log"]
 std = [
@@ -94,6 +99,7 @@ std = [
     "log",
     "futures-lite/std",
     "embedded-io-async/std",
+    "ethercrab-wire/std",
 ]
 serde = ["dep:serde", "bitflags/serde"]
 # Development only - DO NOT USE
