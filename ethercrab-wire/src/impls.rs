@@ -277,3 +277,14 @@ impl<const N: usize> EtherCrabWireSized for heapless::String<N> {
         [0u8; N]
     }
 }
+
+// --- std ---
+
+#[cfg(feature = "std")]
+impl EtherCrabWireRead for String {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
+        core::str::from_utf8(buf)
+            .map_err(|_| WireError::InvalidUtf8)
+            .map(String::from)
+    }
+}
