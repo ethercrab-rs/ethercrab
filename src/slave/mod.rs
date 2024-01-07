@@ -166,12 +166,12 @@ impl Slave {
 
         let flags = slave_ref
             .client
-            .read::<SupportFlags>(RegisterAddress::SupportFlags.into(), "support flags")
+            .read::<SupportFlags>(RegisterAddress::SupportFlags.into())
             .await?;
 
         let ports = slave_ref
             .client
-            .read::<DlStatus>(RegisterAddress::DlStatus.into(), "DL status")
+            .read::<DlStatus>(RegisterAddress::DlStatus.into())
             .await
             .map(|dl_status| {
                 // NOTE: dc_receive_times are populated during DC initialisation
@@ -343,7 +343,7 @@ where
         {
             let sm = self
                 .client
-                .read::<SyncManagerChannel>(mailbox_read_sm, "Master read mailbox")
+                .read::<SyncManagerChannel>(mailbox_read_sm)
                 .await?;
 
             // If flag is set, read entire mailbox to clear it
@@ -364,7 +364,7 @@ where
             loop {
                 let sm = self
                     .client
-                    .read::<SyncManagerChannel>(mailbox_write_sm, "Master write mailbox")
+                    .read::<SyncManagerChannel>(mailbox_write_sm)
                     .await?;
 
                 if !sm.status.mailbox_full {
@@ -397,7 +397,7 @@ where
             loop {
                 let sm = self
                     .client
-                    .read::<SyncManagerChannel>(mailbox_read_sm, "Master reply read mailbox")
+                    .read::<SyncManagerChannel>(mailbox_read_sm)
                     .await?;
 
                 if sm.status.mailbox_full {
@@ -422,7 +422,7 @@ where
         let response = Command::fprd(self.state.configured_address, read_mailbox.address)
             .receive_slice(self.client.client, read_mailbox.len)
             .await?
-            .wkc(1, "read OUT mailbox after write")?;
+            .wkc(1)?;
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
 
@@ -457,7 +457,7 @@ where
                 write_mailbox.len,
             )
             .await?
-            .wkc(1, "SDO upload request")?;
+            .wkc(1)?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
 
@@ -652,11 +652,11 @@ impl<'a, S> SlaveRef<'a, S> {
     pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
         let status = self
             .client
-            .read::<AlControl>(RegisterAddress::AlStatus.into(), "AL Status");
+            .read::<AlControl>(RegisterAddress::AlStatus.into());
 
         let code = self
             .client
-            .read::<AlStatusCode>(RegisterAddress::AlStatusCode.into(), "AL Status Code");
+            .read::<AlStatusCode>(RegisterAddress::AlStatusCode.into());
 
         let (status, code) = embassy_futures::join::join(status, code).await;
 
@@ -678,10 +678,7 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: EtherCrabWireReadSized,
     {
-        self.client
-            .read_ignore_wkc(register.into())
-            .await?
-            .wkc(1, "raw read")
+        self.client.read_ignore_wkc(register.into()).await?.wkc(1)
     }
 
     /// Write a register.
@@ -695,7 +692,7 @@ impl<'a, S> SlaveRef<'a, S> {
         self.client
             .write_ignore_wkc(register.into(), value)
             .await?
-            .wkc(1, "raw write")
+            .wkc(1)
     }
 
     pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
@@ -732,7 +729,6 @@ impl<'a, S> SlaveRef<'a, S> {
             .write_slice(
                 RegisterAddress::AlControl.into(),
                 &AlControl::new(desired_state).pack(),
-                "AL control",
             )
             .await
             .and_then(|raw| {
@@ -740,10 +736,7 @@ impl<'a, S> SlaveRef<'a, S> {
             })?;
 
         if response.error {
-            let error: AlStatusCode = self
-                .client
-                .read(RegisterAddress::AlStatus.into(), "AL status")
-                .await?;
+            let error: AlStatusCode = self.client.read(RegisterAddress::AlStatus.into()).await?;
 
             fmt::error!(
                 "Error occurred transitioning slave {:#06x} to {:?}: {}",
@@ -768,18 +761,10 @@ impl<'a, S> SlaveRef<'a, S> {
         // ETG1000.4 Table 48 – Slave information interface access
         // A value of 2 sets owner to Master (not PDI) and cancels access
         self.client
-            .write::<u16>(
-                RegisterAddress::SiiConfig.into(),
-                2,
-                "Write SII config literal",
-            )
+            .write::<u16>(RegisterAddress::SiiConfig.into(), 2)
             .await?;
         self.client
-            .write::<u16>(
-                RegisterAddress::SiiConfig.into(),
-                mode as u16,
-                "Write SII config mode",
-            )
+            .write::<u16>(RegisterAddress::SiiConfig.into(), mode as u16)
             .await?;
 
         Ok(())

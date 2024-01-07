@@ -28,18 +28,17 @@ use self::frame_element::received_frame::ReceivedFrame;
 pub type PduResponse<T> = (T, u16);
 
 pub trait CheckWorkingCounter<T> {
-    fn wkc(self, expected: u16, context: &'static str) -> Result<T, Error>;
+    fn wkc(self, expected: u16) -> Result<T, Error>;
 }
 
 impl<T> CheckWorkingCounter<T> for PduResponse<T> {
-    fn wkc(self, expected: u16, context: &'static str) -> Result<T, Error> {
+    fn wkc(self, expected: u16) -> Result<T, Error> {
         if self.1 == expected {
             Ok(self.0)
         } else {
             Err(Error::WorkingCounter {
                 expected,
                 received: self.1,
-                context: Some(context),
             })
         }
     }
@@ -619,7 +618,7 @@ mod tests {
                 )
                 .await
                 .unwrap()
-                .wkc(0, "testing")
+                .wkc(0)
                 .unwrap();
 
             assert_eq!(&*result, &data);

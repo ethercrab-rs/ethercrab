@@ -36,7 +36,7 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
         let status = self
             .client
-            .read::<SiiControl>(RegisterAddress::SiiControl.into(), "Read SII control")
+            .read::<SiiControl>(RegisterAddress::SiiControl.into())
             .await?;
 
         // Clear errors
@@ -47,7 +47,6 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
                 .write_slice(
                     RegisterAddress::SiiControl.into(),
                     &status.error_reset().pack(),
-                    "Reset errors",
                 )
                 .await?;
         }
@@ -59,7 +58,6 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
             .write_slice(
                 RegisterAddress::SiiControl.into(),
                 &SiiRequest::read(start_word).pack(),
-                "SII read setup",
             )
             .await?;
 
@@ -69,7 +67,6 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
             .read_slice(
                 RegisterAddress::SiiData.into(),
                 status.read_size.chunk_len(),
-                "SII data",
             )
             .await
             .map(|data| {
@@ -88,7 +85,7 @@ async fn wait(slave: &SlaveClient<'_>) -> Result<(), Error> {
     crate::timer_factory::timeout(slave.timeouts().eeprom, async {
         loop {
             let control = slave
-                .read::<SiiControl>(RegisterAddress::SiiControl.into(), "SII busy wait")
+                .read::<SiiControl>(RegisterAddress::SiiControl.into())
                 .await?;
 
             if !control.busy {

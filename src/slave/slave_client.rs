@@ -54,14 +54,14 @@ impl<'client> SlaveClient<'client> {
     }
 
     #[inline(always)]
-    pub(crate) async fn read<T>(&self, register: u16, context: &'static str) -> Result<T, Error>
+    pub(crate) async fn read<T>(&self, register: u16) -> Result<T, Error>
     where
         T: EtherCrabWireReadSized,
     {
         Command::fprd(self.configured_address, register)
             .receive(self.client)
             .await?
-            .wkc(1, context)
+            .wkc(1)
     }
 
     #[inline(always)]
@@ -69,12 +69,11 @@ impl<'client> SlaveClient<'client> {
         &self,
         register: u16,
         len: u16,
-        context: &'static str,
     ) -> Result<RxFrameDataBuf<'client>, Error> {
         Command::fprd(self.configured_address, register)
             .receive_slice(self.client, len)
             .await?
-            .wkc(1, context)
+            .wkc(1)
     }
 
     #[inline(always)]
@@ -82,28 +81,22 @@ impl<'client> SlaveClient<'client> {
         &self,
         register: u16,
         value: &[u8],
-        context: &'static str,
     ) -> Result<RxFrameDataBuf<'_>, Error> {
         Command::fpwr(self.configured_address, register)
             .send_receive_slice(self.client, value)
             .await?
-            .wkc(1, context)
+            .wkc(1)
     }
 
     /// A wrapper around an FPWR service to this slave's configured address, ignoring any response.
     #[inline(always)]
-    pub(crate) async fn write<T>(
-        &self,
-        register: u16,
-        value: T,
-        context: &'static str,
-    ) -> Result<(), Error>
+    pub(crate) async fn write<T>(&self, register: u16, value: T) -> Result<(), Error>
     where
         T: EtherCrabWireWrite,
     {
         Command::fpwr(self.configured_address, register)
             .send(self.client, value)
             .await?
-            .wkc(1, context)
+            .wkc(1)
     }
 }
