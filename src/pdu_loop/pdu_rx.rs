@@ -50,7 +50,7 @@ impl<'sto> PduRx<'sto> {
 
         let i = raw_packet.payload();
 
-        let header = FrameHeaderRaw::unpack_from_slice(i).map_err(|e| {
+        let header = FramePreamble::unpack_from_slice(i).map_err(|e| {
             fmt::error!("Failed to parse frame header: {}", e);
 
             e
@@ -64,7 +64,7 @@ impl<'sto> PduRx<'sto> {
 
         let command = header.command()?;
 
-        let FrameHeaderRaw {
+        let FramePreamble {
             index, flags, irq, ..
         } = header;
 
@@ -110,9 +110,10 @@ impl<'sto> PduRx<'sto> {
     }
 }
 
-#[derive(ethercrab_wire::EtherCrabWireRead)]
+/// PDU frame header, command, index, flags and IRQ.
+#[derive(Copy, Clone, Hash, ethercrab_wire::EtherCrabWireRead)]
 #[wire(bytes = 12)]
-struct FrameHeaderRaw {
+pub struct FramePreamble {
     #[wire(bytes = 2)]
     header: FrameHeader,
 
@@ -129,10 +130,10 @@ struct FrameHeaderRaw {
     irq: u16,
 }
 
-impl FrameHeaderRaw {
+impl FramePreamble {
     fn data_wkc<'buf>(&self, buf: &'buf [u8]) -> Result<(&'buf [u8], u16), Error> {
         // Jump past header in the buffer
-        let header_offset = FrameHeaderRaw::PACKED_LEN;
+        let header_offset = FramePreamble::PACKED_LEN;
 
         // The length of the PDU data body. There are two bytes after this that hold the working
         // counter, but are not counted as part of the PDU length from the header.

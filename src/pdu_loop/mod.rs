@@ -21,6 +21,9 @@ pub use storage::PduStorage;
 
 use self::frame_element::received_frame::ReceivedFrame;
 
+#[cfg(feature = "__internals")]
+pub use pdu_rx::FramePreamble;
+
 pub type PduResponse<T> = (T, u16);
 
 pub trait CheckWorkingCounter<T> {

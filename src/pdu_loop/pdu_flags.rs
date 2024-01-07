@@ -3,7 +3,7 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, WireError};
 
 /// PDU fields placed after ADP and ADO, e.g. `LEN`, `C` and `NEXT` fields in ETG1000.4 5.4.1.2
 /// Table 14 – Auto increment physical read (APRD).
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Default, Hash, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct PduFlags {
     /// Data length of this PDU.
     pub(crate) length: u16,
