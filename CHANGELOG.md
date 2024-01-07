@@ -14,14 +14,14 @@ An EtherCAT master written in Rust.
 
 ### Added
 
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Added the `ethercat-wire` and
+- [#141](https://github.com/ethercrab-rs/ethercrab/pull/141) Added the `ethercat-wire` and
   `ethercat-wire-derive` crates.
 
   These crates are **EXPERIMENTAL**. They may be improved for public use in the future but are
   currently designed around EtherCrab's internal needs and may be rough and/or buggy. Use with
   caution, and expect breaking changes.
 
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Re-export the following traits from
+- [#141](https://github.com/ethercrab-rs/ethercrab/pull/141) Re-export the following traits from
   `ethercrab-wire` for dealing with packing/unpacking data:
 
   - `EtherCrabWireRead`
