@@ -11,17 +11,27 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Bump MSRV to 1.75.0
 - [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Refactor sub device EEPROM reader to be
   more efficient when skipping sections of the device EEPROM map.
+- **(breaking)** [#142](https://github.com/ethercrab-rs/ethercrab/pull/142) Remove `PduRead` and
+  `PduData` traits. These are replaced with `EtherCrabWireRead` and `EtherCrabWireReadWrite` traits
+  respectively, along with `EtherCrabWireReadWrite` for write-only items.
+
+  Some pertinent trait bounds changes in the public API:
+
+  - `SlaveRef::sdo_read` from `PduData` to `EtherCrabWireWrite`
+  - `SlaveRef::sdo_write` from `PduData` to `EtherCrabWireReadSized`
+  - `SlaveRef::register_read` from `PduData` to `EtherCrabWireWrite`
+  - `SlaveRef::register_write` from `PduData` to `EtherCrabWireReadWrite`
 
 ### Added
 
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Added the `ethercat-wire` and
+- [#141](https://github.com/ethercrab-rs/ethercrab/pull/141) Added the `ethercat-wire` and
   `ethercat-wire-derive` crates.
 
   These crates are **EXPERIMENTAL**. They may be improved for public use in the future but are
   currently designed around EtherCrab's internal needs and may be rough and/or buggy. Use with
   caution, and expect breaking changes.
 
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Re-export the following traits from
+- [#141](https://github.com/ethercrab-rs/ethercrab/pull/141) Re-export the following traits from
   `ethercrab-wire` for dealing with packing/unpacking data:
 
   - `EtherCrabWireRead`

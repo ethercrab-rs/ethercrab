@@ -175,7 +175,6 @@ mod fmmu;
 mod generate;
 mod mailbox;
 mod pdi;
-mod pdu_data;
 mod pdu_loop;
 mod register;
 mod slave;
@@ -191,7 +190,6 @@ pub mod internals;
 #[cfg(feature = "std")]
 pub mod std;
 
-use nom::IResult;
 use smoltcp::wire::{EthernetAddress, EthernetProtocol};
 
 pub use al_status_code::AlStatusCode;
@@ -217,20 +215,3 @@ const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x
 
 /// Starting address for discovered slaves.
 const BASE_SLAVE_ADDR: u16 = 0x1000;
-
-/// Ensure that a buffer passed to a parsing function is fully consumed.
-///
-/// This mostly checks internal logic to ensure we don't miss data when parsing a struct.
-fn all_consumed<'a, E>(i: &'a [u8]) -> IResult<&'a [u8], (), E>
-where
-    E: nom::error::ParseError<&'a [u8]>,
-{
-    if i.is_empty() {
-        Ok((i, ()))
-    } else {
-        Err(nom::Err::Error(E::from_error_kind(
-            i,
-            nom::error::ErrorKind::Eof,
-        )))
-    }
-}

@@ -1,9 +1,9 @@
 use crate::{
     error::Error,
-    pdu_data::{PduData, PduRead},
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
     Client, Command, Timeouts,
 };
+use ethercrab_wire::{EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireWrite};
 
 /// A wrapper around [`Client`] preconfigured to use the given device address.
 #[derive(Debug)]
@@ -31,7 +31,7 @@ impl<'client> SlaveClient<'client> {
     #[inline(always)]
     pub(crate) async fn read_ignore_wkc<T>(&self, register: u16) -> Result<PduResponse<T>, Error>
     where
-        T: PduRead,
+        T: EtherCrabWireReadSized,
     {
         Command::fprd(self.configured_address, register)
             .receive(self.client)
@@ -46,7 +46,7 @@ impl<'client> SlaveClient<'client> {
         value: T,
     ) -> Result<PduResponse<T>, Error>
     where
-        T: PduData,
+        T: EtherCrabWireReadWrite,
     {
         Command::fpwr(self.configured_address, register)
             .send_receive(self.client, value)
@@ -56,7 +56,7 @@ impl<'client> SlaveClient<'client> {
     #[inline(always)]
     pub(crate) async fn read<T>(&self, register: u16, context: &'static str) -> Result<T, Error>
     where
-        T: PduRead,
+        T: EtherCrabWireReadSized,
     {
         Command::fprd(self.configured_address, register)
             .receive(self.client)
@@ -99,7 +99,7 @@ impl<'client> SlaveClient<'client> {
         context: &'static str,
     ) -> Result<(), Error>
     where
-        T: PduData,
+        T: EtherCrabWireWrite,
     {
         Command::fpwr(self.configured_address, register)
             .send(self.client, value)

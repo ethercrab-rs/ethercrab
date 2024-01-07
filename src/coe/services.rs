@@ -1,15 +1,16 @@
-use core::fmt::Display;
-
 use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SegmentSdoHeader, SubIndex};
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
-use packed_struct::{prelude::PackedStruct, PackedStructInfo};
+use core::fmt::Display;
+use ethercrab_wire::EtherCrabWireSized;
 
 /// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download
 /// request.
-#[derive(Debug, Copy, Clone, PackedStruct)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 16)]
 pub struct SdoExpeditedDownload {
-    #[packed_field(size_bytes = "12")]
+    #[wire(bytes = 12)]
     pub headers: SdoNormal,
+    #[wire(bytes = 4)]
     pub data: [u8; 4],
 }
 
@@ -36,13 +37,14 @@ impl Display for SdoExpeditedDownload {
 /// These fields are common to non-segmented (i.e. "normal") SDO requests and responses.
 ///
 /// See ETG1000.6 Section 5.6.2 SDO.
-#[derive(Debug, Copy, Clone, PackedStruct)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 12)]
 pub struct SdoNormal {
-    #[packed_field(size_bytes = "6")]
+    #[wire(bytes = 6)]
     pub header: MailboxHeader,
-    #[packed_field(size_bytes = "2")]
+    #[wire(bytes = 2)]
     pub coe_header: CoeHeader,
-    #[packed_field(size_bytes = "4")]
+    #[wire(bytes = 4)]
     pub sdo_header: InitSdoHeader,
 }
 
@@ -65,13 +67,14 @@ impl Display for SdoNormal {
 }
 
 /// Headers belonging to segmented SDO transfers.
-#[derive(Debug, Copy, Clone, PackedStruct)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 9)]
 pub struct SdoSegmented {
-    #[packed_field(size_bytes = "6")]
+    #[wire(bytes = 6)]
     pub header: MailboxHeader,
-    #[packed_field(size_bytes = "2")]
+    #[wire(bytes = 2)]
     pub coe_header: CoeHeader,
-    #[packed_field(size_bytes = "1")]
+    #[wire(bytes = 1)]
     pub sdo_header: SegmentSdoHeader,
 }
 
@@ -84,16 +87,18 @@ impl Display for SdoSegmented {
 }
 
 /// Functionality common to all service responses (normal, expedited, segmented).
-pub trait CoeServiceResponse: PackedStruct + PackedStructInfo {
+pub trait CoeServiceResponse {
     fn counter(&self) -> u8;
     fn is_aborted(&self) -> bool;
     fn mailbox_type(&self) -> MailboxType;
     fn address(&self) -> u16;
     fn sub_index(&self) -> u8;
+
+    fn header_len() -> usize;
 }
 
 /// Must be implemented for any type used to send a CoE service.
-pub trait CoeServiceRequest: PackedStruct {
+pub trait CoeServiceRequest: ethercrab_wire::EtherCrabWireWrite {
     type Response: CoeServiceResponse;
 
     /// Get the auto increment counter value for this request.
@@ -117,6 +122,9 @@ impl CoeServiceResponse for SdoSegmented {
     fn sub_index(&self) -> u8 {
         0
     }
+    fn header_len() -> usize {
+        Self::PACKED_LEN
+    }
 }
 
 impl CoeServiceResponse for SdoNormal {
@@ -134,6 +142,9 @@ impl CoeServiceResponse for SdoNormal {
     }
     fn sub_index(&self) -> u8 {
         self.sdo_header.sub_index
+    }
+    fn header_len() -> usize {
+        Self::PACKED_LEN
     }
 }
 

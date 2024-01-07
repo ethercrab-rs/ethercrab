@@ -1,44 +1,17 @@
 pub mod abort_code;
 pub mod services;
 
-use packed_struct::{prelude::*, PackingResult};
-
-/// Defined in ETG1000.6 5.6.1
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Defined in ETG1000.6 5.6.1 Table 29 – CoE elements.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
+#[wire(bytes = 2)]
 pub struct CoeHeader {
+    #[wire(pre_skip = 12, bits = 4)]
     pub service: CoeService,
 }
 
-impl PackedStruct for CoeHeader {
-    type ByteArray = [u8; 2];
-
-    fn pack(&self) -> PackingResult<Self::ByteArray> {
-        // NOTE: The spec hard codes this value for every CoE service to 0x00, however it's a
-        // defined field so I'll leave it in the code to hopefully make things a bit clearer when
-        // referring to the spec.
-        let number = 0;
-        let number = number & 0b1_1111_1111;
-
-        let service = self.service as u16;
-
-        let raw = number | (service << 12);
-
-        Ok(raw.to_le_bytes())
-    }
-
-    fn unpack(src: &Self::ByteArray) -> PackingResult<Self> {
-        let raw = u16::from_le_bytes(*src);
-
-        let service =
-            CoeService::from_primitive((raw >> 12) as u8).ok_or(PackingError::InvalidValue)?;
-
-        Ok(Self { service })
-    }
-}
-
 /// Defined in ETG1000.6 Table 29 – CoE elements
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PrimitiveEnum_u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[repr(u8)]
 pub enum CoeService {
@@ -61,18 +34,18 @@ pub enum CoeService {
 }
 
 /// Defined in ETG1000.6 Section 5.6.2.1.1
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PackedStruct)]
-#[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 1)]
 pub struct InitSdoFlags {
-    #[packed_field(bits = "0")]
+    #[wire(bits = 1)]
     pub size_indicator: bool,
-    #[packed_field(bits = "1")]
+    #[wire(bits = 1)]
     pub expedited_transfer: bool,
-    #[packed_field(bits = "2..=3")]
+    #[wire(bits = 2)]
     pub size: u8,
-    #[packed_field(bits = "4")]
+    #[wire(bits = 1)]
     pub complete_access: bool,
-    #[packed_field(bits = "5..=7")]
+    #[wire(bits = 3)]
     pub command: u8,
 }
 
@@ -84,29 +57,32 @@ impl InitSdoFlags {
     pub const ABORT_REQUEST: u8 = 0x04;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PackedStruct)]
-#[packed_struct(size_bytes = "4", bit_numbering = "msb0", endian = "lsb")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 4)]
 pub struct InitSdoHeader {
-    #[packed_field(bytes = "0")]
+    #[wire(bytes = 1)]
     pub flags: InitSdoFlags,
-    #[packed_field(bytes = "1..=2")]
+    #[wire(bytes = 2)]
     pub index: u16,
-    #[packed_field(bytes = "3")]
+    #[wire(bytes = 1)]
     pub sub_index: u8,
 }
 
 /// Defined in ETG1000.6 5.6.2.3.1
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PackedStruct)]
-#[packed_struct(size_bytes = "1", bit_numbering = "lsb0", endian = "lsb")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 1)]
 pub struct SegmentSdoHeader {
-    #[packed_field(bits = "0")]
+    #[wire(bits = 1)]
     pub is_last_segment: bool,
-    #[packed_field(bits = "1..=3")]
+
     /// Segment data size, `0x00` to `0x07`.
+    #[wire(bits = 3)]
     pub segment_data_size: u8,
-    #[packed_field(bits = "4")]
+
+    #[wire(bits = 1)]
     pub toggle: bool,
-    #[packed_field(bits = "5..=7")]
+
+    #[wire(bits = 3)]
     command: u8,
 }
 
@@ -153,14 +129,17 @@ impl From<u8> for SubIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn coe_header_fuzz() {
         heckcheck::check(|status: CoeHeader| {
-            let packed = status.pack().expect("Pack");
+            let mut buf = [0u8; { CoeHeader::PACKED_LEN }];
 
-            let unpacked = CoeHeader::unpack_from_slice(&packed).expect("Unpack");
+            let packed = status.pack_to_slice_unchecked(&mut buf);
+
+            let unpacked = CoeHeader::unpack_from_slice(packed).expect("Unpack");
 
             pretty_assertions::assert_eq!(status, unpacked);
 

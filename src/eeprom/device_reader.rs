@@ -8,6 +8,7 @@ use crate::{
     register::RegisterAddress,
     slave::slave_client::SlaveClient,
 };
+use ethercrab_wire::EtherCrabWireWriteSized;
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
 /// Table 2.
@@ -45,7 +46,7 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
             self.client
                 .write_slice(
                     RegisterAddress::SiiControl.into(),
-                    &status.error_reset().as_array(),
+                    &status.error_reset().pack(),
                     "Reset errors",
                 )
                 .await?;
@@ -57,7 +58,7 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
         self.client
             .write_slice(
                 RegisterAddress::SiiControl.into(),
-                &SiiRequest::read(start_word).as_array(),
+                &SiiRequest::read(start_word).pack(),
                 "SII read setup",
             )
             .await?;

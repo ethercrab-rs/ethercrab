@@ -1,25 +1,16 @@
 //! Slave Information Interface (SII).
 
 use crate::{
-    all_consumed,
     base_data_types::PrimitiveDataType,
-    error::{EepromError, Error, WrappedPackingError},
-    fmt,
-    pdu_data::PduRead,
     sync_manager_channel::{self},
 };
-use nom::{
-    combinator::{map, map_opt, map_res},
-    number::complete::{le_i16, le_u16, le_u8},
-    IResult,
-};
-use num_enum::{FromPrimitive, TryFromPrimitive};
-use packed_struct::prelude::*;
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 pub const TX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
 pub const RX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1600..=0x17ff;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
+#[repr(u8)]
 pub enum SiiOwner {
     /// EEPROM access rights are assigned to PDI during state change from Init to PreOp, Init to
     /// Boot and while in Boot
@@ -31,37 +22,35 @@ pub enum SiiOwner {
 }
 
 /// Defined in ETG1000.4 6.4.3
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PackedStruct)]
-#[packed_struct(size_bytes = "2", bit_numbering = "lsb0", endian = "lsb")]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 2)]
 pub struct SiiControl {
     // First byte, but second octet because little endian
-    #[packed_field(bits = "8", ty = "enum")]
+    #[wire(bits = 1)]
     pub access: SiiAccess,
-    // #[packed_field(bits = "9..=12")]
     // reserved4: u8,
-    #[packed_field(bits = "13")]
+    #[wire(pre_skip = 4, bits = 1)]
     pub emulate_sii: bool,
-    #[packed_field(bits = "14", ty = "enum")]
+    #[wire(bits = 1)]
     pub read_size: SiiReadSize,
-    #[packed_field(bits = "15", ty = "enum")]
+    #[wire(bits = 1)]
     pub address_type: SiiAddressSize,
 
-    // Second byte, but first octet because little endian
-    #[packed_field(bits = "0")]
+    #[wire(bits = 1)]
     pub read: bool,
-    #[packed_field(bits = "1")]
+    #[wire(bits = 1)]
     pub write: bool,
-    #[packed_field(bits = "2")]
+    #[wire(bits = 1)]
     pub reload: bool,
-    #[packed_field(bits = "3")]
+    #[wire(bits = 1)]
     pub checksum_error: bool,
-    #[packed_field(bits = "4")]
+    #[wire(bits = 1)]
     pub device_info_error: bool,
-    #[packed_field(bits = "5")]
+    #[wire(bits = 1)]
     pub command_error: bool,
-    #[packed_field(bits = "6")]
+    #[wire(bits = 1)]
     pub write_error: bool,
-    #[packed_field(bits = "7")]
+    #[wire(bits = 1)]
     pub busy: bool,
 }
 
@@ -86,32 +75,18 @@ impl SiiControl {
             ..Default::default()
         }
     }
-
-    pub fn as_array(&self) -> [u8; 2] {
-        fmt::unwrap!(self.pack().map_err(crate::error::WrappedPackingError::from))
-    }
 }
 
-impl PduRead for SiiControl {
-    const LEN: u16 = u16::LEN;
-
-    type Error = WrappedPackingError;
-
-    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let res = Self::unpack_from_slice(slice)?;
-
-        Ok(res)
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
+#[repr(u8)]
 pub enum SiiAccess {
     #[default]
     ReadOnly = 0x00,
     ReadWrite = 0x01,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
+#[repr(u8)]
 pub enum SiiReadSize {
     /// Read 4 octets at a time.
     #[default]
@@ -130,15 +105,23 @@ impl SiiReadSize {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, PrimitiveEnum_u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
+#[repr(u8)]
 pub enum SiiAddressSize {
     #[default]
     U8 = 0x00,
     U16 = 0x01,
 }
 
+#[derive(PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 6)]
 pub struct SiiRequest {
+    #[wire(bytes = 2)]
     control: SiiControl,
+    // Post skip is required to send the correct amount of bytes on the wire. This is weird because
+    // addressing is all a single WORD, but the SII read request expects a low AND high WORD, hence
+    // the extra 16 bits of padding here for the unusedhigh WORD.
+    #[wire(bytes = 2, post_skip = 16)]
     address: u16,
 }
 
@@ -158,25 +141,12 @@ impl SiiRequest {
             address,
         }
     }
-
-    pub fn as_array(&self) -> [u8; 6] {
-        let mut buf = [0u8; 6];
-
-        fmt::unwrap!(self
-            .control
-            .pack_to_slice(&mut buf[0..2])
-            .map_err(crate::error::WrappedPackingError::from));
-
-        buf[2..4].copy_from_slice(&self.address.to_le_bytes());
-
-        buf
-    }
 }
 
 /// SII register address.
 ///
 /// Defined in ETG1000.6 Table 16 or ETG2010 Table 2
-#[derive(Debug, Copy, Clone, num_enum::IntoPrimitive)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
 #[repr(u16)]
 pub enum SiiCoding {
     /// PDI Control
@@ -252,13 +222,13 @@ pub enum SiiCoding {
 /// Defined in ETG1000.6 Table 19.
 ///
 /// Additional information also in ETG1000.6 Table 17.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive, num_enum::IntoPrimitive)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum CategoryType {
-    #[num_enum(default)]
+    #[default]
     Nop = 0,
-    #[num_enum(alternatives = [2,3,4,5,6,7,8,9])]
+    #[wire(alternatives = [2,3,4,5,6,7,8,9])]
     DeviceSpecific = 1,
     Strings = 10,
     DataTypes = 20,
@@ -291,144 +261,112 @@ impl From<PdoType> for CategoryType {
 }
 
 /// ETG1000.6 Table 23
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FmmuUsage {
-    #[num_enum(alternatives = [0xff])]
+    #[wire(alternatives = [0xff])]
     Unused = 0x00,
     Outputs = 0x01,
     Inputs = 0x02,
     SyncManagerStatus = 0x03,
 }
 
-impl FromEeprom for FmmuUsage {
-    const STORAGE_SIZE: usize = 1;
-
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, usage) = map_res(le_u8, FmmuUsage::try_from_primitive)(i)?;
-
-        Ok((i, usage))
-    }
-}
-
 /// ETG1020 Table 10 "FMMU_EX"
 ///
 /// NOTE: Most fields defined are discarded from this struct as they are unused in Ethercrab.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bytes = 3)]
 pub struct FmmuEx {
     /// Sync manager index.
+    #[wire(pre_skip_bytes = 1, bytes = 1, post_skip_bytes = 1)]
     pub sync_manager: u8,
 }
 
-impl FromEeprom for FmmuEx {
-    const STORAGE_SIZE: usize = 3;
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct PortStatuses(pub [PortStatus; 4]);
 
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, _becore) = le_u8(i)?;
-        let (i, sync_manager) = le_u8(i)?;
-        let (i, _after) = le_u8(i)?;
+impl EtherCrabWireSized for PortStatuses {
+    const PACKED_LEN: usize = 2;
 
-        all_consumed(i)?;
+    type Buffer = [u8; Self::PACKED_LEN];
 
-        Ok((i, Self { sync_manager }))
+    fn buffer() -> Self::Buffer {
+        [0u8; Self::PACKED_LEN]
+    }
+}
+
+impl EtherCrabWireRead for PortStatuses {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
+        // Remember: little endian
+        let Some(&[lo, hi]) = buf.get(0..Self::PACKED_LEN) else {
+            return Err(ethercrab_wire::WireError::ReadBufferTooShort {
+                expected: Self::PACKED_LEN,
+                got: buf.len(),
+            });
+        };
+
+        let p1 = lo & 0x0f;
+        let p2 = (lo >> 4) & 0x0f;
+        let p3 = hi & 0x0f;
+        let p4 = (hi >> 4) & 0x0f;
+
+        Ok(Self([
+            PortStatus::from(p1),
+            PortStatus::from(p2),
+            PortStatus::from(p3),
+            PortStatus::from(p4),
+        ]))
     }
 }
 
 /// SII "General" category.
 ///
 /// Defined in ETG1000.6 Table 21
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
+#[wire(bytes = 18)]
 pub struct SiiGeneral {
+    #[wire(bytes = 1)]
     pub(crate) group_string_idx: u8,
+    #[wire(bytes = 1)]
     pub(crate) image_string_idx: u8,
+    #[wire(bytes = 1)]
     pub(crate) order_string_idx: u8,
+    #[wire(bytes = 1, post_skip_bytes = 1)]
     pub name_string_idx: u8,
     // reserved: u8,
+    #[wire(bytes = 1)]
     pub coe_details: CoeDetails,
+    #[wire(bytes = 1)]
     pub(crate) foe_enabled: bool,
+    #[wire(bytes = 1, post_skip_bytes = 3)]
     pub(crate) eoe_enabled: bool,
     // Following 3 fields marked as reserved
     // soe_channels: u8,
     // ds402_channels: u8,
     // sysman_class: u8,
+    #[wire(bytes = 1)]
     pub(crate) flags: Flags,
     /// EBus Current Consumption in mA.
     ///
     /// A negative Values means feeding in current feed in sets the available current value to the
     /// given value
+    #[wire(bytes = 2)]
     pub(crate) ebus_current: i16,
     // reserved: u8,
-    pub(crate) ports: [PortStatus; 4],
+    #[wire(bytes = 2)]
+    pub(crate) ports: PortStatuses,
     /// defines the ESC memory address where the Identification ID is saved if Identification Method
     /// [`IDENT_PHY_M`] is set.
+    #[wire(bytes = 2)]
     pub(crate) physical_memory_addr: u16,
     // reserved2: [u8; 12]
 }
 
-impl FromEeprom for SiiGeneral {
-    const STORAGE_SIZE: usize = 16;
-
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, group_string_idx) = le_u8(i)?;
-        let (i, image_string_idx) = le_u8(i)?;
-        let (i, order_string_idx) = le_u8(i)?;
-        let (i, name_string_idx) = le_u8(i)?;
-        let (i, _reserved) = le_u8(i)?;
-        let (i, coe_details) = map_opt(le_u8, CoeDetails::from_bits)(i)?;
-        let (i, foe_enabled) = map(le_u8, |num| num != 0)(i)?;
-        let (i, eoe_enabled) = map(le_u8, |num| num != 0)(i)?;
-
-        // Reserved, ignored
-        let (i, _soe_channels) = le_u8(i)?;
-        let (i, _ds402_channels) = le_u8(i)?;
-        let (i, _sysman_class) = le_u8(i)?;
-
-        let (i, flags) = map_opt(le_u8, Flags::from_bits)(i)?;
-        let (i, ebus_current) = le_i16(i)?;
-
-        let (i, ports) = map(le_u16, |raw| {
-            let p1 = raw & 0x0f;
-            let p2 = (raw >> 4) & 0x0f;
-            let p3 = (raw >> 8) & 0x0f;
-            let p4 = (raw >> 12) & 0x0f;
-
-            [
-                PortStatus::from_primitive(p1 as u8),
-                PortStatus::from_primitive(p2 as u8),
-                PortStatus::from_primitive(p3 as u8),
-                PortStatus::from_primitive(p4 as u8),
-            ]
-        })(i)?;
-
-        // let (i, physical_memory_addr) = le_u16(i)?;
-        let physical_memory_addr = 0;
-
-        all_consumed(i)?;
-
-        Ok((
-            i,
-            Self {
-                group_string_idx,
-                image_string_idx,
-                order_string_idx,
-                name_string_idx,
-                coe_details,
-                foe_enabled,
-                eoe_enabled,
-                flags,
-                ebus_current,
-                ports,
-                physical_memory_addr,
-            },
-        ))
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::FromPrimitive)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PortStatus {
     #[default]
@@ -451,6 +389,23 @@ bitflags::bitflags! {
     }
 }
 
+impl EtherCrabWireSized for Flags {
+    const PACKED_LEN: usize = 1;
+
+    type Buffer = [u8; Self::PACKED_LEN];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; Self::PACKED_LEN]
+    }
+}
+
+impl EtherCrabWireRead for Flags {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
+        u8::unpack_from_slice(buf)
+            .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
+    }
+}
+
 bitflags::bitflags! {
     #[derive(Debug, PartialEq, Eq)]
     pub struct CoeDetails: u8 {
@@ -469,13 +424,36 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+impl EtherCrabWireSized for CoeDetails {
+    const PACKED_LEN: usize = 1;
+
+    type Buffer = [u8; Self::PACKED_LEN];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; Self::PACKED_LEN]
+    }
+}
+
+impl EtherCrabWireRead for CoeDetails {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
+        u8::unpack_from_slice(buf)
+            .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bytes = 8)]
 pub struct SyncManager {
+    #[wire(bytes = 2)]
     pub(crate) start_addr: u16,
+    #[wire(bytes = 2)]
     pub(crate) length: u16,
+    #[wire(bytes = 1, post_skip_bytes = 1)]
     pub(crate) control: sync_manager_channel::Control,
+    #[wire(bytes = 1)]
     pub(crate) enable: SyncManagerEnable,
+    #[wire(bytes = 1)]
     pub(crate) usage_type: SyncManagerType,
 }
 
@@ -488,36 +466,6 @@ impl core::fmt::Debug for SyncManager {
             .field("enable", &self.enable)
             .field("usage_type", &self.usage_type)
             .finish()
-    }
-}
-
-impl FromEeprom for SyncManager {
-    const STORAGE_SIZE: usize = 8;
-
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, start_addr) = le_u16(i)?;
-        let (i, length) = le_u16(i)?;
-        let (i, control) =
-            map_res(le_u8, |byte| sync_manager_channel::Control::unpack(&[byte]))(i)?;
-
-        // Ignored
-        let (i, _status) = le_u8(i)?;
-
-        let (i, enable) = map_opt(le_u8, SyncManagerEnable::from_bits)(i)?;
-        let (i, usage_type) = map(le_u8, SyncManagerType::from_primitive)(i)?;
-
-        all_consumed(i)?;
-
-        Ok((
-            i,
-            Self {
-                start_addr,
-                length,
-                control,
-                enable,
-                usage_type,
-            },
-        ))
     }
 }
 
@@ -535,6 +483,23 @@ bitflags::bitflags! {
     }
 }
 
+impl EtherCrabWireSized for SyncManagerEnable {
+    const PACKED_LEN: usize = 1;
+
+    type Buffer = [u8; Self::PACKED_LEN];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; Self::PACKED_LEN]
+    }
+}
+
+impl EtherCrabWireRead for SyncManagerEnable {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
+        u8::unpack_from_slice(buf)
+            .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
+    }
+}
+
 // Can't derive, so manual impl
 #[cfg(feature = "defmt")]
 impl defmt::Format for SyncManagerEnable {
@@ -543,7 +508,7 @@ impl defmt::Format for SyncManagerEnable {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, num_enum::FromPrimitive)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum SyncManagerType {
@@ -561,16 +526,26 @@ pub enum SyncManagerType {
 }
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bytes = 8)]
 pub struct Pdo {
+    #[wire(bytes = 2)]
     pub(crate) index: u16,
+    #[wire(bytes = 1)]
     pub(crate) num_entries: u8,
+    #[wire(bytes = 1)]
     pub(crate) sync_manager: u8,
+    #[wire(bytes = 1)]
     pub(crate) dc_sync: u8,
     /// Index into EEPROM Strings section for PDO name.
+    #[wire(bytes = 1)]
     pub(crate) name_string_idx: u8,
+    #[wire(bytes = 2)]
     pub(crate) flags: PdoFlags,
+
+    // NOTE: This field is skipped during parsing from the wire and is populated later.
+    #[wire(skip)]
     pub(crate) entries: heapless::Vec<PdoEntry, 16>,
 }
 
@@ -599,43 +574,22 @@ impl Pdo {
     }
 }
 
-impl FromEeprom for Pdo {
-    const STORAGE_SIZE: usize = 8;
-
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, index) = le_u16(i)?;
-        let (i, num_entries) = le_u8(i)?;
-        let (i, sync_manager) = le_u8(i)?;
-        let (i, dc_sync) = le_u8(i)?;
-        let (i, name_string_idx) = le_u8(i)?;
-        let (i, flags) = map_opt(le_u16, PdoFlags::from_bits)(i)?;
-
-        all_consumed(i)?;
-
-        Ok((
-            i,
-            Self {
-                index,
-                num_entries,
-                sync_manager,
-                dc_sync,
-                name_string_idx,
-                flags,
-                entries: heapless::Vec::new(),
-            },
-        ))
-    }
-}
-
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bytes = 8)]
 pub struct PdoEntry {
+    #[wire(bytes = 2)]
     pub(crate) index: u16,
+    #[wire(bytes = 1)]
     pub(crate) sub_index: u8,
+    #[wire(bytes = 1)]
     pub(crate) name_string_idx: u8,
     // See page 103 of ETG2000
+    #[wire(bytes = 1)]
     pub(crate) data_type: PrimitiveDataType,
+    #[wire(bytes = 1)]
     pub(crate) data_length_bits: u8,
+    #[wire(bytes = 2)]
     pub(crate) flags: u16,
 }
 
@@ -649,33 +603,6 @@ impl core::fmt::Debug for PdoEntry {
             .field("data_length_bits", &self.data_length_bits)
             .field("flags", &self.flags)
             .finish()
-    }
-}
-
-impl FromEeprom for PdoEntry {
-    const STORAGE_SIZE: usize = 8;
-
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, index) = le_u16(i)?;
-        let (i, sub_index) = le_u8(i)?;
-        let (i, name_string_idx) = le_u8(i)?;
-        let (i, data_type) = map_res(le_u8, PrimitiveDataType::try_from_primitive)(i)?;
-        let (i, data_length_bits) = le_u8(i)?;
-        let (i, flags) = le_u16(i)?;
-
-        all_consumed(i)?;
-
-        Ok((
-            i,
-            Self {
-                index,
-                sub_index,
-                name_string_idx,
-                data_type,
-                data_length_bits,
-                flags,
-            },
-        ))
     }
 }
 
@@ -716,6 +643,23 @@ bitflags::bitflags! {
     }
 }
 
+impl EtherCrabWireSized for PdoFlags {
+    const PACKED_LEN: usize = 2;
+
+    type Buffer = [u8; Self::PACKED_LEN];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; Self::PACKED_LEN]
+    }
+}
+
+impl EtherCrabWireRead for PdoFlags {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
+        u16::unpack_from_slice(buf)
+            .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
+    }
+}
+
 // Can't derive, so manual impl
 #[cfg(feature = "defmt")]
 impl defmt::Format for PdoFlags {
@@ -745,6 +689,23 @@ bitflags::bitflags! {
     }
 }
 
+impl EtherCrabWireSized for MailboxProtocols {
+    const PACKED_LEN: usize = 2;
+
+    type Buffer = [u8; Self::PACKED_LEN];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; Self::PACKED_LEN]
+    }
+}
+
+impl EtherCrabWireRead for MailboxProtocols {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
+        u16::unpack_from_slice(buf)
+            .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
+    }
+}
+
 // Can't derive, so manual impl
 #[cfg(feature = "defmt")]
 impl defmt::Format for MailboxProtocols {
@@ -753,18 +714,24 @@ impl defmt::Format for MailboxProtocols {
     }
 }
 
-#[derive(Copy, Clone, Default, PartialEq)]
+#[derive(Copy, Clone, Default, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bytes = 10)]
 pub struct DefaultMailbox {
     /// Master to slave receive mailbox address offset.
+    #[wire(bytes = 2)]
     pub slave_receive_offset: u16,
     /// Master to slave receive mailbox size.
+    #[wire(bytes = 2)]
     pub slave_receive_size: u16,
     /// Slave to master send mailbox address offset.
+    #[wire(bytes = 2)]
     pub slave_send_offset: u16,
     /// Slave to master send mailbox size.
+    #[wire(bytes = 2)]
     pub slave_send_size: u16,
     /// Mailbox protocols supported by the slave device.
+    #[wire(bytes = 2)]
     pub supported_protocols: MailboxProtocols,
 }
 
@@ -772,31 +739,6 @@ impl DefaultMailbox {
     pub fn has_mailbox(&self) -> bool {
         !self.supported_protocols.is_empty() && self.slave_receive_size > 0
             || self.slave_send_size > 0
-    }
-}
-
-impl FromEeprom for DefaultMailbox {
-    const STORAGE_SIZE: usize = 10;
-
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, receive_offset) = le_u16(i)?;
-        let (i, receive_size) = le_u16(i)?;
-        let (i, send_offset) = le_u16(i)?;
-        let (i, send_size) = le_u16(i)?;
-        let (i, supported_protocols) = map_opt(le_u16, MailboxProtocols::from_bits)(i)?;
-
-        all_consumed(i)?;
-
-        Ok((
-            i,
-            Self {
-                slave_receive_offset: receive_offset,
-                slave_receive_size: receive_size,
-                slave_send_offset: send_offset,
-                slave_send_size: send_size,
-                supported_protocols,
-            },
-        ))
     }
 }
 
@@ -824,19 +766,103 @@ impl core::fmt::Debug for DefaultMailbox {
     }
 }
 
-pub trait FromEeprom: Sized {
-    const STORAGE_SIZE: usize;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ethercrab_wire::EtherCrabWireWriteSized;
 
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self>;
+    #[test]
+    fn sii_control_pack() {
+        let ctl = SiiControl {
+            access: SiiAccess::ReadWrite,
+            emulate_sii: false,
+            read_size: SiiReadSize::Octets8,
+            address_type: SiiAddressSize::U8,
+            read: false,
+            write: false,
+            reload: false,
+            checksum_error: false,
+            device_info_error: false,
+            command_error: false,
+            write_error: false,
+            busy: true,
+        };
 
-    fn parse(i: &[u8]) -> Result<Self, Error> {
-        Self::parse_fields(i)
-            .map(|(_rest, parsed)| parsed)
-            .map_err(|_e| {
-                #[cfg(feature = "std")]
-                fmt::error!("EEPROM object {:?} {}", core::any::type_name::<Self>(), _e);
+        assert_eq!(ctl.pack(), [0b0100_0001, 0b1000_0000],);
+    }
 
-                Error::Eeprom(EepromError::Decode)
-            })
+    #[test]
+    fn sii_request_read_pack() {
+        let packed = SiiRequest::read(0x1234).pack();
+
+        assert_eq!(packed, [0x00, 0x01, 0x34, 0x12, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn sii_control_unpack() {
+        let ctl = SiiControl {
+            access: SiiAccess::ReadWrite,
+            emulate_sii: false,
+            read_size: SiiReadSize::Octets8,
+            address_type: SiiAddressSize::U8,
+            read: false,
+            write: false,
+            reload: false,
+            checksum_error: false,
+            device_info_error: false,
+            command_error: false,
+            write_error: false,
+            busy: true,
+        };
+
+        assert_eq!(
+            SiiControl::unpack_from_slice(&[0b0100_0001, 0b1000_0000]),
+            Ok(ctl)
+        );
+    }
+
+    #[test]
+    fn sii_request_read_unpack() {
+        let packed = SiiRequest::read(0x1234);
+
+        let buf = [0x00, 0x01, 0x34, 0x12, 0x00, 0x00];
+
+        assert_eq!(SiiRequest::unpack_from_slice(&buf), Ok(packed));
+    }
+
+    #[test]
+    fn sii_general_ek1100() {
+        let expected = SiiGeneral {
+            group_string_idx: 2,
+            image_string_idx: 0,
+            order_string_idx: 1,
+            name_string_idx: 4,
+            coe_details: CoeDetails::empty(),
+            foe_enabled: false,
+            eoe_enabled: false,
+            flags: Flags::empty(),
+            ebus_current: -2000,
+            ports: PortStatuses([
+                PortStatus::Ebus,
+                PortStatus::Unused,
+                PortStatus::Unused,
+                PortStatus::Unused,
+            ]),
+            physical_memory_addr: 0,
+        };
+
+        let raw = [2u8, 0, 1, 4, 2, 0, 0, 0, 0, 0, 0, 0, 48, 248, 3, 0, 0, 0];
+
+        assert_eq!(SiiGeneral::unpack_from_slice(&raw), Ok(expected))
+    }
+
+    #[test]
+    fn fmmu_ex() {
+        let data = [0xaa, 0xbb, 0xcc];
+
+        assert_eq!(
+            FmmuEx::unpack_from_slice(&data),
+            Ok(FmmuEx { sync_manager: 0xbb })
+        );
     }
 }

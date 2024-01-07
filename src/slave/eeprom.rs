@@ -1,6 +1,6 @@
 use crate::{
     eeprom::types::{
-        CategoryType, DefaultMailbox, FromEeprom, PdoEntry, SiiGeneral, RX_PDO_RANGE, TX_PDO_RANGE,
+        CategoryType, DefaultMailbox, PdoEntry, SiiGeneral, RX_PDO_RANGE, TX_PDO_RANGE,
     },
     eeprom::{
         device_reader::SII_FIRST_CATEGORY_START,
@@ -13,7 +13,7 @@ use crate::{
 };
 use core::{ops::RangeInclusive, str::FromStr};
 use embedded_io_async::Read;
-use num_enum::TryFromPrimitive;
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 pub struct SlaveEeprom<P> {
     provider: P,
@@ -103,16 +103,16 @@ where
         // Start reading standard mailbox config. Raw start address defined in ETG2010 Table 2.
         // Mailbox config is 10 bytes long.
         let mut reader = self
-            .start_at(0x0018, DefaultMailbox::STORAGE_SIZE as u16)
+            .start_at(0x0018, DefaultMailbox::PACKED_LEN as u16)
             .await?;
 
         fmt::trace!("Get mailbox config");
 
-        let mut buf = [0u8; { DefaultMailbox::STORAGE_SIZE }];
+        let mut buf = DefaultMailbox::buffer();
 
         reader.read_exact(&mut buf).await?;
 
-        DefaultMailbox::parse(&buf)
+        Ok(DefaultMailbox::unpack_from_slice(&buf)?)
     }
 
     pub(crate) async fn general(&self) -> Result<SiiGeneral, Error> {
@@ -121,25 +121,25 @@ where
             .await?
             .ok_or(Error::Eeprom(EepromError::NoCategory))?;
 
-        let mut buf = [0u8; { SiiGeneral::STORAGE_SIZE }];
+        let mut buf = SiiGeneral::buffer();
 
         reader.read_exact(&mut buf).await?;
 
-        SiiGeneral::parse(&buf)
+        Ok(SiiGeneral::unpack_from_slice(&buf)?)
     }
 
     pub(crate) async fn identity(&self) -> Result<SlaveIdentity, Error> {
         let mut reader = self
-            .start_at(0x0008, SlaveIdentity::STORAGE_SIZE as u16)
+            .start_at(0x0008, SlaveIdentity::PACKED_LEN as u16)
             .await?;
 
         fmt::trace!("Get identity");
 
-        let mut buf = [0u8; { SlaveIdentity::STORAGE_SIZE }];
+        let mut buf = SlaveIdentity::buffer();
 
         reader.read_exact(&mut buf).await?;
 
-        SlaveIdentity::parse(&buf)
+        Ok(SlaveIdentity::unpack_from_slice(&buf)?)
     }
 
     pub(crate) async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
@@ -148,10 +148,10 @@ where
         fmt::trace!("Get sync managers");
 
         if let Some(mut reader) = self.category(CategoryType::SyncManager).await? {
-            let mut buf = [0u8; { SyncManager::STORAGE_SIZE }];
+            let mut buf = SyncManager::buffer();
 
-            while reader.read(&mut buf).await? == SyncManager::STORAGE_SIZE {
-                let sm = SyncManager::parse(&buf)?;
+            while reader.read(&mut buf).await? == SyncManager::PACKED_LEN {
+                let sm = SyncManager::unpack_from_slice(&buf)?;
 
                 sync_managers
                     .push(sm)
@@ -179,11 +179,11 @@ where
             buf[0..fmmus]
                 .iter()
                 .map(|raw| {
-                    FmmuUsage::try_from_primitive(*raw).map_err(|_e| {
+                    FmmuUsage::unpack_from_slice(&[*raw]).map_err(|e| {
                         #[cfg(feature = "std")]
-                        fmt::error!("Failed to decode FmmuUsage: {}", _e);
+                        fmt::error!("Failed to decode FmmuUsage: {}", e);
 
-                        Error::Eeprom(EepromError::Decode)
+                        e.into()
                     })
                 })
                 .collect::<Result<heapless::Vec<_, 16>, Error>>()?
@@ -203,10 +203,10 @@ where
         fmt::trace!("Get FMMU mappings");
 
         if let Some(mut reader) = self.category(CategoryType::FmmuExtended).await? {
-            let mut buf = [0u8; { FmmuEx::STORAGE_SIZE }];
+            let mut buf = FmmuEx::buffer();
 
-            while reader.read(&mut buf).await? == FmmuEx::STORAGE_SIZE {
-                let fmmu = FmmuEx::parse(&buf)?;
+            while reader.read(&mut buf).await? == FmmuEx::PACKED_LEN {
+                let fmmu = FmmuEx::unpack_from_slice(&buf)?;
 
                 mappings
                     .push(fmmu)
@@ -228,44 +228,46 @@ where
 
         fmt::trace!("Get {:?} PDUs", direction);
 
-        if let Some(mut reader) = self.category(CategoryType::from(direction)).await? {
-            let mut buf = [0u8; { Pdo::STORAGE_SIZE }];
+        let Some(mut reader) = self.category(CategoryType::from(direction)).await? else {
+            return Ok(pdos);
+        };
 
-            while reader.read(&mut buf).await? == Pdo::STORAGE_SIZE {
-                let mut pdo = Pdo::parse(&buf).map_err(|e| {
-                    fmt::error!("PDO: {:?}", e);
+        let mut buf = Pdo::buffer();
 
-                    Error::Eeprom(EepromError::Decode)
-                })?;
+        while reader.read(&mut buf).await? == buf.len() {
+            let mut pdo = Pdo::unpack_from_slice(&buf).map_err(|e| {
+                fmt::error!("PDO: {:?}", e);
 
-                fmt::trace!("Range {:?} value {}", valid_range, pdo.index);
+                e
+            })?;
 
-                if !valid_range.contains(&pdo.index) {
-                    fmt::error!("Invalid PDO range");
+            fmt::trace!("Range {:?} value {}", valid_range, pdo.index);
 
-                    return Err(Error::Eeprom(EepromError::Decode));
-                }
+            if !valid_range.contains(&pdo.index) {
+                fmt::error!("Invalid PDO range");
 
-                for _ in 0..pdo.num_entries {
-                    let mut buf = [0u8; { PdoEntry::STORAGE_SIZE }];
+                return Err(Error::Eeprom(EepromError::Decode));
+            }
 
-                    let entry = reader.read_exact(&mut buf).await.and_then(|_| {
-                        let entry = PdoEntry::parse(&buf).map_err(|e| {
-                            fmt::error!("PDO entry: {:?}", e);
+            for _ in 0..pdo.num_entries {
+                let mut buf = PdoEntry::buffer();
 
-                            Error::Eeprom(EepromError::Decode)
-                        })?;
+                let entry = reader.read_exact(&mut buf).await.and_then(|_| {
+                    let entry = PdoEntry::unpack_from_slice(&buf).map_err(|e| {
+                        fmt::error!("PDO entry: {:?}", e);
 
-                        Ok(entry)
+                        Error::Eeprom(EepromError::Decode)
                     })?;
 
-                    pdo.entries
-                        .push(entry)
-                        .map_err(|_| Error::Capacity(Item::PdoEntry))?;
-                }
+                    Ok(entry)
+                })?;
 
-                pdos.push(pdo).map_err(|_| Error::Capacity(Item::Pdo))?;
+                pdo.entries
+                    .push(entry)
+                    .map_err(|_| Error::Capacity(Item::PdoEntry))?;
             }
+
+            pdos.push(pdo).map_err(|_| Error::Capacity(Item::Pdo))?;
         }
 
         fmt::debug!("Discovered PDOs:\n{:#?}", pdos);
@@ -371,8 +373,8 @@ mod tests {
         eeprom::{
             file_reader::EepromFile,
             types::{
-                CoeDetails, Flags, MailboxProtocols, PdoFlags, PortStatus, SyncManagerEnable,
-                SyncManagerType,
+                CoeDetails, Flags, MailboxProtocols, PdoFlags, PortStatus, PortStatuses,
+                SyncManagerEnable, SyncManagerType,
             },
         },
         sync_manager_channel::{Control, Direction, OperationMode},
@@ -749,13 +751,13 @@ mod tests {
                 eoe_enabled: true,
                 flags: Flags::ENABLE_SAFE_OP | Flags::MAILBOX_DLL,
                 ebus_current: 0,
-                ports: [
+                ports: PortStatuses([
                     PortStatus::Ebus,
                     PortStatus::Unused,
                     PortStatus::Unused,
                     PortStatus::Unused,
-                ],
-                physical_memory_addr: 0,
+                ]),
+                physical_memory_addr: 17,
             }),
         );
     }
@@ -776,13 +778,13 @@ mod tests {
                 eoe_enabled: false,
                 flags: Flags::empty(),
                 ebus_current: -2000,
-                ports: [
+                ports: PortStatuses([
                     PortStatus::Ebus,
                     PortStatus::Unused,
                     PortStatus::Unused,
                     PortStatus::Unused,
-                ],
-                physical_memory_addr: 0,
+                ]),
+                physical_memory_addr: 305,
             }),
         );
     }
@@ -818,5 +820,15 @@ mod tests {
         let image = e.find_string::<128>(general.image_string_idx).await;
 
         assert_eq!(image, Ok(None));
+    }
+
+    #[tokio::test]
+    async fn akd_fmmu_ex() {
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        let fmmu_ex = e.fmmu_mappings().await.expect("Get FMMU_EX");
+
+        // None of the EEPROM dumps I have contain any FMMU_EX records :(
+        assert_eq!(fmmu_ex, heapless::Vec::<FmmuEx, 16>::new());
     }
 }

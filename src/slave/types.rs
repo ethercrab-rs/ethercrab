@@ -1,22 +1,25 @@
 use crate::{
-    all_consumed,
-    eeprom::types::{FromEeprom, MailboxProtocols, SyncManagerType},
+    eeprom::types::{MailboxProtocols, SyncManagerType},
     pdi::PdiSegment,
 };
 use core::fmt::{self, Debug};
-use nom::{number::complete::le_u32, IResult};
 
 /// Slave identity information (vendor ID, product ID, etc).
-#[derive(Default, Copy, Clone, PartialEq)]
+#[derive(Default, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bytes = 16)]
 pub struct SlaveIdentity {
     /// Vendor ID.
+    #[wire(bytes = 4)]
     pub vendor_id: u32,
     /// Product ID.
+    #[wire(bytes = 4)]
     pub product_id: u32,
     /// Product revision.
+    #[wire(bytes = 4)]
     pub revision: u32,
     /// Device serial number.
+    #[wire(bytes = 4)]
     pub serial: u32,
 }
 
@@ -37,29 +40,6 @@ impl Debug for SlaveIdentity {
             .field("revision", &self.revision)
             .field("serial", &self.serial)
             .finish()
-    }
-}
-
-impl FromEeprom for SlaveIdentity {
-    const STORAGE_SIZE: usize = 16;
-
-    fn parse_fields(i: &[u8]) -> IResult<&[u8], Self> {
-        let (i, vendor_id) = le_u32(i)?;
-        let (i, product_id) = le_u32(i)?;
-        let (i, revision) = le_u32(i)?;
-        let (i, serial) = le_u32(i)?;
-
-        all_consumed(i)?;
-
-        Ok((
-            i,
-            Self {
-                vendor_id,
-                product_id,
-                revision,
-                serial,
-            },
-        ))
     }
 }
 

@@ -1,6 +1,8 @@
 use crate::LEN_MASK;
-use packed_struct::{PackedStruct, PackedStructInfo};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, WireError};
 
+/// PDU fields placed after ADP and ADO, e.g. `LEN`, `C` and `NEXT` fields in ETG1000.4 5.4.1.2
+/// Table 14 – Auto increment physical read (APRD).
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct PduFlags {
     /// Data length of this PDU.
@@ -9,25 +11,33 @@ pub struct PduFlags {
     ///
     /// 0: Frame is not circulating,
     /// 1: Frame has circulated once
-    circulated: bool,
+    pub(crate) circulated: bool,
     /// 0: last EtherCAT PDU in EtherCAT frame
     /// 1: EtherCAT PDU in EtherCAT frame follows
-    is_not_last: bool,
+    pub(crate) is_not_last: bool,
 }
 
-impl PackedStruct for PduFlags {
-    type ByteArray = [u8; 2];
-
-    fn pack(&self) -> packed_struct::PackingResult<Self::ByteArray> {
+impl ethercrab_wire::EtherCrabWireWrite for PduFlags {
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let raw = self.length & LEN_MASK
             | (self.circulated as u16) << 14
             | (self.is_not_last as u16) << 15;
 
-        Ok(raw.to_le_bytes())
+        let buf = &mut buf[0..self.packed_len()];
+
+        buf.copy_from_slice(&raw.to_le_bytes());
+
+        buf
     }
 
-    fn unpack(src: &Self::ByteArray) -> packed_struct::PackingResult<Self> {
-        let src = u16::from_le_bytes(*src);
+    fn packed_len(&self) -> usize {
+        <Self as EtherCrabWireSized>::PACKED_LEN
+    }
+}
+
+impl EtherCrabWireRead for PduFlags {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
+        let src = u16::unpack_from_slice(buf)?;
 
         let length = src & LEN_MASK;
         let circulated = (src >> 14) & 0x01 == 0x01;
@@ -41,9 +51,23 @@ impl PackedStruct for PduFlags {
     }
 }
 
-impl PackedStructInfo for PduFlags {
-    fn packed_bits() -> usize {
-        8 * 2
+impl EtherCrabWireSized for PduFlags {
+    const PACKED_LEN: usize = 2;
+
+    type Buffer = [u8; Self::PACKED_LEN];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; Self::PACKED_LEN]
+    }
+}
+
+impl ethercrab_wire::EtherCrabWireWriteSized for PduFlags {
+    fn pack(&self) -> Self::Buffer {
+        let mut buf = [0u8; Self::PACKED_LEN];
+
+        ethercrab_wire::EtherCrabWireWrite::pack_to_slice_unchecked(self, &mut buf);
+
+        buf
     }
 }
 
@@ -63,6 +87,8 @@ impl PduFlags {
 
 #[cfg(test)]
 mod tests {
+    use ethercrab_wire::EtherCrabWireWriteSized;
+
     use super::*;
 
     #[test]
@@ -73,11 +99,11 @@ mod tests {
             is_not_last: true,
         };
 
-        let packed = flags.pack().unwrap();
+        let packed = flags.pack();
 
         assert_eq!(packed, [0x10, 0x81]);
 
-        let unpacked = PduFlags::unpack(&packed).unwrap();
+        let unpacked = PduFlags::unpack_from_slice(&packed).unwrap();
 
         assert_eq!(unpacked, flags);
     }
@@ -92,7 +118,7 @@ mod tests {
 
         assert_eq!(flags.len(), 1036);
 
-        assert_eq!(flags.pack().unwrap(), [0b0000_1100, 0b0000_0100]);
-        assert_eq!(flags.pack().unwrap(), [0x0c, 0x04]);
+        assert_eq!(flags.pack(), [0b0000_1100, 0b0000_0100]);
+        assert_eq!(flags.pack(), [0x0c, 0x04]);
     }
 }

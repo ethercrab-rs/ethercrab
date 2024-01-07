@@ -17,8 +17,7 @@ use crate::{
     sync_manager_channel::{self, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
 use core::ops::DerefMut;
-use num_enum::FromPrimitive;
-use packed_struct::{PackedStruct, PackedStructSlice};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWriteSized};
 
 /// Configuation from EEPROM methods.
 impl<'a, S> SlaveRef<'a, S>
@@ -56,15 +55,11 @@ where
             // places eventually.
             let sms = if self.state.config.mailbox.complete_access {
                 // Up to 16 sync managers as per ETG1000.4 Table 59
-                let mut sms_buf = [0u8; 16];
-
-                let sms = self
-                    .read_sdo_buf(SM_TYPE_ADDRESS, SubIndex::Complete, &mut sms_buf)
-                    .await?
-                    .iter()
-                    .map(|sm| SyncManagerType::from_primitive(*sm));
-
-                heapless::Vec::from_iter(sms)
+                self.sdo_read::<heapless::Vec<SyncManagerType, 16>>(
+                    SM_TYPE_ADDRESS,
+                    SubIndex::Complete,
+                )
+                .await?
             } else {
                 let num_indices = self
                     .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
@@ -79,7 +74,7 @@ where
                         .map(|sm| {
                             fmt::trace!("Sync manager {} at sub-index {}", sm, index);
 
-                            SyncManagerType::from_primitive(sm)
+                            SyncManagerType::from(sm)
                         })?;
 
                     sms.push(sm).map_err(|_| {
@@ -242,9 +237,7 @@ where
         self.client
             .write_slice(
                 RegisterAddress::sync_manager(sync_manager_index).into(),
-                &fmt::unwrap!(sm_config
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from)),
+                &sm_config.pack(),
                 "SM config",
             )
             .await?;
@@ -512,9 +505,7 @@ where
         self.client
             .write_slice(
                 RegisterAddress::fmmu(fmmu_index as u8).into(),
-                &fmt::unwrap!(fmmu_config
-                    .pack()
-                    .map_err(crate::error::WrappedPackingError::from)),
+                &fmmu_config.pack(),
                 "PDI FMMU",
             )
             .await?;
