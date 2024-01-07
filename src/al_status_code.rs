@@ -110,7 +110,7 @@ pub enum AlStatusCode {
     /// Device Identification value updated
     DeviceIdentificationValueUpdated = 0x0061,
     /// Application controller available
-    ApplicationControllerAvailableI = 0x00F0,
+    ApplicationControllerAvailable = 0x00F0,
     // NOTE: Other codes < 0x8000 are reserved.
     // NOTE: Codes 0x8000 - 0xffff are vendor specific.
     /// Unknown status code.
@@ -178,7 +178,7 @@ impl core::fmt::Display for AlStatusCode {
             AlStatusCode::EepromError => "EEPROM Error",
             AlStatusCode::SlaveRestartedLocally => "Slave restarted locally",
             AlStatusCode::DeviceIdentificationValueUpdated => "Device Identification value updated",
-            AlStatusCode::ApplicationControllerAvailableI => "Application controller available",
+            AlStatusCode::ApplicationControllerAvailable => "Application controller available",
             AlStatusCode::Unknown(_) => "(unknown)",
         };
 
