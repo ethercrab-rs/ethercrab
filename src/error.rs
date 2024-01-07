@@ -16,8 +16,6 @@ pub enum Error {
         expected: u16,
         /// The actual value received.
         received: u16,
-        /// Optional context for debugging.
-        context: Option<&'static str>,
     },
     /// Failed to borrow an item. This likely points to a race condition.
     Borrow,
@@ -100,17 +98,9 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Error::Pdu(e) => write!(f, "pdu: {}", e),
-            Error::WorkingCounter {
-                expected,
-                received,
-                context,
-            } => write!(
-                f,
-                "working counter expected {}, got {} ({})",
-                expected,
-                received,
-                context.unwrap_or("[no context provided]")
-            ),
+            Error::WorkingCounter { expected, received } => {
+                write!(f, "working counter expected {}, got {}", expected, received)
+            }
             Error::Borrow => f.write_str("already borrowed"),
             Error::Timeout => f.write_str("timeout"),
             Error::Eeprom(e) => write!(f, "eeprom: {}", e),

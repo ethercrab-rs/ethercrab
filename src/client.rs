@@ -221,7 +221,7 @@ impl<'sto> Client<'sto> {
             Command::apwr(slave_idx, RegisterAddress::ConfiguredStationAddress.into())
                 .send(self, configured_address)
                 .await?
-                .wkc(1, "set station address")?;
+                .wkc(1)?;
 
             let slave = Slave::new(self, usize::from(slave_idx), configured_address).await?;
 
@@ -393,7 +393,7 @@ impl<'sto> Client<'sto> {
                 let status = Command::brd(RegisterAddress::AlStatus.into())
                     .receive::<AlControl>(self)
                     .await?
-                    .wkc(num_slaves, "read all slaves state")?;
+                    .wkc(num_slaves)?;
 
                 fmt::trace!("Global AL status {:?}", status);
 
