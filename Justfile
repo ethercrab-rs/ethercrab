@@ -49,3 +49,43 @@ dump-eeprom *args:
     cargo build --example dump-eeprom --features "std __internals" --release && \
     sudo setcap cap_net_raw=pe ./target/release/examples/dump-eeprom && \
     ./target/release/examples/dump-eeprom {{args}}
+
+test-replay test_file *args:
+    cargo test --features '__internals' {{ replace(test_file, '-', '_') }}
+
+capture-replay test_file_name interface *args:
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    # Kill child tshark on failure
+    trap 'kill 0' EXIT
+
+    test_file=$(echo "{{test_file_name}}" | tr '_' '-')
+
+    if [ ! -f "tests/${test_file}.rs" ]; then
+        echo "Test file tests/${test_file}.rs does not exist"
+
+        exit 1
+    fi
+
+    cargo build --features '__internals' --tests --release
+    sudo echo
+    fd . --type executable ./target/debug/deps -x sudo setcap cap_net_raw=pe
+    fd . --type executable ./target/release -x sudo setcap cap_net_raw=pe
+
+    tshark -Q -w "tests/${test_file}.pcapng" --interface {{interface}} -f 'ether proto 0x88a4' &
+
+    # Wait for tshark to start
+    sleep 1
+
+    test_name=$(echo "${test_file}" | tr '-' '_')
+
+    # Set env var to put test in capture mode
+    INTERFACE="{{interface}}" cargo test "${test_name}" --release --features '__internals' -- {{args}}
+
+    # Let tshark finish up
+    sleep 1
+
+    # Kill tshark
+    kill 0
