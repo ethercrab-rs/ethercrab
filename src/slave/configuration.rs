@@ -2,8 +2,8 @@ use super::{Slave, SlaveRef};
 use crate::{
     coe::SubIndex,
     eeprom::types::{
-        CoeDetails, FmmuEx, FmmuUsage, MailboxProtocols, Pdo, SiiOwner, SyncManager,
-        SyncManagerEnable, SyncManagerType,
+        CoeDetails, FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable,
+        SyncManagerType,
     },
     error::{Error, Item},
     fmmu::Fmmu,
@@ -17,7 +17,6 @@ use crate::{
     sync_manager_channel::{self, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
 use core::ops::DerefMut;
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWriteSized};
 
 /// Configuation from EEPROM methods.
 impl<'a, S> SlaveRef<'a, S>
@@ -44,7 +43,7 @@ where
 
         fmt::debug!(
             "Slave {:#06x} mailbox SMs configured. Transitioning to PRE-OP",
-            self.client.configured_address
+            self.configured_address
         );
 
         self.request_slave_state(SlaveState::PreOp).await?;
@@ -69,13 +68,10 @@ where
 
                 for index in 1..=num_indices {
                     let sm = self
-                        .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(index))
-                        .await
-                        .map(|sm| {
-                            fmt::trace!("Sync manager {} at sub-index {}", sm, index);
+                        .sdo_read::<SyncManagerType>(SM_TYPE_ADDRESS, SubIndex::Index(index))
+                        .await?;
 
-                            SyncManagerType::from(sm)
-                        })?;
+                    fmt::trace!("Sync manager {:?} at sub-index {}", sm, index);
 
                     sms.push(sm).map_err(|_| {
                         fmt::error!("More than 16 sync manager types deteced");
@@ -89,7 +85,7 @@ where
 
             fmt::debug!(
                 "Slave {:#06x} found sync managers {:?}",
-                self.client.configured_address,
+                self.configured_address,
                 sms
             );
 
@@ -112,14 +108,13 @@ where
     ) -> Result<PdiOffset, Error> {
         let sync_managers = self.eeprom().sync_managers().await?;
         let fmmu_usage = self.eeprom().fmmus().await?;
-        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
-        let (state, _status_code) = self.status().await?;
+        let state = self.state().await?;
 
         if state != SlaveState::PreOp {
             fmt::error!(
                 "Slave {:#06x} is in invalid state {}. Expected {}",
-                self.state.configured_address,
+                self.configured_address,
                 state,
                 SlaveState::PreOp
             );
@@ -127,7 +122,7 @@ where
             return Err(Error::InvalidState {
                 expected: SlaveState::PreOp,
                 actual: state,
-                configured_address: self.state.configured_address,
+                configured_address: self.configured_address,
             });
         }
 
@@ -135,78 +130,38 @@ where
 
         fmt::debug!(
             "Slave {:#06x} has CoE: {:?}",
-            self.state.configured_address,
+            self.configured_address,
             has_coe
         );
 
+        let range = if has_coe {
+            self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
+                .await?
+        } else {
+            self.configure_pdos_eeprom(&sync_managers, &fmmu_usage, direction, &mut global_offset)
+                .await?
+        };
+
         match direction {
             PdoDirection::MasterRead => {
-                let pdos = self.eeprom().master_read_pdos().await?;
-
-                fmt::trace!("Slave inputs PDOs {:#?}", pdos);
-
-                let input_range = if has_coe {
-                    self.configure_pdos_coe(
-                        &sync_managers,
-                        &fmmu_usage,
-                        PdoDirection::MasterRead,
-                        &mut global_offset,
-                    )
-                    .await?
-                } else {
-                    self.configure_pdos_eeprom(
-                        &sync_managers,
-                        &pdos,
-                        &fmmu_sm_mappings,
-                        &fmmu_usage,
-                        PdoDirection::MasterRead,
-                        &mut global_offset,
-                    )
-                    .await?
-                };
-
                 self.state.config.io.input = PdiSegment {
-                    bytes: (input_range.bytes.start - group_start_address as usize)
-                        ..(input_range.bytes.end - group_start_address as usize),
-                    ..input_range
+                    bytes: (range.bytes.start - group_start_address as usize)
+                        ..(range.bytes.end - group_start_address as usize),
+                    ..range
                 };
             }
             PdoDirection::MasterWrite => {
-                let pdos = self.eeprom().master_write_pdos().await?;
-
-                fmt::trace!("Slave outputs PDOs {:#?}", pdos);
-
-                let output_range = if has_coe {
-                    self.configure_pdos_coe(
-                        &sync_managers,
-                        &fmmu_usage,
-                        PdoDirection::MasterWrite,
-                        &mut global_offset,
-                    )
-                    .await?
-                } else {
-                    self.configure_pdos_eeprom(
-                        &sync_managers,
-                        &pdos,
-                        &fmmu_sm_mappings,
-                        &fmmu_usage,
-                        PdoDirection::MasterWrite,
-                        &mut global_offset,
-                    )
-                    .await?
-                };
-
                 self.state.config.io.output = PdiSegment {
-                    bytes: (output_range.bytes.start - group_start_address as usize)
-                        ..(output_range.bytes.end - group_start_address as usize),
-                    ..output_range
+                    bytes: (range.bytes.start - group_start_address as usize)
+                        ..(range.bytes.end - group_start_address as usize),
+                    ..range
                 };
             }
-        }
+        };
 
         fmt::debug!(
             "Slave {:#06x} PDI inputs: {:?} ({} bytes), outputs: {:?} ({} bytes)",
-            self.state.configured_address,
+            self.configured_address,
             self.state.config.io.input,
             self.state.config.io.input.len(),
             self.state.config.io.output,
@@ -234,16 +189,13 @@ where
             },
         };
 
-        self.client
-            .write_slice(
-                RegisterAddress::sync_manager(sync_manager_index).into(),
-                &sm_config.pack(),
-            )
+        self.write(RegisterAddress::sync_manager(sync_manager_index))
+            .send(sm_config)
             .await?;
 
         fmt::debug!(
             "Slave {:#06x} SM{}: {}",
-            self.state.configured_address,
+            self.configured_address,
             sync_manager_index,
             sm_config
         );
@@ -261,14 +213,14 @@ where
 
         fmt::trace!(
             "Slave {:#06x} Mailbox configuration: {:#?}",
-            self.state.configured_address,
+            self.configured_address,
             mailbox_config
         );
 
         if !mailbox_config.has_mailbox() {
             fmt::trace!(
                 "Slave {:#06x} has no valid mailbox configuration",
-                self.state.configured_address
+                self.configured_address
             );
 
             return Ok(());
@@ -470,10 +422,9 @@ where
     ) -> Result<(), Error> {
         // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
         let mut fmmu_config = self
-            .client
-            .read_slice(RegisterAddress::fmmu(fmmu_index as u8).into(), 16)
-            .await
-            .and_then(|raw| Fmmu::unpack_from_slice(&raw).map_err(|_| Error::Internal))?;
+            .read(RegisterAddress::fmmu(fmmu_index as u8))
+            .receive::<Fmmu>()
+            .await?;
 
         // We can use the enable flag as a sentinel for existing config because EtherCrab inits
         // FMMUs to all zeroes on startup.
@@ -497,20 +448,19 @@ where
             }
         };
 
-        self.client
-            .write_slice(
-                RegisterAddress::fmmu(fmmu_index as u8).into(),
-                &fmmu_config.pack(),
-            )
+        self.write(RegisterAddress::fmmu(fmmu_index as u8))
+            .send(fmmu_config)
             .await?;
+
         fmt::debug!(
             "Slave {:#06x} FMMU{}: {}",
-            self.state.configured_address,
+            self.configured_address,
             fmmu_index,
             fmmu_config
         );
-        fmt::trace!("{:#?}", fmmu_config);
+
         *global_offset = global_offset.increment_byte_aligned(sm_bit_len);
+
         Ok(())
     }
 
@@ -518,12 +468,29 @@ where
     async fn configure_pdos_eeprom(
         &self,
         sync_managers: &[SyncManager],
-        pdos: &[Pdo],
-        fmmu_sm_mappings: &[FmmuEx],
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
+        let pdos = match direction {
+            PdoDirection::MasterRead => {
+                let read_pdos = self.eeprom().master_read_pdos().await?;
+
+                fmt::trace!("Slave inputs PDOs {:#?}", read_pdos);
+
+                read_pdos
+            }
+            PdoDirection::MasterWrite => {
+                let write_pdos = self.eeprom().master_write_pdos().await?;
+
+                fmt::trace!("Slave outputs PDOs {:#?}", write_pdos);
+
+                write_pdos
+            }
+        };
+
+        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
+
         let start_offset = *offset;
         let mut total_bit_len = 0;
 
@@ -589,6 +556,7 @@ where
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum PdoDirection {
     MasterRead,
     MasterWrite,
