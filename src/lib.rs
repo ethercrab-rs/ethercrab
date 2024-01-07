@@ -175,7 +175,6 @@ mod fmmu;
 mod generate;
 mod mailbox;
 mod pdi;
-mod pdu_data;
 mod pdu_loop;
 mod register;
 mod slave;

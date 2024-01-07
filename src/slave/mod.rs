@@ -21,7 +21,6 @@ use crate::{
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::MailboxType,
-    pdu_data::PduData,
     pdu_loop::{CheckWorkingCounter, RxFrameDataBuf},
     register::RegisterAddress,
     register::SupportFlags,
@@ -37,7 +36,7 @@ use core::{
 };
 use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
-    EtherCrabWireWriteSized,
+    EtherCrabWireWrite, EtherCrabWireWriteSized,
 };
 
 pub use self::pdi::SlavePdi;
@@ -511,26 +510,25 @@ where
         value: T,
     ) -> Result<(), Error>
     where
-        T: PduData,
+        T: EtherCrabWireWrite,
     {
         let sub_index = sub_index.into();
 
         let counter = self.mailbox_counter();
 
-        if T::len() > 4 {
+        if value.packed_len() > 4 {
             fmt::error!("Only 4 byte SDO writes or smaller are supported currently.");
 
             // TODO: Normal SDO download. Only expedited requests for now
             return Err(Error::Internal);
         }
 
-        let mut data = [0u8; 4];
+        let mut buf = [0u8; 4];
 
-        let len = usize::from(T::len());
+        value.pack_to_slice(&mut buf)?;
 
-        data[0..len].copy_from_slice(value.as_slice());
-
-        let request = coe::services::download(counter, index, sub_index, data, len as u8);
+        let request =
+            coe::services::download(counter, index, sub_index, buf, value.packed_len() as u8);
 
         fmt::trace!("CoE download");
 
