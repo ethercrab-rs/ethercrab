@@ -3,7 +3,7 @@ use crate::{
         types::{SiiControl, SiiRequest},
         EepromDataProvider,
     },
-    error::Error,
+    error::{EepromError, Error},
     fmt,
     register::RegisterAddress,
     Client, Command,
@@ -37,36 +37,21 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
         &mut self,
         start_word: u16,
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
-        let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-            .wrap(self.client)
-            .receive::<SiiControl>()
-            .await?;
-
-        // Clear errors
-        if status.has_error() {
-            fmt::trace!("Resetting EEPROM error flags");
-
-            Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
-                .wrap(self.client)
-                .send(status.error_reset())
-                .await?;
-        }
-
         Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
             .wrap(self.client)
             .send_receive(SiiRequest::read(start_word))
             .await?;
 
-        crate::timer_factory::timeout(self.client.timeouts.eeprom, async {
+        let status = crate::timer_factory::timeout(self.client.timeouts.eeprom, async {
             loop {
-                let control =
+                let control: SiiControl =
                     Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
                         .wrap(self.client)
                         .receive::<SiiControl>()
                         .await?;
 
                 if !control.busy {
-                    break Ok(());
+                    break Ok(control);
                 }
 
                 self.client.timeouts.loop_tick().await;
@@ -86,5 +71,33 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
 
                 data
             })
+    }
+
+    async fn clear_errors(&self) -> Result<(), Error> {
+        let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
+            .wrap(self.client)
+            .receive::<SiiControl>()
+            .await?;
+
+        // Clear errors
+        if status.has_error() {
+            fmt::trace!("Resetting EEPROM error flags");
+
+            Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
+                .wrap(self.client)
+                .send(status.error_reset())
+                .await?;
+        }
+
+        let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
+            .wrap(self.client)
+            .receive::<SiiControl>()
+            .await?;
+
+        if status.has_error() {
+            Err(Error::Eeprom(EepromError::ClearErrors))
+        } else {
+            Ok(())
+        }
     }
 }
