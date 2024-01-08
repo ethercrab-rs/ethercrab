@@ -58,3 +58,15 @@ impl RetryBehaviour {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loop_counts_sanity_check() {
+        assert_eq!(RetryBehaviour::None.loop_counts(), 1);
+        assert_eq!(RetryBehaviour::Count(10).loop_counts(), 10);
+        assert_eq!(RetryBehaviour::Forever.loop_counts(), usize::MAX);
+    }
+}

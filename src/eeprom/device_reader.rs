@@ -3,7 +3,7 @@ use crate::{
         types::{SiiControl, SiiRequest},
         EepromDataProvider,
     },
-    error::Error,
+    error::{EepromError, Error},
     fmt,
     register::RegisterAddress,
     Client, Command,
@@ -30,26 +30,6 @@ impl<'slave> DeviceEeprom<'slave> {
             configured_address,
         }
     }
-
-    /// Wait for EEPROM read or write operation to finish and clear the busy flag.
-    async fn wait(&self) -> Result<(), Error> {
-        crate::timer_factory::timeout(self.client.timeouts.eeprom, async {
-            loop {
-                let control =
-                    Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-                        .wrap(self.client)
-                        .receive::<SiiControl>()
-                        .await?;
-
-                if !control.busy {
-                    break Ok(());
-                }
-
-                self.client.timeouts.loop_tick().await;
-            }
-        })
-        .await
-    }
 }
 
 impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
@@ -57,6 +37,43 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
         &mut self,
         start_word: u16,
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
+        Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
+            .wrap(self.client)
+            .send_receive(SiiRequest::read(start_word))
+            .await?;
+
+        let status = crate::timer_factory::timeout(self.client.timeouts.eeprom, async {
+            loop {
+                let control: SiiControl =
+                    Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
+                        .wrap(self.client)
+                        .receive::<SiiControl>()
+                        .await?;
+
+                if !control.busy {
+                    break Ok(control);
+                }
+
+                self.client.timeouts.loop_tick().await;
+            }
+        })
+        .await?;
+
+        Command::fprd(self.configured_address, RegisterAddress::SiiData.into())
+            .wrap(self.client)
+            .receive_slice(status.read_size.chunk_len())
+            .await
+            .map(|data| {
+                #[cfg(not(feature = "defmt"))]
+                fmt::trace!("Read addr {:#06x}: {:02x?}", start_word, data);
+                #[cfg(feature = "defmt")]
+                fmt::trace!("Read addr {:#06x}: {=[u8]}", start_word, data);
+
+                data
+            })
+    }
+
+    async fn clear_errors(&self) -> Result<(), Error> {
         let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
             .wrap(self.client)
             .receive::<SiiControl>()
@@ -72,24 +89,15 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
                 .await?;
         }
 
-        Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
+        let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
             .wrap(self.client)
-            .send_receive(SiiRequest::read(start_word))
+            .receive::<SiiControl>()
             .await?;
 
-        self.wait().await?;
-
-        Command::fprd(self.configured_address, RegisterAddress::SiiData.into())
-            .wrap(self.client)
-            .receive_slice(status.read_size.chunk_len())
-            .await
-            .map(|data| {
-                #[cfg(not(feature = "defmt"))]
-                fmt::trace!("Read addr {:#06x}: {:02x?}", start_word, data);
-                #[cfg(feature = "defmt")]
-                fmt::trace!("Read addr {:#06x}: {=[u8]}", start_word, data);
-
-                data
-            })
+        if status.has_error() {
+            Err(Error::Eeprom(EepromError::ClearErrors))
+        } else {
+            Ok(())
+        }
     }
 }

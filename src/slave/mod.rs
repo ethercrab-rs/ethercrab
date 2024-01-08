@@ -445,7 +445,7 @@ where
     ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
     where
         H: CoeServiceRequest + Debug,
-        H::Response: EtherCrabWireRead,
+        H::Response: EtherCrabWireRead + Debug,
     {
         let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
 
@@ -625,8 +625,8 @@ where
                 "SDO expedited data decode T: {} (len {}) data {:?} (len {})",
                 type_name::<T>(),
                 T::PACKED_LEN,
-                data,
-                data.len()
+                response_payload,
+                response_payload.len()
             );
 
             Error::Pdu(PduError::Decode)

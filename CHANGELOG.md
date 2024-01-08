@@ -25,6 +25,9 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#144](https://github.com/ethercrab-rs/ethercrab/pull/144)
   `PduError::InvalidIndex(usize)` is now a `PduError::InvalidIndex(u8)` as the EtherCAT index field
   is itself onl a `u8`.
+- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Reduced overhead for EEPROM reads.
+  Each chunk reader now only checks for and (attempt to) clear device errors once before reading a
+  chunk of data, not for every chunk.
 
 ### Added
 
@@ -43,6 +46,9 @@ An EtherCAT master written in Rust.
   - `EtherCrabWireReadWrite`
   - `EtherCrabWireSized`
   - `EtherCrabWireWrite`
+
+- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Add `EepromError::ClearErrors`
+  variant.
 
 ### Fixed
 

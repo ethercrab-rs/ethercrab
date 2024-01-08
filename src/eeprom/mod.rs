@@ -17,6 +17,10 @@ pub trait EepromDataProvider: Clone {
     /// Read a chunk of either 4 or 8 bytes from the backing store.
     #[cfg_attr(feature = "__internals", allow(async_fn_in_trait))]
     async fn read_chunk(&mut self, start_word: u16) -> Result<impl Deref<Target = [u8]>, Error>;
+
+    /// Attempt to clear any errors in the EEPROM source.
+    #[cfg_attr(feature = "__internals", allow(async_fn_in_trait))]
+    async fn clear_errors(&self) -> Result<(), Error>;
 }
 
 impl embedded_io_async::Error for Error {
@@ -137,6 +141,8 @@ where
         // We can't read past the end of the chunk, so clamp the buffer's length to the remaining
         // part of the chunk if necessary.
         let mut buf = &mut buf[0..requested_read_len.min(max_read)];
+
+        self.reader.clear_errors().await?;
 
         while !buf.is_empty() {
             let res = self.reader.read_chunk(self.pos / 2).await?;
