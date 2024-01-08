@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-echo -e "commit,date,text,bss,dec,bin" > target/sizes.csv
+echo -e "commit,date,loc_total,loc_code,loc_comments,text,bss,dec,bin,obj" > target/sizes.csv
 
 set -e
 
@@ -24,10 +24,14 @@ do
         out=$(wc -c target/size.bin)
         bin=$(echo $out | awk '{print $1}')
 
-        popd
+        obj_size=$(cargo objcopy --release --quiet -- -O binary target/size.bin && wc -c target/size.bin | awk '{print $1}')
 
-        echo -e "$commit,$date,$text,$bss,$dec,$bin" >> target/sizes.csv
+        popd
     fi
+
+    code_stats=$(tokei --type Rust | tail -n2 | head -n1 | awk '{print $3","$4","$5}')
+
+    echo -e "$commit,$date,$code_stats,$text,$bss,$dec,$bin,$obj_size" >> target/sizes.csv
 done
 
 echo "Done"
