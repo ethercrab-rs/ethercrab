@@ -288,6 +288,8 @@ pub enum EepromError {
     NoCategory,
     /// The section in the slave's EEPROM is too small to fill the given buffer.
     SectionUnderrun,
+    /// An attempt to clear errors on the device failed.
+    ClearErrors,
 }
 
 impl core::fmt::Display for EepromError {
@@ -297,6 +299,7 @@ impl core::fmt::Display for EepromError {
             EepromError::SectionOverrun => f.write_str("section too large to fit in buffer"),
             EepromError::NoCategory => f.write_str("category not found"),
             EepromError::SectionUnderrun => f.write_str("section too short to fill buffer"),
+            EepromError::ClearErrors => f.write_str("clear device errors failed"),
         }
     }
 }

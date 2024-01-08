@@ -5,7 +5,7 @@ use ethercrab_wire::EtherCrabWireSized;
 
 /// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download
 /// request.
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 16)]
 pub struct SdoExpeditedDownload {
     #[wire(bytes = 12)]
@@ -37,7 +37,7 @@ impl Display for SdoExpeditedDownload {
 /// These fields are common to non-segmented (i.e. "normal") SDO requests and responses.
 ///
 /// See ETG1000.6 Section 5.6.2 SDO.
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 12)]
 pub struct SdoNormal {
     #[wire(bytes = 6)]
@@ -252,5 +252,202 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
             index,
             sub_index: access.sub_index(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
+
+    #[test]
+    fn decode_sdo_response_normal() {
+        let raw = [10u8, 0, 0, 0, 0, 83, 0, 48, 79, 0, 28, 4];
+
+        let expected = SdoNormal {
+            header: MailboxHeader {
+                length: 10,
+                address: 0,
+                priority: Priority::Lowest,
+                mailbox_type: MailboxType::Coe,
+                counter: 5,
+            },
+            coe_header: CoeHeader {
+                service: CoeService::SdoResponse,
+            },
+            sdo_header: InitSdoHeader {
+                flags: InitSdoFlags {
+                    size_indicator: true,
+                    expedited_transfer: true,
+                    size: 3,
+                    complete_access: false,
+                    command: 2,
+                },
+                index: 0x1c00,
+                sub_index: 4,
+            },
+        };
+
+        assert_eq!(CoeServiceResponse::counter(&expected), 5);
+        assert_eq!(expected.is_aborted(), false);
+        assert_eq!(expected.mailbox_type(), MailboxType::Coe);
+        assert_eq!(expected.address(), 0x1c00);
+        assert_eq!(expected.sub_index(), 4);
+
+        assert_eq!(SdoNormal::unpack_from_slice(&raw), Ok(expected));
+    }
+
+    #[test]
+    fn encode_sdo_request() {
+        let buf = [0xaau8, 0xbb, 0xcc, 0xdd];
+
+        let request = download(123, 0x1234, 3.into(), buf.clone(), buf.packed_len() as u8);
+
+        pretty_assertions::assert_eq!(
+            request,
+            SdoExpeditedDownload {
+                headers: SdoNormal {
+                    header: MailboxHeader {
+                        length: 10,
+                        address: 0,
+                        priority: Priority::Lowest,
+                        mailbox_type: MailboxType::Coe,
+                        counter: 123,
+                    },
+                    coe_header: CoeHeader {
+                        service: CoeService::SdoRequest,
+                    },
+                    sdo_header: InitSdoHeader {
+                        flags: InitSdoFlags {
+                            size_indicator: true,
+                            expedited_transfer: true,
+                            size: 0,
+                            complete_access: false,
+                            command: 1,
+                        },
+                        index: 0x1234,
+                        sub_index: 3,
+                    },
+                },
+                data: buf
+            }
+        )
+    }
+
+    #[test]
+    fn encode_sdo_request_complete() {
+        let buf = [0xaau8, 0xbb, 0xcc, 0xdd];
+
+        let request = download(123, 0x1234, SubIndex::Complete, buf, buf.packed_len() as u8);
+
+        pretty_assertions::assert_eq!(
+            request,
+            SdoExpeditedDownload {
+                headers: SdoNormal {
+                    header: MailboxHeader {
+                        length: 10,
+                        address: 0,
+                        priority: Priority::Lowest,
+                        mailbox_type: MailboxType::Coe,
+                        counter: 123,
+                    },
+                    coe_header: CoeHeader {
+                        service: CoeService::SdoRequest,
+                    },
+                    sdo_header: InitSdoHeader {
+                        flags: InitSdoFlags {
+                            size_indicator: true,
+                            expedited_transfer: true,
+                            size: 0,
+                            complete_access: true,
+                            command: 1,
+                        },
+                        index: 0x1234,
+                        // MUST be 1 if complete access is used
+                        sub_index: 1,
+                    },
+                },
+                data: buf
+            }
+        )
+    }
+
+    #[test]
+    fn upload_request_normal() {
+        let request = upload(210, 0x4567, 2.into());
+
+        pretty_assertions::assert_eq!(
+            request,
+            SdoNormal {
+                header: MailboxHeader {
+                    length: 10,
+                    address: 0,
+                    priority: Priority::Lowest,
+                    mailbox_type: MailboxType::Coe,
+                    counter: 210,
+                },
+                coe_header: CoeHeader {
+                    service: CoeService::SdoRequest,
+                },
+                sdo_header: InitSdoHeader {
+                    flags: InitSdoFlags {
+                        size_indicator: false,
+                        expedited_transfer: false,
+                        size: 0,
+                        complete_access: false,
+                        command: 2,
+                    },
+                    index: 0x4567,
+                    sub_index: 2,
+                },
+            }
+        )
+    }
+
+    #[test]
+    fn upload_request_response_segmented() {
+        let raw = [
+            16u8, 0, 0, 0, 0, 99, 0, 48, 65, 8, 16, 0, 6, 0, 0, 0, 69, 75, 49, 57, 49, 52, 68, 105,
+            97, 103, 110, 111, 115, 101, 32, 77, 67, 50, 0, 86, 111, 108, 116, 97, 103, 101, 116,
+            97, 103, 101, 115, 105, 118, 101, 1, 112, 16, 112, 0, 128, 1, 128, 2, 128, 14, 128, 1,
+            144,
+        ];
+
+        let expected_headers = SdoNormal {
+            header: MailboxHeader {
+                length: 16,
+                address: 0,
+                priority: Priority::Lowest,
+                mailbox_type: MailboxType::Coe,
+                counter: 6,
+            },
+            coe_header: CoeHeader {
+                service: CoeService::SdoResponse,
+            },
+            sdo_header: InitSdoHeader {
+                flags: InitSdoFlags {
+                    size_indicator: true,
+                    expedited_transfer: false,
+                    size: 0,
+                    complete_access: false,
+                    command: 2,
+                },
+                index: 0x1008,
+                sub_index: 0,
+            },
+        };
+
+        assert_eq!(CoeServiceResponse::counter(&expected_headers), 6);
+        assert_eq!(expected_headers.is_aborted(), false);
+        assert_eq!(expected_headers.mailbox_type(), MailboxType::Coe);
+        assert_eq!(expected_headers.address(), 0x1008);
+        assert_eq!(expected_headers.sub_index(), 0);
+
+        pretty_assertions::assert_eq!(
+            SdoNormal::unpack_from_slice(&raw[0..12]),
+            Ok(expected_headers)
+        );
+
+        assert_eq!(&raw[(12 + u32::PACKED_LEN)..][..4], &[69, 75, 49, 57]);
     }
 }

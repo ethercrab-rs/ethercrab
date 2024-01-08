@@ -53,15 +53,15 @@ dump-eeprom *args:
 test-replay test_file *args:
     cargo test --features '__internals' {{ replace(test_file, '-', '_') }}
 
-capture-replay test_file_name interface *args:
+capture-replay test_name interface *args:
     #!/usr/bin/env bash
 
     set -euo pipefail
 
     # Kill child tshark on failure
-    trap 'kill 0' EXIT
+    trap 'killall tshark' EXIT
 
-    test_file=$(echo "{{test_file_name}}" | tr '_' '-')
+    test_file=$(echo "{{test_name}}" | tr '_' '-')
 
     if [ ! -f "tests/${test_file}.rs" ]; then
         echo "Test file tests/${test_file}.rs does not exist"
@@ -87,5 +87,24 @@ capture-replay test_file_name interface *args:
     # Let tshark finish up
     sleep 1
 
-    # Kill tshark
-    kill 0
+    killall tshark
+
+capture-all-replays interface *args:
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    for file in `ls tests/replay-*.rs`; do
+        test_name=$(basename "${file%.*}" | tr '-' '_')
+
+        echo "Capturing $test_name, test is:"
+        echo ""
+        grep '//!' $file
+        echo ""
+
+        read -p "Prepare hardware then press any key to continue." </dev/tty
+
+        just capture-replay ${test_name} {{interface}} {{args}}
+
+        echo ""
+    done

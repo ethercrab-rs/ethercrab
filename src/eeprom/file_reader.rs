@@ -84,4 +84,8 @@ impl<const CHUNK: usize> EepromDataProvider for EepromFile<CHUNK> {
 
         Ok(buf)
     }
+
+    async fn clear_errors(&self) -> Result<(), Error> {
+        Ok(())
+    }
 }
