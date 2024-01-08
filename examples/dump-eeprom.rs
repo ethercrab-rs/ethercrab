@@ -46,7 +46,14 @@ async fn main() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    let client = Client::new(
+        pdu_loop,
+        Timeouts::default(),
+        ClientConfig {
+            dc_static_sync_iterations: 0,
+            ..ClientConfig::default()
+        },
+    );
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
