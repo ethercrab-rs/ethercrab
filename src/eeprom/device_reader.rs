@@ -30,26 +30,6 @@ impl<'slave> DeviceEeprom<'slave> {
             configured_address,
         }
     }
-
-    /// Wait for EEPROM read or write operation to finish and clear the busy flag.
-    async fn wait(&self) -> Result<(), Error> {
-        crate::timer_factory::timeout(self.client.timeouts.eeprom, async {
-            loop {
-                let control =
-                    Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-                        .wrap(self.client)
-                        .receive::<SiiControl>()
-                        .await?;
-
-                if !control.busy {
-                    break Ok(());
-                }
-
-                self.client.timeouts.loop_tick().await;
-            }
-        })
-        .await
-    }
 }
 
 impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
@@ -77,7 +57,22 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
             .send_receive(SiiRequest::read(start_word))
             .await?;
 
-        self.wait().await?;
+        crate::timer_factory::timeout(self.client.timeouts.eeprom, async {
+            loop {
+                let control =
+                    Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
+                        .wrap(self.client)
+                        .receive::<SiiControl>()
+                        .await?;
+
+                if !control.busy {
+                    break Ok(());
+                }
+
+                self.client.timeouts.loop_tick().await;
+            }
+        })
+        .await?;
 
         Command::fprd(self.configured_address, RegisterAddress::SiiData.into())
             .wrap(self.client)
