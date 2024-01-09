@@ -462,8 +462,8 @@ where
         let headers = H::Response::unpack_from_slice(&response)?;
 
         if headers.is_aborted() {
-            let code =
-                CoeAbortCode::unpack_from_slice(&response).unwrap_or(CoeAbortCode::Unknown(0));
+            let code = CoeAbortCode::unpack_from_slice(&response[H::Response::header_len()..])
+                .unwrap_or(CoeAbortCode::Unknown(0));
 
             fmt::error!(
                 "Mailbox error for slave {:#06x} (supports complete access: {}): {}",

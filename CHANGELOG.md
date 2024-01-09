@@ -56,6 +56,8 @@ An EtherCAT master written in Rust.
 - **(breaking)** (technically) [#143](https://github.com/ethercrab-rs/ethercrab/pull/143) Fix typo
   in name `AlStatusCode::ApplicationControllerAvailableI` ->
   `AlStatusCode::ApplicationControllerAvailable`
+- [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) CoE errors are not reported correctly
+  from `sdo_read` and `sdo_write`.
 
 ### Removed
 
