@@ -9,17 +9,13 @@ use crate::{
     al_status_code::AlStatusCode,
     client::Client,
     coe::SubIndex,
-    coe::{
-        self,
-        abort_code::CoeAbortCode,
-        services::{CoeServiceRequest, CoeServiceResponse},
-    },
+    coe::{self, abort_code::CoeAbortCode, services::CoeServiceRequest, CoeCommand},
     command::Command,
     dl_status::DlStatus,
     eeprom::{device_reader::DeviceEeprom, types::SiiOwner},
     error::{Error, MailboxError, PduError},
     fmt,
-    mailbox::MailboxType,
+    mailbox::{MailboxHeader, MailboxType},
     pdu_loop::RxFrameDataBuf,
     register::RegisterAddress,
     register::SupportFlags,
@@ -439,13 +435,9 @@ where
 
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
     /// and return as a slice.
-    async fn send_coe_service<H>(
-        &'a self,
-        request: H,
-    ) -> Result<(H::Response, RxFrameDataBuf<'_>), Error>
+    async fn send_coe_service<R>(&'a self, request: R) -> Result<(R, RxFrameDataBuf<'_>), Error>
     where
-        H: CoeServiceRequest + Debug,
-        H::Response: EtherCrabWireRead + Debug,
+        R: CoeServiceRequest + Debug,
     {
         let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
 
@@ -454,16 +446,37 @@ where
         // Send data to slave IN mailbox
         self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
-            .send(request.pack().as_ref())
+            .send(&request.pack().as_ref())
             .await?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
 
-        let headers = H::Response::unpack_from_slice(&response)?;
+        /// A super generalised version of the various header shapes for responses, extracting only
+        /// what we need in this method.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
+        #[wire(bytes = 12)]
+        struct HeadersRaw {
+            #[wire(bytes = 8)]
+            header: MailboxHeader,
 
-        if headers.is_aborted() {
-            let code = CoeAbortCode::unpack_from_slice(&response[H::Response::header_len()..])
-                .unwrap_or(CoeAbortCode::Unknown(0));
+            #[wire(pre_skip = 5, bits = 3)]
+            command: CoeCommand,
+
+            // 9 bytes up to here
+
+            // SAFETY: These fields will be garbage (but not invalid) if the response is NOT an
+            // abort transfer request. Use with caution!
+            #[wire(bytes = 2)]
+            address: u16,
+            #[wire(bytes = 1)]
+            sub_index: u8,
+        }
+
+        // let headers = H::Response::unpack_from_slice(&response)?;
+        let headers = HeadersRaw::unpack_from_slice(&response)?;
+
+        if headers.command == CoeCommand::AbortRequest {
+            let code = CoeAbortCode::Incompatible;
 
             fmt::error!(
                 "Mailbox error for slave {:#06x} (supports complete access: {}): {}",
@@ -474,26 +487,30 @@ where
 
             Err(Error::Mailbox(MailboxError::Aborted {
                 code,
-                address: headers.address(),
-                sub_index: headers.sub_index(),
+                address: headers.address,
+                sub_index: headers.sub_index,
             }))
         }
         // Validate that the mailbox response is to the request we just sent
-        else if headers.mailbox_type() != MailboxType::Coe || headers.counter() != counter {
+        else if headers.header.mailbox_type != MailboxType::Coe
+            || headers.header.counter != counter
+        {
             fmt::error!(
                 "Invalid SDO response. Type: {:?} (expected {:?}), counter {} (expected {})",
-                headers.mailbox_type(),
+                headers.header.mailbox_type,
                 MailboxType::Coe,
-                headers.counter(),
+                headers.header.counter,
                 counter
             );
 
             Err(Error::Mailbox(MailboxError::SdoResponseInvalid {
-                address: headers.address(),
-                sub_index: headers.sub_index(),
+                address: headers.address,
+                sub_index: headers.sub_index,
             }))
         } else {
-            response.trim_front(H::Response::header_len());
+            let headers = R::unpack_from_slice(&response)?;
+
+            response.trim_front(HeadersRaw::PACKED_LEN);
 
             Ok((headers, response))
         }
@@ -572,8 +589,8 @@ where
             // The provided buffer isn't long enough to contain all mailbox data.
             if complete_size > buf.len() as u32 {
                 return Err(Error::Mailbox(MailboxError::TooLong {
-                    address: headers.address(),
-                    sub_index: headers.sub_index(),
+                    address: headers.sdo_header.index,
+                    sub_index: headers.sdo_header.sub_index,
                 }));
             }
 

@@ -1,7 +1,6 @@
 use super::{CoeService, InitSdoHeader, SegmentSdoHeader, SubIndex};
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 use core::fmt::Display;
-use ethercrab_wire::EtherCrabWireSized;
 
 /// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download
 /// request.
@@ -82,87 +81,27 @@ impl Display for SdoSegmented {
     }
 }
 
-/// Functionality common to all service responses (normal, expedited, segmented).
-pub trait CoeServiceResponse {
-    fn counter(&self) -> u8;
-    fn is_aborted(&self) -> bool;
-    fn mailbox_type(&self) -> MailboxType;
-    fn address(&self) -> u16;
-    fn sub_index(&self) -> u8;
-
-    fn header_len() -> usize;
-}
-
 /// Must be implemented for any type used to send a CoE service.
-pub trait CoeServiceRequest: ethercrab_wire::EtherCrabWireWriteSized {
-    type Response: CoeServiceResponse;
-
+pub trait CoeServiceRequest:
+    ethercrab_wire::EtherCrabWireReadWrite + ethercrab_wire::EtherCrabWireWriteSized
+{
     /// Get the auto increment counter value for this request.
     fn counter(&self) -> u8;
 }
 
-impl CoeServiceResponse for SdoSegmented {
-    /// Get the auto increment counter value for this response.
-    fn counter(&self) -> u8 {
-        self.header.counter
-    }
-    fn is_aborted(&self) -> bool {
-        self.sdo_header.command == super::CoeCommand::AbortRequest
-    }
-    fn mailbox_type(&self) -> MailboxType {
-        self.header.mailbox_type
-    }
-    fn address(&self) -> u16 {
-        0
-    }
-    fn sub_index(&self) -> u8 {
-        0
-    }
-    fn header_len() -> usize {
-        Self::PACKED_LEN
-    }
-}
-
-impl CoeServiceResponse for SdoNormal {
-    fn counter(&self) -> u8 {
-        self.header.counter
-    }
-    fn is_aborted(&self) -> bool {
-        self.sdo_header.command == super::CoeCommand::AbortRequest
-    }
-    fn mailbox_type(&self) -> MailboxType {
-        self.header.mailbox_type
-    }
-    fn address(&self) -> u16 {
-        self.sdo_header.index
-    }
-    fn sub_index(&self) -> u8 {
-        self.sdo_header.sub_index
-    }
-    fn header_len() -> usize {
-        Self::PACKED_LEN
-    }
-}
-
 impl CoeServiceRequest for SdoExpeditedDownload {
-    type Response = SdoNormal;
-
     fn counter(&self) -> u8 {
         self.headers.header.counter
     }
 }
 
 impl CoeServiceRequest for SdoNormal {
-    type Response = Self;
-
     fn counter(&self) -> u8 {
         self.header.counter
     }
 }
 
 impl CoeServiceRequest for SdoSegmented {
-    type Response = Self;
-
     fn counter(&self) -> u8 {
         self.header.counter
     }
@@ -245,7 +184,7 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
 mod tests {
     use super::*;
     use crate::error::CoeAbortCode;
-    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 
     #[test]
     fn decode_sdo_response_normal() {
@@ -270,12 +209,6 @@ mod tests {
                 sub_index: 4,
             },
         };
-
-        assert_eq!(CoeServiceResponse::counter(&expected), 5);
-        assert_eq!(expected.is_aborted(), false);
-        assert_eq!(expected.mailbox_type(), MailboxType::Coe);
-        assert_eq!(expected.address(), 0x1c00);
-        assert_eq!(expected.sub_index(), 4);
 
         assert_eq!(SdoNormal::unpack_from_slice(&raw), Ok(expected));
     }
@@ -404,12 +337,6 @@ mod tests {
             },
         };
 
-        assert_eq!(CoeServiceResponse::counter(&expected_headers), 6);
-        assert_eq!(expected_headers.is_aborted(), false);
-        assert_eq!(expected_headers.mailbox_type(), MailboxType::Coe);
-        assert_eq!(expected_headers.address(), 0x1008);
-        assert_eq!(expected_headers.sub_index(), 0);
-
         pretty_assertions::assert_eq!(
             SdoNormal::unpack_from_slice(&raw[0..12]),
             Ok(expected_headers)
@@ -448,7 +375,7 @@ mod tests {
             },
         };
 
-        let abort_code = CoeAbortCode::unpack_from_slice(&raw[SdoNormal::header_len()..]);
+        let abort_code = CoeAbortCode::unpack_from_slice(&raw[12..]);
 
         assert_eq!(abort_code, Ok(CoeAbortCode::NotFound));
 

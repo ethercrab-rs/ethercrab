@@ -25,6 +25,9 @@ pub enum CoeService {
     SdoInformation = 0x08,
 }
 
+/// The field near the bottom of SDO definition tables called "Command specifier".
+///
+/// See e.g. ETG1000.6 Section 5.6.2.6.2 Table 39 – Upload SDO Segment Response.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bits = 3)]
 #[repr(u8)]
