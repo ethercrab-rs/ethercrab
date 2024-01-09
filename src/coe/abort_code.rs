@@ -3,7 +3,7 @@
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[repr(u32)]
-pub enum AbortCode {
+pub enum CoeAbortCode {
     /// Toggle bit not changed
     ToggleBit = 0x05030000,
     /// SDO protocol timeout
@@ -83,7 +83,7 @@ pub enum AbortCode {
     Unknown(u32),
 }
 
-impl core::fmt::Display for AbortCode {
+impl core::fmt::Display for CoeAbortCode {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let num = u32::from(*self);
 
@@ -134,9 +134,9 @@ mod tests {
     fn unknown_code() {
         let code = 0x1234_5678u32;
 
-        let decoded = AbortCode::from(code);
+        let decoded = CoeAbortCode::from(code);
 
-        assert_eq!(decoded, AbortCode::Unknown(0x1234_5678u32));
+        assert_eq!(decoded, CoeAbortCode::Unknown(0x1234_5678u32));
 
         assert_eq!(decoded.to_string(), "0x12345678: Unknown code");
     }
@@ -145,6 +145,6 @@ mod tests {
     fn parse_code() {
         let code = 0x06090036;
 
-        assert_eq!(AbortCode::from(code), AbortCode::MaxMin);
+        assert_eq!(CoeAbortCode::from(code), CoeAbortCode::MaxMin);
     }
 }

@@ -11,7 +11,7 @@ use crate::{
     coe::SubIndex,
     coe::{
         self,
-        abort_code::AbortCode,
+        abort_code::CoeAbortCode,
         services::{CoeServiceRequest, CoeServiceResponse},
     },
     command::Command,
@@ -462,7 +462,8 @@ where
         let headers = H::Response::unpack_from_slice(&response)?;
 
         if headers.is_aborted() {
-            let code = AbortCode::unpack_from_slice(&response).unwrap_or(AbortCode::Unknown(0));
+            let code =
+                CoeAbortCode::unpack_from_slice(&response).unwrap_or(CoeAbortCode::Unknown(0));
 
             fmt::error!(
                 "Mailbox error for slave {:#06x} (supports complete access: {}): {}",

@@ -48,6 +48,8 @@ An EtherCAT master written in Rust.
   - `EtherCrabWireWrite`
 
 - [#151](https://github.com/ethercrab-rs/ethercrab/pull/151) Add `EepromError::ClearErrors` variant.
+- [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) Expose `error::CoeAbortCode` for
+  matching on CoE transfer errors.
 
 ### Fixed
 
