@@ -206,3 +206,49 @@ fn heapless_vec() {
         .unwrap())
     )
 }
+
+// #[test]
+// fn complex_enum() {
+//     #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+//     #[wire(bytes = 1)]
+//     pub struct InitSdoFlags {
+//         #[wire(bits = 1)]
+//         pub size_indicator: bool,
+//         #[wire(bits = 1)]
+//         pub expedited_transfer: bool,
+//         #[wire(bits = 2)]
+//         pub size: u8,
+//         #[wire(bits = 1)]
+//         pub complete_access: bool,
+//         #[wire(bits = 3)]
+//         pub command: u8,
+//     }
+
+//     #[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
+//     enum SdoHeader {
+//         #[wire(bytes = 4)]
+//         Normal {
+//             #[wire(bytes = 1)]
+//             flags: InitSdoFlags,
+//             #[wire(bytes = 2)]
+//             index: u16,
+//             #[wire(bytes = 1)]
+//             sub_index: u8,
+//         },
+//         #[wire(bytes = 1)]
+//         Segmented {
+//             #[wire(bits = 1)]
+//             is_last_segment: bool,
+
+//             /// Segment data size, `0x00` to `0x07`.
+//             #[wire(bits = 3)]
+//             segment_data_size: u8,
+
+//             #[wire(bits = 1)]
+//             toggle: bool,
+
+//             #[wire(bits = 3)]
+//             command: u8,
+//         },
+//     }
+// }

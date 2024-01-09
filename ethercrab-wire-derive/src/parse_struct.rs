@@ -1,8 +1,11 @@
-use crate::help::{all_valid_attrs, attr_exists, bit_width_attr, usize_attr};
+use crate::help::{all_valid_attrs, attr_exists, bit_width_attr, usize_attr, STRUCT_ATTRS};
 use std::ops::Range;
-use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
+use syn::{
+    punctuated::Punctuated, token::Comma, Attribute, DataStruct, DeriveInput, Field, Fields,
+    FieldsNamed, Ident, Type, Visibility,
+};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StructMeta {
     /// Width in bits on the wire.
     pub width_bits: usize,
@@ -10,7 +13,7 @@ pub struct StructMeta {
     pub fields: Vec<FieldMeta>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FieldMeta {
     pub vis: Visibility,
     pub name: Ident,
@@ -37,27 +40,35 @@ pub fn parse_struct(
     s: DataStruct,
     DeriveInput { attrs, ident, .. }: DeriveInput,
 ) -> syn::Result<StructMeta> {
-    // --- Struct attributes
-
-    all_valid_attrs(&attrs, &["bits", "bytes"])?;
-
-    let width = bit_width_attr(&attrs)?;
-
-    let Some(width) = width else {
-        return Err(syn::Error::new(
-            ident.span(),
-            "Struct total bit width is required, e.g. #[wire(bits = 32)]",
-        ));
-    };
-
-    // --- Fields
-
     let Fields::Named(FieldsNamed { named: fields, .. }) = s.fields else {
         return Err(syn::Error::new(
             ident.span(),
             "Only structs with named fields can be derived.",
         ));
     };
+
+    parse_struct_fields(&attrs, ident, &fields)
+}
+
+pub fn parse_struct_fields(
+    attrs: &[Attribute],
+    ident: Ident,
+    fields: &Punctuated<Field, Comma>,
+) -> syn::Result<StructMeta> {
+    // --- Struct attributes
+
+    all_valid_attrs(&attrs, STRUCT_ATTRS)?;
+
+    let width = bit_width_attr(&attrs)?;
+
+    let Some(width) = width else {
+        return Err(syn::Error::new(
+            ident.span(),
+            "Struct total bit width is required, e.g. #[wire(bits = 32)] or #[wire(bytes = 4)]",
+        ));
+    };
+
+    // --- Fields
 
     let mut total_field_width = 0;
 
@@ -78,7 +89,7 @@ pub fn parse_struct(
         )?;
 
         // Unwrap: this is a named-field struct so the field will always have a name.
-        let field_name = field.ident.unwrap();
+        let field_name = field.ident.clone().unwrap();
         let field_width = bit_width_attr(&field.attrs)?;
 
         // Whether to ignore this field when sending AND receiving
@@ -113,8 +124,8 @@ pub fn parse_struct(
 
         let meta = FieldMeta {
             name: field_name,
-            vis: field.vis,
-            ty: field.ty,
+            vis: field.vis.clone(),
+            ty: field.ty.clone(),
             ty_name,
 
             bits,
