@@ -258,6 +258,7 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::CoeAbortCode;
     use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 
     #[test]
@@ -449,5 +450,46 @@ mod tests {
         );
 
         assert_eq!(&raw[(12 + u32::PACKED_LEN)..][..4], &[69, 75, 49, 57]);
+    }
+
+    #[test]
+    fn error_not_found() {
+        // Copypasta'd from Wireshark
+        let raw = [
+            0x0a, 0x00, 0x00, 0x00, 0x00, 0x63, 0x00, 0x20, 0x80, 0x01, 0x10, 0x00, 0x00, 0x00,
+            0x02, 0x06,
+        ];
+
+        let parsed = SdoNormal::unpack_from_slice(&raw);
+
+        let expected = SdoNormal {
+            header: MailboxHeader {
+                length: 0x0a,
+                address: 0x0000,
+                priority: Priority::Lowest,
+                mailbox_type: MailboxType::Coe,
+                counter: 6,
+            },
+            coe_header: CoeHeader {
+                service: CoeService::SdoRequest,
+            },
+            sdo_header: InitSdoHeader {
+                flags: InitSdoFlags {
+                    size_indicator: false,
+                    expedited_transfer: false,
+                    size: 0,
+                    complete_access: false,
+                    command: InitSdoFlags::ABORT_REQUEST,
+                },
+                index: 0x1001,
+                sub_index: 0,
+            },
+        };
+
+        let abort_code = CoeAbortCode::unpack_from_slice(&raw[SdoNormal::header_len()..]);
+
+        assert_eq!(abort_code, Ok(CoeAbortCode::NotFound));
+
+        pretty_assertions::assert_eq!(parsed, Ok(expected));
     }
 }
