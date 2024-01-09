@@ -35,8 +35,8 @@ pub enum CoeService {
 
 /// Defined in ETG1000.6 Section 5.6.2.1.1
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
-#[wire(bytes = 1)]
-pub struct InitSdoFlags {
+#[wire(bytes = 4)]
+pub struct InitSdoHeader {
     #[wire(bits = 1)]
     pub size_indicator: bool,
     #[wire(bits = 1)]
@@ -47,25 +47,18 @@ pub struct InitSdoFlags {
     pub complete_access: bool,
     #[wire(bits = 3)]
     pub command: u8,
+    #[wire(bytes = 2)]
+    pub index: u16,
+    #[wire(bytes = 1)]
+    pub sub_index: u8,
 }
 
-impl InitSdoFlags {
+impl InitSdoHeader {
     pub const DOWNLOAD_REQUEST: u8 = 0x01;
     // pub const DOWNLOAD_RESPONSE: u8 = 0x03;
     pub const UPLOAD_REQUEST: u8 = 0x02;
     // pub const UPLOAD_RESPONSE: u8 = 0x02;
     pub const ABORT_REQUEST: u8 = 0x04;
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
-#[wire(bytes = 4)]
-pub struct InitSdoHeader {
-    #[wire(bytes = 1)]
-    pub flags: InitSdoFlags,
-    #[wire(bytes = 2)]
-    pub index: u16,
-    #[wire(bytes = 1)]
-    pub sub_index: u8,
 }
 
 /// Defined in ETG1000.6 5.6.2.3.1

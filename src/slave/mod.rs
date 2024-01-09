@@ -557,8 +557,8 @@ where
 
         // Expedited transfers where the data is 4 bytes or less long, denoted in the SDO header
         // size value.
-        let response_payload = if headers.sdo_header.flags.expedited_transfer {
-            let data_len = 4usize.saturating_sub(usize::from(headers.sdo_header.flags.size));
+        let response_payload = if headers.sdo_header.expedited_transfer {
+            let data_len = 4usize.saturating_sub(usize::from(headers.sdo_header.size));
 
             &data[0..data_len]
         }

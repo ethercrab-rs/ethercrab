@@ -1,4 +1,4 @@
-use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SegmentSdoHeader, SubIndex};
+use super::{CoeHeader, CoeService, InitSdoHeader, SegmentSdoHeader, SubIndex};
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 use core::fmt::Display;
 use ethercrab_wire::EtherCrabWireSized;
@@ -22,7 +22,7 @@ impl Display for SdoExpeditedDownload {
             self.headers.sdo_header.index, self.headers.sdo_header.sub_index
         )?;
 
-        if self.headers.sdo_header.flags.complete_access {
+        if self.headers.sdo_header.complete_access {
             write!(f, " complete access)")?;
         } else {
             write!(f, ")")?;
@@ -56,7 +56,7 @@ impl Display for SdoNormal {
             self.sdo_header.index, self.sdo_header.sub_index
         )?;
 
-        if self.sdo_header.flags.complete_access {
+        if self.sdo_header.complete_access {
             write!(f, " complete access)")?;
         } else {
             write!(f, ")")?;
@@ -111,7 +111,7 @@ impl CoeServiceResponse for SdoSegmented {
         self.header.counter
     }
     fn is_aborted(&self) -> bool {
-        self.sdo_header.command == InitSdoFlags::ABORT_REQUEST
+        self.sdo_header.command == InitSdoHeader::ABORT_REQUEST
     }
     fn mailbox_type(&self) -> MailboxType {
         self.header.mailbox_type
@@ -132,7 +132,7 @@ impl CoeServiceResponse for SdoNormal {
         self.header.counter
     }
     fn is_aborted(&self) -> bool {
-        self.sdo_header.flags.command == InitSdoFlags::ABORT_REQUEST
+        self.sdo_header.command == InitSdoHeader::ABORT_REQUEST
     }
     fn mailbox_type(&self) -> MailboxType {
         self.header.mailbox_type
@@ -192,13 +192,11 @@ pub fn download(
                 service: CoeService::SdoRequest,
             },
             sdo_header: InitSdoHeader {
-                flags: InitSdoFlags {
-                    size_indicator: true,
-                    expedited_transfer: true,
-                    size: 4u8.saturating_sub(len),
-                    complete_access: access.complete_access(),
-                    command: InitSdoFlags::DOWNLOAD_REQUEST,
-                },
+                size_indicator: true,
+                expedited_transfer: true,
+                size: 4u8.saturating_sub(len),
+                complete_access: access.complete_access(),
+                command: InitSdoHeader::DOWNLOAD_REQUEST,
                 index,
                 sub_index: access.sub_index(),
             },
@@ -242,13 +240,11 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
             service: CoeService::SdoRequest,
         },
         sdo_header: InitSdoHeader {
-            flags: InitSdoFlags {
-                size_indicator: false,
-                expedited_transfer: false,
-                size: 0,
-                complete_access: access.complete_access(),
-                command: InitSdoFlags::UPLOAD_REQUEST,
-            },
+            size_indicator: false,
+            expedited_transfer: false,
+            size: 0,
+            complete_access: access.complete_access(),
+            command: InitSdoHeader::UPLOAD_REQUEST,
             index,
             sub_index: access.sub_index(),
         },
@@ -277,13 +273,11 @@ mod tests {
                 service: CoeService::SdoResponse,
             },
             sdo_header: InitSdoHeader {
-                flags: InitSdoFlags {
-                    size_indicator: true,
-                    expedited_transfer: true,
-                    size: 3,
-                    complete_access: false,
-                    command: 2,
-                },
+                size_indicator: true,
+                expedited_transfer: true,
+                size: 3,
+                complete_access: false,
+                command: 2,
                 index: 0x1c00,
                 sub_index: 4,
             },
@@ -319,13 +313,11 @@ mod tests {
                         service: CoeService::SdoRequest,
                     },
                     sdo_header: InitSdoHeader {
-                        flags: InitSdoFlags {
-                            size_indicator: true,
-                            expedited_transfer: true,
-                            size: 0,
-                            complete_access: false,
-                            command: 1,
-                        },
+                        size_indicator: true,
+                        expedited_transfer: true,
+                        size: 0,
+                        complete_access: false,
+                        command: 1,
                         index: 0x1234,
                         sub_index: 3,
                     },
@@ -356,13 +348,11 @@ mod tests {
                         service: CoeService::SdoRequest,
                     },
                     sdo_header: InitSdoHeader {
-                        flags: InitSdoFlags {
-                            size_indicator: true,
-                            expedited_transfer: true,
-                            size: 0,
-                            complete_access: true,
-                            command: 1,
-                        },
+                        size_indicator: true,
+                        expedited_transfer: true,
+                        size: 0,
+                        complete_access: true,
+                        command: 1,
                         index: 0x1234,
                         // MUST be 1 if complete access is used
                         sub_index: 1,
@@ -391,13 +381,11 @@ mod tests {
                     service: CoeService::SdoRequest,
                 },
                 sdo_header: InitSdoHeader {
-                    flags: InitSdoFlags {
-                        size_indicator: false,
-                        expedited_transfer: false,
-                        size: 0,
-                        complete_access: false,
-                        command: 2,
-                    },
+                    size_indicator: false,
+                    expedited_transfer: false,
+                    size: 0,
+                    complete_access: false,
+                    command: 2,
                     index: 0x4567,
                     sub_index: 2,
                 },
@@ -426,13 +414,11 @@ mod tests {
                 service: CoeService::SdoResponse,
             },
             sdo_header: InitSdoHeader {
-                flags: InitSdoFlags {
-                    size_indicator: true,
-                    expedited_transfer: false,
-                    size: 0,
-                    complete_access: false,
-                    command: 2,
-                },
+                size_indicator: true,
+                expedited_transfer: false,
+                size: 0,
+                complete_access: false,
+                command: 2,
                 index: 0x1008,
                 sub_index: 0,
             },
@@ -474,13 +460,11 @@ mod tests {
                 service: CoeService::SdoRequest,
             },
             sdo_header: InitSdoHeader {
-                flags: InitSdoFlags {
-                    size_indicator: false,
-                    expedited_transfer: false,
-                    size: 0,
-                    complete_access: false,
-                    command: InitSdoFlags::ABORT_REQUEST,
-                },
+                size_indicator: false,
+                expedited_transfer: false,
+                size: 0,
+                complete_access: false,
+                command: InitSdoHeader::ABORT_REQUEST,
                 index: 0x1001,
                 sub_index: 0,
             },
