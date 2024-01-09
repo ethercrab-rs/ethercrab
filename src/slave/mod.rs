@@ -462,7 +462,7 @@ where
         let headers = H::Response::unpack_from_slice(&response)?;
 
         if headers.is_aborted() {
-            let code = AbortCode::from(u32::from_le_bytes(fmt::unwrap!(response[0..4].try_into())));
+            let code = AbortCode::unpack_from_slice(&response).unwrap_or(AbortCode::Unknown(0));
 
             fmt::error!(
                 "Mailbox error for slave {:#06x} (supports complete access: {}): {}",
