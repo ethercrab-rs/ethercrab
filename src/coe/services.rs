@@ -1,7 +1,6 @@
-use super::{CoeHeader, CoeService, InitSdoFlags, InitSdoHeader, SegmentSdoHeader, SubIndex};
+use super::{CoeService, InitSdoHeader, SegmentSdoHeader, SubIndex};
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 use core::fmt::Display;
-use ethercrab_wire::EtherCrabWireSized;
 
 /// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download
 /// request.
@@ -22,7 +21,7 @@ impl Display for SdoExpeditedDownload {
             self.headers.sdo_header.index, self.headers.sdo_header.sub_index
         )?;
 
-        if self.headers.sdo_header.flags.complete_access {
+        if self.headers.sdo_header.complete_access {
             write!(f, " complete access)")?;
         } else {
             write!(f, ")")?;
@@ -40,10 +39,8 @@ impl Display for SdoExpeditedDownload {
 #[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 12)]
 pub struct SdoNormal {
-    #[wire(bytes = 6)]
+    #[wire(bytes = 8)]
     pub header: MailboxHeader,
-    #[wire(bytes = 2)]
-    pub coe_header: CoeHeader,
     #[wire(bytes = 4)]
     pub sdo_header: InitSdoHeader,
 }
@@ -56,7 +53,7 @@ impl Display for SdoNormal {
             self.sdo_header.index, self.sdo_header.sub_index
         )?;
 
-        if self.sdo_header.flags.complete_access {
+        if self.sdo_header.complete_access {
             write!(f, " complete access)")?;
         } else {
             write!(f, ")")?;
@@ -70,10 +67,8 @@ impl Display for SdoNormal {
 #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 9)]
 pub struct SdoSegmented {
-    #[wire(bytes = 6)]
+    #[wire(bytes = 8)]
     pub header: MailboxHeader,
-    #[wire(bytes = 2)]
-    pub coe_header: CoeHeader,
     #[wire(bytes = 1)]
     pub sdo_header: SegmentSdoHeader,
 }
@@ -86,87 +81,27 @@ impl Display for SdoSegmented {
     }
 }
 
-/// Functionality common to all service responses (normal, expedited, segmented).
-pub trait CoeServiceResponse {
-    fn counter(&self) -> u8;
-    fn is_aborted(&self) -> bool;
-    fn mailbox_type(&self) -> MailboxType;
-    fn address(&self) -> u16;
-    fn sub_index(&self) -> u8;
-
-    fn header_len() -> usize;
-}
-
 /// Must be implemented for any type used to send a CoE service.
-pub trait CoeServiceRequest: ethercrab_wire::EtherCrabWireWrite {
-    type Response: CoeServiceResponse;
-
+pub trait CoeServiceRequest:
+    ethercrab_wire::EtherCrabWireReadWrite + ethercrab_wire::EtherCrabWireWriteSized
+{
     /// Get the auto increment counter value for this request.
     fn counter(&self) -> u8;
 }
 
-impl CoeServiceResponse for SdoSegmented {
-    /// Get the auto increment counter value for this response.
-    fn counter(&self) -> u8 {
-        self.header.counter
-    }
-    fn is_aborted(&self) -> bool {
-        self.sdo_header.command == InitSdoFlags::ABORT_REQUEST
-    }
-    fn mailbox_type(&self) -> MailboxType {
-        self.header.mailbox_type
-    }
-    fn address(&self) -> u16 {
-        0
-    }
-    fn sub_index(&self) -> u8 {
-        0
-    }
-    fn header_len() -> usize {
-        Self::PACKED_LEN
-    }
-}
-
-impl CoeServiceResponse for SdoNormal {
-    fn counter(&self) -> u8 {
-        self.header.counter
-    }
-    fn is_aborted(&self) -> bool {
-        self.sdo_header.flags.command == InitSdoFlags::ABORT_REQUEST
-    }
-    fn mailbox_type(&self) -> MailboxType {
-        self.header.mailbox_type
-    }
-    fn address(&self) -> u16 {
-        self.sdo_header.index
-    }
-    fn sub_index(&self) -> u8 {
-        self.sdo_header.sub_index
-    }
-    fn header_len() -> usize {
-        Self::PACKED_LEN
-    }
-}
-
 impl CoeServiceRequest for SdoExpeditedDownload {
-    type Response = SdoNormal;
-
     fn counter(&self) -> u8 {
         self.headers.header.counter
     }
 }
 
 impl CoeServiceRequest for SdoNormal {
-    type Response = Self;
-
     fn counter(&self) -> u8 {
         self.header.counter
     }
 }
 
 impl CoeServiceRequest for SdoSegmented {
-    type Response = Self;
-
     fn counter(&self) -> u8 {
         self.header.counter
     }
@@ -187,18 +122,14 @@ pub fn download(
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter,
-            },
-            coe_header: CoeHeader {
                 service: CoeService::SdoRequest,
             },
             sdo_header: InitSdoHeader {
-                flags: InitSdoFlags {
-                    size_indicator: true,
-                    expedited_transfer: true,
-                    size: 4u8.saturating_sub(len),
-                    complete_access: access.complete_access(),
-                    command: InitSdoFlags::DOWNLOAD_REQUEST,
-                },
+                size_indicator: true,
+                expedited_transfer: true,
+                size: 4u8.saturating_sub(len),
+                complete_access: access.complete_access(),
+                command: super::CoeCommand::DownloadRequest,
                 index,
                 sub_index: access.sub_index(),
             },
@@ -215,8 +146,6 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SdoSegmented {
             priority: Priority::Lowest,
             mailbox_type: MailboxType::Coe,
             counter,
-        },
-        coe_header: CoeHeader {
             service: CoeService::SdoRequest,
         },
         sdo_header: SegmentSdoHeader {
@@ -224,7 +153,7 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SdoSegmented {
             is_last_segment: false,
             segment_data_size: 0,
             toggle,
-            command: SegmentSdoHeader::UPLOAD_SEGMENT_REQUEST,
+            command: super::CoeCommand::UploadSegmentRequest,
         },
     }
 }
@@ -237,18 +166,14 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
             priority: Priority::Lowest,
             mailbox_type: MailboxType::Coe,
             counter,
-        },
-        coe_header: CoeHeader {
             service: CoeService::SdoRequest,
         },
         sdo_header: InitSdoHeader {
-            flags: InitSdoFlags {
-                size_indicator: false,
-                expedited_transfer: false,
-                size: 0,
-                complete_access: access.complete_access(),
-                command: InitSdoFlags::UPLOAD_REQUEST,
-            },
+            size_indicator: false,
+            expedited_transfer: false,
+            size: 0,
+            complete_access: access.complete_access(),
+            command: super::CoeCommand::UploadRequest,
             index,
             sub_index: access.sub_index(),
         },
@@ -258,7 +183,8 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
+    use crate::error::CoeAbortCode;
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 
     #[test]
     fn decode_sdo_response_normal() {
@@ -271,28 +197,18 @@ mod tests {
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter: 5,
-            },
-            coe_header: CoeHeader {
                 service: CoeService::SdoResponse,
             },
             sdo_header: InitSdoHeader {
-                flags: InitSdoFlags {
-                    size_indicator: true,
-                    expedited_transfer: true,
-                    size: 3,
-                    complete_access: false,
-                    command: 2,
-                },
+                size_indicator: true,
+                expedited_transfer: true,
+                size: 3,
+                complete_access: false,
+                command: crate::coe::CoeCommand::UploadRequest,
                 index: 0x1c00,
                 sub_index: 4,
             },
         };
-
-        assert_eq!(CoeServiceResponse::counter(&expected), 5);
-        assert_eq!(expected.is_aborted(), false);
-        assert_eq!(expected.mailbox_type(), MailboxType::Coe);
-        assert_eq!(expected.address(), 0x1c00);
-        assert_eq!(expected.sub_index(), 4);
 
         assert_eq!(SdoNormal::unpack_from_slice(&raw), Ok(expected));
     }
@@ -313,18 +229,14 @@ mod tests {
                         priority: Priority::Lowest,
                         mailbox_type: MailboxType::Coe,
                         counter: 123,
-                    },
-                    coe_header: CoeHeader {
                         service: CoeService::SdoRequest,
                     },
                     sdo_header: InitSdoHeader {
-                        flags: InitSdoFlags {
-                            size_indicator: true,
-                            expedited_transfer: true,
-                            size: 0,
-                            complete_access: false,
-                            command: 1,
-                        },
+                        size_indicator: true,
+                        expedited_transfer: true,
+                        size: 0,
+                        complete_access: false,
+                        command: crate::coe::CoeCommand::DownloadRequest,
                         index: 0x1234,
                         sub_index: 3,
                     },
@@ -350,18 +262,14 @@ mod tests {
                         priority: Priority::Lowest,
                         mailbox_type: MailboxType::Coe,
                         counter: 123,
-                    },
-                    coe_header: CoeHeader {
                         service: CoeService::SdoRequest,
                     },
                     sdo_header: InitSdoHeader {
-                        flags: InitSdoFlags {
-                            size_indicator: true,
-                            expedited_transfer: true,
-                            size: 0,
-                            complete_access: true,
-                            command: 1,
-                        },
+                        size_indicator: true,
+                        expedited_transfer: true,
+                        size: 0,
+                        complete_access: true,
+                        command: crate::coe::CoeCommand::DownloadRequest,
                         index: 0x1234,
                         // MUST be 1 if complete access is used
                         sub_index: 1,
@@ -385,18 +293,14 @@ mod tests {
                     priority: Priority::Lowest,
                     mailbox_type: MailboxType::Coe,
                     counter: 210,
-                },
-                coe_header: CoeHeader {
                     service: CoeService::SdoRequest,
                 },
                 sdo_header: InitSdoHeader {
-                    flags: InitSdoFlags {
-                        size_indicator: false,
-                        expedited_transfer: false,
-                        size: 0,
-                        complete_access: false,
-                        command: 2,
-                    },
+                    size_indicator: false,
+                    expedited_transfer: false,
+                    size: 0,
+                    complete_access: false,
+                    command: crate::coe::CoeCommand::UploadRequest,
                     index: 0x4567,
                     sub_index: 2,
                 },
@@ -420,28 +324,18 @@ mod tests {
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter: 6,
-            },
-            coe_header: CoeHeader {
                 service: CoeService::SdoResponse,
             },
             sdo_header: InitSdoHeader {
-                flags: InitSdoFlags {
-                    size_indicator: true,
-                    expedited_transfer: false,
-                    size: 0,
-                    complete_access: false,
-                    command: 2,
-                },
+                size_indicator: true,
+                expedited_transfer: false,
+                size: 0,
+                complete_access: false,
+                command: crate::coe::CoeCommand::UploadRequest,
                 index: 0x1008,
                 sub_index: 0,
             },
         };
-
-        assert_eq!(CoeServiceResponse::counter(&expected_headers), 6);
-        assert_eq!(expected_headers.is_aborted(), false);
-        assert_eq!(expected_headers.mailbox_type(), MailboxType::Coe);
-        assert_eq!(expected_headers.address(), 0x1008);
-        assert_eq!(expected_headers.sub_index(), 0);
 
         pretty_assertions::assert_eq!(
             SdoNormal::unpack_from_slice(&raw[0..12]),
@@ -449,5 +343,42 @@ mod tests {
         );
 
         assert_eq!(&raw[(12 + u32::PACKED_LEN)..][..4], &[69, 75, 49, 57]);
+    }
+
+    #[test]
+    fn error_not_found() {
+        // Copypasta'd from Wireshark
+        let raw = [
+            0x0a, 0x00, 0x00, 0x00, 0x00, 0x63, 0x00, 0x20, 0x80, 0x01, 0x10, 0x00, 0x00, 0x00,
+            0x02, 0x06,
+        ];
+
+        let parsed = SdoNormal::unpack_from_slice(&raw);
+
+        let expected = SdoNormal {
+            header: MailboxHeader {
+                length: 0x0a,
+                address: 0x0000,
+                priority: Priority::Lowest,
+                mailbox_type: MailboxType::Coe,
+                counter: 6,
+                service: CoeService::SdoRequest,
+            },
+            sdo_header: InitSdoHeader {
+                size_indicator: false,
+                expedited_transfer: false,
+                size: 0,
+                complete_access: false,
+                command: crate::coe::CoeCommand::AbortRequest,
+                index: 0x1001,
+                sub_index: 0,
+            },
+        };
+
+        let abort_code = CoeAbortCode::unpack_from_slice(&raw[12..]);
+
+        assert_eq!(abort_code, Ok(CoeAbortCode::NotFound));
+
+        pretty_assertions::assert_eq!(parsed, Ok(expected));
     }
 }
