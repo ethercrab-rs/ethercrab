@@ -1,18 +1,10 @@
 pub mod abort_code;
 pub mod services;
 
-/// Defined in ETG1000.6 5.6.1 Table 29 – CoE elements.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
-#[cfg_attr(test, derive(arbitrary::Arbitrary))]
-#[wire(bytes = 2)]
-pub struct CoeHeader {
-    #[wire(pre_skip = 12, bits = 4)]
-    pub service: CoeService,
-}
-
 /// Defined in ETG1000.6 Table 29 – CoE elements
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum CoeService {
     /// Emergency
@@ -121,22 +113,15 @@ impl From<u8> for SubIndex {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
+    pub use super::*;
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWriteSized};
 
     #[test]
-    #[cfg_attr(miri, ignore)]
-    fn coe_header_fuzz() {
-        heckcheck::check(|status: CoeHeader| {
-            let mut buf = [0u8; { CoeHeader::PACKED_LEN }];
-
-            let packed = status.pack_to_slice_unchecked(&mut buf);
-
-            let unpacked = CoeHeader::unpack_from_slice(packed).expect("Unpack");
-
-            pretty_assertions::assert_eq!(status, unpacked);
-
-            Ok(())
-        });
+    fn sanity_coe_service() {
+        assert_eq!(CoeService::SdoRequest.pack(), [0x02]);
+        assert_eq!(
+            CoeService::unpack_from_slice(&[0x02]),
+            Ok(CoeService::SdoRequest)
+        );
     }
 }

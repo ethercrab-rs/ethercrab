@@ -1,4 +1,4 @@
-use super::{CoeHeader, CoeService, InitSdoHeader, SegmentSdoHeader, SubIndex};
+use super::{CoeService, InitSdoHeader, SegmentSdoHeader, SubIndex};
 use crate::mailbox::{MailboxHeader, MailboxType, Priority};
 use core::fmt::Display;
 use ethercrab_wire::EtherCrabWireSized;
@@ -40,10 +40,8 @@ impl Display for SdoExpeditedDownload {
 #[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 12)]
 pub struct SdoNormal {
-    #[wire(bytes = 6)]
+    #[wire(bytes = 8)]
     pub header: MailboxHeader,
-    #[wire(bytes = 2)]
-    pub coe_header: CoeHeader,
     #[wire(bytes = 4)]
     pub sdo_header: InitSdoHeader,
 }
@@ -70,10 +68,8 @@ impl Display for SdoNormal {
 #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 9)]
 pub struct SdoSegmented {
-    #[wire(bytes = 6)]
+    #[wire(bytes = 8)]
     pub header: MailboxHeader,
-    #[wire(bytes = 2)]
-    pub coe_header: CoeHeader,
     #[wire(bytes = 1)]
     pub sdo_header: SegmentSdoHeader,
 }
@@ -187,8 +183,6 @@ pub fn download(
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter,
-            },
-            coe_header: CoeHeader {
                 service: CoeService::SdoRequest,
             },
             sdo_header: InitSdoHeader {
@@ -213,8 +207,6 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SdoSegmented {
             priority: Priority::Lowest,
             mailbox_type: MailboxType::Coe,
             counter,
-        },
-        coe_header: CoeHeader {
             service: CoeService::SdoRequest,
         },
         sdo_header: SegmentSdoHeader {
@@ -235,8 +227,6 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
             priority: Priority::Lowest,
             mailbox_type: MailboxType::Coe,
             counter,
-        },
-        coe_header: CoeHeader {
             service: CoeService::SdoRequest,
         },
         sdo_header: InitSdoHeader {
@@ -268,8 +258,6 @@ mod tests {
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter: 5,
-            },
-            coe_header: CoeHeader {
                 service: CoeService::SdoResponse,
             },
             sdo_header: InitSdoHeader {
@@ -308,8 +296,6 @@ mod tests {
                         priority: Priority::Lowest,
                         mailbox_type: MailboxType::Coe,
                         counter: 123,
-                    },
-                    coe_header: CoeHeader {
                         service: CoeService::SdoRequest,
                     },
                     sdo_header: InitSdoHeader {
@@ -343,8 +329,6 @@ mod tests {
                         priority: Priority::Lowest,
                         mailbox_type: MailboxType::Coe,
                         counter: 123,
-                    },
-                    coe_header: CoeHeader {
                         service: CoeService::SdoRequest,
                     },
                     sdo_header: InitSdoHeader {
@@ -376,8 +360,6 @@ mod tests {
                     priority: Priority::Lowest,
                     mailbox_type: MailboxType::Coe,
                     counter: 210,
-                },
-                coe_header: CoeHeader {
                     service: CoeService::SdoRequest,
                 },
                 sdo_header: InitSdoHeader {
@@ -409,8 +391,6 @@ mod tests {
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter: 6,
-            },
-            coe_header: CoeHeader {
                 service: CoeService::SdoResponse,
             },
             sdo_header: InitSdoHeader {
@@ -455,8 +435,6 @@ mod tests {
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter: 6,
-            },
-            coe_header: CoeHeader {
                 service: CoeService::SdoRequest,
             },
             sdo_header: InitSdoHeader {
