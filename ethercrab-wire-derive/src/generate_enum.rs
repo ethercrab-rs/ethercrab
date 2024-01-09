@@ -1,93 +1,10 @@
-use crate::parse_enum::{EnumMeta, EnumMetaNamed, EnumMetaSimple};
+use crate::parse_enum::EnumMeta;
 use quote::quote;
 use std::str::FromStr;
-use syn::{parse_quote, DeriveInput};
-
-pub fn generate_enum_read(
-    parsed: EnumMeta,
-    input: &DeriveInput,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
-    match parsed {
-        EnumMeta::Simple(parsed) => generate_enum_unnamed_read(parsed, &input),
-        // EnumMeta::Named(parsed) => generate_enum_named_read(parsed, &input),
-        EnumMeta::Named(parsed) => todo!(),
-    }
-}
+use syn::DeriveInput;
 
 pub fn generate_enum_write(
     parsed: EnumMeta,
-    input: &DeriveInput,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
-    match parsed {
-        EnumMeta::Simple(parsed) => generate_enum_unnamed_write(parsed, &input),
-        EnumMeta::Named(parsed) => generate_enum_named_write(parsed, &input),
-    }
-}
-
-fn generate_enum_named_write(
-    parsed: EnumMetaNamed,
-    input: &DeriveInput,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
-    let name = input.ident.clone();
-
-    let pack_match_arms = parsed.variants.clone().into_iter().map(|variant| {
-        let variant_name = variant.name;
-        let size_bytes = variant.fields.width_bits.div_ceil(8);
-        let named_fields = variant.fields.fields.iter().map(|field| field.name.clone());
-
-        quote! {
-            #name::#variant_name { #(#named_fields),* } => { todo!() }
-        }
-    });
-
-    let unpack_match_arms = parsed.variants.clone().into_iter().map(|variant| {
-        let variant_name = variant.name;
-        let size_bytes = variant.fields.width_bits.div_ceil(8);
-        let named_fields = variant.fields.fields.iter().map(|field| field.name.clone());
-
-        quote! {
-            #name::#variant_name { #(#named_fields),* } => { todo!() }
-        }
-    });
-
-    let size_bytes_match_arms = parsed.variants.clone().into_iter().map(|variant| {
-        let variant_name = variant.name;
-        let size_bytes = variant.fields.width_bits.div_ceil(8);
-        let named_fields = variant.fields.fields.iter().map(|field| field.name.clone());
-
-        // TODO
-        let value: usize = 0;
-
-        quote! {
-            #name::#variant_name { .. } => #value
-        }
-    });
-
-    let out = quote! {
-        impl ::ethercrab_wire::EtherCrabWireWrite for #name {
-            fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-                #(#pack_match_arms),*
-            }
-
-            fn packed_len(&self) -> usize {
-                #(#size_bytes_match_arms),*
-            }
-        }
-
-        impl ::ethercrab_wire::EtherCrabWireWriteSized for #name {
-            fn pack(&self) -> Self::Buffer {
-                todo!()
-            }
-        }
-
-
-    };
-
-    Ok(out)
-}
-
-fn generate_enum_unnamed_write(
-    parsed: EnumMetaSimple,
     input: &DeriveInput,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let name = input.ident.clone();
@@ -160,8 +77,8 @@ fn generate_enum_unnamed_write(
     Ok(out)
 }
 
-fn generate_enum_unnamed_read(
-    parsed: EnumMetaSimple,
+pub fn generate_enum_read(
+    parsed: EnumMeta,
     input: &DeriveInput,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let name = input.ident.clone();

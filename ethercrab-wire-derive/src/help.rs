@@ -7,8 +7,6 @@ use syn::{
 
 pub const MY_ATTRIBUTE: &str = "wire";
 
-pub const STRUCT_ATTRS: &[&str] = &["bits", "bytes"];
-
 fn my_attributes(attrs: &[syn::Attribute]) -> impl Iterator<Item = &syn::Attribute> {
     attrs
         .iter()
