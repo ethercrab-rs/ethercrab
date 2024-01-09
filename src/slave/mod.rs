@@ -454,7 +454,7 @@ where
         // Send data to slave IN mailbox
         self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
-            .send(request)
+            .send(&request)
             .await?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
