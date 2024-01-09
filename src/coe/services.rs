@@ -94,7 +94,7 @@ pub trait CoeServiceResponse {
 }
 
 /// Must be implemented for any type used to send a CoE service.
-pub trait CoeServiceRequest: ethercrab_wire::EtherCrabWireWrite {
+pub trait CoeServiceRequest: ethercrab_wire::EtherCrabWireWriteSized {
     type Response: CoeServiceResponse;
 
     /// Get the auto increment counter value for this request.
@@ -107,7 +107,7 @@ impl CoeServiceResponse for SdoSegmented {
         self.header.counter
     }
     fn is_aborted(&self) -> bool {
-        self.sdo_header.command == InitSdoHeader::ABORT_REQUEST
+        self.sdo_header.command == super::CoeCommand::AbortRequest
     }
     fn mailbox_type(&self) -> MailboxType {
         self.header.mailbox_type
@@ -128,7 +128,7 @@ impl CoeServiceResponse for SdoNormal {
         self.header.counter
     }
     fn is_aborted(&self) -> bool {
-        self.sdo_header.command == InitSdoHeader::ABORT_REQUEST
+        self.sdo_header.command == super::CoeCommand::AbortRequest
     }
     fn mailbox_type(&self) -> MailboxType {
         self.header.mailbox_type
@@ -190,7 +190,7 @@ pub fn download(
                 expedited_transfer: true,
                 size: 4u8.saturating_sub(len),
                 complete_access: access.complete_access(),
-                command: InitSdoHeader::DOWNLOAD_REQUEST,
+                command: super::CoeCommand::DownloadRequest,
                 index,
                 sub_index: access.sub_index(),
             },
@@ -214,7 +214,7 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SdoSegmented {
             is_last_segment: false,
             segment_data_size: 0,
             toggle,
-            command: SegmentSdoHeader::UPLOAD_SEGMENT_REQUEST,
+            command: super::CoeCommand::UploadSegmentRequest,
         },
     }
 }
@@ -234,7 +234,7 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
             expedited_transfer: false,
             size: 0,
             complete_access: access.complete_access(),
-            command: InitSdoHeader::UPLOAD_REQUEST,
+            command: super::CoeCommand::UploadRequest,
             index,
             sub_index: access.sub_index(),
         },
@@ -265,7 +265,7 @@ mod tests {
                 expedited_transfer: true,
                 size: 3,
                 complete_access: false,
-                command: 2,
+                command: crate::coe::CoeCommand::UploadRequest,
                 index: 0x1c00,
                 sub_index: 4,
             },
@@ -303,7 +303,7 @@ mod tests {
                         expedited_transfer: true,
                         size: 0,
                         complete_access: false,
-                        command: 1,
+                        command: crate::coe::CoeCommand::DownloadRequest,
                         index: 0x1234,
                         sub_index: 3,
                     },
@@ -336,7 +336,7 @@ mod tests {
                         expedited_transfer: true,
                         size: 0,
                         complete_access: true,
-                        command: 1,
+                        command: crate::coe::CoeCommand::DownloadRequest,
                         index: 0x1234,
                         // MUST be 1 if complete access is used
                         sub_index: 1,
@@ -367,7 +367,7 @@ mod tests {
                     expedited_transfer: false,
                     size: 0,
                     complete_access: false,
-                    command: 2,
+                    command: crate::coe::CoeCommand::UploadRequest,
                     index: 0x4567,
                     sub_index: 2,
                 },
@@ -398,7 +398,7 @@ mod tests {
                 expedited_transfer: false,
                 size: 0,
                 complete_access: false,
-                command: 2,
+                command: crate::coe::CoeCommand::UploadRequest,
                 index: 0x1008,
                 sub_index: 0,
             },
@@ -442,7 +442,7 @@ mod tests {
                 expedited_transfer: false,
                 size: 0,
                 complete_access: false,
-                command: InitSdoHeader::ABORT_REQUEST,
+                command: crate::coe::CoeCommand::AbortRequest,
                 index: 0x1001,
                 sub_index: 0,
             },
