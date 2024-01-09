@@ -1,7 +1,9 @@
 //! EtherCrab error types.
 
-use crate::{coe::abort_code::AbortCode, command::Command, fmt, SlaveState};
+use crate::{command::Command, fmt, SlaveState};
 use core::{cell::BorrowError, num::TryFromIntError, str::Utf8Error};
+
+pub use crate::coe::abort_code::CoeAbortCode;
 
 /// An EtherCrab error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -228,7 +230,7 @@ pub enum MailboxError {
     /// The mailbox operation was aborted.
     Aborted {
         /// Abort code.
-        code: AbortCode,
+        code: CoeAbortCode,
         /// The address used in the operation.
         address: u16,
         /// The subindex used in the operation.

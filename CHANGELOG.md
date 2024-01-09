@@ -25,9 +25,9 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#144](https://github.com/ethercrab-rs/ethercrab/pull/144)
   `PduError::InvalidIndex(usize)` is now a `PduError::InvalidIndex(u8)` as the EtherCAT index field
   is itself onl a `u8`.
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Reduced overhead for EEPROM reads.
-  Each chunk reader now only checks for and (attempt to) clear device errors once before reading a
-  chunk of data, not for every chunk.
+- [#151](https://github.com/ethercrab-rs/ethercrab/pull/151) Reduced overhead for EEPROM reads. Each
+  chunk reader now only checks for and (attempt to) clear device errors once before reading a chunk
+  of data, not for every chunk.
 
 ### Added
 
@@ -47,14 +47,17 @@ An EtherCAT master written in Rust.
   - `EtherCrabWireSized`
   - `EtherCrabWireWrite`
 
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Add `EepromError::ClearErrors`
-  variant.
+- [#151](https://github.com/ethercrab-rs/ethercrab/pull/151) Add `EepromError::ClearErrors` variant.
+- [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) Expose `error::CoeAbortCode` for
+  matching on CoE transfer errors.
 
 ### Fixed
 
 - **(breaking)** (technically) [#143](https://github.com/ethercrab-rs/ethercrab/pull/143) Fix typo
   in name `AlStatusCode::ApplicationControllerAvailableI` ->
   `AlStatusCode::ApplicationControllerAvailable`
+- [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) CoE errors are not reported correctly
+  from `sdo_read` and `sdo_write`.
 
 ### Removed
 
