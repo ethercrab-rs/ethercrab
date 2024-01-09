@@ -61,7 +61,7 @@ pub enum CoeAbortCode {
     ///
     /// NOTE: This is the general Abort Code in case no further detail on the reason can determined.
     /// It is recommended to use one of the more detailed Abort Codes
-    /// ([`AbortCode::TransferFailedLocal`], [`AbortCode::InvalidState`])
+    /// ([`CoeAbortCode::TransferFailedLocal`], [`CoeAbortCode::InvalidState`])
     TransferFailed = 0x08000020,
 
     /// Data cannot be transferred or stored to the application because of local control
