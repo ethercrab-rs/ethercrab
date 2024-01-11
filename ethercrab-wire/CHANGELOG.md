@@ -9,10 +9,13 @@ Primarily used by `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.1.0] - 2024-01-11
+
 ### Added
 
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.0...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/HEAD...HEAD
+[0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/HEAD...ethercrab-wire-v0.1.0
