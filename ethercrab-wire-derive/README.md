@@ -1,4 +1,4 @@
-# `ethercrab-wire`
+# `ethercrab-wire-derive`
 
 [![Build Status](https://circleci.com/gh/ethercrab-rs/ethercrab/tree/master.svg?style=shield)](https://circleci.com/gh/ethercrab-rs/ethercrab/tree/master)
 [![Crates.io](https://img.shields.io/crates/v/ethercrab-wire-derive.svg)](https://crates.io/crates/ethercrab-wire-derive)
