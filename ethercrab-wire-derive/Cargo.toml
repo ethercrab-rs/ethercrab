@@ -30,3 +30,7 @@ syn = { version = "2.0.44", features = ["full", "extra-traits"] }
 [[bench]]
 name = "derive-struct"
 harness = false
+
+[[bench]]
+name = "derive-enum"
+harness = false
