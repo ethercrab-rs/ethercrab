@@ -34,3 +34,7 @@ harness = false
 [[bench]]
 name = "derive-enum"
 harness = false
+
+[[bench]]
+name = "derive-large"
+harness = false
