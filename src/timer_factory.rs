@@ -1,48 +1,29 @@
 use crate::error::Error;
 use core::{future::Future, pin::Pin, task::Poll, time::Duration};
-use embassy_futures::select::{select, Either};
 
-// #[cfg(not(feature = "std"))]
-// fn timer(duration: Duration) -> impl Future<Output = ()> {
-//     embassy_time::Timer::after(embassy_time::Duration::from_micros(
-//         duration.as_micros() as u64
-//     ))
-// }
+#[cfg(not(feature = "std"))]
+type Timer = embassy_time::Timer;
+#[cfg(all(feature = "std", not(miri)))]
+type Timer = async_io::Timer;
+#[cfg(all(feature = "std", miri))]
+type Timer = tokio::time::Sleep;
 
-// #[cfg(all(feature = "std", not(miri)))]
-// fn timer(duration: Duration) -> impl Future<Output = ()> {
-//     async_io::Timer::after(duration)
-// }
+#[cfg(not(feature = "std"))]
+fn timer(duration: Duration) -> Timer {
+    embassy_time::Timer::after(embassy_time::Duration::from_micros(
+        duration.as_micros() as u64
+    ))
+}
 
-// #[cfg(all(feature = "std", miri))]
-// fn timer(duration: Duration) -> impl Future<Output = ()> {
-//     tokio::time::sleep(duration)
-// }
+#[cfg(all(feature = "std", not(miri)))]
+fn timer(duration: Duration) -> Timer {
+    async_io::Timer::after(duration)
+}
 
-// pub async fn timeout<O, F>(timeout: Duration, future: F) -> Result<O, Error>
-// where
-//     F: Future<Output = Result<O, Error>>,
-// {
-//     // let future = core::pin::pin!(future);
-
-//     // match select(future, timer(timeout)).await {
-//     //     Either::First(res) => res,
-//     //     Either::Second(_timeout) => Err(Error::Timeout),
-//     // }
-
-//     TimeoutFuture {
-//         f: future,
-//         #[cfg(not(feature = "std"))]
-//         timeout: embassy_time::Timer::after(embassy_time::Duration::from_micros(
-//             timeout.as_micros() as u64,
-//         )),
-//         #[cfg(all(feature = "std", not(miri)))]
-//         timeout: async_io::Timer::after(timeout),
-//         #[cfg(all(feature = "std", miri))]
-//         timeout: tokio::time::sleep(timeout),
-//     }
-//     .await
-// }
+#[cfg(all(feature = "std", miri))]
+fn timer(duration: Duration) -> Timer {
+    tokio::time::sleep(duration)
+}
 
 pub(crate) trait IntoTimeout<O> {
     fn timeout(self, timeout: Duration) -> TimeoutFuture<impl Future<Output = Result<O, Error>>>;
@@ -53,14 +34,7 @@ where
     T: Future<Output = Result<O, Error>>,
 {
     fn timeout(self, timeout: Duration) -> TimeoutFuture<T> {
-        #[cfg(not(feature = "std"))]
-        let timeout = embassy_time::Timer::after(embassy_time::Duration::from_micros(
-            timeout.as_micros() as u64,
-        ));
-        #[cfg(all(feature = "std", not(miri)))]
-        let timeout = async_io::Timer::after(timeout);
-        #[cfg(all(feature = "std", miri))]
-        let timeout = tokio::time::sleep(timeout);
+        let timeout = timer(timeout);
 
         TimeoutFuture { f: self, timeout }
     }
@@ -69,12 +43,7 @@ where
 pub(crate) struct TimeoutFuture<F> {
     f: F,
 
-    #[cfg(not(feature = "std"))]
-    timeout: embassy_time::Timer,
-    #[cfg(all(feature = "std", not(miri)))]
-    timeout: async_io::Timer,
-    #[cfg(all(feature = "std", miri))]
-    timeout: tokio::time::Sleep,
+    timeout: Timer,
 }
 
 impl<F, O> Future for TimeoutFuture<F>
@@ -131,17 +100,7 @@ pub struct Timeouts {
 
 impl Timeouts {
     pub(crate) async fn loop_tick(&self) {
-        // timer(self.wait_loop_delay).await;
-
-        #[cfg(not(feature = "std"))]
-        embassy_time::Timer::after(embassy_time::Duration::from_micros(
-            self.wait_loop_delay.as_micros() as u64,
-        ))
-        .await;
-        #[cfg(all(feature = "std", not(miri)))]
-        async_io::Timer::after(self.wait_loop_delay).await;
-        #[cfg(all(feature = "std", miri))]
-        tokio::time::sleep(self.wait_loop_delay).await;
+        timer(self.wait_loop_delay).await;
     }
 }
 
