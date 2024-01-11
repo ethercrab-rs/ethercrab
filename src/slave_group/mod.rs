@@ -14,7 +14,7 @@ use crate::{
     fmt,
     pdi::PdiOffset,
     slave::{configuration::PdoDirection, pdi::SlavePdi, IoRanges, Slave, SlaveRef},
-    timer_factory::timeout,
+    timer_factory::IntoTimeout,
     Client, SlaveState,
 };
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
@@ -284,7 +284,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
         client: &Client<'_>,
         desired_state: SlaveState,
     ) -> Result<(), Error> {
-        timeout(client.timeouts.state_transition, async {
+        async {
             loop {
                 let mut all_transitioned = true;
 
@@ -305,7 +305,8 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
 
                 client.timeouts.loop_tick().await;
             }
-        })
+        }
+        .timeout(client.timeouts.state_transition)
         .await
     }
 

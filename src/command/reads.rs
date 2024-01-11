@@ -2,6 +2,7 @@ use crate::{
     error::Error,
     fmt,
     pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
+    timer_factory::IntoTimeout,
     Client,
 };
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
@@ -97,7 +98,7 @@ impl<'client> WrappedRead<'client> {
                     .pdu_loop
                     .pdu_send(self.command.into(), (), Some(len))?;
 
-            match crate::timer_factory::timeout(self.client.timeouts.pdu, frame).await {
+            match frame.timeout(self.client.timeouts.pdu).await {
                 Ok(result) => return Ok(result.into_data()),
                 Err(Error::Timeout) => {
                     fmt::error!("Frame {} timed out", frame_idx);
