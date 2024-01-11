@@ -17,6 +17,7 @@ proc-macro = true
 path = "src/lib.rs"
 
 [dependencies]
+criterion = { version = "0.5.1", default-features = false }
 proc-macro2 = "1.0.73"
 quote = "1.0.34"
 syn = { version = "2.0.44", features = ["full"] }
@@ -25,3 +26,7 @@ syn = { version = "2.0.44", features = ["full"] }
 trybuild = "1.0.86"
 ethercrab-wire = { path = "../ethercrab-wire" }
 syn = { version = "2.0.44", features = ["full", "extra-traits"] }
+
+[[bench]]
+name = "derive-struct"
+harness = false
