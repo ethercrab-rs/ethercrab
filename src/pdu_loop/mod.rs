@@ -183,6 +183,7 @@ mod tests {
             created_frame::CreatedFrame, sendable_frame::SendableFrame, FrameBox, FrameElement,
             FrameState,
         },
+        timer_factory::IntoTimeout,
         Command, Reads,
     };
     use core::{
@@ -199,22 +200,20 @@ mod tests {
         static STORAGE: PduStorage<1, 16> = PduStorage::new();
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
 
-        let send_result = crate::timer_factory::timeout(
-            Duration::from_secs(0),
-            pdu_loop
-                .pdu_send(
-                    Reads::Brd {
-                        address: 0,
-                        register: 0,
-                    }
-                    .into(),
-                    (),
-                    Some(16),
-                )
-                .unwrap()
-                .0,
-        )
-        .await;
+        let send_result = pdu_loop
+            .pdu_send(
+                Reads::Brd {
+                    address: 0,
+                    register: 0,
+                }
+                .into(),
+                (),
+                Some(16),
+            )
+            .unwrap()
+            .0
+            .timeout(Duration::from_secs(0))
+            .await;
 
         // Just make sure the read timed out
         assert_eq!(send_result.unwrap_err(), Error::Timeout);

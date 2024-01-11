@@ -11,7 +11,7 @@ use crate::{
     slave::Slave,
     slave_group::{self, SlaveGroupHandle},
     slave_state::SlaveState,
-    timer_factory::timeout,
+    timer_factory::IntoTimeout,
     ClientConfig, SlaveGroup, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
@@ -57,11 +57,10 @@ impl<'sto> Client<'sto> {
         for chunk in blank_mem_iter(start.into(), len, step) {
             let chunk_len = chunk.end - chunk.start;
 
-            timeout(
-                self.timeouts.pdu,
-                self.pdu_loop.pdu_broadcast_zeros(chunk.start, chunk_len),
-            )
-            .await?;
+            self.pdu_loop
+                .pdu_broadcast_zeros(chunk.start, chunk_len)
+                .timeout(self.timeouts.pdu)
+                .await?;
         }
 
         Ok(())
@@ -387,7 +386,7 @@ impl<'sto> Client<'sto> {
     pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         let num_slaves = self.num_slaves.load(Ordering::Relaxed);
 
-        timeout(self.timeouts.state_transition, async {
+        async {
             loop {
                 let status = Command::brd(RegisterAddress::AlStatus.into())
                     .wrap(self)
@@ -425,7 +424,8 @@ impl<'sto> Client<'sto> {
 
                 self.timeouts.loop_tick().await;
             }
-        })
+        }
+        .timeout(self.timeouts.state_transition)
         .await
     }
 

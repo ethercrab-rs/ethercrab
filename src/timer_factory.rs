@@ -1,34 +1,71 @@
 use crate::error::Error;
-use core::time::Duration;
-use embassy_futures::select::{select, Either};
+use core::{future::Future, pin::Pin, task::Poll, time::Duration};
 
 #[cfg(not(feature = "std"))]
-pub async fn timer(duration: Duration) {
+type Timer = embassy_time::Timer;
+#[cfg(all(feature = "std", not(miri)))]
+type Timer = async_io::Timer;
+#[cfg(all(feature = "std", miri))]
+type Timer = tokio::time::Sleep;
+
+#[cfg(not(feature = "std"))]
+fn timer(duration: Duration) -> Timer {
     embassy_time::Timer::after(embassy_time::Duration::from_micros(
         duration.as_micros() as u64
     ))
-    .await;
 }
 
 #[cfg(all(feature = "std", not(miri)))]
-pub async fn timer(duration: Duration) {
-    async_io::Timer::after(duration).await;
+fn timer(duration: Duration) -> Timer {
+    async_io::Timer::after(duration)
 }
 
 #[cfg(all(feature = "std", miri))]
-pub async fn timer(duration: Duration) {
-    tokio::time::sleep(duration).await;
+fn timer(duration: Duration) -> Timer {
+    tokio::time::sleep(duration)
 }
 
-pub async fn timeout<O, F>(timeout: Duration, future: F) -> Result<O, Error>
-where
-    F: core::future::Future<Output = Result<O, Error>>,
-{
-    let future = core::pin::pin!(future);
+pub(crate) trait IntoTimeout<O> {
+    fn timeout(self, timeout: Duration) -> TimeoutFuture<impl Future<Output = Result<O, Error>>>;
+}
 
-    match select(future, timer(timeout)).await {
-        Either::First(res) => res,
-        Either::Second(_timeout) => Err(Error::Timeout),
+impl<T, O> IntoTimeout<O> for T
+where
+    T: Future<Output = Result<O, Error>>,
+{
+    fn timeout(self, timeout: Duration) -> TimeoutFuture<T> {
+        let timeout = timer(timeout);
+
+        TimeoutFuture { f: self, timeout }
+    }
+}
+
+pub(crate) struct TimeoutFuture<F> {
+    f: F,
+
+    timeout: Timer,
+}
+
+impl<F, O> Future for TimeoutFuture<F>
+where
+    F: Future<Output = Result<O, Error>>,
+{
+    type Output = Result<O, Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        let timeout = unsafe { Pin::new_unchecked(&mut this.timeout) };
+        let f = unsafe { Pin::new_unchecked(&mut this.f) };
+
+        if let Poll::Ready(_) = timeout.poll(cx) {
+            return Poll::Ready(Err(Error::Timeout));
+        }
+
+        if let Poll::Ready(x) = f.poll(cx) {
+            return Poll::Ready(x);
+        }
+
+        Poll::Pending
     }
 }
 
