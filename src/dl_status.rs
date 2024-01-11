@@ -1,5 +1,9 @@
-#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
-#[cfg_attr(test, derive(arbitrary::Arbitrary, ethercrab_wire::EtherCrabWireWrite))]
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(not(test), derive(ethercrab_wire::EtherCrabWireRead))]
+#[cfg_attr(
+    test,
+    derive(arbitrary::Arbitrary, ethercrab_wire::EtherCrabWireReadWrite)
+)]
 #[wire(bytes = 2)]
 pub struct DlStatus {
     #[wire(bits = 1)]

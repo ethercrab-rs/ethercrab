@@ -258,8 +258,12 @@ pub enum PortType {
     Mii = 0x03,
 }
 
-#[derive(Default, Clone, Debug, PartialEq, ethercrab_wire::EtherCrabWireRead)]
-#[cfg_attr(test, derive(arbitrary::Arbitrary, ethercrab_wire::EtherCrabWireWrite))]
+#[derive(Default, Clone, Debug, PartialEq)]
+#[cfg_attr(not(test), derive(ethercrab_wire::EtherCrabWireRead))]
+#[cfg_attr(
+    test,
+    derive(arbitrary::Arbitrary, ethercrab_wire::EtherCrabWireReadWrite)
+)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 2)]
 pub struct SupportFlags {

@@ -20,7 +20,7 @@ mod parse_enum;
 mod parse_struct;
 
 use generate_enum::{generate_enum_read, generate_enum_write};
-use generate_struct::{generate_struct_read, generate_struct_write};
+use generate_struct::{generate_sized_impl, generate_struct_read, generate_struct_write};
 use parse_enum::parse_enum;
 use parse_struct::parse_struct;
 use proc_macro::TokenStream;
@@ -42,7 +42,9 @@ pub fn ether_crab_wire(input: TokenStream) -> TokenStream {
         Data::Struct(s) => parse_struct(s, input.clone()).and_then(|parsed| {
             let mut tokens = generate_struct_write(parsed.clone(), &input)?;
 
-            tokens.extend(generate_struct_read(parsed, &input)?);
+            tokens.extend(generate_struct_read(parsed.clone(), &input)?);
+
+            tokens.extend(generate_sized_impl(parsed, &input)?);
 
             Ok(tokens)
         }),
@@ -69,9 +71,13 @@ pub fn ether_crab_wire_read(input: TokenStream) -> TokenStream {
         Data::Enum(e) => {
             parse_enum(e, input.clone()).and_then(|parsed| generate_enum_read(parsed, &input))
         }
-        Data::Struct(s) => {
-            parse_struct(s, input.clone()).and_then(|parsed| generate_struct_read(parsed, &input))
-        }
+        Data::Struct(s) => parse_struct(s, input.clone()).and_then(|parsed| {
+            let mut tokens = generate_struct_read(parsed.clone(), &input)?;
+
+            tokens.extend(generate_sized_impl(parsed, &input)?);
+
+            Ok(tokens)
+        }),
         Data::Union(_) => Err(syn::Error::new(
             input.ident.span(),
             "Unions are not supported",
@@ -95,9 +101,13 @@ pub fn ether_crab_wire_write(input: TokenStream) -> TokenStream {
         Data::Enum(e) => {
             parse_enum(e, input.clone()).and_then(|parsed| generate_enum_write(parsed, &input))
         }
-        Data::Struct(s) => {
-            parse_struct(s, input.clone()).and_then(|parsed| generate_struct_write(parsed, &input))
-        }
+        Data::Struct(s) => parse_struct(s, input.clone()).and_then(|parsed| {
+            let mut tokens = generate_struct_write(parsed.clone(), &input)?;
+
+            tokens.extend(generate_sized_impl(parsed, &input)?);
+
+            Ok(tokens)
+        }),
         Data::Union(_) => Err(syn::Error::new(
             input.ident.span(),
             "Unions are not supported",
