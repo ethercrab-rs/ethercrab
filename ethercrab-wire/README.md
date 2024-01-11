@@ -6,11 +6,17 @@
 
 Traits used to pack/unpack structs and enums from EtherCAT packets on the wire.
 
+This crate is designed for use with [`ethercrab`](https://docs.rs/ethercrab) but can be
+used standalone too.
+
+While these traits can be implemented by hand as normal, it is recommended to derive them using
+[`ethercrab-wire-derive`](https://docs.rs/ethercrab-wire-derive) where possible.
+
 ## Experimental
 
-This crate is currently minimal and very rough as it is only used internally by
-[`ethercrab`](https://crates.io/crates/ethercrab). It is not recommended for public use (yet)
-and may change at any time.
+This crate is in its early stages and may contain bugs or publish breaking changes at any time.
+It is in use by [`ethercrab`](https://docs.rs/ethercrab) and is well exercised there,
+but please use with caution in your own code.
 
 ## License
 
