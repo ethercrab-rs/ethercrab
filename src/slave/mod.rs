@@ -21,6 +21,7 @@ use crate::{
     register::SupportFlags,
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
+    timer_factory::IntoTimeout,
     WrappedRead, WrappedWrite,
 };
 use core::{
@@ -364,7 +365,7 @@ where
         }
 
         // Wait for slave IN mailbox to be available to receive data from master
-        crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
+        async {
             loop {
                 let sm_status = self
                     .read(mailbox_write_sm_status)
@@ -377,7 +378,8 @@ where
 
                 self.client.timeouts.loop_tick().await;
             }
-        })
+        }
+        .timeout(self.client.timeouts.mailbox_echo)
         .await
         .map_err(|e| {
             fmt::error!(
@@ -397,7 +399,7 @@ where
         let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
 
         // Wait for slave OUT mailbox to be ready
-        crate::timer_factory::timeout(self.client.timeouts.mailbox_echo, async {
+        async {
             loop {
                 let sm_status = self
                     .read(mailbox_read_sm)
@@ -410,7 +412,8 @@ where
 
                 self.client.timeouts.loop_tick().await;
             }
-        })
+        }
+        .timeout(self.client.timeouts.mailbox_echo)
         .await
         .map_err(|e| {
             fmt::error!(
@@ -716,7 +719,7 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        crate::timer_factory::timeout(self.client.timeouts.state_transition, async {
+        async {
             loop {
                 let status = self
                     .read(RegisterAddress::AlStatus)
@@ -730,7 +733,8 @@ impl<'a, S> SlaveRef<'a, S> {
 
                 self.client.timeouts.loop_tick().await;
             }
-        })
+        }
+        .timeout(self.client.timeouts.state_transition)
         .await
     }
 

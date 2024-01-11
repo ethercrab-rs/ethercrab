@@ -6,6 +6,7 @@ use crate::{
     error::{EepromError, Error},
     fmt,
     register::RegisterAddress,
+    timer_factory::IntoTimeout,
     Client, Command,
 };
 
@@ -42,7 +43,7 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
             .send_receive(SiiRequest::read(start_word))
             .await?;
 
-        let status = crate::timer_factory::timeout(self.client.timeouts.eeprom, async {
+        let status = async {
             loop {
                 let control: SiiControl =
                     Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
@@ -56,7 +57,8 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
 
                 self.client.timeouts.loop_tick().await;
             }
-        })
+        }
+        .timeout(self.client.timeouts.eeprom)
         .await?;
 
         Command::fprd(self.configured_address, RegisterAddress::SiiData.into())
