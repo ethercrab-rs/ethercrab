@@ -225,7 +225,7 @@ impl Command {
         Reads::Frmw { address, register }
     }
 
-    /// Logical Read Write (LRD), used mainly for sending and receiving PDI.
+    /// Logical Read Write (LRW), used mainly for sending and receiving PDI.
     pub fn lrw(address: u32) -> Writes {
         Writes::Lrw { address }
     }
