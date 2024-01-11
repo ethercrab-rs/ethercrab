@@ -161,7 +161,19 @@ pub fn generate_struct_read(
                 })
             }
         }
+    };
 
+    Ok(out)
+}
+
+pub fn generate_sized_impl(
+    parsed: StructMeta,
+    input: &DeriveInput,
+) -> Result<proc_macro2::TokenStream, syn::Error> {
+    let name = input.ident.clone();
+    let size_bytes = parsed.width_bits.div_ceil(8);
+
+    Ok(quote! {
         impl ::ethercrab_wire::EtherCrabWireSized for #name {
             const PACKED_LEN: usize = #size_bytes;
 
@@ -171,7 +183,5 @@ pub fn generate_struct_read(
                 [0u8; #size_bytes]
             }
         }
-    };
-
-    Ok(out)
+    })
 }
