@@ -83,9 +83,8 @@ pub trait EtherCrabWireSized {
     /// Packed size in bytes.
     const PACKED_LEN: usize;
 
-    /// Used to define an array of the correct length. This type should generlaly be of the form
-    /// `[u8; N]` where `N` is a fixed value or const generic as per the type this trait is
-    /// implemented on.
+    /// Used to define an array of the correct length. This type should be an array `[u8; N]` where
+    /// `N` is a fixed value or const generic as per the type this trait is implemented on.
     type Buffer: AsRef<[u8]> + AsMut<[u8]>;
 
     /// Create a buffer sized to contain the packed representation of this item.
