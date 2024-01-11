@@ -1,8 +1,8 @@
 # `ethercrab-wire`
 
 [![Build Status](https://circleci.com/gh/ethercrab-rs/ethercrab/tree/master.svg?style=shield)](https://circleci.com/gh/ethercrab-rs/ethercrab/tree/master)
-[![Crates.io](https://img.shields.io/crates/v/ethercrab-wire.svg)](https://crates.io/crates/ethercrab-wire)
-[![Docs.rs](https://docs.rs/ethercrab-wire/badge.svg)](https://docs.rs/ethercrab-wire)
+[![Crates.io](https://img.shields.io/crates/v/ethercrab-wire-derive.svg)](https://crates.io/crates/ethercrab-wire-derive)
+[![Docs.rs](https://docs.rs/ethercrab-wire-derive/badge.svg)](https://docs.rs/ethercrab-wire-derive)
 
 {{readme}}
 
