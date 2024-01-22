@@ -28,6 +28,8 @@ An EtherCAT master written in Rust.
 - [#151](https://github.com/ethercrab-rs/ethercrab/pull/151) Reduced overhead for EEPROM reads. Each
   chunk reader now only checks for and (attempt to) clear device errors once before reading a chunk
   of data, not for every chunk.
+- [#156](https://github.com/ethercrab-rs/ethercrab/pull/156) Update `embassy-time` from 0.2.0 to
+  0.3.0.
 
 ### Added
 
