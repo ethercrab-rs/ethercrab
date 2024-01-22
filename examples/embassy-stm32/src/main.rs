@@ -17,7 +17,7 @@ use embassy_stm32::{
 use embassy_time::{Duration, Instant, Timer};
 use ethercrab::{Client, ClientConfig, PduRx, PduStorage, PduTx, SendableFrame, Timeouts};
 use panic_probe as _;
-use static_cell::make_static;
+use static_cell::StaticCell;
 
 bind_interrupts!(struct Irqs {
     ETH => eth::InterruptHandler;
@@ -129,9 +129,10 @@ async fn main(spawner: Spawner) {
 
     let (tx, rx, pdu_loop) = defmt::unwrap!(PDU_STORAGE.try_split());
 
+    static PACKETS: StaticCell<PacketQueue<16, 16>> = StaticCell::new();
     let device = {
         let mut device = Ethernet::new(
-            make_static!(PacketQueue::<4, 4>::new()),
+            PACKETS.init(PacketQueue::<16, 16>::new()),
             p.ETH,
             Irqs,
             p.PA1,
