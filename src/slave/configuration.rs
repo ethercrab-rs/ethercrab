@@ -258,7 +258,7 @@ where
 
                     read_mailbox = Some(Mailbox {
                         address: sync_manager.start_addr,
-                        len: mailbox_config.slave_receive_size,
+                        len: mailbox_config.slave_send_size,
                         sync_manager: sync_manager_index,
                     });
                 }
