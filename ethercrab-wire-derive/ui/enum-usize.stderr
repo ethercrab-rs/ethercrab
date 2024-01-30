@@ -1,0 +1,5 @@
+error: usize and isize may not be used as enum repr as these types can change size based on target platform. Use an i* or u* type instead.
+ --> ui/enum-usize.rs:2:8
+  |
+2 | #[repr(usize)]
+  |        ^^^^^
