@@ -10,9 +10,10 @@ pub fn generate_enum_write(
     let name = input.ident.clone();
     let repr_type = parsed.repr_type;
     let size_bytes = match repr_type.to_string().as_str() {
-        "u8" => 1usize,
-        "u16" => 2,
-        "u32" => 4,
+        "u8" | "i8" => 1usize,
+        "u16" | "i16" => 2,
+        "u32" | "i32" => 4,
+        "u64" | "i64" => 8,
         invalid => unreachable!("Invalid repr {}", invalid),
     };
 
@@ -84,9 +85,10 @@ pub fn generate_enum_read(
     let name = input.ident.clone();
     let repr_type = parsed.repr_type;
     let size_bytes = match repr_type.to_string().as_str() {
-        "u8" => 1usize,
-        "u16" => 2,
-        "u32" => 4,
+        "u8" | "i8" => 1usize,
+        "u16" | "i16" => 2,
+        "u32" | "i32" => 4,
+        "u64" | "i64" => 8,
         invalid => unreachable!("Invalid repr {}", invalid),
     };
 

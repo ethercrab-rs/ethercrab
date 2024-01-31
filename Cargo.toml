@@ -61,12 +61,12 @@ tokio = { version = "1.33.0", features = ["rt", "macros", "time"] }
 arbitrary = { version = "1.3.1", features = ["derive"] }
 criterion = { version = "0.5.1", features = ["html_reports", "async_tokio"] }
 ctrlc = "3.4.1"
-env_logger = "0.10.0"
+env_logger = "0.11.1"
 hdrhistogram = "7.5.2"
 heckcheck = "2.0.1"
 pcap-file = "2.0.0"
 pretty_assertions = "1.4.0"
-smol = "1.3.0"
+smol = "2.0.0"
 tokio = { version = "1.33.0", features = [
     "rt-multi-thread",
     "macros",

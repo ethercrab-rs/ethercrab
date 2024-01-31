@@ -1,7 +1,7 @@
 use crate::help::{
     all_valid_attrs, attr_exists, enum_repr_ty, variant_alternatives, variant_is_default,
 };
-use syn::{DataEnum, DeriveInput, Expr, ExprLit, Ident, Lit};
+use syn::{DataEnum, DeriveInput, Expr, ExprLit, ExprUnary, Ident, Lit, UnOp};
 
 #[derive(Clone)]
 pub struct EnumMeta {
@@ -18,10 +18,10 @@ pub struct EnumMeta {
 #[derive(Clone)]
 pub struct VariantMeta {
     pub name: Ident,
-    pub discriminant: u32,
+    pub discriminant: i128,
     pub catch_all: bool,
     pub default: bool,
-    pub alternatives: Vec<u32>,
+    pub alternatives: Vec<i128>,
 }
 
 pub fn parse_enum(
@@ -34,23 +34,12 @@ pub fn parse_enum(
 
     let repr = enum_repr_ty(&attrs, &ident)?;
 
-    let allowed = ["u8", "u16", "u32"];
-
-    let valid = allowed.iter().any(|allow| repr == allow);
-
-    if !valid {
+    if ["isize", "usize"].iter().any(|bad| repr == bad) {
         return Err(syn::Error::new(
             repr.span(),
-            format!("Allowed reprs are {}", allowed.join(", ")),
+            format!("usize and isize may not be used as enum repr as these types can change size based on target platform. Use an i* or u* type instead."),
         ));
     }
-
-    // let Some(width) = width else {
-    //     return Err(syn::Error::new(
-    //         ident.span(),
-    //         "Enum bit width is required, e.g. #[wire(bits = 8)]",
-    //     ));
-    // };
 
     // --- Variants
 
@@ -71,7 +60,32 @@ pub fn parse_enum(
                     lit: Lit::Int(discr),
                     ..
                 }),
-            )) => discr.base10_parse::<u32>()?,
+            )) => {
+                // Parse to i128 to fit any possible value we could encounter
+                discr.base10_parse::<i128>()?
+            }
+            Some((
+                _,
+                Expr::Unary(ExprUnary {
+                    expr,
+                    op: UnOp::Neg(_),
+                    ..
+                }),
+            )) => {
+                match *expr {
+                    Expr::Lit(ExprLit {
+                        lit: Lit::Int(discr),
+                        ..
+                    }) => {
+                        discr
+                            // Parse to i128 to fit any possible value we could encounter
+                            .base10_parse::<i128>()
+                            // Negate value because we matched on `UnOp::Neg` above.
+                            .map(|value| -value)?
+                    }
+                    _ => return Err(syn::Error::new(repr.span(), "Invalid discriminant format")),
+                }
+            }
             None => discriminant_accum + 1,
             _ => return Err(syn::Error::new(repr.span(), "Invalid discriminant format")),
         };

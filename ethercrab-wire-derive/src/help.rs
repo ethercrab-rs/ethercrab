@@ -166,7 +166,7 @@ pub fn enum_repr_ty(attrs: &[syn::Attribute], ident: &Ident) -> Result<Ident, sy
 }
 
 /// Look for 'alternatives = [1,2,3]` attribute on enum variant.
-pub fn variant_alternatives(attrs: &[syn::Attribute]) -> Result<Vec<u32>, syn::Error> {
+pub fn variant_alternatives(attrs: &[syn::Attribute]) -> Result<Vec<i128>, syn::Error> {
     for attr in my_attributes(attrs) {
         let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
         else {
@@ -192,7 +192,7 @@ pub fn variant_alternatives(attrs: &[syn::Attribute]) -> Result<Vec<u32>, syn::E
                                     ));
                                 };
 
-                                lit.base10_parse::<u32>()
+                                lit.base10_parse::<i128>()
                             })
                             .collect::<Result<Vec<_>, _>>();
                     }
