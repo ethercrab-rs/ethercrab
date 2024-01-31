@@ -64,6 +64,10 @@ pub fn generate_struct_write(
                     None => unreachable!()
                 };
 
+                unsafe {
+                    buf.as_mut_ptr().write_bytes(0u8, buf.len());
+                }
+
                 #(#fields_pack)*
 
                 buf
