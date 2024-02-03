@@ -52,6 +52,10 @@ pub fn generate_enum_write(
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 let mut buf = &mut buf[0..#size_bytes];
 
+                unsafe {
+                    buf.as_mut_ptr().write_bytes(0u8, #size_bytes);
+                }
+
                 #pack
 
                 buf
@@ -66,6 +70,7 @@ pub fn generate_enum_write(
             fn pack(&self) -> Self::Buffer {
                 let mut buf = [0u8; #size_bytes];
 
+                // Delegate to EtherCrabWireWrite impl above
                 <Self as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(self, &mut buf);
 
                 buf
