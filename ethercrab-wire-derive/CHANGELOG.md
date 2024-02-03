@@ -6,6 +6,8 @@ Derives for `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.1.2] - 2024-02-03
+
 ### Changed
 
 - [#160](https://github.com/ethercrab-rs/ethercrab/pull/160) Packing buffers are now zeroed before
@@ -26,8 +28,9 @@ Derives for `ethercrab`.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.2...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.1...HEAD
+[0.1.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.1...ethercrab-wire-derive-v0.1.2
 [0.1.1]:
   https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.0...ethercrab-wire-derive-v0.1.1
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/HEAD...ethercrab-wire-derive-v0.1.0
