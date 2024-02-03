@@ -167,6 +167,12 @@ impl<const N: usize> EtherCrabWireWrite for [u8; N] {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let buf = &mut buf[0..N];
 
+        // SAFETY: Buffer will always be `N` bytes long at this point as the above line will panic
+        // if not.
+        unsafe {
+            buf.as_mut_ptr().write_bytes(0u8, N);
+        }
+
         buf.copy_from_slice(self);
 
         buf
@@ -180,6 +186,10 @@ impl<const N: usize> EtherCrabWireWrite for [u8; N] {
 impl EtherCrabWireWrite for &[u8] {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let buf = &mut buf[0..self.len()];
+
+        unsafe {
+            buf.as_mut_ptr().write_bytes(0u8, buf.len());
+        }
 
         buf.copy_from_slice(self);
 
