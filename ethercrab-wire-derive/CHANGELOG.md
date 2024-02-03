@@ -6,6 +6,17 @@ Derives for `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- [#160](https://github.com/ethercrab-rs/ethercrab/pull/160) Packing buffers are now zeroed before
+  being written into.
+
+### Added
+
+- [#159](https://github.com/ethercrab-rs/ethercrab/pull/159) Support `i*` enum discriminants. Also
+  adds support for `u64`. `usize` and `isize` are explicitly unsupported as they can change size on
+  different targets.
+
 ## [0.1.1] - 2024-01-11
 
 ## [0.1.0] - 2024-01-11
@@ -15,7 +26,8 @@ Derives for `ethercrab`.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.1...HEAD
-[0.1.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.0...ethercrab-wire-derive-v0.1.1
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.1...HEAD
+[0.1.1]:
+  https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.0...ethercrab-wire-derive-v0.1.1
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/HEAD...ethercrab-wire-derive-v0.1.0
