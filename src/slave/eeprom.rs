@@ -355,7 +355,10 @@ where
         }
     }
 
-    pub async fn items<T>(&self, category: CategoryType) -> Result<CategoryIterator<P, T>, Error>
+    pub(crate) async fn items<T>(
+        &self,
+        category: CategoryType,
+    ) -> Result<CategoryIterator<P, T>, Error>
     where
         T: EtherCrabWireReadSized,
     {
