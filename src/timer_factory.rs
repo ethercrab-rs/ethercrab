@@ -57,7 +57,7 @@ where
         let timeout = unsafe { Pin::new_unchecked(&mut this.timeout) };
         let f = unsafe { Pin::new_unchecked(&mut this.f) };
 
-        if let Poll::Ready(_) = timeout.poll(cx) {
+        if timeout.poll(cx).is_ready() {
             return Poll::Ready(Err(Error::Timeout));
         }
 

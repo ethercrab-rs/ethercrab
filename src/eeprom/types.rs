@@ -1,9 +1,6 @@
 //! Slave Information Interface (SII).
 
-use crate::{
-    base_data_types::PrimitiveDataType,
-    sync_manager_channel::{self},
-};
+use crate::{base_data_types::PrimitiveDataType, coe::SdoExpedited, sync_manager_channel};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 pub const TX_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
@@ -524,6 +521,8 @@ pub enum SyncManagerType {
     /// Used for process data inputs to master.
     ProcessDataRead = 0x04,
 }
+
+impl SdoExpedited for SyncManagerType {}
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
 #[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
