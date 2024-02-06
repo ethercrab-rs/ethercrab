@@ -1,3 +1,5 @@
+use ethercrab_wire::EtherCrabWireReadSized;
+
 pub mod abort_code;
 pub mod services;
 
@@ -108,6 +110,13 @@ impl From<u8> for SubIndex {
         Self::Index(value)
     }
 }
+
+/// A trait for types that can be transferred with a single expedited SDO upload.
+pub(crate) trait SdoExpedited: EtherCrabWireReadSized {}
+
+impl SdoExpedited for u8 {}
+impl SdoExpedited for u16 {}
+impl SdoExpedited for u32 {}
 
 #[cfg(test)]
 mod tests {

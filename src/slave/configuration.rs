@@ -8,13 +8,11 @@ use crate::{
     error::{Error, Item},
     fmmu::Fmmu,
     fmt,
-    pdi::PdiOffset,
-    pdi::PdiSegment,
+    pdi::{PdiOffset, PdiSegment},
     register::RegisterAddress,
     slave::types::{Mailbox, MailboxConfig},
     slave_state::SlaveState,
-    sync_manager_channel::SyncManagerChannel,
-    sync_manager_channel::{self, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
+    sync_manager_channel::{self, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
 use core::ops::DerefMut;
 
@@ -61,14 +59,17 @@ where
                 .await?
             } else {
                 let num_indices = self
-                    .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
+                    .sdo_read_expedited::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
                     .await?;
 
                 let mut sms = heapless::Vec::new();
 
                 for index in 1..=num_indices {
                     let sm = self
-                        .sdo_read::<SyncManagerType>(SM_TYPE_ADDRESS, SubIndex::Index(index))
+                        .sdo_read_expedited::<SyncManagerType>(
+                            SM_TYPE_ADDRESS,
+                            SubIndex::Index(index),
+                        )
                         .await?;
 
                     fmt::trace!("Sync manager {:?} at sub-index {}", sm, index);
@@ -334,7 +335,9 @@ where
             }
 
             // Total number of PDO assignments for this sync manager
-            let num_sm_assignments = self.sdo_read::<u8>(sm_address, SubIndex::Index(0)).await?;
+            let num_sm_assignments = self
+                .sdo_read_expedited::<u8>(sm_address, SubIndex::Index(0))
+                .await?;
 
             fmt::trace!(
                 "SDO sync manager {}  {:#06x} {:?}, sub indices: {}",
@@ -347,8 +350,12 @@ where
             let mut sm_bit_len = 0u16;
 
             for i in 1..=num_sm_assignments {
-                let pdo = self.sdo_read::<u16>(sm_address, SubIndex::Index(i)).await?;
-                let num_mappings = self.sdo_read::<u8>(pdo, SubIndex::Index(0)).await?;
+                let pdo = self
+                    .sdo_read_expedited::<u16>(sm_address, SubIndex::Index(i))
+                    .await?;
+                let num_mappings = self
+                    .sdo_read_expedited::<u8>(pdo, SubIndex::Index(0))
+                    .await?;
 
                 fmt::trace!("--> #{} data: {:#06x} ({} mappings):", i, pdo, num_mappings);
 
@@ -368,11 +375,15 @@ where
                         index: u16,
                     }
 
+                    impl SdoExpedited for Mapping {}
+
                     let Mapping {
                         index,
                         sub_index,
                         mapping_bit_len,
-                    } = self.sdo_read::<Mapping>(pdo, SubIndex::Index(i)).await?;
+                    } = self
+                        .sdo_read_expedited::<Mapping>(pdo, SubIndex::Index(i))
+                        .await?;
 
                     fmt::trace!(
                         "----> index {:#06x}, sub index {}, bit length {}",

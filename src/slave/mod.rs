@@ -8,8 +8,10 @@ use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
     client::Client,
-    coe::SubIndex,
-    coe::{self, abort_code::CoeAbortCode, services::CoeServiceRequest, CoeCommand},
+    coe::{
+        self, abort_code::CoeAbortCode, services::CoeServiceRequest, CoeCommand, SdoExpedited,
+        SubIndex,
+    },
     command::Command,
     dl_status::DlStatus,
     eeprom::{device_reader::DeviceEeprom, types::SiiOwner},
@@ -556,6 +558,40 @@ where
         // TODO: Validate reply?
 
         Ok(())
+    }
+
+    pub(crate) async fn sdo_read_expedited<T>(
+        &self,
+        index: u16,
+        sub_index: impl Into<SubIndex>,
+    ) -> Result<T, Error>
+    where
+        T: SdoExpedited,
+    {
+        debug_assert!(
+            T::PACKED_LEN <= 4,
+            "expedited transfers are up to 4 bytes long, this T is {}",
+            T::PACKED_LEN
+        );
+
+        let sub_index = sub_index.into();
+
+        let request = coe::services::upload(self.mailbox_counter(), index, sub_index);
+
+        fmt::trace!("CoE upload {:#06x} {:?}", index, sub_index);
+
+        let (headers, response) = self.send_coe_service(request).await?;
+        let data: &[u8] = &response;
+
+        // Expedited transfers where the data is 4 bytes or less long, denoted in the SDO header
+        // size value.
+        if headers.sdo_header.expedited_transfer {
+            let data_len = 4usize.saturating_sub(usize::from(headers.sdo_header.size));
+
+            Ok(T::unpack_from_slice(&data[0..data_len])?)
+        } else {
+            Err(Error::Internal)
+        }
     }
 
     /// Read a value from an SDO (Service Data Object) from the given index (address) and sub-index.
