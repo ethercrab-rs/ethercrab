@@ -353,15 +353,26 @@ where
                 fmt::trace!("--> #{} data: {:#06x} ({} mappings):", i, pdo, num_mappings);
 
                 for i in 1..=num_mappings {
-                    let mapping = self.sdo_read::<u32>(pdo, SubIndex::Index(i)).await?;
+                    /// Defined in ETG1000.6 Table 74/Table 75 Receive PDO Mapping.
+                    ///
+                    /// Note that this struct order is opposite to the specification as the data is
+                    /// big-endian in EEPROM, but little endian on the wire.
+                    #[derive(ethercrab_wire::EtherCrabWireRead)]
+                    #[wire(bytes = 4)]
+                    struct Mapping {
+                        #[wire(bytes = 1)]
+                        mapping_bit_len: u8,
+                        #[wire(bytes = 1)]
+                        sub_index: u8,
+                        #[wire(bytes = 2)]
+                        index: u16,
+                    }
 
-                    // Yes, big-endian. Makes life easier when mapping from debug prints to actual
-                    // data fields.
-                    let parts = mapping.to_be_bytes();
-
-                    let index = u16::from_be_bytes(fmt::unwrap!(parts[0..=1].try_into()));
-                    let sub_index = parts[2];
-                    let mapping_bit_len = parts[3];
+                    let Mapping {
+                        index,
+                        sub_index,
+                        mapping_bit_len,
+                    } = self.sdo_read::<Mapping>(pdo, SubIndex::Index(i)).await?;
 
                     fmt::trace!(
                         "----> index {:#06x}, sub index {}, bit length {}",
