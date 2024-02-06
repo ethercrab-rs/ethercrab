@@ -175,7 +175,7 @@ where
             buf[0..fmmus]
                 .iter()
                 .map(|raw| {
-                    FmmuUsage::unpack_from_slice(&[*raw]).map_err(|e| {
+                    FmmuUsage::try_from(*raw).map_err(|e| {
                         #[cfg(feature = "std")]
                         fmt::error!("Failed to decode FmmuUsage: {}", e);
 
