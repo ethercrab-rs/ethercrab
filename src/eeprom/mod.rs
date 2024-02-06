@@ -79,7 +79,7 @@ where
     }
 
     /// Skip N bytes (NOT words) ahead of the current position.
-    pub async fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), Error> {
+    pub fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), Error> {
         fmt::trace!(
             "Skip EEPROM from pos {:#06x}, read pointer {:#06x}, by {} bytes to {:#06x}, end {:#06x}",
             self.pos,
@@ -211,13 +211,13 @@ mod tests {
         let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/akd.hex"), 0, 32);
 
         // Current position is zero, so 32 words = 64 bytes = ok
-        assert_eq!(r.skip_ahead_bytes(63).await, Ok(()), "63 bytes");
+        assert_eq!(r.skip_ahead_bytes(63), Ok(()), "63 bytes");
 
         let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/akd.hex"), 0, 32);
 
         // Off by one errors are always fun
         assert_eq!(
-            r.skip_ahead_bytes(64).await,
+            r.skip_ahead_bytes(64),
             Err(Error::Eeprom(EepromError::SectionOverrun)),
             "64 bytes"
         );
@@ -226,7 +226,7 @@ mod tests {
 
         // 65 is one byte off the end
         assert_eq!(
-            r.skip_ahead_bytes(65).await,
+            r.skip_ahead_bytes(65),
             Err(Error::Eeprom(EepromError::SectionOverrun)),
             "65 bytes"
         );
@@ -235,7 +235,7 @@ mod tests {
 
         // Madness
         assert_eq!(
-            r.skip_ahead_bytes(10000).await,
+            r.skip_ahead_bytes(10000),
             Err(Error::Eeprom(EepromError::SectionOverrun)),
             "10000 bytes"
         );
