@@ -1,6 +1,6 @@
 use super::{Slave, SlaveRef};
 use crate::{
-    coe::SubIndex,
+    coe::{SdoExpedited, SubIndex},
     eeprom::types::{
         CoeDetails, FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable,
         SyncManagerType,
@@ -494,7 +494,7 @@ where
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
-        let pdos = match direction {
+        let pdos: heapless::Vec<crate::eeprom::types::Pdo, 16> = match direction {
             PdoDirection::MasterRead => {
                 let read_pdos = self.eeprom().master_read_pdos().await?;
 

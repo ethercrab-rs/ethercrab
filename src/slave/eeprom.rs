@@ -11,9 +11,9 @@ use crate::{
     fmt,
     slave::SlaveIdentity,
 };
-use core::{ops::RangeInclusive, str::FromStr};
-use embedded_io_async::Read;
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
+use core::{marker::PhantomData, ops::RangeInclusive, str::FromStr};
+use embedded_io_async::{Read, ReadExactError};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized};
 
 pub struct SlaveEeprom<P> {
     provider: P,
@@ -147,16 +147,12 @@ where
 
         fmt::trace!("Get sync managers");
 
-        if let Some(mut reader) = self.category(CategoryType::SyncManager).await? {
-            let mut buf = SyncManager::buffer();
+        let mut cat = self.items::<SyncManager>(CategoryType::SyncManager).await?;
 
-            while reader.read(&mut buf).await? == SyncManager::PACKED_LEN {
-                let sm = SyncManager::unpack_from_slice(&buf)?;
-
-                sync_managers
-                    .push(sm)
-                    .map_err(|_| Error::Capacity(Item::SyncManager))?;
-            }
+        while let Some(sm) = cat.next().await? {
+            sync_managers
+                .push(sm)
+                .map_err(|_| Error::Capacity(Item::SyncManager))?;
         }
 
         fmt::debug!("Discovered sync managers:\n{:#?}", sync_managers);
@@ -202,16 +198,12 @@ where
 
         fmt::trace!("Get FMMU mappings");
 
-        if let Some(mut reader) = self.category(CategoryType::FmmuExtended).await? {
-            let mut buf = FmmuEx::buffer();
+        let mut cat = self.items::<FmmuEx>(CategoryType::FmmuExtended).await?;
 
-            while reader.read(&mut buf).await? == FmmuEx::PACKED_LEN {
-                let fmmu = FmmuEx::unpack_from_slice(&buf)?;
-
-                mappings
-                    .push(fmmu)
-                    .map_err(|_| Error::Capacity(Item::FmmuEx))?;
-            }
+        while let Some(fmmu) = cat.next().await? {
+            mappings
+                .push(fmmu)
+                .map_err(|_| Error::Capacity(Item::FmmuEx))?;
         }
 
         fmt::debug!("FMMU mappings: {:#?}", mappings);
@@ -316,7 +308,7 @@ where
 
                 fmt::trace!("String index {} has len {}", i, string_len);
 
-                reader.skip_ahead_bytes(string_len.into()).await?;
+                reader.skip_ahead_bytes(string_len.into())?;
             }
 
             let string_len = reader.read_byte().await?;
@@ -362,6 +354,52 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn items<T>(&self, category: CategoryType) -> Result<CategoryIterator<P, T>, Error>
+    where
+        T: EtherCrabWireReadSized,
+    {
+        let Some(reader) = self.category(category).await? else {
+            return Ok(CategoryIterator::new(ChunkReader::new(
+                self.provider.clone(),
+                0,
+                0,
+            )));
+        };
+
+        Ok(CategoryIterator::new(reader))
+    }
+}
+
+pub struct CategoryIterator<P, T> {
+    reader: ChunkReader<P>,
+    item: PhantomData<T>,
+}
+
+impl<P, T> CategoryIterator<P, T>
+where
+    T: EtherCrabWireReadSized,
+    P: EepromDataProvider,
+{
+    pub fn new(reader: ChunkReader<P>) -> Self {
+        Self {
+            reader,
+            item: PhantomData,
+        }
+    }
+
+    pub async fn next(&mut self) -> Result<Option<T>, Error> {
+        let mut buf = T::buffer();
+
+        match self.reader.read_exact(buf.as_mut()).await {
+            // Reached end of category
+            Err(ReadExactError::UnexpectedEof) => return Ok(None),
+            Err(ReadExactError::Other(e)) => return Err(e),
+            Ok(_) => (),
+        }
+
+        Ok(Some(T::unpack_from_slice(buf.as_ref())?))
     }
 }
 
