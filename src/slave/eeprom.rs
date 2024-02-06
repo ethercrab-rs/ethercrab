@@ -225,6 +225,7 @@ where
         };
 
         let mut buf = Pdo::buffer();
+        let mut entry_buf = PdoEntry::buffer();
 
         while reader.read(&mut buf).await? == buf.len() {
             let mut pdo = Pdo::unpack_from_slice(&buf).map_err(|e| {
@@ -242,10 +243,8 @@ where
             }
 
             for _ in 0..pdo.num_entries {
-                let mut buf = PdoEntry::buffer();
-
-                let entry = reader.read_exact(&mut buf).await.and_then(|_| {
-                    let entry = PdoEntry::unpack_from_slice(&buf).map_err(|e| {
+                let entry = reader.read_exact(&mut entry_buf).await.and_then(|_| {
+                    let entry = PdoEntry::unpack_from_slice(&entry_buf).map_err(|e| {
                         fmt::error!("PDO entry: {:?}", e);
 
                         Error::Eeprom(EepromError::Decode)

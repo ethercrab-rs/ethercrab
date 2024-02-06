@@ -476,7 +476,6 @@ where
             sub_index: u8,
         }
 
-        // let headers = H::Response::unpack_from_slice(&response)?;
         let headers = HeadersRaw::unpack_from_slice(&response)?;
 
         if headers.command == CoeCommand::AbortRequest {
