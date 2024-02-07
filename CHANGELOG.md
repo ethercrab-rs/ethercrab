@@ -113,6 +113,8 @@ An EtherCAT master written in Rust.
 - [#198](https://github.com/ethercrab-rs/ethercrab/pull/#198) Add
   `SlaveGroup::tx_rx_sync_system_time`, `SlaveGroup::tx_rx_dc`, `SlaveRef::set_dc_sync` and
   `SlaveGroup::configure_dc_sync` to support EtherCAT Distributed Clocks.
+- [#162](https://github.com/ethercrab-rs/ethercrab/pull/162) Add support for FreeBSD and NetBSD
+  using BPF.
 
 ### Fixed
 
