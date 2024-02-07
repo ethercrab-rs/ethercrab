@@ -14,6 +14,20 @@ use std::{
     os::unix::io::{AsFd, AsRawFd, BorrowedFd, RawFd},
 };
 
+#[cfg(not(target_os = "netbsd"))]
+use libc::bpf_hdr;
+
+#[cfg(target_os = "netbsd")]
+#[allow(dead_code, non_camel_case_types)]
+// Unsure why  `libc` doesn't expose `bpf_hdr` when it's defined in NetBSD's man page
+// <https://man.netbsd.org/bpf.4#BPF%20HEADER> but ah well, here it is defined inline.
+struct bpf_hdr {
+    pub bh_tstamp: libc::timeval,
+    pub bh_caplen: u32,
+    pub bh_datalen: u32,
+    pub bh_hdrlen: libc::c_ushort,
+}
+
 /// set interface
 #[cfg(any(
     target_os = "macos",
@@ -236,7 +250,7 @@ impl io::Read for BpfDevice {
             let bpf_header = &buffer[0..BPF_HDRLEN];
 
             let bpf_header = unsafe {
-                core::ptr::NonNull::new(bpf_header.as_ptr() as *mut libc::bpf_hdr)
+                core::ptr::NonNull::new(bpf_header.as_ptr() as *mut bpf_hdr)
                     .ok_or(io::Error::other("no BPF header"))?
                     .as_ref()
             };
@@ -253,13 +267,12 @@ impl io::Read for BpfDevice {
         let remaining = len as u32 - BPF_HDRLEN as u32 - frame_len as u32;
 
         // Returned data is aligned to bpf_hdr boundaries
-        let remaining = remaining.next_multiple_of(core::mem::align_of::<libc::bpf_hdr>() as u32);
+        let remaining = remaining.next_multiple_of(core::mem::align_of::<bpf_hdr>() as u32);
 
         // There is at least one more frame in the returned data. Store this in our buffer to return
         // next time `read` is called.
         if remaining > 0 {
-            let start =
-                (BPF_HDRLEN + frame_len).next_multiple_of(core::mem::align_of::<libc::bpf_hdr>());
+            let start = (BPF_HDRLEN + frame_len).next_multiple_of(core::mem::align_of::<bpf_hdr>());
 
             // Store next chunk(s - there could be more than one packet waiting) of [BPF header,
             // Ethernet II frame] in cache for next time round.
