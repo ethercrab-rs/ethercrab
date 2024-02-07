@@ -1,7 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
-#![feature(never_type)]
 
 use core::{future::poll_fn, task::Poll};
 use defmt_rtt as _;
@@ -79,7 +77,7 @@ async fn tx_rx_task(
             }
         }
 
-        Poll::<!>::Pending
+        Poll::Pending
     })
     .await
 }
