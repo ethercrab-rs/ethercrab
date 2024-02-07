@@ -112,7 +112,7 @@ target_steps_embassy: &target_steps_embassy
           - ./target
           - /home/circleci/.cargo/registry
 
-macos_steps: &macos_steps
+basic_steps: &basic_steps
   resource_class: large
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
@@ -123,6 +123,7 @@ macos_steps: &macos_steps
         key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     - run: rustup target add $TARGET
+    - run: cargo test --features __internals
     - run: cargo check --target $TARGET --release --examples
 
     - save_cache:
@@ -179,12 +180,22 @@ jobs:
   macos-cross:
     environment:
       - TARGET: "x86_64-apple-darwin"
-    <<: *macos_steps
+    <<: *basic_steps
 
   macos-arm-cross:
     environment:
       - TARGET: "aarch64-apple-darwin"
-    <<: *macos_steps
+    <<: *basic_steps
+
+  freebsd:
+    environment:
+      - TARGET: "x86_64-unknown-freebsd"
+    <<: *basic_steps
+
+  netbsd:
+    environment:
+      - TARGET: "x86_64-unknown-netbsd"
+    <<: *basic_steps
 
   target-thumbv7m-none-eabi:
     resource_class: large
@@ -204,6 +215,8 @@ build_jobs: &build_jobs
     - windows-cross
     - macos-cross
     - macos-arm-cross
+    - freebsd
+    - netbsd
     - target-thumbv7m-none-eabi
     - target-embassy
 
