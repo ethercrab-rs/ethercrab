@@ -118,7 +118,7 @@ pub fn download(
         headers: SdoNormal {
             header: MailboxHeader {
                 length: 0x0a,
-                address: 0x0000,
+                // address: 0x0000,
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter,
@@ -142,7 +142,7 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SdoSegmented {
     SdoSegmented {
         header: MailboxHeader {
             length: 0x0a,
-            address: 0x0000,
+            // address: 0x0000,
             priority: Priority::Lowest,
             mailbox_type: MailboxType::Coe,
             counter,
@@ -162,7 +162,7 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
     SdoNormal {
         header: MailboxHeader {
             length: 0x0a,
-            address: 0x0000,
+            // address: 0x0000,
             priority: Priority::Lowest,
             mailbox_type: MailboxType::Coe,
             counter,
@@ -193,7 +193,7 @@ mod tests {
         let expected = SdoNormal {
             header: MailboxHeader {
                 length: 10,
-                address: 0,
+                // address: 0,
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter: 5,
@@ -225,7 +225,7 @@ mod tests {
                 headers: SdoNormal {
                     header: MailboxHeader {
                         length: 10,
-                        address: 0,
+                        // address: 0,
                         priority: Priority::Lowest,
                         mailbox_type: MailboxType::Coe,
                         counter: 123,
@@ -258,7 +258,7 @@ mod tests {
                 headers: SdoNormal {
                     header: MailboxHeader {
                         length: 10,
-                        address: 0,
+                        // address: 0,
                         priority: Priority::Lowest,
                         mailbox_type: MailboxType::Coe,
                         counter: 123,
@@ -289,7 +289,7 @@ mod tests {
             SdoNormal {
                 header: MailboxHeader {
                     length: 10,
-                    address: 0,
+                    // address: 0,
                     priority: Priority::Lowest,
                     mailbox_type: MailboxType::Coe,
                     counter: 210,
@@ -320,7 +320,7 @@ mod tests {
         let expected_headers = SdoNormal {
             header: MailboxHeader {
                 length: 16,
-                address: 0,
+                // address: 0,
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter: 6,
@@ -358,7 +358,7 @@ mod tests {
         let expected = SdoNormal {
             header: MailboxHeader {
                 length: 0x0a,
-                address: 0x0000,
+                // address: 0x0000,
                 priority: Priority::Lowest,
                 mailbox_type: MailboxType::Coe,
                 counter: 6,
