@@ -42,10 +42,12 @@ pub enum MailboxType {
 #[wire(bytes = 8)]
 pub struct MailboxHeader {
     /// Mailbox data payload length.
-    #[wire(bytes = 2)]
+    #[wire(bytes = 2, post_skip_bytes = 2)]
     pub length: u16,
-    #[wire(bytes = 2)]
-    pub address: u16,
+    // /// Address, always zero when master is in control.
+    // This field is ignored to save some bytes as it's always zero for EtherCrab's use case.
+    // #[wire(bytes = 2)]
+    // pub address: u16,
     // reserved6: u8,
     #[wire(pre_skip = 6, bits = 2)]
     pub priority: Priority,
@@ -76,7 +78,7 @@ mod tests {
         fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
             Ok(Self {
                 length: Arbitrary::arbitrary(u)?,
-                address: Arbitrary::arbitrary(u)?,
+                // address: Arbitrary::arbitrary(u)?,
                 priority: Arbitrary::arbitrary(u)?,
                 mailbox_type: Arbitrary::arbitrary(u)?,
                 // 0..=6 shifted up by 1 so we get the valid range 1..=7
@@ -157,7 +159,7 @@ mod tests {
         let packed = MailboxHeader {
             length: 10,
             priority: Priority::Lowest,
-            address: 0x0000,
+            // address: 0x0000,
             counter: 3,
             mailbox_type: MailboxType::Coe,
             service: CoeService::SdoRequest,
@@ -174,7 +176,7 @@ mod tests {
 
         let expected = MailboxHeader {
             length: 10,
-            address: 0x0000,
+            // address: 0x0000,
             priority: Priority::Lowest,
             mailbox_type: MailboxType::Coe,
             counter: 2,

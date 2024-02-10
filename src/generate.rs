@@ -3,15 +3,14 @@
 //! Like cookie_factory but much simpler and will **quite happily panic**.
 
 /// Write a packed struct into the slice.
+#[inline(always)]
 pub fn write_packed<T>(value: T, buf: &mut [u8]) -> &mut [u8]
 where
     T: ethercrab_wire::EtherCrabWireWrite,
 {
-    let (buf, rest) = buf.split_at_mut(value.packed_len());
-
     value.pack_to_slice_unchecked(buf);
 
-    rest
+    &mut buf[value.packed_len()..]
 }
 
 /// Skip `n` bytes.
