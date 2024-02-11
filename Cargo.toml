@@ -93,7 +93,7 @@ std = [
     "dep:pnet_datalink",
     "dep:async-io",
     "smoltcp/phy-raw_socket",
-    "dep:log",
+    "log",
     "futures-lite/std",
     "embedded-io-async/std",
     "ethercrab-wire/std",
