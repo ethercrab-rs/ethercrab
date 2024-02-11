@@ -82,6 +82,17 @@ fn main() {
                         .unwrap_or(0),
                     s.register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
                         .await
+                        .map(|raw: u32| {
+                            let greater_than = (raw & (1u32 << 31)) == 0;
+
+                            let value = (raw & (u32::MAX >> 1)) as i32;
+
+                            if greater_than {
+                                value
+                            } else {
+                                -value
+                            }
+                        })
                         .unwrap_or(0),
                 );
             }

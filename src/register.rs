@@ -158,8 +158,12 @@ pub enum RegisterAddress {
     /// DC system time.
     DcSystemTime = 0x0910,
     /// DC system time offset, `u64`.
+    ///
+    /// Offset between the local time (in ns) and the local system time (in ns).
     DcSystemTimeOffset = 0x0920,
     /// Transmission delay, `u32`.
+    ///
+    /// Offset between the reference system time (in ns) and the local system time (in ns).
     DcSystemTimeTransmissionDelay = 0x0928,
 
     /// DC control loop parameter, `u16`.
