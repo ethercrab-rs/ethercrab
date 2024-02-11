@@ -240,16 +240,10 @@ where
     T: EtherCrabWireReadSized,
 {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-        let res = buf
-            .chunks_exact(T::PACKED_LEN)
+        buf.chunks_exact(T::PACKED_LEN)
             .take(N)
             .map(T::unpack_from_slice)
-            .collect::<Result<heapless::Vec<_, N>, WireError>>();
-
-        match res {
-            Ok(res) => Ok(res),
-            Err(_) => unreachable!(),
-        }
+            .collect::<Result<heapless::Vec<_, N>, WireError>>()
     }
 }
 
