@@ -221,14 +221,15 @@ where
     T: EtherCrabWireReadSized,
 {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-        if buf.len() < T::PACKED_LEN * N {
-            return Err(WireError::ReadBufferTooShort {
+        buf.get(0..(T::PACKED_LEN * N))
+            .ok_or(WireError::ReadBufferTooShort {
                 expected: T::PACKED_LEN * N,
                 got: buf.len(),
-            });
-        }
-
-        heapless::Vec::<T, N>::unpack_from_slice(buf)
+            })?
+            .chunks_exact(T::PACKED_LEN)
+            .take(N)
+            .map(T::unpack_from_slice)
+            .collect::<Result<heapless::Vec<_, N>, WireError>>()
             .and_then(|res| res.into_array().map_err(|_e| WireError::ArrayLength))
     }
 }
