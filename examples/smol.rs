@@ -12,9 +12,15 @@ use ethercrab::{
     Timeouts,
 };
 use futures_lite::StreamExt;
+use rustix::process::CpuSet;
+use smol::LocalExecutor;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
+};
+use thread_priority::{
+    set_current_thread_priority, RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue,
+    ThreadSchedulePolicy,
 };
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
@@ -63,14 +69,39 @@ fn main() -> Result<(), Error> {
         ClientConfig::default(),
     );
 
-    // Network TX/RX should run in a separate thread to avoid timeouts. Tokio doesn't guarantee a
-    // separate thread is used but this is good enough for an example. If using `tokio`, make sure
-    // the `rt-multi-thread` feature is enabled.
-    smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
+    thread_priority::ThreadBuilder::default()
+        .name("tx-rx-task")
+        // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
+        // Check limits with `ulimit -Hr` or `ulimit -Sr`
+        .priority(ThreadPriority::Crossplatform(
+            ThreadPriorityValue::try_from(99u8).unwrap(),
+        ))
+        // NOTE: Requires a realtime kernel
+        .policy(ThreadSchedulePolicy::Realtime(
+            RealtimeThreadSchedulePolicy::Fifo,
+        ))
+        .spawn(move |_| {
+            let mut set = CpuSet::new();
+            set.set(0);
+
+            // Pin thread to 0th core
+            rustix::process::sched_setaffinity(None, &set).expect("set affinity");
+
+            let ex = LocalExecutor::new();
+
+            futures_lite::future::block_on(
+                ex.run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")),
+            )
+            .expect("TX/RX task exited");
+        })
+        .unwrap();
 
     let client = Arc::new(client);
 
-    smol::block_on(async {
+    let Groups {
+        slow_outputs,
+        fast_outputs,
+    } = smol::block_on(async {
         // Read configurations from slave EEPROMs and configure devices.
         let groups = client
             .init::<MAX_SLAVES, _>(|groups: &Groups, slave| match slave.name() {
@@ -81,83 +112,124 @@ fn main() -> Result<(), Error> {
             .await
             .expect("Init");
 
-        let Groups {
-            slow_outputs,
-            fast_outputs,
-        } = groups;
+        groups
+    });
 
-        let client_slow = client.clone();
+    let client_slow = client.clone();
 
-        let slow_task = smol::spawn(async move {
-            let slow_outputs = slow_outputs
-                .into_op(&client_slow)
-                .await
-                .expect("PRE-OP -> OP");
+    let slow = thread_priority::ThreadBuilder::default()
+        .name("slow-task")
+        // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
+        // Check limits with `ulimit -Hr` or `ulimit -Sr`
+        .priority(ThreadPriority::Crossplatform(
+            ThreadPriorityValue::try_from(98u8).unwrap(),
+        ))
+        // NOTE: Requires a realtime kernel
+        .policy(ThreadSchedulePolicy::Realtime(
+            RealtimeThreadSchedulePolicy::Fifo,
+        ))
+        .spawn(move |_| {
+            let mut set = CpuSet::new();
+            set.set(1);
 
-            let mut slow_cycle_time = smol::Timer::interval(Duration::from_millis(3));
+            // Pin thread to 0th core
+            rustix::process::sched_setaffinity(None, &set).expect("set affinity");
 
-            let slow_duration = Duration::from_millis(250);
+            let ex = LocalExecutor::new();
 
-            // Only update "slow" outputs every 250ms using this instant
-            let mut tick = Instant::now();
+            futures_lite::future::block_on(ex.run(async {
+                let slow_outputs = slow_outputs
+                    .into_op(&client_slow)
+                    .await
+                    .expect("PRE-OP -> OP");
 
-            // EK1100 is first slave, EL2889 is second
-            let mut el2889 = slow_outputs
-                .slave(&client_slow, 1)
-                .expect("EL2889 not present!");
+                let mut slow_cycle_time = smol::Timer::interval(Duration::from_millis(3));
 
-            // Set initial output state
-            el2889.io_raw_mut().1[0] = 0x01;
-            el2889.io_raw_mut().1[1] = 0x80;
+                let slow_duration = Duration::from_millis(250);
 
-            loop {
-                slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
+                // Only update "slow" outputs every 250ms using this instant
+                let mut tick = Instant::now();
 
-                // Increment every output byte for every slave device by one
-                if tick.elapsed() > slow_duration {
-                    tick = Instant::now();
+                // EK1100 is first slave, EL2889 is second
+                let mut el2889 = slow_outputs
+                    .slave(&client_slow, 1)
+                    .expect("EL2889 not present!");
 
-                    let (_i, o) = el2889.io_raw_mut();
+                // Set initial output state
+                el2889.io_raw_mut().1[0] = 0x01;
+                el2889.io_raw_mut().1[1] = 0x80;
 
-                    // Make a nice pattern on EL2889 LEDs
-                    o[0] = o[0].rotate_left(1);
-                    o[1] = o[1].rotate_right(1);
-                }
+                loop {
+                    slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
 
-                slow_cycle_time.next().await;
-            }
+                    // Increment every output byte for every slave device by one
+                    if tick.elapsed() > slow_duration {
+                        tick = Instant::now();
 
-            Result::<(), Error>::Ok(())
-        });
+                        let (_i, o) = el2889.io_raw_mut();
 
-        let fast_task = smol::spawn(async move {
-            let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
-
-            let mut fast_cycle_time = smol::Timer::interval(Duration::from_millis(5));
-
-            loop {
-                fast_outputs.tx_rx(&client).await.expect("TX/RX");
-
-                // Increment every output byte for every slave device by one
-                for mut slave in fast_outputs.iter(&client) {
-                    let (_i, o) = slave.io_raw_mut();
-
-                    for byte in o.iter_mut() {
-                        *byte = byte.wrapping_add(1);
+                        // Make a nice pattern on EL2889 LEDs
+                        o[0] = o[0].rotate_left(1);
+                        o[1] = o[1].rotate_right(1);
                     }
+
+                    slow_cycle_time.next().await;
                 }
 
-                fast_cycle_time.next().await;
-            }
+                Result::<(), Error>::Ok(())
+            }))
+            .unwrap();
+        })
+        .unwrap();
 
-            Result::<(), Error>::Ok(())
-        });
+    let fast = thread_priority::ThreadBuilder::default()
+        .name("fast-task")
+        // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
+        // Check limits with `ulimit -Hr` or `ulimit -Sr`
+        .priority(ThreadPriority::Crossplatform(
+            ThreadPriorityValue::try_from(98u8).unwrap(),
+        ))
+        // NOTE: Requires a realtime kernel
+        .policy(ThreadSchedulePolicy::Realtime(
+            RealtimeThreadSchedulePolicy::Fifo,
+        ))
+        .spawn(move |_| {
+            let mut set = CpuSet::new();
+            set.set(1);
 
-        let (slow, fast) = tokio::join!(slow_task, fast_task);
+            // Pin thread to 0th core
+            rustix::process::sched_setaffinity(None, &set).expect("set affinity");
 
-        slow.expect("slow task failed");
-        fast.expect("fast task failed");
+            let ex = LocalExecutor::new();
 
-        Ok(())
-    })
+            futures_lite::future::block_on(ex.run(async {
+                let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
+
+                let mut fast_cycle_time = smol::Timer::interval(Duration::from_millis(5));
+
+                loop {
+                    fast_outputs.tx_rx(&client).await.expect("TX/RX");
+
+                    // Increment every output byte for every slave device by one
+                    for mut slave in fast_outputs.iter(&client) {
+                        let (_i, o) = slave.io_raw_mut();
+
+                        for byte in o.iter_mut() {
+                            *byte = byte.wrapping_add(1);
+                        }
+                    }
+
+                    fast_cycle_time.next().await;
+                }
+
+                Result::<(), Error>::Ok(())
+            }))
+            .unwrap();
+        })
+        .unwrap();
+
+    slow.join().expect("slow task failed");
+    fast.join().expect("fast task failed");
+
+    Ok(())
 }
