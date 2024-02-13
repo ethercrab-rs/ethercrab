@@ -6,6 +6,12 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- [#167](https://github.com/ethercrab-rs/ethercrab/pull/167) Add support for reading/writing `f32`
+  and `f64`. Note that `f64` cannot currently be written using `sdo_write` as only 4 byte expedited
+  transfers are currently supported.
+
 ## [0.3.5] - 2023-12-22
 
 ### Changed
@@ -244,8 +250,8 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.5...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.5...HEAD
 [0.3.5]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.2...v0.3.3
