@@ -8,8 +8,8 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState,
-    Timeouts,
+    error::Error, std::tx_rx_task_io_uring, Client, ClientConfig, PduStorage, SlaveGroup,
+    SlaveGroupState, Timeouts,
 };
 use futures_lite::StreamExt;
 use rustix::process::CpuSet;
@@ -80,14 +80,16 @@ fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            let local_ex = glommio::LocalExecutorBuilder::new(glommio::Placement::Fixed(0))
-                .name("tx-rx-task")
-                .make()
-                .expect("Local TX/RX executor");
+            // let local_ex = glommio::LocalExecutorBuilder::new(glommio::Placement::Fixed(0))
+            //     .name("tx-rx-task")
+            //     .make()
+            //     .expect("Local TX/RX executor");
 
-            local_ex
-                .run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
-                .expect("TX/RX task");
+            // local_ex
+            //     .run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
+            //     .expect("TX/RX task");
+
+            tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
         })
         .unwrap();
 

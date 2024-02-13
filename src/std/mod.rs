@@ -9,3 +9,6 @@ mod windows;
 pub use self::windows::tx_rx_task;
 #[cfg(unix)]
 pub use unix::tx_rx_task;
+// io_uring is Linux-only
+#[cfg(target_os = "linux")]
+pub use unix::tx_rx_task_io_uring;
