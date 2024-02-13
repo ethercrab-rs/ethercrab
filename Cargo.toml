@@ -78,6 +78,7 @@ rustix = { version = "0.38.21", default-features = false, features = [
     "process",
 ] }
 thread-priority = "0.15.1"
+glommio = "0.8.0"
 
 [features]
 default = ["std"]
