@@ -63,9 +63,13 @@ fn main() -> Result<(), Error> {
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
+            pdu: Duration::from_millis(2000),
             ..Default::default()
         },
-        ClientConfig::default(),
+        ClientConfig {
+            dc_static_sync_iterations: 100,
+            ..Default::default()
+        },
     );
 
     thread_priority::ThreadBuilder::default()
@@ -80,16 +84,18 @@ fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            // let local_ex = glommio::LocalExecutorBuilder::new(glommio::Placement::Fixed(0))
-            //     .name("tx-rx-task")
-            //     .make()
-            //     .expect("Local TX/RX executor");
+            let local_ex = glommio::LocalExecutorBuilder::new(glommio::Placement::Fixed(0))
+                .name("tx-rx-task")
+                .make()
+                .expect("Local TX/RX executor");
 
             // local_ex
             //     .run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
             //     .expect("TX/RX task");
 
-            tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
+            local_ex
+                .run(tx_rx_task_io_uring(&interface, tx, rx))
+                .expect("TX/RX task");
         })
         .unwrap();
 
@@ -140,7 +146,7 @@ fn main() -> Result<(), Error> {
                     .await
                     .expect("PRE-OP -> OP");
 
-                let mut slow_cycle_time = smol::Timer::interval(Duration::from_millis(3));
+                let mut slow_cycle_time = smol::Timer::interval(Duration::from_micros(100));
 
                 let slow_duration = Duration::from_millis(250);
 
@@ -202,7 +208,7 @@ fn main() -> Result<(), Error> {
             futures_lite::future::block_on(ex.run(async {
                 let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
 
-                let mut fast_cycle_time = smol::Timer::interval(Duration::from_millis(5));
+                let mut fast_cycle_time = smol::Timer::interval(Duration::from_micros(100));
 
                 loop {
                     fast_outputs.tx_rx(&client).await.expect("TX/RX");
