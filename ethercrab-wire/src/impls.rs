@@ -114,7 +114,9 @@ impl EtherCrabWireRead for bool {
             });
         }
 
-        Ok(buf[0] == 1)
+        // NOTE: ETG1000.6 5.2.2 states the truthy value is 0xff and false is 0. We'll just check
+        // for greater than zero to be sure.
+        Ok(buf[0] > 0)
     }
 }
 
@@ -130,7 +132,8 @@ impl EtherCrabWireSized for bool {
 
 impl EtherCrabWireWriteSized for bool {
     fn pack(&self) -> Self::Buffer {
-        [*self as u8; 1]
+        // NOTE: ETG1000.6 5.2.2 states the truthy value is 0xff and false is 0.
+        [if *self { 0xff } else { 0x00 }; 1]
     }
 }
 
