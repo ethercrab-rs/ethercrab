@@ -143,6 +143,7 @@ pub fn tx_rx_task_io_uring<'sto>(
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
     use core::{cell::UnsafeCell, slice};
+    use std::thread::yield_now;
 
     use io_uring::opcode;
 
@@ -161,7 +162,7 @@ pub fn tx_rx_task_io_uring<'sto>(
 
     fmt::debug!("Opening {} with MTU {}, blocking", interface, mtu);
 
-    // TODO: Use PDU loop entry length. Mul by 2?
+    // TODO: Use PDU loop entry length? Mul by 2?
     let entries = 8usize;
 
     let mut ring = IoUring::new(entries as u32)?;
@@ -223,11 +224,32 @@ pub fn tx_rx_task_io_uring<'sto>(
             idx += 1;
         }
 
+        assert_eq!(
+            ring.submission().cq_overflow(),
+            false,
+            "Completion queue overflow 1"
+        );
+        assert_eq!(
+            ring.completion().overflow(),
+            0,
+            "Completion queue overflow 2"
+        );
+
+        ring.submission().sync();
         ring.submit().expect("Submit");
 
+        // FIXME: Frame futures need to have been polled at least once to register waker by this
+        // point. This delay bandaids the shit out of that problem.
+        std::thread::sleep(core::time::Duration::from_micros(100));
+
         for recv in ring.completion() {
-            dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
+            // dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
+            pdu_rx
+                .receive_frame(&buffers[recv.user_data() as usize].get_mut())
+                .expect("Receive frame");
         }
+
+        yield_now()
     }
 }
 
