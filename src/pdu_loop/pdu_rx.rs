@@ -45,6 +45,8 @@ impl<'sto> PduRx<'sto> {
         // filter.
         if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == self.source_mac
         {
+            fmt::trace!("Ignore frame");
+
             return Ok(());
         }
 

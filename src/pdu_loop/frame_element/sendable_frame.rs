@@ -1,6 +1,7 @@
 use super::FrameBox;
 use crate::{
     error::{Error, PduError},
+    fmt,
     generate::{skip, write_packed},
     pdu_loop::{
         frame_element::{FrameElement, FrameState},
@@ -63,6 +64,8 @@ impl<'sto> SendableFrame<'sto> {
 
     /// The frame has been sent by the network driver.
     pub(crate) fn mark_sent(self) {
+        fmt::trace!("Frame #{} is sent", unsafe { self.inner.frame() }.index);
+
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::Sent);
         }

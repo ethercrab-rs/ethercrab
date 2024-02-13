@@ -161,7 +161,8 @@ impl<const N: usize> FrameElement<N> {
         Self::swap_state(this, FrameState::Sent, FrameState::RxBusy)
             .map_err(|actual_state| {
                 fmt::error!(
-                    "Failed to claim receiving frame: expected state {:?}, but got {:?}",
+                    "Failed to claim receiving frame #{}: expected state {:?}, but got {:?}",
+                    (*addr_of_mut!((*this.as_ptr()).frame.index)),
                     FrameState::Sent,
                     actual_state
                 );
@@ -196,7 +197,11 @@ impl<'sto> FrameBox<'sto> {
     }
 
     unsafe fn wake(&self) {
-        (*addr_of!((*self.frame.as_ptr()).frame.waker)).wake()
+        if let Some(waker) = (*addr_of!((*self.frame.as_ptr()).frame.waker)).take() {
+            waker.wake()
+        } else {
+            fmt::error!("No waker for frame #{}", self.frame().index);
+        }
     }
 
     unsafe fn frame(&self) -> &PduFrame {
