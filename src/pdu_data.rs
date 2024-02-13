@@ -88,6 +88,10 @@ impl_pdudata!(i64);
 impl_float_pdudata!(f32, 4);
 impl_float_pdudata!(f64, 8);
 
+// ETG1000.6 5.2.2 states the truthy value is 0xff and false is 0
+static BOOL_FALSE: &[u8] = &[0x00u8];
+static BOOL_TRUE: &[u8] = &[0xffu8];
+
 impl PduRead for bool {
     const LEN: u16 = 1;
 
@@ -100,9 +104,10 @@ impl PduRead for bool {
 
 impl PduData for bool {
     fn as_slice(&self) -> &[u8] {
-        unsafe {
-            #[allow(trivial_casts)]
-            core::slice::from_raw_parts(self as *const _ as *const u8, 1)
+        if *self {
+            BOOL_TRUE
+        } else {
+            BOOL_FALSE
         }
     }
 }
