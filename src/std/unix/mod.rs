@@ -16,8 +16,13 @@ use crate::{
     pdu_loop::{PduRx, PduTx},
 };
 use async_io::Async;
-use core::{future::Future, pin::Pin, task::Poll};
+use core::{
+    future::{poll_fn, Future},
+    pin::Pin,
+    task::Poll,
+};
 use futures_lite::{AsyncRead, AsyncWrite};
+use std::io::{Read, Write};
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
@@ -103,7 +108,7 @@ impl Future for TxRxFut<'_> {
 /// Spawn a TX and RX task.
 pub fn tx_rx_task<'sto>(
     interface: &str,
-    pdu_tx: PduTx<'sto>,
+    mut pdu_tx: PduTx<'sto>,
     #[allow(unused_mut)] mut pdu_rx: PduRx<'sto>,
 ) -> Result<impl Future<Output = Result<(), Error>> + 'sto, std::io::Error> {
     let mut socket = RawSocketDesc::new(interface)?;
@@ -121,14 +126,72 @@ pub fn tx_rx_task<'sto>(
 
     fmt::debug!("Opening {} with MTU {}", interface, mtu);
 
-    let async_socket = async_io::Async::new(socket)?;
+    // let async_socket = async_io::Async::new(socket)?;
 
-    let task = TxRxFut {
-        socket: async_socket,
-        mtu,
-        tx: pdu_tx,
-        rx: pdu_rx,
-    };
+    // let task = TxRxFut {
+    //     socket: async_socket,
+    //     mtu,
+    //     tx: pdu_tx,
+    //     rx: pdu_rx,
+    // };
+
+    // Ok(task)
+
+    let mut buf = vec![0u8; mtu];
+
+    let task = poll_fn(move |cx| {
+        // Write any waiting packets
+        while let Some(frame) = pdu_tx.next_sendable_frame() {
+            let res = frame.send_blocking(&mut buf, |data| match socket.write(data) {
+                Ok(bytes_written) => {
+                    if bytes_written != data.len() {
+                        fmt::error!("Only wrote {} of {} bytes", bytes_written, data.len());
+
+                        Err(Error::PartialSend {
+                            len: data.len(),
+                            sent: bytes_written,
+                        })
+                    } else {
+                        Ok(bytes_written)
+                    }
+                }
+                Err(e) => {
+                    fmt::error!("Send PDU failed: {}", e);
+
+                    Err(Error::SendFrame)
+                }
+            });
+
+            if let Err(e) = res {
+                fmt::error!("Send PDU failed: {}", e);
+
+                return Poll::Ready(Err(e));
+            }
+        }
+
+        // Read any incoming packets
+        match socket.read(&mut buf) {
+            Ok(n) => {
+                let packet = &buf[0..n];
+
+                if n == 0 {
+                    fmt::warn!("Received zero bytes");
+                }
+
+                if let Err(e) = pdu_rx.receive_frame(packet) {
+                    fmt::error!("Failed to receive frame: {}", e);
+
+                    return Poll::Ready(Err(Error::ReceiveFrame));
+                }
+            }
+            Err(e) => fmt::error!("Receive PDU failed: {}", e),
+        }
+
+        // Rewake asap
+        cx.waker().wake_by_ref();
+
+        Poll::<Result<(), Error>>::Pending
+    });
 
     Ok(task)
 }

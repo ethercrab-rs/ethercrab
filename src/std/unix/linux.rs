@@ -144,53 +144,53 @@ impl io::Write for RawSocketDesc {
     }
 }
 
-impl AsyncRead for RawSocketDesc {
-    fn poll_read(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
-        match <Self as io::Read>::read(self.get_mut(), buf) {
-            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
-                cx.waker().wake_by_ref();
+// impl AsyncRead for RawSocketDesc {
+//     fn poll_read(
+//         self: core::pin::Pin<&mut Self>,
+//         cx: &mut core::task::Context<'_>,
+//         buf: &mut [u8],
+//     ) -> Poll<io::Result<usize>> {
+//         match <Self as io::Read>::read(self.get_mut(), buf) {
+//             Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+//                 cx.waker().wake_by_ref();
 
-                Poll::Pending
-            }
-            res => Poll::Ready(res),
-        }
-    }
-}
+//                 Poll::Pending
+//             }
+//             res => Poll::Ready(res),
+//         }
+//     }
+// }
 
-impl AsyncWrite for RawSocketDesc {
-    fn poll_write(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        match <Self as io::Write>::write(self.get_mut(), buf) {
-            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
-                cx.waker().wake_by_ref();
+// impl AsyncWrite for RawSocketDesc {
+//     fn poll_write(
+//         self: core::pin::Pin<&mut Self>,
+//         cx: &mut core::task::Context<'_>,
+//         buf: &[u8],
+//     ) -> Poll<io::Result<usize>> {
+//         match <Self as io::Write>::write(self.get_mut(), buf) {
+//             Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+//                 cx.waker().wake_by_ref();
 
-                Poll::Pending
-            }
-            res => Poll::Ready(res),
-        }
-    }
+//                 Poll::Pending
+//             }
+//             res => Poll::Ready(res),
+//         }
+//     }
 
-    fn poll_flush(
-        self: core::pin::Pin<&mut Self>,
-        _cx: &mut core::task::Context<'_>,
-    ) -> Poll<io::Result<()>> {
-        todo!()
-    }
+//     fn poll_flush(
+//         self: core::pin::Pin<&mut Self>,
+//         _cx: &mut core::task::Context<'_>,
+//     ) -> Poll<io::Result<()>> {
+//         todo!()
+//     }
 
-    fn poll_close(
-        self: core::pin::Pin<&mut Self>,
-        _cx: &mut core::task::Context<'_>,
-    ) -> Poll<io::Result<()>> {
-        todo!()
-    }
-}
+//     fn poll_close(
+//         self: core::pin::Pin<&mut Self>,
+//         _cx: &mut core::task::Context<'_>,
+//     ) -> Poll<io::Result<()>> {
+//         todo!()
+//     }
+// }
 
 fn ifreq_ioctl(
     lower: libc::c_int,
