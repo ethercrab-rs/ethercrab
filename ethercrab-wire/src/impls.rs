@@ -95,7 +95,7 @@ impl_primitive_wire_field!(f64, 8);
 
 impl EtherCrabWireWrite for bool {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        buf[0] = *self as u8;
+        buf[0] = if *self { 0xff } else { 0x00 };
 
         &buf[0..1]
     }
@@ -297,5 +297,22 @@ impl EtherCrabWireRead for String {
         core::str::from_utf8(buf)
             .map_err(|_| WireError::InvalidUtf8)
             .map(String::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bool_pack_unpack() {
+        assert_eq!(true.pack(), [0xff]);
+        assert_eq!(false.pack(), [0x00]);
+
+        let mut sl1 = [0u8; 8];
+        let mut sl2 = [0u8; 8];
+
+        assert_eq!(true.pack_to_slice_unchecked(&mut sl1), &[0xffu8]);
+        assert_eq!(false.pack_to_slice_unchecked(&mut sl2), &[0x00u8]);
     }
 }
