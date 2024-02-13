@@ -137,26 +137,16 @@ pub fn tx_rx_task<'sto>(
 
 /// Create a blocking TX/RX loop using `io_uring`.
 #[cfg(target_os = "linux")]
-pub fn tx_rx_task_io_uring<'sto>(
+pub async fn tx_rx_task_io_uring<'sto>(
     interface: &str,
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
-    use core::{cell::UnsafeCell, slice};
+    use core::{cell::UnsafeCell, future::poll_fn, slice};
+    use io_uring::opcode;
     use std::thread::yield_now;
 
-    use io_uring::opcode;
-
     let mut socket = RawSocketDesc::new(interface)?;
-
-    // macOS forcibly sets the source address to the NIC's MAC, so instead of using `MASTER_ADDR`
-    // for filtering returned packets, we must set the address to compare to the NIC MAC.
-    #[cfg(all(not(target_os = "linux"), unix))]
-    if let Some(mac) = socket.mac().ok().flatten() {
-        fmt::debug!("Setting source MAC to {}", mac);
-
-        pdu_rx.set_source_mac(mac);
-    }
 
     let mtu = socket.interface_mtu()?;
 
@@ -179,7 +169,88 @@ pub fn tx_rx_task_io_uring<'sto>(
 
     let mut idx = 0usize;
 
-    loop {
+    // loop {
+    //     while let Some(frame) = pdu_tx.next_sendable_frame() {
+    //         let mut write_buf = unsafe {
+    //             let entry = &mut *buffers[idx % entries].get();
+
+    //             slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
+    //         };
+
+    //         frame
+    //             .send_blocking(&mut write_buf, |data: &[u8]| {
+    //                 let e_send = opcode::Write::new(
+    //                     io_uring::types::Fd(socket.as_raw_fd()),
+    //                     data.as_ptr(),
+    //                     data.len() as _,
+    //                 )
+    //                 .build()
+    //                 .user_data((idx % entries) as u64);
+
+    //                 idx += 1;
+
+    //                 let read_buf = unsafe {
+    //                     let entry = &mut *buffers[idx % entries].get();
+
+    //                     slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
+    //                 };
+
+    //                 let e_receive = opcode::Read::new(
+    //                     io_uring::types::Fd(socket.as_raw_fd()),
+    //                     read_buf.as_mut_ptr(),
+    //                     read_buf.len() as _,
+    //                 )
+    //                 .build()
+    //                 .user_data((idx % entries) as u64);
+
+    //                 unsafe { ring.submission().push(&e_send) }.expect("Send queue full");
+    //                 unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
+
+    //                 Ok(data.len())
+    //             })
+    //             .expect("Send blocking");
+
+    //         // TODO: Poll future at least once so it sets its waker
+
+    //         idx += 1;
+    //     }
+
+    //     assert_eq!(
+    //         ring.submission().cq_overflow(),
+    //         false,
+    //         "Completion queue overflow 1"
+    //     );
+    //     assert_eq!(
+    //         ring.completion().overflow(),
+    //         0,
+    //         "Completion queue overflow 2"
+    //     );
+
+    //     ring.submit().expect("Submit");
+
+    //     // FIXME: Frame futures need to have been polled at least once to register waker by this
+    //     // point. This delay bandaids the shit out of that problem.
+    //     // std::thread::sleep(core::time::Duration::from_micros(200));
+    //     yield_now();
+
+    //     for recv in ring.completion() {
+    //         // TODO: If future doesn't have a waker yet, keep it and retry the wake in the next iteration. Hmm.
+
+    //         // dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
+    //         pdu_rx
+    //             .receive_frame(&buffers[recv.user_data() as usize].get_mut())
+    //             .expect("Receive frame");
+    //     }
+
+    //     yield_now();
+    // }
+
+    poll_fn(|ctx| {
+        // Re-register waker to make sure this future is polled again
+        pdu_tx.replace_waker(ctx.waker());
+
+        let mut sent = 0;
+
         while let Some(frame) = pdu_tx.next_sendable_frame() {
             let mut write_buf = unsafe {
                 let entry = &mut *buffers[idx % entries].get();
@@ -199,29 +270,30 @@ pub fn tx_rx_task_io_uring<'sto>(
 
                     idx += 1;
 
-                    // let read_buf = &mut buffers[idx % entries];
-                    let read_buf = unsafe {
-                        let entry = &mut *buffers[idx % entries].get();
-
-                        slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
-                    };
-
-                    let e_receive = opcode::Read::new(
-                        io_uring::types::Fd(socket.as_raw_fd()),
-                        read_buf.as_mut_ptr(),
-                        read_buf.len() as _,
-                    )
-                    .build()
-                    .user_data((idx % entries) as u64);
-
                     unsafe { ring.submission().push(&e_send) }.expect("Send queue full");
-                    unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
 
                     Ok(data.len())
                 })
                 .expect("Send blocking");
 
+            let read_buf = unsafe {
+                let entry = &mut *buffers[idx % entries].get();
+
+                slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
+            };
+
+            let e_receive = opcode::Read::new(
+                io_uring::types::Fd(socket.as_raw_fd()),
+                read_buf.as_mut_ptr(),
+                read_buf.len() as _,
+            )
+            .build()
+            .user_data((idx % entries) as u64);
+
+            unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
+
             idx += 1;
+            sent += 1;
         }
 
         assert_eq!(
@@ -235,22 +307,29 @@ pub fn tx_rx_task_io_uring<'sto>(
             "Completion queue overflow 2"
         );
 
-        ring.submission().sync();
-        ring.submit().expect("Submit");
+        fmt::trace!("Sent {} frames", sent);
 
-        // FIXME: Frame futures need to have been polled at least once to register waker by this
-        // point. This delay bandaids the shit out of that problem.
-        std::thread::sleep(core::time::Duration::from_micros(100));
+        // Wait for two responses; one is the packet we just sent which will be ignored, the other
+        // is the response from said packet.
+        ring.submit_and_wait(sent * 2).expect("Submit");
+
+        fmt::trace!(
+            "Submitted, waiting for {} completions",
+            ring.completion().len()
+        );
 
         for recv in ring.completion() {
+            let foo = buffers[recv.user_data() as usize].get_mut();
             // dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
+            fmt::trace!("Raw frame #{}, addr start {:02x}", foo[0x11], foo[6]);
             pdu_rx
                 .receive_frame(&buffers[recv.user_data() as usize].get_mut())
                 .expect("Receive frame");
         }
 
-        yield_now()
-    }
+        Poll::Pending
+    })
+    .await
 }
 
 // Unix only
