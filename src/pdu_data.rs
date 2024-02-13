@@ -88,6 +88,25 @@ impl_pdudata!(i64);
 impl_float_pdudata!(f32, 4);
 impl_float_pdudata!(f64, 8);
 
+impl PduRead for bool {
+    const LEN: u16 = 1;
+
+    type Error = ();
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        Ok(*slice.get(0).ok_or(())? > 0)
+    }
+}
+
+impl PduData for bool {
+    fn as_slice(&self) -> &[u8] {
+        unsafe {
+            #[allow(trivial_casts)]
+            core::slice::from_raw_parts(self as *const _ as *const u8, 1)
+        }
+    }
+}
+
 impl PduRead for () {
     const LEN: u16 = 0;
 
