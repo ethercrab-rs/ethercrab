@@ -8,8 +8,9 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task_io_uring, Client, ClientConfig, PduStorage, SlaveGroup,
-    SlaveGroupState, Timeouts,
+    error::Error,
+    std::{tx_rx_task, tx_rx_task_io_uring},
+    Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState, Timeouts,
 };
 use futures_lite::StreamExt;
 use rustix::process::CpuSet;
@@ -184,6 +185,23 @@ fn main() -> Result<(), Error> {
             .unwrap();
         })
         .unwrap();
+
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    // TODO: This seems to cause deadlocks(?) with the task above. Maybe the io_uring future needs atomic counters? Answer: No!
+    // It is not broken when using the non-io_uring driver
+    //
+    //
+    //
+    //
+    //
+    //
+    //
 
     let fast = thread_priority::ThreadBuilder::default()
         .name("fast-task")

@@ -142,7 +142,12 @@ pub async fn tx_rx_task_io_uring<'sto>(
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
-    use core::{cell::UnsafeCell, future::poll_fn, slice};
+    use core::{
+        cell::UnsafeCell,
+        future::poll_fn,
+        slice,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
     use io_uring::opcode;
     use std::thread::yield_now;
 
@@ -167,7 +172,7 @@ pub async fn tx_rx_task_io_uring<'sto>(
         buffers
     };
 
-    let mut idx = 0usize;
+    let mut idx = AtomicUsize::new(0);
 
     // loop {
     //     while let Some(frame) = pdu_tx.next_sendable_frame() {
@@ -252,8 +257,10 @@ pub async fn tx_rx_task_io_uring<'sto>(
         let mut sent = 0;
 
         while let Some(frame) = pdu_tx.next_sendable_frame() {
+            let this_idx = idx.fetch_add(1, Ordering::Relaxed);
+
             let mut write_buf = unsafe {
-                let entry = &mut *buffers[idx % entries].get();
+                let entry = &mut *buffers[this_idx % entries].get();
 
                 slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
             };
@@ -266,9 +273,7 @@ pub async fn tx_rx_task_io_uring<'sto>(
                         data.len() as _,
                     )
                     .build()
-                    .user_data((idx % entries) as u64);
-
-                    idx += 1;
+                    .user_data((this_idx % entries) as u64);
 
                     unsafe { ring.submission().push(&e_send) }.expect("Send queue full");
 
@@ -276,8 +281,10 @@ pub async fn tx_rx_task_io_uring<'sto>(
                 })
                 .expect("Send blocking");
 
+            let this_idx = idx.fetch_add(1, Ordering::Relaxed);
+
             let read_buf = unsafe {
-                let entry = &mut *buffers[idx % entries].get();
+                let entry = &mut *buffers[this_idx % entries].get();
 
                 slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
             };
@@ -288,11 +295,10 @@ pub async fn tx_rx_task_io_uring<'sto>(
                 read_buf.len() as _,
             )
             .build()
-            .user_data((idx % entries) as u64);
+            .user_data((this_idx % entries) as u64);
 
             unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
 
-            idx += 1;
             sent += 1;
         }
 
