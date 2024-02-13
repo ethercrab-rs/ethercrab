@@ -90,6 +90,9 @@ impl_primitive_wire_field!(i16, 2);
 impl_primitive_wire_field!(i32, 4);
 impl_primitive_wire_field!(i64, 8);
 
+impl_primitive_wire_field!(f32, 4);
+impl_primitive_wire_field!(f64, 8);
+
 impl EtherCrabWireWrite for bool {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         buf[0] = *self as u8;
