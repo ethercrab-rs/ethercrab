@@ -147,6 +147,7 @@ fn ifreq_for(name: &str) -> ifreq {
 
 #[repr(C)]
 #[derive(Debug)]
+#[allow(non_camel_case_types)]
 struct ifreq {
     ifr_name: [libc::c_char; libc::IF_NAMESIZE],
     ifr_data: libc::c_int, /* ifr_ifindex or ifr_mtu */
