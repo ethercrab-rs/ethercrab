@@ -6,6 +6,8 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.3.6] - 2024-02-14
+
 ### Added
 
 - [#167](https://github.com/ethercrab-rs/ethercrab/pull/167) Add support for reading/writing `f32`,
@@ -250,8 +252,9 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.5...HEAD
+[0.3.6]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.2...v0.3.3
