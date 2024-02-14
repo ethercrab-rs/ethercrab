@@ -51,6 +51,31 @@ macro_rules! impl_pdudata {
     };
 }
 
+macro_rules! impl_float_pdudata {
+    ($ty:ty, $size:expr) => {
+        impl PduRead for $ty {
+            const LEN: u16 = $size;
+            type Error = TryFromSliceError;
+
+            fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+                Ok(Self::from_le_bytes(slice.try_into()?))
+            }
+        }
+
+        impl PduData for $ty {
+            fn as_slice(&self) -> &[u8] {
+                unsafe {
+                    #[allow(trivial_casts)]
+                    core::slice::from_raw_parts(self as *const _ as *const u8, $size)
+                }
+
+                // Above is equivalent to the following, but without the dependency
+                // safe_transmute::to_bytes::transmute_one_to_bytes(self)
+            }
+        }
+    };
+}
+
 impl_pdudata!(u8);
 impl_pdudata!(u16);
 impl_pdudata!(u32);
@@ -59,6 +84,33 @@ impl_pdudata!(i8);
 impl_pdudata!(i16);
 impl_pdudata!(i32);
 impl_pdudata!(i64);
+
+impl_float_pdudata!(f32, 4);
+impl_float_pdudata!(f64, 8);
+
+// ETG1000.6 5.2.2 states the truthy value is 0xff and false is 0
+static BOOL_FALSE: &[u8] = &[0x00u8];
+static BOOL_TRUE: &[u8] = &[0xffu8];
+
+impl PduRead for bool {
+    const LEN: u16 = 1;
+
+    type Error = ();
+
+    fn try_from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        Ok(*slice.get(0).ok_or(())? > 0)
+    }
+}
+
+impl PduData for bool {
+    fn as_slice(&self) -> &[u8] {
+        if *self {
+            BOOL_TRUE
+        } else {
+            BOOL_FALSE
+        }
+    }
+}
 
 impl PduRead for () {
     const LEN: u16 = 0;
