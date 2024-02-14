@@ -305,7 +305,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bool_pack_unpack() {
+    fn bool_pack() {
         assert_eq!(true.pack(), [0xff]);
         assert_eq!(false.pack(), [0x00]);
 
@@ -314,5 +314,14 @@ mod tests {
 
         assert_eq!(true.pack_to_slice_unchecked(&mut sl1), &[0xffu8]);
         assert_eq!(false.pack_to_slice_unchecked(&mut sl2), &[0x00u8]);
+    }
+
+    #[test]
+    fn bool_unpack() {
+        assert_eq!(bool::unpack_from_slice(&[0xff]), Ok(true));
+        assert_eq!(bool::unpack_from_slice(&[0x00]), Ok(false));
+
+        // In case there are noncompliant subdevices
+        assert_eq!(bool::unpack_from_slice(&[0x01]), Ok(true));
     }
 }
