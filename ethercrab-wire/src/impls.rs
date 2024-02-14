@@ -95,7 +95,7 @@ impl_primitive_wire_field!(f64, 8);
 
 impl EtherCrabWireWrite for bool {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        buf[0] = *self as u8;
+        buf[0] = if *self { 0xff } else { 0x00 };
 
         &buf[0..1]
     }
@@ -114,7 +114,9 @@ impl EtherCrabWireRead for bool {
             });
         }
 
-        Ok(buf[0] == 1)
+        // NOTE: ETG1000.6 5.2.2 states the truthy value is 0xff and false is 0. We'll just check
+        // for greater than zero to be sure.
+        Ok(buf[0] > 0)
     }
 }
 
@@ -130,7 +132,8 @@ impl EtherCrabWireSized for bool {
 
 impl EtherCrabWireWriteSized for bool {
     fn pack(&self) -> Self::Buffer {
-        [*self as u8; 1]
+        // NOTE: ETG1000.6 5.2.2 states the truthy value is 0xff and false is 0.
+        [if *self { 0xff } else { 0x00 }; 1]
     }
 }
 
@@ -294,5 +297,31 @@ impl EtherCrabWireRead for String {
         core::str::from_utf8(buf)
             .map_err(|_| WireError::InvalidUtf8)
             .map(String::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bool_pack() {
+        assert_eq!(true.pack(), [0xff]);
+        assert_eq!(false.pack(), [0x00]);
+
+        let mut sl1 = [0u8; 8];
+        let mut sl2 = [0u8; 8];
+
+        assert_eq!(true.pack_to_slice_unchecked(&mut sl1), &[0xffu8]);
+        assert_eq!(false.pack_to_slice_unchecked(&mut sl2), &[0x00u8]);
+    }
+
+    #[test]
+    fn bool_unpack() {
+        assert_eq!(bool::unpack_from_slice(&[0xff]), Ok(true));
+        assert_eq!(bool::unpack_from_slice(&[0x00]), Ok(false));
+
+        // In case there are noncompliant subdevices
+        assert_eq!(bool::unpack_from_slice(&[0x01]), Ok(true));
     }
 }
