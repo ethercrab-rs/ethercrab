@@ -136,20 +136,18 @@ pub fn tx_rx_task<'sto>(
 }
 
 /// Create a blocking TX/RX loop using `io_uring`.
+///
+/// This function is only available on `linux` targets as it requires `io_uring` support. Older
+/// kernels may not support `io_uring`.
 #[cfg(target_os = "linux")]
-pub async fn tx_rx_task_io_uring<'sto>(
+pub fn tx_rx_task_io_uring<'sto>(
     interface: &str,
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
-    use core::{
-        cell::UnsafeCell,
-        future::poll_fn,
-        slice,
-        sync::atomic::{AtomicUsize, Ordering},
-    };
+    use core::{cell::UnsafeCell, future::poll_fn, slice};
     use io_uring::opcode;
-    use std::thread::yield_now;
+    use pollster::FutureExt;
 
     let mut socket = RawSocketDesc::new(interface)?;
 
@@ -157,8 +155,7 @@ pub async fn tx_rx_task_io_uring<'sto>(
 
     fmt::debug!("Opening {} with MTU {}, blocking", interface, mtu);
 
-    // TODO: Use PDU loop entry length? Mul by 2?
-    let entries = 8usize;
+    let entries = 256;
 
     let mut ring = IoUring::new(entries as u32)?;
 
@@ -173,82 +170,6 @@ pub async fn tx_rx_task_io_uring<'sto>(
     };
 
     let mut idx = 0usize;
-
-    // loop {
-    //     while let Some(frame) = pdu_tx.next_sendable_frame() {
-    //         let mut write_buf = unsafe {
-    //             let entry = &mut *buffers[idx % entries].get();
-
-    //             slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
-    //         };
-
-    //         frame
-    //             .send_blocking(&mut write_buf, |data: &[u8]| {
-    //                 let e_send = opcode::Write::new(
-    //                     io_uring::types::Fd(socket.as_raw_fd()),
-    //                     data.as_ptr(),
-    //                     data.len() as _,
-    //                 )
-    //                 .build()
-    //                 .user_data((idx % entries) as u64);
-
-    //                 idx += 1;
-
-    //                 let read_buf = unsafe {
-    //                     let entry = &mut *buffers[idx % entries].get();
-
-    //                     slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
-    //                 };
-
-    //                 let e_receive = opcode::Read::new(
-    //                     io_uring::types::Fd(socket.as_raw_fd()),
-    //                     read_buf.as_mut_ptr(),
-    //                     read_buf.len() as _,
-    //                 )
-    //                 .build()
-    //                 .user_data((idx % entries) as u64);
-
-    //                 unsafe { ring.submission().push(&e_send) }.expect("Send queue full");
-    //                 unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
-
-    //                 Ok(data.len())
-    //             })
-    //             .expect("Send blocking");
-
-    //         // TODO: Poll future at least once so it sets its waker
-
-    //         idx += 1;
-    //     }
-
-    //     assert_eq!(
-    //         ring.submission().cq_overflow(),
-    //         false,
-    //         "Completion queue overflow 1"
-    //     );
-    //     assert_eq!(
-    //         ring.completion().overflow(),
-    //         0,
-    //         "Completion queue overflow 2"
-    //     );
-
-    //     ring.submit().expect("Submit");
-
-    //     // FIXME: Frame futures need to have been polled at least once to register waker by this
-    //     // point. This delay bandaids the shit out of that problem.
-    //     // std::thread::sleep(core::time::Duration::from_micros(200));
-    //     yield_now();
-
-    //     for recv in ring.completion() {
-    //         // TODO: If future doesn't have a waker yet, keep it and retry the wake in the next iteration. Hmm.
-
-    //         // dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
-    //         pdu_rx
-    //             .receive_frame(&buffers[recv.user_data() as usize].get_mut())
-    //             .expect("Receive frame");
-    //     }
-
-    //     yield_now();
-    // }
 
     poll_fn(|ctx| {
         // Re-register waker to make sure this future is polled again
@@ -295,12 +216,14 @@ pub async fn tx_rx_task_io_uring<'sto>(
                 read_buf.len() as _,
             )
             .build()
-            .user_data((this_idx % entries) as u64);
+            .user_data((idx % entries) as u64);
 
             unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
 
             sent += 1;
         }
+
+        assert_eq!(ring.submission().is_full(), false, "Subqueue full");
 
         assert_eq!(
             ring.submission().cq_overflow(),
@@ -324,18 +247,34 @@ pub async fn tx_rx_task_io_uring<'sto>(
             ring.completion().len()
         );
 
+        assert_eq!(ring.completion().is_full(), false, "Completion queue full");
+
         for recv in ring.completion() {
             let foo = buffers[recv.user_data() as usize].get_mut();
             // dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
-            fmt::trace!("Raw frame #{}, addr start {:02x}", foo[0x11], foo[6]);
+            fmt::trace!(
+                "Raw frame #{:02} buffer idx {} {}",
+                foo[0x11],
+                recv.user_data() as usize,
+                if foo[6] == 0x10 { "---->" } else { "<--" }
+            );
+
             pdu_rx
                 .receive_frame(&buffers[recv.user_data() as usize].get_mut())
                 .expect("Receive frame");
         }
 
+        // Flush completed entries
+        ring.completion().sync();
+
+        assert_eq!(ring.submission().dropped(), 0);
+        assert_eq!(ring.completion().overflow(), 0);
+        assert_eq!(ring.submission().cq_overflow(), false);
+
         Poll::Pending
     })
-    .await
+    // SAFETY: Future is pinned on the stack inside pollster::block_on().
+    .block_on()
 }
 
 // Unix only

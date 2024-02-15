@@ -85,18 +85,16 @@ fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            let local_ex = glommio::LocalExecutorBuilder::new(glommio::Placement::Fixed(0))
-                .name("tx-rx-task")
-                .make()
-                .expect("Local TX/RX executor");
+            // let local_ex = glommio::LocalExecutorBuilder::new(glommio::Placement::Fixed(0))
+            //     .name("tx-rx-task")
+            //     .make()
+            //     .expect("Local TX/RX executor");
 
             // local_ex
             //     .run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
             //     .expect("TX/RX task");
 
-            local_ex
-                .run(tx_rx_task_io_uring(&interface, tx, rx))
-                .expect("TX/RX task");
+            tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
         })
         .unwrap();
 
@@ -185,23 +183,6 @@ fn main() -> Result<(), Error> {
             .unwrap();
         })
         .unwrap();
-
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    // TODO: This seems to cause deadlocks(?) with the task above. Maybe the io_uring future needs atomic counters? Answer: No!
-    // It is not broken when using the non-io_uring driver
-    //
-    //
-    //
-    //
-    //
-    //
-    //
 
     let fast = thread_priority::ThreadBuilder::default()
         .name("fast-task")
