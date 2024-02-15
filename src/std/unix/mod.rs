@@ -172,7 +172,7 @@ pub async fn tx_rx_task_io_uring<'sto>(
         buffers
     };
 
-    let mut idx = AtomicUsize::new(0);
+    let mut idx = 0usize;
 
     // loop {
     //     while let Some(frame) = pdu_tx.next_sendable_frame() {
@@ -257,10 +257,10 @@ pub async fn tx_rx_task_io_uring<'sto>(
         let mut sent = 0;
 
         while let Some(frame) = pdu_tx.next_sendable_frame() {
-            let this_idx = idx.fetch_add(1, Ordering::Relaxed);
+            idx = idx.wrapping_add(1);
 
             let mut write_buf = unsafe {
-                let entry = &mut *buffers[this_idx % entries].get();
+                let entry = &mut *buffers[idx % entries].get();
 
                 slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
             };
@@ -273,7 +273,7 @@ pub async fn tx_rx_task_io_uring<'sto>(
                         data.len() as _,
                     )
                     .build()
-                    .user_data((this_idx % entries) as u64);
+                    .user_data((idx % entries) as u64);
 
                     unsafe { ring.submission().push(&e_send) }.expect("Send queue full");
 
@@ -281,10 +281,10 @@ pub async fn tx_rx_task_io_uring<'sto>(
                 })
                 .expect("Send blocking");
 
-            let this_idx = idx.fetch_add(1, Ordering::Relaxed);
+            idx = idx.wrapping_add(1);
 
             let read_buf = unsafe {
-                let entry = &mut *buffers[this_idx % entries].get();
+                let entry = &mut *buffers[idx % entries].get();
 
                 slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
             };
