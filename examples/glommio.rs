@@ -85,15 +85,30 @@ fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            // let local_ex = glommio::LocalExecutorBuilder::new(glommio::Placement::Fixed(0))
-            //     .name("tx-rx-task")
-            //     .make()
-            //     .expect("Local TX/RX executor");
+            // // Glommio with smol async-io thread (because `tx_rx_task` uses smol internally because
+            // // of `struct Async`)
+            // {
+            //     let local_ex = glommio::LocalExecutorBuilder::new(glommio::Placement::Fixed(0))
+            //         .name("tx-rx-task")
+            //         .make()
+            //         .expect("Local TX/RX executor");
 
-            // local_ex
-            //     .run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
+            //     local_ex
+            //         .run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
+            //         .expect("TX/RX task");
+            // }
+
+            // // Good ol' smol
+            // {
+            //     let local_ex = smol::LocalExecutor::new();
+
+            //     futures_lite::future::block_on(
+            //         local_ex.run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")),
+            //     )
             //     .expect("TX/RX task");
+            // }
 
+            // Blocking io_uring
             tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
         })
         .unwrap();
