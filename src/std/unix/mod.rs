@@ -284,7 +284,7 @@ pub fn tx_rx_task_io_uring<'sto>(
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
-    use core::task::Waker;
+    use core::{task::Waker, time::Duration};
     use heapless::{Entry, FnvIndexMap};
     use io_uring::opcode;
     use std::{collections::VecDeque, io, time::Instant};
@@ -295,7 +295,11 @@ pub fn tx_rx_task_io_uring<'sto>(
 
     let mtu = socket.interface_mtu()?;
 
-    fmt::debug!("Opening {} with MTU {}, blocking", interface, mtu);
+    fmt::debug!(
+        "Opening {} with MTU {}, blocking, using io_uring",
+        interface,
+        mtu
+    );
 
     // MTU is payload size. We need to add the layer 2 header which is 18 bytes.
     let mtu = mtu + 18;
@@ -320,14 +324,36 @@ pub fn tx_rx_task_io_uring<'sto>(
     let mut high_water_mark = 0;
     let mut retries_high_water_mark = 0;
 
-    let signal = Arc::new(AtomicSignal::new());
+    let signal = Arc::new(ParkSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
 
     loop {
-        // Register our waker so other stuff can notify us that PDU frames are ready to send.
         pdu_tx.replace_waker(&waker);
 
-        signal.reset();
+        while let Some(mut retry) = retries.pop_front() {
+            match pdu_rx.receive_frame(&retry.frame) {
+                Ok(_) => (),
+                Err(Error::Pdu(PduError::NoWaker)) => {
+                    // If this happens too much at startup, there's a chance the TX/RX thread is
+                    // taking too long to start. Adding a delay between the TX/RX thread spawn and
+                    // the rest of the app may help.
+                    fmt::debug!(
+                        "No waker for frame #{} receive retry attempt {}, requeueing to try again later",
+                        retry.index,
+                        retry.retry_count
+                    );
+
+                    retry.retry_count += 1;
+
+                    retries.push_back(retry);
+
+                    retries_high_water_mark = retries_high_water_mark.max(retries.len());
+                }
+                Err(e) => return Err(io::Error::other(e)),
+            }
+        }
+
+        let mut sent = 0;
 
         while let Some(frame) = pdu_tx.next_sendable_frame() {
             let idx = frame.index();
@@ -379,7 +405,16 @@ pub fn tx_rx_task_io_uring<'sto>(
             high_water_mark = high_water_mark.max(bufs.len());
 
             unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
+
+            sent += 1;
         }
+
+        // This doesn't fix the "blinking" issue
+        // // Something took the waker and woke us up. Replace it.
+        // if sent > 0 {
+        //     // Register our waker so other stuff can notify us that PDU frames are ready to send.
+        //     pdu_tx.replace_waker(&waker);
+        // }
 
         ring.submission().sync();
         ring.submit()?;
@@ -388,29 +423,6 @@ pub fn tx_rx_task_io_uring<'sto>(
             "Submitted, waiting for {} completions",
             ring.completion().len()
         );
-
-        while let Some(mut retry) = retries.pop_front() {
-            match pdu_rx.receive_frame(&retry.frame) {
-                Ok(_) => (),
-                Err(Error::Pdu(PduError::NoWaker)) => {
-                    // If this happens too much at startup, there's a chance the TX/RX thread is
-                    // taking too long to start. Adding a delay between the TX/RX thread spawn and
-                    // the rest of the app may help.
-                    fmt::debug!(
-                        "No waker for frame #{} receive retry attempt {}, requeueing to try again later",
-                        retry.index,
-                        retry.retry_count
-                    );
-
-                    retry.retry_count += 1;
-
-                    retries.push_back(retry);
-
-                    retries_high_water_mark = retries_high_water_mark.max(retries.len());
-                }
-                Err(e) => return Err(io::Error::other(e)),
-            }
-        }
 
         for recv in ring.completion() {
             let index = recv.user_data();
@@ -435,7 +447,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                 match pdu_rx.receive_frame(&frame) {
                     Ok(_) => (),
                     Err(Error::Pdu(PduError::NoWaker)) => {
-                        fmt::warn!(
+                        fmt::debug!(
                             "No waker for received frame #{}, retrying receive later",
                             index
                         );
@@ -462,8 +474,16 @@ pub fn tx_rx_task_io_uring<'sto>(
         // Flush completed entries
         ring.completion().sync();
 
+        assert_eq!(ring.completion().overflow(), 0);
+        assert_eq!(ring.completion().is_full(), false);
+        assert_eq!(ring.submission().cq_overflow(), false);
+        assert_eq!(ring.submission().dropped(), 0);
+
         if bufs.is_empty() && retries.is_empty() {
             fmt::trace!("No frames in flight, waiting to be woken with new frames to send");
+
+            // Doesn't do anything for weird "blinking" behaviour
+            // std::thread::sleep(Duration::from_micros(10));
 
             let start = Instant::now();
 
@@ -476,7 +496,12 @@ pub fn tx_rx_task_io_uring<'sto>(
             signal.wait();
 
             fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
-        }
+        } /* else {
+              std::thread::sleep(Duration::from_micros(10));
+          } */
+
+        // Doesn't help blinking issue
+        // thread::yield_now();
     }
 }
 

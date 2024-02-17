@@ -44,8 +44,12 @@ impl<'sto> ReceivingFrame<'sto> {
             // so the previous state here should be RxBusy.
             FrameElement::swap_state(self.inner.frame, FrameState::RxBusy, FrameState::RxDone)
                 .map(|_| {})
-                .map_err(|_| {
-                    fmt::error!("Failed to set frame state from RxBusy -> RxDone");
+                .map_err(|bad| {
+                    fmt::error!(
+                        "Failed to set frame #{} state from RxBusy -> RxDone, got {:?}",
+                        self.index(),
+                        bad
+                    );
 
                     PduError::InvalidFrameState
                 })?;
@@ -63,7 +67,8 @@ impl<'sto> ReceivingFrame<'sto> {
                     FrameElement::swap_state(self.inner.frame, FrameState::RxDone, FrameState::Sent)
                 {
                     fmt::error!(
-                        "Failed to set frame state from RxDone -> Sent, got {:?}",
+                        "Failed to set frame #{} state from RxDone -> Sent, got {:?}",
+                        self.index(),
                         bad_state
                     );
 
