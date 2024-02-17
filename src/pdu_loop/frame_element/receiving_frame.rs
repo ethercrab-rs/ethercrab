@@ -33,7 +33,7 @@ impl<'sto> ReceivingFrame<'sto> {
         flags: PduFlags,
         irq: u16,
         working_counter: u16,
-    ) -> Result<(), Error> {
+    ) -> Result<(), PduError> {
         unsafe { self.set_metadata(flags, irq, working_counter) };
 
         // Frame state must be updated BEFORE the waker is awoken so the future impl returns
@@ -47,13 +47,36 @@ impl<'sto> ReceivingFrame<'sto> {
                 .map_err(|_| {
                     fmt::error!("Failed to set frame state from RxBusy -> RxDone");
 
-                    Error::Pdu(PduError::InvalidFrameState)
+                    PduError::InvalidFrameState
                 })?;
         }
 
-        unsafe { self.inner.wake() };
+        // If the wake fails, release the receiving claim so the frame receive can possibly be
+        // reattempted at a later time.
+        if let Err(()) = unsafe { self.inner.wake() } {
+            unsafe {
+                // Restore frame state to `Sent`, which is what `PduStorageRef::claim_receiving`
+                // expects. This allows us to reprocess the frame again later. The frame will be
+                // made reusable by `ReceiveFrameFut::drop` which sets the frame state to `None`,
+                // preventing a deadlock of this PDU frame slot.
+                if let Err(bad_state) =
+                    FrameElement::swap_state(self.inner.frame, FrameState::RxDone, FrameState::Sent)
+                {
+                    fmt::error!(
+                        "Failed to set frame state from RxDone -> Sent, got {:?}",
+                        bad_state
+                    );
 
-        Ok(())
+                    // Logic bug if the swap failed - no other threads should be using this
+                    // frame, and the code just above this block sets the state to `RxDone`.
+                    unreachable!()
+                }
+            }
+
+            Err(PduError::NoWaker)
+        } else {
+            Ok(())
+        }
     }
 
     unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {

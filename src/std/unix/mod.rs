@@ -19,7 +19,11 @@ use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
 use futures_lite::{AsyncRead, AsyncWrite};
 use io_uring::IoUring;
-use std::os::fd::AsRawFd;
+use std::{
+    os::fd::AsRawFd,
+    sync::{Arc, Condvar, Mutex},
+    task::Wake,
+};
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
@@ -135,6 +139,122 @@ pub fn tx_rx_task<'sto>(
     Ok(task)
 }
 
+struct Signal {
+    cond: Condvar,
+    mutex: Mutex<()>,
+}
+
+impl Signal {
+    fn new() -> Self {
+        Self {
+            cond: Condvar::new(),
+            mutex: Mutex::new(()),
+        }
+    }
+
+    fn wait(&self) {
+        println!("Wait...");
+
+        let guard = match self.mutex.lock() {
+            Ok(l) => l,
+            // We should be the only ones ever holding this lock
+            Err(_) => unreachable!(),
+        };
+
+        // Immediately drop the lock because wait() can/should only be called from this file (i.e.
+        // in one place in one thread).
+        let _unused = self.cond.wait(guard).expect("Wait");
+    }
+}
+
+impl Wake for Signal {
+    fn wake(self: Arc<Self>) {
+        println!("Notify");
+
+        self.cond.notify_one();
+    }
+}
+
+// pollster ripoff
+
+enum SignalState {
+    Empty,
+    Waiting,
+    Notified,
+}
+
+struct PollsterSignal {
+    state: Mutex<SignalState>,
+    cond: Condvar,
+}
+
+impl PollsterSignal {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(SignalState::Empty),
+            cond: Condvar::new(),
+        }
+    }
+
+    fn wait(&self) {
+        let mut state = self.state.lock().unwrap();
+        match *state {
+            SignalState::Notified => {
+                // Notify() was called before we got here, consume it here without waiting and return immediately.
+                *state = SignalState::Empty;
+                return;
+            }
+            // This should not be possible because our signal is created within a function and never handed out to any
+            // other threads. If this is the case, we have a serious problem so we panic immediately to avoid anything
+            // more problematic happening.
+            SignalState::Waiting => {
+                unreachable!("Multiple threads waiting on the same signal: Open a bug report!");
+            }
+            SignalState::Empty => {
+                // Nothing has happened yet, and we're the only thread waiting (as should be the case!). Set the state
+                // accordingly and begin polling the condvar in a loop until it's no longer telling us to wait. The
+                // loop prevents incorrect spurious wakeups.
+                *state = SignalState::Waiting;
+                while let SignalState::Waiting = *state {
+                    state = self.cond.wait(state).unwrap();
+                }
+            }
+        }
+    }
+
+    fn notify(&self) {
+        let mut state = self.state.lock().unwrap();
+        match *state {
+            // The signal was already notified, no need to do anything because the thread will be waking up anyway
+            SignalState::Notified => {}
+            // The signal wasnt notified but a thread isnt waiting on it, so we can avoid doing unnecessary work by
+            // skipping the condvar and leaving behind a message telling the thread that a notification has already
+            // occurred should it come along in the future.
+            SignalState::Empty => *state = SignalState::Notified,
+            // The signal wasnt notified and there's a waiting thread. Reset the signal so it can be wait()'ed on again
+            // and wake up the thread. Because there should only be a single thread waiting, `notify_all` would also be
+            // valid.
+            SignalState::Waiting => {
+                *state = SignalState::Empty;
+                self.cond.notify_one();
+            }
+        }
+    }
+}
+
+impl Wake for PollsterSignal {
+    fn wake(self: Arc<Self>) {
+        self.notify();
+    }
+}
+
+struct Retry {
+    retry_count: usize,
+    index: u8,
+    // TODO: Smallvec
+    frame: Vec<u8>,
+}
+
 /// Create a blocking TX/RX loop using `io_uring`.
 ///
 /// This function is only available on `linux` targets as it requires `io_uring` support. Older
@@ -145,11 +265,12 @@ pub fn tx_rx_task_io_uring<'sto>(
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
-    use core::future::poll_fn;
+    use core::task::Waker;
     use heapless::{Entry, FnvIndexMap};
     use io_uring::opcode;
-    use pollster::FutureExt;
-    use std::io;
+    use std::{collections::VecDeque, io, time::Instant};
+
+    use crate::error::PduError;
 
     let mut socket = RawSocketDesc::new(interface)?;
 
@@ -157,20 +278,35 @@ pub fn tx_rx_task_io_uring<'sto>(
 
     fmt::debug!("Opening {} with MTU {}, blocking", interface, mtu);
 
+    // MTU is payload size. We need to add the layer 2 header which is 18 bytes.
+    let mtu = mtu + 18;
+
     const ENTRIES: usize = 256;
 
     // SAFETY: Max entries is 256 because `PduStorage::N` is checked to be in 0..u8::MAX, and will
     // eventually be a `u8` once const generics get there.
-    // TODO: Use slices instead of vecs for perf? Check with strace to see if we do a pile of allocs
+    // TODO: `smallvec` with `1500` default size
     let mut bufs = FnvIndexMap::<u8, Vec<u8>, ENTRIES>::new();
+
+    // Race condition: sometimes a response can be received before the original future has been
+    // polled, therefore has no waker. This is bad but reasonably rare. To mitigate (bandaid...)
+    // this problem, we'll add a retry queue that will attempt to re-receive a frame in the hopes
+    // that the future has been polled at least once by then, and its waker registered.
+    // let mut retries = heapless::Deque::<Vec<u8>, 32>::new();
+    // TODO: `smallvec` with `1500` default size
+    let mut retries = VecDeque::<Retry>::with_capacity(32);
 
     let mut ring = IoUring::new(ENTRIES as u32)?;
 
-    poll_fn(|ctx| {
-        // Re-register waker to make sure this future is polled again
-        pdu_tx.replace_waker(ctx.waker());
+    let mut high_water_mark = 0;
+    let mut retries_high_water_mark = 0;
 
-        let mut sent = 0;
+    let signal = Arc::new(PollsterSignal::new());
+    let waker = Waker::from(Arc::clone(&signal));
+
+    loop {
+        // Register our waker so other stuff can notify us that PDU frames are ready to send.
+        pdu_tx.replace_waker(&waker);
 
         while let Some(frame) = pdu_tx.next_sendable_frame() {
             let idx = frame.index();
@@ -182,7 +318,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                         idx
                     );
 
-                    return Poll::Ready(Err(io::Error::other(Error::SendFrame)));
+                    return Err(io::Error::other(Error::SendFrame));
                 }
                 Entry::Vacant(entry) => entry.insert(vec![0; mtu]).map_err(|_| {
                     fmt::error!("failed to insert new frame buffer");
@@ -209,6 +345,8 @@ pub fn tx_rx_task_io_uring<'sto>(
                 })
                 .expect("Send blocking");
 
+            // Receive back into the same buffer. This should be safe because we can only receive
+            // once we've sent the packet.
             let e_receive = opcode::Read::new(
                 io_uring::types::Fd(socket.as_raw_fd()),
                 buf.as_mut_ptr(),
@@ -217,54 +355,38 @@ pub fn tx_rx_task_io_uring<'sto>(
             .build()
             .user_data(u64::from(idx));
 
-            unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
+            high_water_mark = high_water_mark.max(bufs.len());
 
-            // TODO: Remove and just call `submit` instead of `submit_and_wait`
-            sent += 1;
+            unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
         }
 
-        // ring.submission().sync();
-        ring.submit().expect("Submit");
-
-        // assert_eq!(ring.submission().is_full(), false, "Subqueue full");
-
-        // assert_eq!(
-        //     ring.submission().cq_overflow(),
-        //     false,
-        //     "Completion queue overflow 1"
-        // );
-        // assert_eq!(
-        //     ring.completion().overflow(),
-        //     0,
-        //     "Completion queue overflow 2"
-        // );
-
-        // fmt::trace!("Sent {} frames", sent);
-
-        // Wait for two responses; one is the packet we just sent which will be ignored, the other
-        // is the response from said packet.
-        // ring.submit_and_wait(sent * 2).expect("Submit");
-        // ring.submit().expect("Submit");
+        ring.submission().sync();
+        ring.submit()?;
 
         fmt::trace!(
             "Submitted, waiting for {} completions",
             ring.completion().len()
         );
 
-        // assert_eq!(ring.completion().is_full(), false, "Completion queue full");
+        while let Some(mut retry) = retries.pop_front() {
+            match pdu_rx.receive_frame(&retry.frame) {
+                Ok(_) => (),
+                Err(Error::Pdu(PduError::NoWaker)) => {
+                    fmt::warn!(
+                        "No waker for frame #{} receive retry, requeing to try again later",
+                        retry.index
+                    );
 
-        // ctx.waker().wake_by_ref();
+                    retry.retry_count += 1;
 
-        // dbg!(ring.submission().len());
-        // dbg!(ring.submission().is_empty());
-        // dbg!(ring.completion().len());
-        // dbg!(ring.completion().is_empty());
+                    retries.push_back(retry);
 
-        ctx.waker().wake_by_ref();
+                    retries_high_water_mark = retries_high_water_mark.max(retries.len());
+                }
+                Err(e) => return Err(io::Error::other(e)),
+            }
+        }
 
-        // TODO: Keep a counter of in-flight frames (or call `ring.completion().is_empty()`). If it's gt 0 after this loop, wake again.
-        // Otherwise we can wait for a send to wake this future. This also means we can use `submit`
-        // instead of `submit_and_wait`.
         for recv in ring.completion() {
             let index = recv.user_data();
 
@@ -285,7 +407,28 @@ pub fn tx_rx_task_io_uring<'sto>(
                     if frame[6] == 0x10 { "---->" } else { "<--" }
                 );
 
-                pdu_rx.receive_frame(&frame).expect("Receive frame");
+                match pdu_rx.receive_frame(&frame) {
+                    Ok(_) => (),
+                    Err(Error::Pdu(PduError::NoWaker)) => {
+                        fmt::warn!(
+                            "No waker for received frame #{}, retrying receive later",
+                            index
+                        );
+
+                        retries.push_back(Retry {
+                            retry_count: 1,
+                            index,
+                            frame,
+                        });
+
+                        retries_high_water_mark = retries_high_water_mark.max(retries.len());
+                    }
+                    Err(e) => return Err(io::Error::other(e)),
+                }
+
+                // TODO: If no waker, reinsert frame so this future is reawoken and we can try to
+                // receive the frame again. This is a (safe) race condition - the original future
+                // that sent the frame hasn't been polled yet, so its waker is not registered.
             } else {
                 fmt::warn!("Tried to receive frame #{} more than once", index);
             }
@@ -294,14 +437,22 @@ pub fn tx_rx_task_io_uring<'sto>(
         // Flush completed entries
         ring.completion().sync();
 
-        // assert_eq!(ring.submission().dropped(), 0);
-        // assert_eq!(ring.completion().overflow(), 0);
-        // assert_eq!(ring.submission().cq_overflow(), false);
+        if bufs.is_empty() && retries.is_empty() {
+            fmt::trace!("No frames in flight, waiting to be woken with new frames to send");
 
-        Poll::Pending
-    })
-    // SAFETY: Future is pinned on the stack inside pollster::block_on().
-    .block_on()
+            let start = Instant::now();
+
+            // This must be after the send packet code as there can be a (safe!) race condition on
+            // startup where the TX waker hasn't been registered yet, so when a future from another
+            // thread tries to send its frame, it has no waker, so we just end up waiting forever.
+            //
+            // If this wait() is down here, we get at least one loop where any queued packets can be
+            // sent.
+            signal.wait();
+
+            fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
+        }
+    }
 }
 
 // Unix only

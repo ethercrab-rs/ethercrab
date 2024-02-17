@@ -196,11 +196,13 @@ impl<'sto> FrameBox<'sto> {
         (*addr_of!((*self.frame.as_ptr()).frame.waker)).register(waker);
     }
 
-    unsafe fn wake(&self) {
+    unsafe fn wake(&self) -> Result<(), ()> {
         if let Some(waker) = (*addr_of!((*self.frame.as_ptr()).frame.waker)).take() {
-            waker.wake()
+            waker.wake();
+
+            Ok(())
         } else {
-            fmt::error!("No waker for frame #{}", self.frame().index);
+            Err(())
         }
     }
 
