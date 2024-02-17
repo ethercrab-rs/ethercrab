@@ -335,9 +335,13 @@ pub fn tx_rx_task_io_uring<'sto>(
             match pdu_rx.receive_frame(&retry.frame) {
                 Ok(_) => (),
                 Err(Error::Pdu(PduError::NoWaker)) => {
-                    fmt::warn!(
-                        "No waker for frame #{} receive retry, requeing to try again later",
-                        retry.index
+                    // If this happens too much at startup, there's a chance the TX/RX thread is
+                    // taking too long to start. Adding a delay between the TX/RX thread spawn and
+                    // the rest of the app may help.
+                    fmt::debug!(
+                        "No waker for frame #{} receive retry attempt {}, requeueing to try again later",
+                        retry.index,
+                        retry.retry_count
                     );
 
                     retry.retry_count += 1;
