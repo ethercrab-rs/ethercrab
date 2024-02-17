@@ -24,6 +24,7 @@ use core::{
 };
 use futures_lite::{AsyncRead, AsyncWrite};
 use io_uring::IoUring;
+use smallvec::SmallVec;
 use std::{
     os::fd::AsRawFd,
     sync::{Arc, Condvar, Mutex},
@@ -287,6 +288,7 @@ pub fn tx_rx_task_io_uring<'sto>(
     use core::{task::Waker, time::Duration};
     use heapless::{Entry, FnvIndexMap};
     use io_uring::opcode;
+    use smallvec::smallvec;
     use std::{collections::VecDeque, io, time::Instant};
 
     use crate::error::PduError;
@@ -308,15 +310,12 @@ pub fn tx_rx_task_io_uring<'sto>(
 
     // SAFETY: Max entries is 256 because `PduStorage::N` is checked to be in 0..u8::MAX, and will
     // eventually be a `u8` once const generics get there.
-    // TODO: `smallvec` with `1500` default size
-    let mut bufs = FnvIndexMap::<u8, Vec<u8>, ENTRIES>::new();
+    let mut bufs = FnvIndexMap::<u8, SmallVec<[u8; 1518]>, ENTRIES>::new();
 
     // Race condition: sometimes a response can be received before the original future has been
     // polled, therefore has no waker. This is bad but reasonably rare. To mitigate (bandaid...)
     // this problem, we'll add a retry queue that will attempt to re-receive a frame in the hopes
     // that the future has been polled at least once by then, and its waker registered.
-    // let mut retries = heapless::Deque::<Vec<u8>, 32>::new();
-    // TODO: `smallvec` with `1500` default size
     let mut retries = VecDeque::<Retry>::with_capacity(32);
 
     let mut ring = IoUring::new(ENTRIES as u32)?;
@@ -367,7 +366,7 @@ pub fn tx_rx_task_io_uring<'sto>(
 
                     return Err(io::Error::other(Error::SendFrame));
                 }
-                Entry::Vacant(entry) => entry.insert(vec![0; mtu]).map_err(|_| {
+                Entry::Vacant(entry) => entry.insert(smallvec![0; mtu]).map_err(|_| {
                     fmt::error!("failed to insert new frame buffer");
 
                     io::Error::other(Error::SendFrame)
