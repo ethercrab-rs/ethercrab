@@ -145,9 +145,11 @@ pub fn tx_rx_task_io_uring<'sto>(
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
-    use core::{cell::UnsafeCell, future::poll_fn, slice};
+    use core::future::poll_fn;
+    use heapless::{Entry, FnvIndexMap};
     use io_uring::opcode;
     use pollster::FutureExt;
+    use std::io;
 
     let mut socket = RawSocketDesc::new(interface)?;
 
@@ -155,21 +157,14 @@ pub fn tx_rx_task_io_uring<'sto>(
 
     fmt::debug!("Opening {} with MTU {}, blocking", interface, mtu);
 
-    let entries = 256;
+    const ENTRIES: usize = 256;
 
-    let mut ring = IoUring::new(entries as u32)?;
+    // SAFETY: Max entries is 256 because `PduStorage::N` is checked to be in 0..u8::MAX, and will
+    // eventually be a `u8` once const generics get there.
+    // TODO: Use slices instead of vecs for perf? Check with strace to see if we do a pile of allocs
+    let mut bufs = FnvIndexMap::<u8, Vec<u8>, ENTRIES>::new();
 
-    let mut buffers = {
-        let mut buffers = Vec::new();
-
-        for _ in 0..entries {
-            buffers.push(UnsafeCell::new(vec![0u8; mtu]));
-        }
-
-        buffers
-    };
-
-    let mut idx = 0usize;
+    let mut ring = IoUring::new(ENTRIES as u32)?;
 
     poll_fn(|ctx| {
         // Re-register waker to make sure this future is polled again
@@ -178,23 +173,35 @@ pub fn tx_rx_task_io_uring<'sto>(
         let mut sent = 0;
 
         while let Some(frame) = pdu_tx.next_sendable_frame() {
-            idx = idx.wrapping_add(1);
+            let idx = frame.index();
 
-            let mut write_buf = unsafe {
-                let entry = &mut *buffers[idx % entries].get();
+            let mut buf = match bufs.entry(idx) {
+                Entry::Occupied(_) => {
+                    fmt::error!(
+                        "io_uring frame slot for index #{} is already in flight",
+                        idx
+                    );
 
-                slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
-            };
+                    return Poll::Ready(Err(io::Error::other(Error::SendFrame)));
+                }
+                Entry::Vacant(entry) => entry.insert(vec![0; mtu]).map_err(|_| {
+                    fmt::error!("failed to insert new frame buffer");
+
+                    io::Error::other(Error::SendFrame)
+                }),
+            }?;
 
             frame
-                .send_blocking(&mut write_buf, |data: &[u8]| {
+                .send_blocking(&mut buf, |data: &[u8]| {
                     let e_send = opcode::Write::new(
                         io_uring::types::Fd(socket.as_raw_fd()),
                         data.as_ptr(),
                         data.len() as _,
                     )
                     .build()
-                    .user_data((idx % entries) as u64);
+                    // We want to ignore sent frames in the completion queue, so we'll set a
+                    // sentinel value here.
+                    .user_data(u64::MAX);
 
                     unsafe { ring.submission().push(&e_send) }.expect("Send queue full");
 
@@ -202,74 +209,94 @@ pub fn tx_rx_task_io_uring<'sto>(
                 })
                 .expect("Send blocking");
 
-            idx = idx.wrapping_add(1);
-
-            let read_buf = unsafe {
-                let entry = &mut *buffers[idx % entries].get();
-
-                slice::from_raw_parts_mut(entry.as_mut_ptr(), entry.len())
-            };
-
             let e_receive = opcode::Read::new(
                 io_uring::types::Fd(socket.as_raw_fd()),
-                read_buf.as_mut_ptr(),
-                read_buf.len() as _,
+                buf.as_mut_ptr(),
+                buf.len() as _,
             )
             .build()
-            .user_data((idx % entries) as u64);
+            .user_data(u64::from(idx));
 
             unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
 
+            // TODO: Remove and just call `submit` instead of `submit_and_wait`
             sent += 1;
         }
 
-        assert_eq!(ring.submission().is_full(), false, "Subqueue full");
+        // ring.submission().sync();
+        ring.submit().expect("Submit");
 
-        assert_eq!(
-            ring.submission().cq_overflow(),
-            false,
-            "Completion queue overflow 1"
-        );
-        assert_eq!(
-            ring.completion().overflow(),
-            0,
-            "Completion queue overflow 2"
-        );
+        // assert_eq!(ring.submission().is_full(), false, "Subqueue full");
 
-        fmt::trace!("Sent {} frames", sent);
+        // assert_eq!(
+        //     ring.submission().cq_overflow(),
+        //     false,
+        //     "Completion queue overflow 1"
+        // );
+        // assert_eq!(
+        //     ring.completion().overflow(),
+        //     0,
+        //     "Completion queue overflow 2"
+        // );
+
+        // fmt::trace!("Sent {} frames", sent);
 
         // Wait for two responses; one is the packet we just sent which will be ignored, the other
         // is the response from said packet.
-        ring.submit_and_wait(sent * 2).expect("Submit");
+        // ring.submit_and_wait(sent * 2).expect("Submit");
+        // ring.submit().expect("Submit");
 
         fmt::trace!(
             "Submitted, waiting for {} completions",
             ring.completion().len()
         );
 
-        assert_eq!(ring.completion().is_full(), false, "Completion queue full");
+        // assert_eq!(ring.completion().is_full(), false, "Completion queue full");
 
+        // ctx.waker().wake_by_ref();
+
+        // dbg!(ring.submission().len());
+        // dbg!(ring.submission().is_empty());
+        // dbg!(ring.completion().len());
+        // dbg!(ring.completion().is_empty());
+
+        ctx.waker().wake_by_ref();
+
+        // TODO: Keep a counter of in-flight frames (or call `ring.completion().is_empty()`). If it's gt 0 after this loop, wake again.
+        // Otherwise we can wait for a send to wake this future. This also means we can use `submit`
+        // instead of `submit_and_wait`.
         for recv in ring.completion() {
-            let foo = buffers[recv.user_data() as usize].get_mut();
-            // dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
-            fmt::trace!(
-                "Raw frame #{:02} buffer idx {} {}",
-                foo[0x11],
-                recv.user_data() as usize,
-                if foo[6] == 0x10 { "---->" } else { "<--" }
-            );
+            let index = recv.user_data();
 
-            pdu_rx
-                .receive_frame(&buffers[recv.user_data() as usize].get_mut())
-                .expect("Receive frame");
+            // Marker flag for a sent frame. We only want receiving frames, so skip this one.
+            if index == u64::MAX {
+                continue;
+            }
+
+            // NOTE: `as` truncates, but the original data was a `u8` anyway.
+            let index = index as u8;
+
+            if let Some(frame) = bufs.remove(&index) {
+                // dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
+                fmt::trace!(
+                    "Raw frame #{:02} buffer idx {} {}",
+                    frame[0x11],
+                    recv.user_data() as u8,
+                    if frame[6] == 0x10 { "---->" } else { "<--" }
+                );
+
+                pdu_rx.receive_frame(&frame).expect("Receive frame");
+            } else {
+                fmt::warn!("Tried to receive frame #{} more than once", index);
+            }
         }
 
         // Flush completed entries
         ring.completion().sync();
 
-        assert_eq!(ring.submission().dropped(), 0);
-        assert_eq!(ring.completion().overflow(), 0);
-        assert_eq!(ring.submission().cq_overflow(), false);
+        // assert_eq!(ring.submission().dropped(), 0);
+        // assert_eq!(ring.completion().overflow(), 0);
+        // assert_eq!(ring.submission().cq_overflow(), false);
 
         Poll::Pending
     })

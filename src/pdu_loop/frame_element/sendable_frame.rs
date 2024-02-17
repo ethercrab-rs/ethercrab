@@ -71,6 +71,10 @@ impl<'sto> SendableFrame<'sto> {
         }
     }
 
+    pub(crate) fn index(&self) -> u8 {
+        unsafe { self.inner.frame() }.index
+    }
+
     /// Used on send failure to release the frame sending claim so the frame can attempt to be sent
     /// again, or reclaimed for reuse.
     fn release_sending_claim(self) {
