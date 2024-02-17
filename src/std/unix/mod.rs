@@ -462,10 +462,6 @@ pub fn tx_rx_task_io_uring<'sto>(
                     }
                     Err(e) => return Err(io::Error::other(e)),
                 }
-
-                // TODO: If no waker, reinsert frame so this future is reawoken and we can try to
-                // receive the frame again. This is a (safe) race condition - the original future
-                // that sent the frame hasn't been polled yet, so its waker is not registered.
             } else {
                 fmt::warn!("Tried to receive frame #{} more than once", index);
             }
