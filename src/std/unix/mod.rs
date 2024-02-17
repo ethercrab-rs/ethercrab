@@ -16,13 +16,19 @@ use crate::{
     pdu_loop::{PduRx, PduTx},
 };
 use async_io::Async;
-use core::{future::Future, pin::Pin, task::Poll};
+use core::{
+    future::Future,
+    pin::Pin,
+    sync::atomic::{AtomicU32, Ordering},
+    task::Poll,
+};
 use futures_lite::{AsyncRead, AsyncWrite};
 use io_uring::IoUring;
 use std::{
     os::fd::AsRawFd,
     sync::{Arc, Condvar, Mutex},
     task::Wake,
+    thread::{self, Thread},
 };
 
 struct TxRxFut<'a> {
@@ -211,6 +217,56 @@ impl Wake for PollsterSignal {
     }
 }
 
+struct ParkSignal {
+    current_thread: Thread,
+}
+
+impl ParkSignal {
+    fn new() -> Self {
+        Self {
+            current_thread: thread::current(),
+        }
+    }
+
+    fn wait(&self) {
+        thread::park();
+    }
+}
+
+impl Wake for ParkSignal {
+    fn wake(self: Arc<Self>) {
+        self.current_thread.unpark()
+    }
+}
+
+struct AtomicSignal {
+    value: AtomicU32,
+}
+
+impl AtomicSignal {
+    fn new() -> Self {
+        Self {
+            value: AtomicU32::new(0),
+        }
+    }
+
+    fn wait(&self) {
+        atomic_wait::wait(&self.value, 0);
+    }
+
+    fn reset(&self) {
+        self.value.store(0, Ordering::Relaxed);
+    }
+}
+
+impl Wake for AtomicSignal {
+    fn wake(self: Arc<Self>) {
+        self.value.store(1, Ordering::Relaxed);
+
+        atomic_wait::wake_one(&self.value);
+    }
+}
+
 struct Retry {
     retry_count: usize,
     index: u8,
@@ -264,12 +320,14 @@ pub fn tx_rx_task_io_uring<'sto>(
     let mut high_water_mark = 0;
     let mut retries_high_water_mark = 0;
 
-    let signal = Arc::new(PollsterSignal::new());
+    let signal = Arc::new(AtomicSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
 
     loop {
         // Register our waker so other stuff can notify us that PDU frames are ready to send.
         pdu_tx.replace_waker(&waker);
+
+        signal.reset();
 
         while let Some(frame) = pdu_tx.next_sendable_frame() {
             let idx = frame.index();
