@@ -139,44 +139,7 @@ pub fn tx_rx_task<'sto>(
     Ok(task)
 }
 
-struct Signal {
-    cond: Condvar,
-    mutex: Mutex<()>,
-}
-
-impl Signal {
-    fn new() -> Self {
-        Self {
-            cond: Condvar::new(),
-            mutex: Mutex::new(()),
-        }
-    }
-
-    fn wait(&self) {
-        println!("Wait...");
-
-        let guard = match self.mutex.lock() {
-            Ok(l) => l,
-            // We should be the only ones ever holding this lock
-            Err(_) => unreachable!(),
-        };
-
-        // Immediately drop the lock because wait() can/should only be called from this file (i.e.
-        // in one place in one thread).
-        let _unused = self.cond.wait(guard).expect("Wait");
-    }
-}
-
-impl Wake for Signal {
-    fn wake(self: Arc<Self>) {
-        println!("Notify");
-
-        self.cond.notify_one();
-    }
-}
-
 // pollster ripoff
-
 enum SignalState {
     Empty,
     Waiting,
