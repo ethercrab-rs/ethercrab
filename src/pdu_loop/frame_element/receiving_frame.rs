@@ -65,18 +65,38 @@ impl<'sto> ReceivingFrame<'sto> {
                 // expects. This allows us to reprocess the frame again later. The frame will be
                 // made reusable by `ReceiveFrameFut::drop` which sets the frame state to `None`,
                 // preventing a deadlock of this PDU frame slot.
-                if let Err(bad_state) =
-                    FrameElement::swap_state(self.inner.frame, FrameState::RxDone, FrameState::Sent)
-                {
-                    fmt::error!(
-                        "Failed to set frame #{} state from RxDone -> Sent, got {:?}",
-                        self.index(),
-                        bad_state
-                    );
+                //
+                // If the frame is in another state, e.g. `RxProcessing` or other states that are
+                // set after `RxDone`, the future is already being processed and likely doesn't even
+                // need waking. In this case we can ignore the swap failure here.
+                //
+                // TODO: Only match on expected other states. Anything else should actually be a
+                // logic bug.
+                match FrameElement::swap_state(
+                    self.inner.frame,
+                    FrameState::RxDone,
+                    FrameState::Sent,
+                ) {
+                    Ok(_) => (),
+                    // Frame is being processed. We don't need to retry the receive
+                    Err(bad_state)
+                        if matches!(bad_state, FrameState::RxProcessing | FrameState::None) =>
+                    {
+                        fmt::trace!("--> Frame is {:?}, no need to wake", bad_state);
 
-                    // Logic bug if the swap failed - no other threads should be using this
-                    // frame, and the code just above this block sets the state to `RxDone`.
-                    // unreachable!()
+                        return Ok(());
+                    }
+                    Err(bad_state) => {
+                        fmt::error!(
+                            "Failed to set frame #{} state from RxDone -> Sent, got {:?}",
+                            self.index(),
+                            bad_state
+                        );
+
+                        // Logic bug if the swap failed - no other threads should be using this
+                        // frame, and the code just above this block sets the state to `RxDone`.
+                        unreachable!();
+                    }
                 }
             }
 
