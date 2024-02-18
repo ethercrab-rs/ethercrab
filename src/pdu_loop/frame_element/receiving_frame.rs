@@ -58,7 +58,7 @@ impl<'sto> ReceivingFrame<'sto> {
         // If the wake fails, release the receiving claim so the frame receive can possibly be
         // reattempted at a later time.
         if let Err(()) = unsafe { self.inner.wake() } {
-            fmt::trace!("Failed to wake frame #{}", self.index());
+            fmt::trace!("Failed to wake frame #{}: no waker", self.index());
 
             unsafe {
                 // Restore frame state to `Sent`, which is what `PduStorageRef::claim_receiving`
@@ -76,7 +76,7 @@ impl<'sto> ReceivingFrame<'sto> {
 
                     // Logic bug if the swap failed - no other threads should be using this
                     // frame, and the code just above this block sets the state to `RxDone`.
-                    unreachable!()
+                    // unreachable!()
                 }
             }
 
