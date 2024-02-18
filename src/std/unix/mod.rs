@@ -16,13 +16,7 @@ use crate::{
     pdu_loop::{PduRx, PduTx},
 };
 use async_io::Async;
-use core::{
-    future::Future,
-    pin::Pin,
-    sync::atomic::{AtomicU32, Ordering},
-    task::Poll,
-    time::Duration,
-};
+use core::{future::Future, pin::Pin, task::Poll, time::Duration};
 use futures_lite::{AsyncRead, AsyncWrite};
 use io_uring::IoUring;
 use smallvec::SmallVec;
@@ -218,9 +212,8 @@ pub fn tx_rx_task_io_uring<'sto>(
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
-    use core::task::Waker;
-    use heapless::{Entry, FnvIndexMap};
-    use io_uring::opcode;
+    use core::{mem::MaybeUninit, task::Waker};
+    use io_uring::{opcode, squeue::Flags};
     use smallvec::smallvec;
     use std::{collections::VecDeque, io, time::Instant};
 
@@ -243,7 +236,21 @@ pub fn tx_rx_task_io_uring<'sto>(
 
     // SAFETY: Max entries is 256 because `PduStorage::N` is checked to be in 0..u8::MAX, and will
     // eventually be a `u8` once const generics get there.
-    let mut bufs = FnvIndexMap::<u8, SmallVec<[u8; 1518]>, ENTRIES>::new();
+    //
+    // This data MUST NOT MOVE or be reordered once created as io_uring holds pointers into it.
+    // let mut bufs = FnvIndexMap::<
+    let mut bufs = heapless::Vec::<Option<SmallVec<[u8; 1518]>>, ENTRIES>::new();
+
+    // FIXME: Hilariously unsafe
+    let mut tx_entries: [io_uring::squeue::Entry; ENTRIES] =
+        unsafe { MaybeUninit::zeroed().assume_init() };
+    let mut rx_entries: [io_uring::squeue::Entry; ENTRIES] =
+        unsafe { MaybeUninit::zeroed().assume_init() };
+
+    for _ in 0..ENTRIES {
+        // SAFETY: Iter is same length as vec
+        unsafe { bufs.push_unchecked(None) };
+    }
 
     // Race condition: sometimes a response can be received before the original future has been
     // polled, therefore has no waker. This is bad but reasonably rare. To mitigate (bandaid...)
@@ -294,8 +301,11 @@ pub fn tx_rx_task_io_uring<'sto>(
         while let Some(frame) = pdu_tx.next_sendable_frame() {
             let idx = frame.index();
 
-            let mut buf = match bufs.entry(idx) {
-                Entry::Occupied(_) => {
+            let idx_usize = usize::from(idx);
+
+            // let (ref mut buf, tx_entry, rx_entry) = match bufs.entry(idx) {
+            let buf = match bufs[idx_usize] {
+                Some(_) => {
                     fmt::error!(
                         "io_uring frame slot for index #{} is already in flight",
                         idx
@@ -303,40 +313,68 @@ pub fn tx_rx_task_io_uring<'sto>(
 
                     return Err(io::Error::other(Error::SendFrame));
                 }
-                Entry::Vacant(entry) => entry.insert(smallvec![0; mtu]).map_err(|_| {
-                    fmt::error!("failed to insert new frame buffer");
+                None => {
+                    bufs[idx_usize] = Some(smallvec![0; mtu]);
 
-                    io::Error::other(Error::SendFrame)
-                }),
-            }?;
+                    bufs[idx_usize].as_mut().unwrap()
+                }
+            };
+
+            //  let idx_usize = usize::from(idx);
+
+            // // This won't panic as long as the index was originally a `u8` and we ensure `bufs` is
+            // // `u8::MAX` items long.
+            // let mut buf = match bufs[idx_usize] {
+            //     Some(_) => {
+            //         fmt::error!(
+            //             "io_uring frame slot for index #{} is already in flight",
+            //             idx
+            //         );
+
+            //         return Err(io::Error::other(Error::SendFrame));
+            //     }
+            //     None => {
+            //         bufs[idx_usize] = Some(smallvec![0; mtu]);
+
+            //         bufs[idx_usize].as_mut().unwrap()
+            //     }
+            // };
 
             frame
-                .send_blocking(&mut buf, |data: &[u8]| {
-                    let e_send = opcode::Write::new(
+                .send_blocking(buf, |data: &[u8]| {
+                    tx_entries[usize::from(idx)] = opcode::Write::new(
                         io_uring::types::Fd(socket.as_raw_fd()),
                         data.as_ptr(),
                         data.len() as _,
                     )
                     .build()
+                    .flags(Flags::IO_DRAIN)
                     // We want to ignore sent frames in the completion queue, so we'll set a
                     // sentinel value here.
                     .user_data(u64::MAX);
 
-                    unsafe { ring.submission().push(&e_send) }.expect("Send queue full");
+                    unsafe {
+                        ring.submission()
+                            // SAFETY: We just initialised it
+                            .push(&tx_entries[usize::from(idx)])
+                    }
+                    .expect("Send queue full");
 
                     // Receive back into the same buffer. This should be safe because we can only receive
                     // once we've sent the packet.
-                    let e_receive = opcode::Read::new(
+                    rx_entries[usize::from(idx)] = opcode::Read::new(
                         io_uring::types::Fd(socket.as_raw_fd()),
                         data.as_ptr() as *mut _,
                         data.len() as _,
                     )
                     .build()
+                    .flags(Flags::IO_DRAIN)
                     .user_data(u64::from(idx));
 
                     fmt::trace!("Insert frame TX #{}", idx);
 
-                    unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
+                    unsafe { ring.submission().push(&rx_entries[usize::from(idx)]) }
+                        .expect("Send queue full");
 
                     sent += 1;
 
@@ -348,17 +386,21 @@ pub fn tx_rx_task_io_uring<'sto>(
         }
 
         // TODO: Collect these metrics for later gathering instead of just asserting
-        // assert_eq!(ring.completion().overflow(), 0);
-        // assert_eq!(ring.completion().is_full(), false);
-        // assert_eq!(ring.submission().cq_overflow(), false);
-        // assert_eq!(ring.submission().dropped(), 0);
+        assert_eq!(ring.completion().overflow(), 0);
+        assert_eq!(ring.completion().is_full(), false);
+        assert_eq!(ring.submission().cq_overflow(), false);
+        assert_eq!(ring.submission().dropped(), 0);
 
         ring.submission().sync();
+
+        let now = Instant::now();
+
         ring.submit_and_wait(sent * 2)?;
 
         fmt::trace!(
-            "Submitted, waiting for {} completions",
-            ring.completion().len()
+            "Submitted, waited for {} completions for {} us",
+            ring.completion().len(),
+            now.elapsed().as_micros()
         );
 
         for recv in ring.completion() {
@@ -372,13 +414,23 @@ pub fn tx_rx_task_io_uring<'sto>(
             // NOTE: `as` truncates, but the original data was a `u8` anyway.
             let index = index as u8;
 
-            if let Some(frame) = bufs.remove(&index) {
+            if let Some(frame) = bufs[usize::from(index)].take() {
+                // if let Some((frame, _, _)) = bufs.remove(&index) {
                 // dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
                 fmt::trace!(
-                    "Raw frame #{:02} buffer idx {} {}",
+                    "Raw frame #{} buffer idx {} {}",
                     frame[0x11],
-                    recv.user_data() as u8,
+                    index,
                     if frame[6] == 0x10 { "---->" } else { "<--" }
+                );
+
+                assert_eq!(
+                    frame[0x11],
+                    index,
+                    "{} == {}, sent {}",
+                    frame[0x11],
+                    index,
+                    sent * 2
                 );
 
                 match pdu_rx.receive_frame(&frame) {

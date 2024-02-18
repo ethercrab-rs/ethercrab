@@ -2,7 +2,7 @@
 //!
 //! This example pins the TX/RX loop to core 0.
 
-use env_logger::Env;
+use env_logger::{Env, TimestampPrecision};
 use ethercrab::{
     error::Error, std::tx_rx_task_io_uring, Client, ClientConfig, PduStorage, SlaveGroup,
     SlaveGroupState, Timeouts,
@@ -39,7 +39,9 @@ struct Groups {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+        .format_timestamp(Some(TimestampPrecision::Nanos))
+        .init();
 
     let interface = std::env::args()
         .nth(1)
@@ -103,9 +105,9 @@ async fn main() -> Result<(), Error> {
             //     .expect("TX/RX task");
             // }
 
-            // core_affinity::set_for_current(tx_rx_core)
-            //     .then_some(())
-            //     .expect("Set TX/RX thread core");
+            core_affinity::set_for_current(tx_rx_core)
+                .then_some(())
+                .expect("Set TX/RX thread core");
 
             // Blocking io_uring
             tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
@@ -229,9 +231,9 @@ async fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            // core_affinity::set_for_current(slow_core)
-            //     .then_some(())
-            //     .expect("Set slow thread core");
+            core_affinity::set_for_current(slow_core)
+                .then_some(())
+                .expect("Set slow thread core");
 
             futures_lite::future::block_on::<Result<(), Error>>(async {
                 let slow_outputs = slow_outputs
@@ -298,9 +300,9 @@ async fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            // core_affinity::set_for_current(fast_core)
-            //     .then_some(())
-            //     .expect("Set fast thread core");
+            core_affinity::set_for_current(fast_core)
+                .then_some(())
+                .expect("Set fast thread core");
 
             futures_lite::future::block_on::<Result<(), Error>>(async {
                 let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
