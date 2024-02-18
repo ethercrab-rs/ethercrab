@@ -16,18 +16,13 @@ use crate::{
     pdu_loop::{PduRx, PduTx},
 };
 use async_io::Async;
-use core::{
-    future::Future,
-    pin::Pin,
-    sync::atomic::{AtomicU32, Ordering},
-    task::Poll,
-};
+use core::{future::Future, pin::Pin, task::Poll};
 use futures_lite::{AsyncRead, AsyncWrite};
 use io_uring::IoUring;
 use smallvec::SmallVec;
 use std::{
     os::fd::AsRawFd,
-    sync::{Arc, Condvar, Mutex},
+    sync::Arc,
     task::Wake,
     thread::{self, Thread},
 };
@@ -146,78 +141,6 @@ pub fn tx_rx_task<'sto>(
     Ok(task)
 }
 
-// pollster ripoff
-enum SignalState {
-    Empty,
-    Waiting,
-    Notified,
-}
-
-struct PollsterSignal {
-    state: Mutex<SignalState>,
-    cond: Condvar,
-}
-
-impl PollsterSignal {
-    fn new() -> Self {
-        Self {
-            state: Mutex::new(SignalState::Empty),
-            cond: Condvar::new(),
-        }
-    }
-
-    fn wait(&self) {
-        let mut state = self.state.lock().unwrap();
-        match *state {
-            SignalState::Notified => {
-                // Notify() was called before we got here, consume it here without waiting and return immediately.
-                *state = SignalState::Empty;
-                return;
-            }
-            // This should not be possible because our signal is created within a function and never handed out to any
-            // other threads. If this is the case, we have a serious problem so we panic immediately to avoid anything
-            // more problematic happening.
-            SignalState::Waiting => {
-                unreachable!("Multiple threads waiting on the same signal: Open a bug report!");
-            }
-            SignalState::Empty => {
-                // Nothing has happened yet, and we're the only thread waiting (as should be the case!). Set the state
-                // accordingly and begin polling the condvar in a loop until it's no longer telling us to wait. The
-                // loop prevents incorrect spurious wakeups.
-                *state = SignalState::Waiting;
-                while let SignalState::Waiting = *state {
-                    state = self.cond.wait(state).unwrap();
-                }
-            }
-        }
-    }
-
-    fn notify(&self) {
-        let mut state = self.state.lock().unwrap();
-        match *state {
-            // The signal was already notified, no need to do anything because the thread will be waking up anyway
-            SignalState::Notified => {}
-            // The signal wasnt notified but a thread isnt waiting on it, so we can avoid doing unnecessary work by
-            // skipping the condvar and leaving behind a message telling the thread that a notification has already
-            // occurred should it come along in the future.
-            SignalState::Empty => *state = SignalState::Notified,
-            // The signal wasnt notified and there's a waiting thread. Reset the signal so it can be wait()'ed on again
-            // and wake up the thread. Because there should only be a single thread waiting, `notify_all` would also be
-            // valid.
-            SignalState::Waiting => {
-                *state = SignalState::Empty;
-                self.cond.notify_one();
-            }
-        }
-    }
-}
-
-impl Wake for PollsterSignal {
-    fn wake(self: Arc<Self>) {
-        self.notify();
-    }
-}
-
 struct ParkSignal {
     current_thread: Thread,
 }
@@ -240,39 +163,10 @@ impl Wake for ParkSignal {
     }
 }
 
-struct AtomicSignal {
-    value: AtomicU32,
-}
-
-impl AtomicSignal {
-    fn new() -> Self {
-        Self {
-            value: AtomicU32::new(0),
-        }
-    }
-
-    fn wait(&self) {
-        atomic_wait::wait(&self.value, 0);
-    }
-
-    fn reset(&self) {
-        self.value.store(0, Ordering::Relaxed);
-    }
-}
-
-impl Wake for AtomicSignal {
-    fn wake(self: Arc<Self>) {
-        self.value.store(1, Ordering::Relaxed);
-
-        atomic_wait::wake_one(&self.value);
-    }
-}
-
 struct Retry {
     retry_count: usize,
     index: u8,
-    // TODO: Smallvec
-    frame: Vec<u8>,
+    frame: SmallVec<[u8; 1518]>,
 }
 
 /// Create a blocking TX/RX loop using `io_uring`.
@@ -285,7 +179,7 @@ pub fn tx_rx_task_io_uring<'sto>(
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
-    use core::{task::Waker, time::Duration};
+    use core::task::Waker;
     use heapless::{Entry, FnvIndexMap};
     use io_uring::opcode;
     use smallvec::smallvec;
@@ -408,15 +302,8 @@ pub fn tx_rx_task_io_uring<'sto>(
             sent += 1;
         }
 
-        // This doesn't fix the "blinking" issue
-        // // Something took the waker and woke us up. Replace it.
-        // if sent > 0 {
-        //     // Register our waker so other stuff can notify us that PDU frames are ready to send.
-        //     pdu_tx.replace_waker(&waker);
-        // }
-
         ring.submission().sync();
-        ring.submit()?;
+        ring.submit_and_wait(sent * 2)?;
 
         fmt::trace!(
             "Submitted, waiting for {} completions",
@@ -469,11 +356,6 @@ pub fn tx_rx_task_io_uring<'sto>(
         // Flush completed entries
         ring.completion().sync();
 
-        assert_eq!(ring.completion().overflow(), 0);
-        assert_eq!(ring.completion().is_full(), false);
-        assert_eq!(ring.submission().cq_overflow(), false);
-        assert_eq!(ring.submission().dropped(), 0);
-
         if bufs.is_empty() && retries.is_empty() {
             fmt::trace!("No frames in flight, waiting to be woken with new frames to send");
 
@@ -491,12 +373,7 @@ pub fn tx_rx_task_io_uring<'sto>(
             signal.wait();
 
             fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
-        } /* else {
-              std::thread::sleep(Duration::from_micros(10));
-          } */
-
-        // Doesn't help blinking issue
-        // thread::yield_now();
+        }
     }
 }
 
