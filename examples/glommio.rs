@@ -163,9 +163,7 @@ fn main() -> Result<(), Error> {
                 .then_some(())
                 .expect("Set slow thread core");
 
-            let ex = smol::LocalExecutor::new();
-
-            futures_lite::future::block_on::<Result<(), Error>>(ex.run(async {
+            futures_lite::future::block_on::<Result<(), Error>>(async {
                 let slow_outputs = slow_outputs
                     .into_op(&client_slow)
                     .await
@@ -213,7 +211,7 @@ fn main() -> Result<(), Error> {
 
                     tfd.read();
                 }
-            }))
+            })
             .unwrap();
         })
         .unwrap();
@@ -234,9 +232,7 @@ fn main() -> Result<(), Error> {
                 .then_some(())
                 .expect("Set fast thread core");
 
-            let ex = smol::LocalExecutor::new();
-
-            futures_lite::future::block_on::<Result<(), Error>>(ex.run(async {
+            futures_lite::future::block_on::<Result<(), Error>>(async {
                 let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
 
                 let fast_cycle_time = Duration::from_micros(100);
@@ -265,7 +261,7 @@ fn main() -> Result<(), Error> {
 
                     tfd.read();
                 }
-            }))
+            })
             .unwrap();
         })
         .unwrap();
