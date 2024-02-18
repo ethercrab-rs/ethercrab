@@ -58,6 +58,8 @@ impl<'sto> ReceivingFrame<'sto> {
         // If the wake fails, release the receiving claim so the frame receive can possibly be
         // reattempted at a later time.
         if let Err(()) = unsafe { self.inner.wake() } {
+            fmt::trace!("Failed to wake frame #{}", self.index());
+
             unsafe {
                 // Restore frame state to `Sent`, which is what `PduStorageRef::claim_receiving`
                 // expects. This allows us to reprocess the frame again later. The frame will be
