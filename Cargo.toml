@@ -42,8 +42,6 @@ smoltcp = { version = "0.11.0", default-features = false, features = [
     "medium-ethernet",
 ] }
 ethercrab-wire = { version = "0.1.2", path = "./ethercrab-wire" }
-io-uring = { version = "0.6.3", features = ["io_safety"] }
-pollster = "0.3.0"
 smallvec = { version = "1.13.1", features = ["const_generics"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -56,6 +54,9 @@ nix = { version = "0.27.1", features = ["net"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.149"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = { version = "0.6.3", features = ["io_safety"] }
 
 [target.'cfg(miri)'.dependencies]
 tokio = { version = "1.33.0", features = ["rt", "macros", "time"] }

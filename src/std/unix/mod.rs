@@ -141,6 +141,7 @@ pub fn tx_rx_task<'sto>(
     Ok(task)
 }
 
+// TODO: Linux-only
 struct ParkSignal {
     current_thread: Thread,
 }
@@ -169,6 +170,7 @@ struct Retry {
     frame: SmallVec<[u8; 1518]>,
 }
 
+// TODO: Linux-only
 /// Create a blocking TX/RX loop using `io_uring`.
 ///
 /// This function is only available on `linux` targets as it requires `io_uring` support. Older
