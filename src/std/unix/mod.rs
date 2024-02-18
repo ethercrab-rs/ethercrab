@@ -324,25 +324,27 @@ pub fn tx_rx_task_io_uring<'sto>(
 
                     unsafe { ring.submission().push(&e_send) }.expect("Send queue full");
 
+                    // Receive back into the same buffer. This should be safe because we can only receive
+                    // once we've sent the packet.
+                    let e_receive = opcode::Read::new(
+                        io_uring::types::Fd(socket.as_raw_fd()),
+                        data.as_ptr() as *mut _,
+                        data.len() as _,
+                    )
+                    .build()
+                    .user_data(u64::from(idx));
+
+                    fmt::trace!("Insert frame TX #{}", idx);
+
+                    unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
+
+                    sent += 1;
+
                     Ok(data.len())
                 })
                 .expect("Send blocking");
 
-            // Receive back into the same buffer. This should be safe because we can only receive
-            // once we've sent the packet.
-            let e_receive = opcode::Read::new(
-                io_uring::types::Fd(socket.as_raw_fd()),
-                buf.as_mut_ptr(),
-                buf.len() as _,
-            )
-            .build()
-            .user_data(u64::from(idx));
-
             high_water_mark = high_water_mark.max(bufs.len());
-
-            unsafe { ring.submission().push(&e_receive) }.expect("Send queue full");
-
-            sent += 1;
         }
 
         // TODO: Collect these metrics for later gathering instead of just asserting
