@@ -322,11 +322,11 @@ pub fn tx_rx_task_io_uring<'sto>(
                         data.len() as _,
                     )
                     .build()
-                    .flags(Flags::IO_LINK)
                     // We want to ignore sent frames in the completion queue, so we'll set a
                     // sentinel value here.
                     .user_data(u64::MAX);
 
+                    // TODO: https://github.com/tokio-rs/tokio-uring/blob/a69d4bf57776a085a6516f4c022e2bf5d1814762/src/runtime/driver/mod.rs#L134
                     unsafe {
                         ring.submission()
                             // SAFETY: We just initialised it
@@ -342,11 +342,11 @@ pub fn tx_rx_task_io_uring<'sto>(
                         data.len() as _,
                     )
                     .build()
-                    .flags(Flags::IO_LINK)
                     .user_data(u64::from(idx));
 
                     fmt::trace!("Insert frame TX #{}", idx);
 
+                    // TODO: https://github.com/tokio-rs/tokio-uring/blob/a69d4bf57776a085a6516f4c022e2bf5d1814762/src/runtime/driver/mod.rs#L134
                     unsafe { ring.submission().push(&rx_entries[usize::from(idx)]) }
                         .expect("Send queue full");
 
@@ -369,7 +369,7 @@ pub fn tx_rx_task_io_uring<'sto>(
 
         let now = Instant::now();
 
-        ring.submit_and_wait(sent * 2)?;
+        ring.submit_and_wait(sent)?;
 
         fmt::trace!(
             "Submitted, waited for {} completions for {} us",
@@ -404,7 +404,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                     "{} == {}, sent {}",
                     frame[0x11],
                     index,
-                    sent * 2
+                    sent * 2,
                 );
 
                 match pdu_rx.receive_frame(&frame) {
@@ -429,9 +429,6 @@ pub fn tx_rx_task_io_uring<'sto>(
                 fmt::warn!("Tried to receive frame #{} more than once", index);
             }
         }
-
-        // Flush completed entries
-        ring.completion().sync();
 
         if bufs.is_empty() && retries.is_empty() {
             fmt::trace!("No frames in flight, waiting to be woken with new frames to send");
