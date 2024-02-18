@@ -243,7 +243,7 @@ pub fn tx_rx_task_io_uring<'sto>(
     // let mut bufs = heapless::Vec::<Option<SmallVec<[u8; 1518]>>, ENTRIES>::new();
     let mut bufs = heapless::FnvIndexMap::<u8, SmallVec<[u8; 1518]>, ENTRIES>::new();
 
-    // FIXME: Hilariously unsafe
+    // SAFETY: All indices in this array are initialised before being used
     let mut tx_entries: [io_uring::squeue::Entry; ENTRIES] =
         unsafe { MaybeUninit::zeroed().assume_init() };
     let mut rx_entries: [io_uring::squeue::Entry; ENTRIES] =
@@ -322,7 +322,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                         data.len() as _,
                     )
                     .build()
-                    .flags(Flags::IO_DRAIN)
+                    .flags(Flags::IO_LINK)
                     // We want to ignore sent frames in the completion queue, so we'll set a
                     // sentinel value here.
                     .user_data(u64::MAX);
@@ -342,7 +342,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                         data.len() as _,
                     )
                     .build()
-                    .flags(Flags::IO_DRAIN)
+                    .flags(Flags::IO_LINK)
                     .user_data(u64::from(idx));
 
                     fmt::trace!("Insert frame TX #{}", idx);
