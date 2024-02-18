@@ -37,7 +37,8 @@ struct Groups {
     fast_outputs: SlaveGroup<1, 1>,
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let interface = std::env::args()
@@ -102,9 +103,9 @@ fn main() -> Result<(), Error> {
             //     .expect("TX/RX task");
             // }
 
-            core_affinity::set_for_current(tx_rx_core)
-                .then_some(())
-                .expect("Set TX/RX thread core");
+            // core_affinity::set_for_current(tx_rx_core)
+            //     .then_some(())
+            //     .expect("Set TX/RX thread core");
 
             // Blocking io_uring
             tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
@@ -134,22 +135,18 @@ fn main() -> Result<(), Error> {
 
     let client = Arc::new(client);
 
+    // Read configurations from slave EEPROMs and configure devices.
     let Groups {
         slow_outputs,
         fast_outputs,
-    } = smol::block_on(async {
-        // Read configurations from slave EEPROMs and configure devices.
-        let groups = client
-            .init::<MAX_SLAVES, _>(|groups: &Groups, slave| match slave.name() {
-                "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
-                "EL2828" => Ok(&groups.fast_outputs),
-                _ => Err(Error::UnknownSlave),
-            })
-            .await
-            .expect("Init");
-
-        groups
-    });
+    } = client
+        .init::<MAX_SLAVES, _>(|groups: &Groups, slave| match slave.name() {
+            "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
+            "EL2828" => Ok(&groups.fast_outputs),
+            _ => Err(Error::UnknownSlave),
+        })
+        .await
+        .expect("Init");
 
     // thread_priority::ThreadBuilder::default()
     //     .name("slow-task")
@@ -232,9 +229,9 @@ fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            core_affinity::set_for_current(slow_core)
-                .then_some(())
-                .expect("Set slow thread core");
+            // core_affinity::set_for_current(slow_core)
+            //     .then_some(())
+            //     .expect("Set slow thread core");
 
             futures_lite::future::block_on::<Result<(), Error>>(async {
                 let slow_outputs = slow_outputs
@@ -294,16 +291,16 @@ fn main() -> Result<(), Error> {
         // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
         // Check limits with `ulimit -Hr` or `ulimit -Sr`
         .priority(ThreadPriority::Crossplatform(
-            ThreadPriorityValue::try_from(98u8).unwrap(),
+            ThreadPriorityValue::try_from(48u8).unwrap(),
         ))
         // NOTE: Requires a realtime kernel
         .policy(ThreadSchedulePolicy::Realtime(
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            core_affinity::set_for_current(fast_core)
-                .then_some(())
-                .expect("Set fast thread core");
+            // core_affinity::set_for_current(fast_core)
+            //     .then_some(())
+            //     .expect("Set fast thread core");
 
             futures_lite::future::block_on::<Result<(), Error>>(async {
                 let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
