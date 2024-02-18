@@ -52,41 +52,27 @@ fn main() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Client::new(
-        pdu_loop,
-        Timeouts {
-            wait_loop_delay: Duration::from_millis(2),
-            mailbox_response: Duration::from_millis(1000),
-            pdu: Duration::from_millis(2000),
-            ..Default::default()
-        },
-        ClientConfig {
-            dc_static_sync_iterations: 100,
-            ..Default::default()
-        },
-    );
-
     let core_ids = core_affinity::get_core_ids().expect("Couldn't get core IDs");
 
     let tx_rx_core = core_ids
         .get(0)
         .copied()
         .expect("At least one core is required. Are you running on a potato?");
-    let slow_core = core_ids
-        .get(1)
-        .copied()
-        .expect("At least three cores are required.");
-    let fast_core = core_ids
-        .get(2)
-        .copied()
-        .expect("At least two cores are required.");
+    // let slow_core = core_ids
+    //     .get(1)
+    //     .copied()
+    //     .expect("At least three cores are required.");
+    // let fast_core = core_ids
+    //     .get(2)
+    //     .copied()
+    //     .expect("At least two cores are required.");
 
     thread_priority::ThreadBuilder::default()
         .name("tx-rx-thread")
         // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
         // Check limits with `ulimit -Hr` or `ulimit -Sr`
         .priority(ThreadPriority::Crossplatform(
-            ThreadPriorityValue::try_from(99u8).unwrap(),
+            ThreadPriorityValue::try_from(49u8).unwrap(),
         ))
         // NOTE: Requires a realtime kernel
         .policy(ThreadSchedulePolicy::Realtime(
@@ -116,14 +102,35 @@ fn main() -> Result<(), Error> {
             //     .expect("TX/RX task");
             // }
 
-            core_affinity::set_for_current(tx_rx_core)
-                .then_some(())
-                .expect("Set TX/RX thread core");
+            // core_affinity::set_for_current(tx_rx_core)
+            //     .then_some(())
+            //     .expect("Set TX/RX thread core");
 
             // Blocking io_uring
             tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
         })
         .unwrap();
+
+    let client = Client::new(
+        pdu_loop,
+        // Timeouts {
+        //     wait_loop_delay: Duration::from_millis(2),
+        //     mailbox_response: Duration::from_millis(1000),
+        //     pdu: Duration::from_millis(2000),
+        //     ..Default::default()
+        // },
+        // ClientConfig {
+        //     dc_static_sync_iterations: 100,
+        //     ..Default::default()
+        // },
+        Timeouts {
+            mailbox_echo: Duration::from_millis(1000),
+            state_transition: Duration::from_millis(30_000),
+
+            ..Default::default()
+        },
+        ClientConfig::default(),
+    );
 
     let client = Arc::new(client);
 
@@ -144,41 +151,24 @@ fn main() -> Result<(), Error> {
         groups
     });
 
-    let client_slow = client.clone();
-
-    let slow = thread_priority::ThreadBuilder::default()
+    thread_priority::ThreadBuilder::default()
         .name("slow-task")
         // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
         // Check limits with `ulimit -Hr` or `ulimit -Sr`
         .priority(ThreadPriority::Crossplatform(
-            ThreadPriorityValue::try_from(98u8).unwrap(),
+            ThreadPriorityValue::try_from(48u8).unwrap(),
         ))
         // NOTE: Requires a realtime kernel
         .policy(ThreadSchedulePolicy::Realtime(
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            core_affinity::set_for_current(slow_core)
-                .then_some(())
-                .expect("Set slow thread core");
+            smol::block_on(async {
+                const CYCLE_TIME: Duration = Duration::from_millis(5);
 
-            futures_lite::future::block_on::<Result<(), Error>>(async {
-                let slow_outputs = slow_outputs
-                    .into_op(&client_slow)
-                    .await
-                    .expect("PRE-OP -> OP");
+                let slow_outputs = slow_outputs.into_op(&client).await.expect("PRE-OP -> OP");
 
                 let slow_cycle_time = Duration::from_micros(1000);
-
-                let mut tfd = TimerFd::new().unwrap();
-
-                tfd.set_state(
-                    TimerState::Periodic {
-                        current: slow_cycle_time,
-                        interval: slow_cycle_time,
-                    },
-                    SetTimeFlags::Default,
-                );
 
                 let slow_duration = Duration::from_millis(250);
 
@@ -186,16 +176,18 @@ fn main() -> Result<(), Error> {
                 let mut tick = Instant::now();
 
                 // EK1100 is first slave, EL2889 is second
-                let mut el2889 = slow_outputs
-                    .slave(&client_slow, 1)
-                    .expect("EL2889 not present!");
+                let mut el2889 = slow_outputs.slave(&client, 1).expect("EL2889 not present!");
 
                 // Set initial output state
                 el2889.io_raw_mut().1[0] = 0x01;
                 el2889.io_raw_mut().1[1] = 0x80;
 
+                let sleeper = spin_sleep::SpinSleeper::new(200_000);
+
                 loop {
-                    slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
+                    let start = Instant::now();
+
+                    slow_outputs.tx_rx(&client).await.expect("TX/RX");
 
                     // Increment every output byte for every slave device by one
                     if tick.elapsed() > slow_duration {
@@ -208,65 +200,141 @@ fn main() -> Result<(), Error> {
                         o[1] = o[1].rotate_right(1);
                     }
 
-                    tfd.read();
+                    sleeper.sleep(CYCLE_TIME - start.elapsed());
                 }
             })
-            .unwrap();
         })
+        .unwrap()
+        .join()
         .unwrap();
 
-    let fast = thread_priority::ThreadBuilder::default()
-        .name("fast-task")
-        // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
-        // Check limits with `ulimit -Hr` or `ulimit -Sr`
-        .priority(ThreadPriority::Crossplatform(
-            ThreadPriorityValue::try_from(98u8).unwrap(),
-        ))
-        // NOTE: Requires a realtime kernel
-        .policy(ThreadSchedulePolicy::Realtime(
-            RealtimeThreadSchedulePolicy::Fifo,
-        ))
-        .spawn(move |_| {
-            core_affinity::set_for_current(fast_core)
-                .then_some(())
-                .expect("Set fast thread core");
+    // ---
+    // ---
+    // ---
 
-            futures_lite::future::block_on::<Result<(), Error>>(async {
-                let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
+    // let client_slow = client.clone();
 
-                let fast_cycle_time = Duration::from_micros(1000);
+    // let slow = thread_priority::ThreadBuilder::default()
+    //     .name("slow-task")
+    //     // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
+    //     // Check limits with `ulimit -Hr` or `ulimit -Sr`
+    //     .priority(ThreadPriority::Crossplatform(
+    //         ThreadPriorityValue::try_from(48u8).unwrap(),
+    //     ))
+    //     // NOTE: Requires a realtime kernel
+    //     .policy(ThreadSchedulePolicy::Realtime(
+    //         RealtimeThreadSchedulePolicy::Fifo,
+    //     ))
+    //     .spawn(move |_| {
+    //         core_affinity::set_for_current(slow_core)
+    //             .then_some(())
+    //             .expect("Set slow thread core");
 
-                let mut tfd = TimerFd::new().unwrap();
+    //         futures_lite::future::block_on::<Result<(), Error>>(async {
+    //             let slow_outputs = slow_outputs
+    //                 .into_op(&client_slow)
+    //                 .await
+    //                 .expect("PRE-OP -> OP");
 
-                tfd.set_state(
-                    TimerState::Periodic {
-                        current: fast_cycle_time,
-                        interval: fast_cycle_time,
-                    },
-                    SetTimeFlags::Default,
-                );
+    //             let slow_cycle_time = Duration::from_micros(1000);
 
-                loop {
-                    fast_outputs.tx_rx(&client).await.expect("TX/RX");
+    //             let mut tfd = TimerFd::new().unwrap();
 
-                    // Increment every output byte for every slave device by one
-                    for mut slave in fast_outputs.iter(&client) {
-                        let (_i, o) = slave.io_raw_mut();
+    //             tfd.set_state(
+    //                 TimerState::Periodic {
+    //                     current: slow_cycle_time,
+    //                     interval: slow_cycle_time,
+    //                 },
+    //                 SetTimeFlags::Default,
+    //             );
 
-                        for byte in o.iter_mut() {
-                            *byte = byte.wrapping_add(1);
-                        }
-                    }
+    //             let slow_duration = Duration::from_millis(250);
 
-                    tfd.read();
-                }
-            })
-            .unwrap();
-        })
-        .unwrap();
+    //             // Only update "slow" outputs every 250ms using this instant
+    //             let mut tick = Instant::now();
 
-    slow.join().expect("slow task failed");
-    fast.join().expect("fast task failed");
+    //             // EK1100 is first slave, EL2889 is second
+    //             let mut el2889 = slow_outputs
+    //                 .slave(&client_slow, 1)
+    //                 .expect("EL2889 not present!");
+
+    //             // Set initial output state
+    //             el2889.io_raw_mut().1[0] = 0x01;
+    //             el2889.io_raw_mut().1[1] = 0x80;
+
+    //             loop {
+    //                 slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
+
+    //                 // Increment every output byte for every slave device by one
+    //                 if tick.elapsed() > slow_duration {
+    //                     tick = Instant::now();
+
+    //                     let (_i, o) = el2889.io_raw_mut();
+
+    //                     // Make a nice pattern on EL2889 LEDs
+    //                     o[0] = o[0].rotate_left(1);
+    //                     o[1] = o[1].rotate_right(1);
+    //                 }
+
+    //                 tfd.read();
+    //             }
+    //         })
+    //         .unwrap();
+    //     })
+    //     .unwrap();
+
+    // let fast = thread_priority::ThreadBuilder::default()
+    //     .name("fast-task")
+    //     // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
+    //     // Check limits with `ulimit -Hr` or `ulimit -Sr`
+    //     .priority(ThreadPriority::Crossplatform(
+    //         ThreadPriorityValue::try_from(98u8).unwrap(),
+    //     ))
+    //     // NOTE: Requires a realtime kernel
+    //     .policy(ThreadSchedulePolicy::Realtime(
+    //         RealtimeThreadSchedulePolicy::Fifo,
+    //     ))
+    //     .spawn(move |_| {
+    //         core_affinity::set_for_current(fast_core)
+    //             .then_some(())
+    //             .expect("Set fast thread core");
+
+    //         futures_lite::future::block_on::<Result<(), Error>>(async {
+    //             let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
+
+    //             let fast_cycle_time = Duration::from_micros(1000);
+
+    //             let mut tfd = TimerFd::new().unwrap();
+
+    //             tfd.set_state(
+    //                 TimerState::Periodic {
+    //                     current: fast_cycle_time,
+    //                     interval: fast_cycle_time,
+    //                 },
+    //                 SetTimeFlags::Default,
+    //             );
+
+    //             loop {
+    //                 fast_outputs.tx_rx(&client).await.expect("TX/RX");
+
+    //                 // Increment every output byte for every slave device by one
+    //                 for mut slave in fast_outputs.iter(&client) {
+    //                     let (_i, o) = slave.io_raw_mut();
+
+    //                     for byte in o.iter_mut() {
+    //                         *byte = byte.wrapping_add(1);
+    //                     }
+    //                 }
+
+    //                 tfd.read();
+    //             }
+    //         })
+    //         .unwrap();
+    //     })
+    //     .unwrap();
+
+    // slow.join().expect("slow task failed");
+    // fast.join().expect("fast task failed");
 
     Ok(())
 }
