@@ -15,6 +15,7 @@ use std::{
 use thread_priority::{
     RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
 };
+use timerfd::{SetTimeFlags, TimerFd, TimerState};
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -170,7 +171,17 @@ fn main() -> Result<(), Error> {
                     .await
                     .expect("PRE-OP -> OP");
 
-                let mut slow_cycle_time = smol::Timer::interval(Duration::from_micros(100));
+                let slow_cycle_time = Duration::from_micros(100);
+
+                let mut tfd = TimerFd::new().unwrap();
+
+                tfd.set_state(
+                    TimerState::Periodic {
+                        current: slow_cycle_time,
+                        interval: slow_cycle_time,
+                    },
+                    SetTimeFlags::Default,
+                );
 
                 let slow_duration = Duration::from_millis(250);
 
@@ -200,7 +211,7 @@ fn main() -> Result<(), Error> {
                         o[1] = o[1].rotate_right(1);
                     }
 
-                    slow_cycle_time.next().await;
+                    tfd.read();
                 }
             }))
             .unwrap();
@@ -228,7 +239,17 @@ fn main() -> Result<(), Error> {
             futures_lite::future::block_on::<Result<(), Error>>(ex.run(async {
                 let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
 
-                let mut fast_cycle_time = smol::Timer::interval(Duration::from_micros(100));
+                let fast_cycle_time = Duration::from_micros(100);
+
+                let mut tfd = TimerFd::new().unwrap();
+
+                tfd.set_state(
+                    TimerState::Periodic {
+                        current: fast_cycle_time,
+                        interval: fast_cycle_time,
+                    },
+                    SetTimeFlags::Default,
+                );
 
                 loop {
                     fast_outputs.tx_rx(&client).await.expect("TX/RX");
@@ -242,7 +263,7 @@ fn main() -> Result<(), Error> {
                         }
                     }
 
-                    fast_cycle_time.next().await;
+                    tfd.read();
                 }
             }))
             .unwrap();
