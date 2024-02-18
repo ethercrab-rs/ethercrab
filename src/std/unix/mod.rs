@@ -21,6 +21,7 @@ use core::{
     pin::Pin,
     sync::atomic::{AtomicU32, Ordering},
     task::Poll,
+    time::Duration,
 };
 use futures_lite::{AsyncRead, AsyncWrite};
 use io_uring::IoUring;
@@ -160,6 +161,10 @@ impl ParkSignal {
 
     fn wait(&self) {
         thread::park();
+    }
+
+    fn wait_timeout(&self, timeout: Duration) {
+        thread::park_timeout(timeout)
     }
 }
 
