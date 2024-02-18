@@ -304,6 +304,12 @@ pub fn tx_rx_task_io_uring<'sto>(
             sent += 1;
         }
 
+        // TODO: Collect these metrics for later gathering instead of just asserting
+        // assert_eq!(ring.completion().overflow(), 0);
+        // assert_eq!(ring.completion().is_full(), false);
+        // assert_eq!(ring.submission().cq_overflow(), false);
+        // assert_eq!(ring.submission().dropped(), 0);
+
         ring.submission().sync();
         ring.submit_and_wait(sent * 2)?;
 

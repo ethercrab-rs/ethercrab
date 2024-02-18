@@ -1,26 +1,19 @@
-//! Use `smol` and careful management of threads for minimal latency and jitter.
+//! Use blocking io_uring-based TX/RX loop.
 //!
-//! This demo is designed to be used with the following slave devices:
-//!
-//! - EK1100 (or EK1501 if using fibre)
-//! - EL2889 (2 bytes of outputs)
-//! - EL2828 (1 byte of outputs)
+//! This example pins the TX/RX loop to core 0.
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error,
-    std::{tx_rx_task, tx_rx_task_io_uring},
-    Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState, Timeouts,
+    error::Error, std::tx_rx_task_io_uring, Client, ClientConfig, PduStorage, SlaveGroup,
+    SlaveGroupState, Timeouts,
 };
 use futures_lite::StreamExt;
-use rustix::process::CpuSet;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
 use thread_priority::{
-    set_current_thread_priority, RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue,
-    ThreadSchedulePolicy,
+    RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
 };
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
@@ -73,6 +66,21 @@ fn main() -> Result<(), Error> {
         },
     );
 
+    let core_ids = core_affinity::get_core_ids().expect("Couldn't get core IDs");
+
+    let tx_rx_core = core_ids
+        .get(0)
+        .copied()
+        .expect("At least one core is required. Are you running on a potato?");
+    let slow_core = core_ids
+        .get(1)
+        .copied()
+        .expect("At least three cores are required.");
+    let fast_core = core_ids
+        .get(2)
+        .copied()
+        .expect("At least two cores are required.");
+
     thread_priority::ThreadBuilder::default()
         .name("tx-rx-thread")
         // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
@@ -107,6 +115,10 @@ fn main() -> Result<(), Error> {
             //     )
             //     .expect("TX/RX task");
             // }
+
+            core_affinity::set_for_current(tx_rx_core)
+                .then_some(())
+                .expect("Set TX/RX thread core");
 
             // Blocking io_uring
             tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
@@ -146,15 +158,13 @@ fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            let mut set = CpuSet::new();
-            set.set(1);
-
-            // Pin thread to 0th core
-            rustix::process::sched_setaffinity(None, &set).expect("set affinity");
+            core_affinity::set_for_current(slow_core)
+                .then_some(())
+                .expect("Set slow thread core");
 
             let ex = smol::LocalExecutor::new();
 
-            futures_lite::future::block_on(ex.run(async {
+            futures_lite::future::block_on::<Result<(), Error>>(ex.run(async {
                 let slow_outputs = slow_outputs
                     .into_op(&client_slow)
                     .await
@@ -192,8 +202,6 @@ fn main() -> Result<(), Error> {
 
                     slow_cycle_time.next().await;
                 }
-
-                Result::<(), Error>::Ok(())
             }))
             .unwrap();
         })
@@ -211,15 +219,13 @@ fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            let mut set = CpuSet::new();
-            set.set(1);
-
-            // Pin thread to 0th core
-            rustix::process::sched_setaffinity(None, &set).expect("set affinity");
+            core_affinity::set_for_current(fast_core)
+                .then_some(())
+                .expect("Set fast thread core");
 
             let ex = smol::LocalExecutor::new();
 
-            futures_lite::future::block_on(ex.run(async {
+            futures_lite::future::block_on::<Result<(), Error>>(ex.run(async {
                 let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
 
                 let mut fast_cycle_time = smol::Timer::interval(Duration::from_micros(100));
@@ -238,8 +244,6 @@ fn main() -> Result<(), Error> {
 
                     fast_cycle_time.next().await;
                 }
-
-                Result::<(), Error>::Ok(())
             }))
             .unwrap();
         })
