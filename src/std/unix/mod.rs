@@ -16,7 +16,12 @@ use crate::{
     pdu_loop::{PduRx, PduTx},
 };
 use async_io::Async;
-use core::{future::Future, pin::Pin, task::Poll};
+use core::{
+    future::Future,
+    pin::Pin,
+    sync::atomic::{AtomicU32, Ordering},
+    task::Poll,
+};
 use futures_lite::{AsyncRead, AsyncWrite};
 use io_uring::IoUring;
 use smallvec::SmallVec;
@@ -164,6 +169,33 @@ impl Wake for ParkSignal {
     }
 }
 
+struct AtomicWaitSignal {
+    value: AtomicU32,
+}
+
+impl AtomicWaitSignal {
+    fn new() -> Self {
+        Self {
+            value: AtomicU32::new(0),
+        }
+    }
+
+    fn wait(&self) {
+        atomic_wait::wait(&self.value, 0)
+    }
+
+    fn reset(&self) {
+        self.value.store(0, Ordering::Release);
+    }
+}
+
+impl Wake for AtomicWaitSignal {
+    fn wake(self: Arc<Self>) {
+        self.value.store(1, Ordering::Release);
+        atomic_wait::wake_one(&self.value);
+    }
+}
+
 struct Retry {
     retry_count: usize,
     index: u8,
@@ -219,11 +251,13 @@ pub fn tx_rx_task_io_uring<'sto>(
     let mut high_water_mark = 0;
     let mut retries_high_water_mark = 0;
 
-    let signal = Arc::new(ParkSignal::new());
+    let signal = Arc::new(AtomicWaitSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
 
     loop {
         pdu_tx.replace_waker(&waker);
+
+        signal.reset();
 
         while let Some(mut retry) = retries.pop_front() {
             match pdu_rx.receive_frame(&retry.frame) {

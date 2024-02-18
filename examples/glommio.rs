@@ -164,7 +164,7 @@ fn main() -> Result<(), Error> {
         ))
         .spawn(move |_| {
             smol::block_on(async {
-                const CYCLE_TIME: Duration = Duration::from_millis(5);
+                const CYCLE_TIME: Duration = Duration::from_millis(1);
 
                 let slow_outputs = slow_outputs.into_op(&client).await.expect("PRE-OP -> OP");
 
