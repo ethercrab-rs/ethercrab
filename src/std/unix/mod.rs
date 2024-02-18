@@ -232,7 +232,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                     // If this happens too much at startup, there's a chance the TX/RX thread is
                     // taking too long to start. Adding a delay between the TX/RX thread spawn and
                     // the rest of the app may help.
-                    fmt::debug!(
+                    fmt::trace!(
                         "No waker for frame #{} receive retry attempt {}, requeueing to try again later",
                         retry.index,
                         retry.retry_count
@@ -244,7 +244,11 @@ pub fn tx_rx_task_io_uring<'sto>(
 
                     retries_high_water_mark = retries_high_water_mark.max(retries.len());
                 }
-                Err(e) => return Err(io::Error::other(e)),
+                Err(e) => {
+                    fmt::error!("Receive frame #{} retry failed: {}", retry.index, e);
+
+                    return Err(io::Error::other(e));
+                }
             }
         }
 
