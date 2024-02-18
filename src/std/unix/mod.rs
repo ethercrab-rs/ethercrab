@@ -390,6 +390,7 @@ pub fn tx_rx_task_io_uring<'sto>(
 }
 
 // Unix only
+#[allow(trivial_numeric_casts)]
 fn ifreq_for(name: &str) -> ifreq {
     let mut ifreq = ifreq {
         ifr_name: [0; libc::IF_NAMESIZE],
