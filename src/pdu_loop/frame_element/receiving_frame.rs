@@ -158,6 +158,8 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         unsafe { rxin.replace_waker(cx.waker()) };
 
+        let idx = unsafe { rxin.frame() }.index;
+
         // RxDone is set by mark_received when the incoming packet has been parsed and stored
         let swappy = unsafe {
             FrameElement::swap_state(rxin.frame, FrameState::RxDone, FrameState::RxProcessing)
@@ -165,10 +167,14 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         let was = match swappy {
             Ok(_frame_element) => {
+                fmt::trace!("Frame #{} is ready", idx);
+
                 return Poll::Ready(Ok(ReceivedFrame { inner: rxin }));
             }
             Err(e) => e,
         };
+
+        fmt::trace!("Frame #{} not ready yet ({:?})", idx, was);
 
         match was {
             FrameState::Sendable | FrameState::Sending | FrameState::Sent | FrameState::RxBusy => {
