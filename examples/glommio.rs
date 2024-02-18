@@ -7,7 +7,6 @@ use ethercrab::{
     error::Error, std::tx_rx_task_io_uring, Client, ClientConfig, PduStorage, SlaveGroup,
     SlaveGroupState, Timeouts,
 };
-use futures_lite::StreamExt;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -169,7 +168,7 @@ fn main() -> Result<(), Error> {
                     .await
                     .expect("PRE-OP -> OP");
 
-                let slow_cycle_time = Duration::from_micros(100);
+                let slow_cycle_time = Duration::from_micros(1000);
 
                 let mut tfd = TimerFd::new().unwrap();
 
@@ -235,7 +234,7 @@ fn main() -> Result<(), Error> {
             futures_lite::future::block_on::<Result<(), Error>>(async {
                 let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
 
-                let fast_cycle_time = Duration::from_micros(100);
+                let fast_cycle_time = Duration::from_micros(1000);
 
                 let mut tfd = TimerFd::new().unwrap();
 
