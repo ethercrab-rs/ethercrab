@@ -213,6 +213,7 @@ pub fn tx_rx_task_io_uring<'sto>(
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
     use core::{mem::MaybeUninit, task::Waker};
+    use heapless::Entry;
     use io_uring::{opcode, squeue::Flags};
     use smallvec::smallvec;
     use std::{collections::VecDeque, io, time::Instant};
@@ -239,18 +240,14 @@ pub fn tx_rx_task_io_uring<'sto>(
     //
     // This data MUST NOT MOVE or be reordered once created as io_uring holds pointers into it.
     // let mut bufs = FnvIndexMap::<
-    let mut bufs = heapless::Vec::<Option<SmallVec<[u8; 1518]>>, ENTRIES>::new();
+    // let mut bufs = heapless::Vec::<Option<SmallVec<[u8; 1518]>>, ENTRIES>::new();
+    let mut bufs = heapless::FnvIndexMap::<u8, SmallVec<[u8; 1518]>, ENTRIES>::new();
 
     // FIXME: Hilariously unsafe
     let mut tx_entries: [io_uring::squeue::Entry; ENTRIES] =
         unsafe { MaybeUninit::zeroed().assume_init() };
     let mut rx_entries: [io_uring::squeue::Entry; ENTRIES] =
         unsafe { MaybeUninit::zeroed().assume_init() };
-
-    for _ in 0..ENTRIES {
-        // SAFETY: Iter is same length as vec
-        unsafe { bufs.push_unchecked(None) };
-    }
 
     // Race condition: sometimes a response can be received before the original future has been
     // polled, therefore has no waker. This is bad but reasonably rare. To mitigate (bandaid...)
@@ -301,11 +298,8 @@ pub fn tx_rx_task_io_uring<'sto>(
         while let Some(frame) = pdu_tx.next_sendable_frame() {
             let idx = frame.index();
 
-            let idx_usize = usize::from(idx);
-
-            // let (ref mut buf, tx_entry, rx_entry) = match bufs.entry(idx) {
-            let buf = match bufs[idx_usize] {
-                Some(_) => {
+            let buf = match bufs.entry(idx) {
+                Entry::Occupied(_) => {
                     fmt::error!(
                         "io_uring frame slot for index #{} is already in flight",
                         idx
@@ -313,32 +307,12 @@ pub fn tx_rx_task_io_uring<'sto>(
 
                     return Err(io::Error::other(Error::SendFrame));
                 }
-                None => {
-                    bufs[idx_usize] = Some(smallvec![0; mtu]);
+                Entry::Vacant(entry) => entry.insert(smallvec![0; mtu]).map_err(|_| {
+                    fmt::error!("failed to insert new frame buffer");
 
-                    bufs[idx_usize].as_mut().unwrap()
-                }
-            };
-
-            //  let idx_usize = usize::from(idx);
-
-            // // This won't panic as long as the index was originally a `u8` and we ensure `bufs` is
-            // // `u8::MAX` items long.
-            // let mut buf = match bufs[idx_usize] {
-            //     Some(_) => {
-            //         fmt::error!(
-            //             "io_uring frame slot for index #{} is already in flight",
-            //             idx
-            //         );
-
-            //         return Err(io::Error::other(Error::SendFrame));
-            //     }
-            //     None => {
-            //         bufs[idx_usize] = Some(smallvec![0; mtu]);
-
-            //         bufs[idx_usize].as_mut().unwrap()
-            //     }
-            // };
+                    io::Error::other(Error::SendFrame)
+                }),
+            }?;
 
             frame
                 .send_blocking(buf, |data: &[u8]| {
@@ -414,8 +388,8 @@ pub fn tx_rx_task_io_uring<'sto>(
             // NOTE: `as` truncates, but the original data was a `u8` anyway.
             let index = index as u8;
 
-            if let Some(frame) = bufs[usize::from(index)].take() {
-                // if let Some((frame, _, _)) = bufs.remove(&index) {
+            // if let Some(frame) = bufs[usize::from(index)].take() {
+            if let Some(frame) = bufs.remove(&index) {
                 // dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
                 fmt::trace!(
                     "Raw frame #{} buffer idx {} {}",
