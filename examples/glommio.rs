@@ -164,11 +164,9 @@ fn main() -> Result<(), Error> {
         ))
         .spawn(move |_| {
             smol::block_on(async {
-                const CYCLE_TIME: Duration = Duration::from_millis(1);
-
                 let slow_outputs = slow_outputs.into_op(&client).await.expect("PRE-OP -> OP");
 
-                let slow_cycle_time = Duration::from_micros(1000);
+                let slow_cycle_time = Duration::from_micros(5);
 
                 let slow_duration = Duration::from_millis(250);
 
@@ -182,7 +180,15 @@ fn main() -> Result<(), Error> {
                 el2889.io_raw_mut().1[0] = 0x01;
                 el2889.io_raw_mut().1[1] = 0x80;
 
-                let sleeper = spin_sleep::SpinSleeper::new(200_000);
+                let mut tfd = TimerFd::new().unwrap();
+
+                tfd.set_state(
+                    TimerState::Periodic {
+                        current: slow_cycle_time,
+                        interval: slow_cycle_time,
+                    },
+                    SetTimeFlags::Default,
+                );
 
                 loop {
                     let start = Instant::now();
@@ -200,7 +206,7 @@ fn main() -> Result<(), Error> {
                         o[1] = o[1].rotate_right(1);
                     }
 
-                    sleeper.sleep(CYCLE_TIME - start.elapsed());
+                    tfd.read();
                 }
             })
         })
