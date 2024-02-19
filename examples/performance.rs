@@ -16,7 +16,6 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup,
         SlaveGroupState, Timeouts,
     };
-    use rustix::process::CpuSet;
     use smol::LocalExecutor;
     use std::{
         sync::Arc,
@@ -84,11 +83,9 @@ async fn main() -> Result<(), ethercrab::error::Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            let mut set = CpuSet::new();
-            set.set(0);
-
-            // Pin thread to 0th core
-            rustix::process::sched_setaffinity(None, &set).expect("set affinity");
+            core_affinity::set_for_current(core_affinity::CoreId { id: 0 })
+                .then_some(())
+                .expect("Set TX/RX thread core");
 
             let ex = LocalExecutor::new();
 
