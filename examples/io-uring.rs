@@ -7,50 +7,50 @@
 //!
 //! This example requires a Linux with `io_uring` support and a realtime kernel (e.g. `PREEMPT_RT`).
 
-use env_logger::{Env, TimestampPrecision};
-use ethercrab::{
-    error::Error, std::tx_rx_task_io_uring, Client, ClientConfig, PduStorage, SlaveGroup,
-    SlaveGroupState, Timeouts,
-};
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use thread_priority::{
-    RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
-};
-use timerfd::{SetTimeFlags, TimerFd, TimerState};
-
-/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-const MAX_SLAVES: usize = 16;
-/// Maximum PDU data payload size - set this to the max PDI size or higher.
-const MAX_PDU_DATA: usize = 1100;
-/// Maximum number of EtherCAT frames that can be in flight at any one time.
-const MAX_FRAMES: usize = 16;
-/// Interval in microseconds.
-const INTERVAL: u64 = 100;
-
-static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
-
-#[derive(Default)]
-struct Groups {
-    /// EL2889 and EK1100/EK1501. For EK1100, 2 items, 2 bytes of PDI for 16 output bits. The EK1501
-    /// has 2 bytes of its own PDI so we'll use an upper bound of 4.
-    ///
-    /// We'll keep the EK1100/EK1501 in here as it has no useful PDI but still needs to live
-    /// somewhere.
-    slow_outputs: SlaveGroup<2, 4>,
-    /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-    fast_outputs: SlaveGroup<1, 1>,
-}
-
 #[cfg(not(target_os = "linux"))]
 fn main() {
     eprintln!("This example is only supported on Linux systems");
 }
 
 #[cfg(target_os = "linux")]
-fn main() -> Result<(), Error> {
+fn main() -> Result<(), ethercrab::error::Error> {
+    use env_logger::{Env, TimestampPrecision};
+    use ethercrab::{
+        error::Error, std::tx_rx_task_io_uring, Client, ClientConfig, PduStorage, SlaveGroup,
+        SlaveGroupState, Timeouts,
+    };
+    use std::{
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+    use thread_priority::{
+        RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
+    };
+    use timerfd::{SetTimeFlags, TimerFd, TimerState};
+
+    /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
+    const MAX_SLAVES: usize = 16;
+    /// Maximum PDU data payload size - set this to the max PDI size or higher.
+    const MAX_PDU_DATA: usize = 1100;
+    /// Maximum number of EtherCAT frames that can be in flight at any one time.
+    const MAX_FRAMES: usize = 16;
+    /// Interval in microseconds.
+    const INTERVAL: u64 = 100;
+
+    static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+
+    #[derive(Default)]
+    struct Groups {
+        /// EL2889 and EK1100/EK1501. For EK1100, 2 items, 2 bytes of PDI for 16 output bits. The EK1501
+        /// has 2 bytes of its own PDI so we'll use an upper bound of 4.
+        ///
+        /// We'll keep the EK1100/EK1501 in here as it has no useful PDI but still needs to live
+        /// somewhere.
+        slow_outputs: SlaveGroup<2, 4>,
+        /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
+        fast_outputs: SlaveGroup<1, 1>,
+    }
+
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .format_timestamp(Some(TimestampPrecision::Nanos))
         .init();
