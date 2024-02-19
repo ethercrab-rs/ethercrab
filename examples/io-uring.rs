@@ -1,6 +1,11 @@
 //! Use blocking io_uring-based TX/RX loop.
 //!
-//! This example pins the TX/RX loop to core 0.
+//! This example pins the TX/RX loop to core 0, and two other 100us tasks to cores 1 and 2.
+//!
+//! You may need to increase `INTERVAL` as 100us can be challenging for some PCs. That said, a
+//! Raspberry Pi 4 with a realtime kernel and some tweaking can run 2x 100us tasks _ok_.
+//!
+//! This example requires a Linux with `io_uring` support and a realtime kernel (e.g. `PREEMPT_RT`).
 
 use env_logger::{Env, TimestampPrecision};
 use ethercrab::{
@@ -22,6 +27,8 @@ const MAX_SLAVES: usize = 16;
 const MAX_PDU_DATA: usize = 1100;
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
 const MAX_FRAMES: usize = 16;
+/// Interval in microseconds.
+const INTERVAL: u64 = 100;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
@@ -37,11 +44,7 @@ struct Groups {
     fast_outputs: SlaveGroup<1, 1>,
 }
 
-/// Interval in us
-const INTERVAL: u64 = 100;
-
-#[tokio::main]
-async fn main() -> Result<(), Error> {
+fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .format_timestamp(Some(TimestampPrecision::Nanos))
         .init();
@@ -67,11 +70,11 @@ async fn main() -> Result<(), Error> {
     let slow_core = core_ids
         .get(1)
         .copied()
-        .expect("At least three cores are required.");
+        .expect("At least 2 cores are required.");
     let fast_core = core_ids
         .get(2)
         .copied()
-        .expect("At least two cores are required.");
+        .expect("At least 3 cores are required.");
 
     thread_priority::ThreadBuilder::default()
         .name("tx-rx-thread")
@@ -85,29 +88,6 @@ async fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            // // Glommio with smol async-io thread (because `tx_rx_task` uses smol internally because
-            // // of `struct Async`)
-            // {
-            //     let local_ex = glommio::LocalExecutorBuilder::new(glommio::Placement::Fixed(0))
-            //         .name("tx-rx-task")
-            //         .make()
-            //         .expect("Local TX/RX executor");
-
-            //     local_ex
-            //         .run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
-            //         .expect("TX/RX task");
-            // }
-
-            // // Good ol' smol
-            // {
-            //     let local_ex = smol::LocalExecutor::new();
-
-            //     futures_lite::future::block_on(
-            //         local_ex.run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")),
-            //     )
-            //     .expect("TX/RX task");
-            // }
-
             core_affinity::set_for_current(tx_rx_core)
                 .then_some(())
                 .expect("Set TX/RX thread core");
@@ -117,28 +97,7 @@ async fn main() -> Result<(), Error> {
         })
         .unwrap();
 
-    let client = Client::new(
-        pdu_loop,
-        // Timeouts {
-        //     wait_loop_delay: Duration::from_millis(2),
-        //     mailbox_response: Duration::from_millis(1000),
-        //     pdu: Duration::from_millis(2000),
-        //     ..Default::default()
-        // },
-        // ClientConfig {
-        //     dc_static_sync_iterations: 100,
-        //     ..Default::default()
-        // },
-        Timeouts {
-            mailbox_echo: Duration::from_millis(1000),
-            state_transition: Duration::from_millis(30_000),
-            pdu: Duration::from_millis(2000),
-            eeprom: Duration::from_millis(2000),
-            wait_loop_delay: Duration::from_millis(0),
-            mailbox_response: Duration::from_millis(2000),
-        },
-        ClientConfig::default(),
-    );
+    let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
 
     let client = Arc::new(client);
 
@@ -146,81 +105,14 @@ async fn main() -> Result<(), Error> {
     let Groups {
         slow_outputs,
         fast_outputs,
-    } = client
-        .init::<MAX_SLAVES, _>(|groups: &Groups, slave| match slave.name() {
+    } = futures_lite::future::block_on(client.init::<MAX_SLAVES, _>(|groups: &Groups, slave| {
+        match slave.name() {
             "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
             "EL2828" => Ok(&groups.fast_outputs),
             _ => Err(Error::UnknownSlave),
-        })
-        .await
-        .expect("Init");
-
-    // thread_priority::ThreadBuilder::default()
-    //     .name("slow-task")
-    //     // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
-    //     // Check limits with `ulimit -Hr` or `ulimit -Sr`
-    //     .priority(ThreadPriority::Crossplatform(
-    //         ThreadPriorityValue::try_from(48u8).unwrap(),
-    //     ))
-    //     // NOTE: Requires a realtime kernel
-    //     .policy(ThreadSchedulePolicy::Realtime(
-    //         RealtimeThreadSchedulePolicy::Fifo,
-    //     ))
-    //     .spawn(move |_| {
-    //         smol::block_on(async {
-    //             let slow_outputs = slow_outputs.into_op(&client).await.expect("PRE-OP -> OP");
-
-    //             let slow_cycle_time = Duration::from_micros(5);
-
-    //             let slow_duration = Duration::from_millis(250);
-
-    //             // Only update "slow" outputs every 250ms using this instant
-    //             let mut tick = Instant::now();
-
-    //             // EK1100 is first slave, EL2889 is second
-    //             let mut el2889 = slow_outputs.slave(&client, 1).expect("EL2889 not present!");
-
-    //             // Set initial output state
-    //             el2889.io_raw_mut().1[0] = 0x01;
-    //             el2889.io_raw_mut().1[1] = 0x80;
-
-    //             let mut tfd = TimerFd::new().unwrap();
-
-    //             tfd.set_state(
-    //                 TimerState::Periodic {
-    //                     current: slow_cycle_time,
-    //                     interval: slow_cycle_time,
-    //                 },
-    //                 SetTimeFlags::Default,
-    //             );
-
-    //             loop {
-    //                 let start = Instant::now();
-
-    //                 slow_outputs.tx_rx(&client).await.expect("TX/RX");
-
-    //                 // Increment every output byte for every slave device by one
-    //                 if tick.elapsed() > slow_duration {
-    //                     tick = Instant::now();
-
-    //                     let (_i, o) = el2889.io_raw_mut();
-
-    //                     // Make a nice pattern on EL2889 LEDs
-    //                     o[0] = o[0].rotate_left(1);
-    //                     o[1] = o[1].rotate_right(1);
-    //                 }
-
-    //                 tfd.read();
-    //             }
-    //         })
-    //     })
-    //     .unwrap()
-    //     .join()
-    //     .unwrap();
-
-    // ---
-    // ---
-    // ---
+        }
+    }))
+    .expect("Init");
 
     let client_slow = client.clone();
 
