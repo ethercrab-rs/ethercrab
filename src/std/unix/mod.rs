@@ -201,6 +201,9 @@ struct Retry {
     frame: SmallVec<[u8; 1518]>,
 }
 
+/// Use the upper bit of a u64 to mark whether a frame is a write (`1`) or a read (`0`).
+const WRITE_MASK: u64 = 1 << 63;
+
 // TODO: Linux-only
 /// Create a blocking TX/RX loop using `io_uring`.
 ///
@@ -216,7 +219,11 @@ pub fn tx_rx_task_io_uring<'sto>(
     use heapless::Entry;
     use io_uring::{opcode, squeue::Flags};
     use smallvec::smallvec;
-    use std::{collections::VecDeque, io, time::Instant};
+    use std::{
+        collections::VecDeque,
+        io::{self, Read, Write},
+        time::Instant,
+    };
 
     use crate::error::PduError;
 
@@ -236,25 +243,21 @@ pub fn tx_rx_task_io_uring<'sto>(
     const ENTRIES: usize = 256;
 
     // SAFETY: Max entries is 256 because `PduStorage::N` is checked to be in 0..u8::MAX, and will
-    // eventually be a `u8` once const generics get there.
+    // eventually be a `u8` once const generics get there. Twice as much space is reserved as each
+    // frame requires a send _and_ receive buffer.
     //
     // This data MUST NOT MOVE or be reordered once created as io_uring holds pointers into it.
-    // let mut bufs = FnvIndexMap::<
-    // let mut bufs = heapless::Vec::<Option<SmallVec<[u8; 1518]>>, ENTRIES>::new();
-    let mut bufs = heapless::FnvIndexMap::<u8, SmallVec<[u8; 1518]>, ENTRIES>::new();
-
-    // SAFETY: All indices in this array are initialised before being used
-    let mut tx_entries: [io_uring::squeue::Entry; ENTRIES] =
-        unsafe { MaybeUninit::zeroed().assume_init() };
-    let mut rx_entries: [io_uring::squeue::Entry; ENTRIES] =
-        unsafe { MaybeUninit::zeroed().assume_init() };
+    let mut bufs: slab::Slab<(io_uring::squeue::Entry, SmallVec<[u8; 1518]>)> =
+        slab::Slab::with_capacity(ENTRIES * 2);
 
     // Race condition: sometimes a response can be received before the original future has been
     // polled, therefore has no waker. This is bad but reasonably rare. To mitigate (bandaid...)
     // this problem, we'll add a retry queue that will attempt to re-receive a frame in the hopes
     // that the future has been polled at least once by then, and its waker registered.
-    let mut retries = VecDeque::<Retry>::with_capacity(32);
+    // TODO: Use a slab here too? Might help with latency.
+    let mut retries: VecDeque<Retry> = VecDeque::<Retry>::with_capacity(32);
 
+    // TODO: Consider setting up SQPOLL for better RT perf. https://www.sobyte.net/post/2022-04/io-uring/ and https://unixism.net/loti/tutorial/sq_poll.html#sq-poll
     let mut ring = IoUring::new(ENTRIES as u32)?;
 
     let mut high_water_mark = 0;
@@ -298,63 +301,66 @@ pub fn tx_rx_task_io_uring<'sto>(
         while let Some(frame) = pdu_tx.next_sendable_frame() {
             let idx = frame.index();
 
-            let buf = match bufs.entry(idx) {
-                Entry::Occupied(_) => {
-                    fmt::error!(
-                        "io_uring frame slot for index #{} is already in flight",
-                        idx
-                    );
-
-                    return Err(io::Error::other(Error::SendFrame));
-                }
-                Entry::Vacant(entry) => entry.insert(smallvec![0; mtu]).map_err(|_| {
-                    fmt::error!("failed to insert new frame buffer");
-
-                    io::Error::other(Error::SendFrame)
-                }),
-            }?;
+            let tx_b = bufs.vacant_entry();
+            let tx_key = tx_b.key();
+            let (tx_entry, tx_buf) = tx_b.insert((
+                unsafe { MaybeUninit::zeroed().assume_init() },
+                smallvec![0; mtu],
+            ));
 
             frame
-                .send_blocking(buf, |data: &[u8]| {
-                    tx_entries[usize::from(idx)] = opcode::Write::new(
+                .send_blocking(tx_buf, |data: &[u8]| {
+                    *tx_entry = opcode::Write::new(
                         io_uring::types::Fd(socket.as_raw_fd()),
                         data.as_ptr(),
                         data.len() as _,
                     )
                     .build()
-                    // We want to ignore sent frames in the completion queue, so we'll set a
-                    // sentinel value here.
-                    .user_data(u64::MAX);
+                    // Distinguish sent frames from received frames by using the upper bit of
+                    // the user data as a flag.
+                    .user_data(tx_key as u64 | WRITE_MASK);
 
-                    // TODO: https://github.com/tokio-rs/tokio-uring/blob/a69d4bf57776a085a6516f4c022e2bf5d1814762/src/runtime/driver/mod.rs#L134
-                    unsafe {
-                        ring.submission()
-                            // SAFETY: We just initialised it
-                            .push(&tx_entries[usize::from(idx)])
+                    assert_eq!(ring.submission().is_full(), false);
+
+                    while unsafe { ring.submission().push(&tx_entry).is_err() } {
+                        // If the submission queue is full, flush it to the kernel
+                        ring.submit().expect("Internal error, failed to submit ops");
                     }
-                    .expect("Send queue full");
-
-                    // Receive back into the same buffer. This should be safe because we can only receive
-                    // once we've sent the packet.
-                    rx_entries[usize::from(idx)] = opcode::Read::new(
-                        io_uring::types::Fd(socket.as_raw_fd()),
-                        data.as_ptr() as *mut _,
-                        data.len() as _,
-                    )
-                    .build()
-                    .user_data(u64::from(idx));
-
-                    fmt::trace!("Insert frame TX #{}", idx);
-
-                    // TODO: https://github.com/tokio-rs/tokio-uring/blob/a69d4bf57776a085a6516f4c022e2bf5d1814762/src/runtime/driver/mod.rs#L134
-                    unsafe { ring.submission().push(&rx_entries[usize::from(idx)]) }
-                        .expect("Send queue full");
 
                     sent += 1;
 
                     Ok(data.len())
                 })
                 .expect("Send blocking");
+
+            let rx_b = bufs.vacant_entry();
+            let rx_key = rx_b.key();
+            let (rx_entry, rx_buf) = rx_b.insert((
+                unsafe { MaybeUninit::zeroed().assume_init() },
+                smallvec![0; mtu],
+            ));
+
+            *rx_entry = opcode::Read::new(
+                io_uring::types::Fd(socket.as_raw_fd()),
+                rx_buf.as_mut_ptr() as _,
+                rx_buf.len() as _,
+            )
+            .build()
+            .user_data(rx_key as u64);
+
+            fmt::trace!(
+                "Insert frame TX #{}, key {}, RX key {}",
+                idx,
+                tx_key,
+                rx_key
+            );
+
+            assert_eq!(ring.submission().is_full(), false);
+
+            while unsafe { ring.submission().push(&rx_entry).is_err() } {
+                // If the submission queue is full, flush it to the kernel
+                ring.submit().expect("Internal error, failed to submit ops");
+            }
 
             high_water_mark = high_water_mark.max(bufs.len());
         }
@@ -369,55 +375,76 @@ pub fn tx_rx_task_io_uring<'sto>(
 
         let now = Instant::now();
 
-        ring.submit_and_wait(sent)?;
+        if sent > 0 {
+            ring.submit_and_wait(sent)?;
+        }
 
         fmt::trace!(
             "Submitted, waited for {} completions for {} us",
             ring.completion().len(),
-            now.elapsed().as_micros()
+            now.elapsed().as_micros(),
         );
 
-        for recv in ring.completion() {
-            let index = recv.user_data();
+        // SAFETY: We must never call `completion_shared` or `completion` inside this loop.
+        for recv in unsafe { ring.completion_shared() } {
+            if recv.result() < 0 && recv.result() != -libc::EWOULDBLOCK {
+                return Err(io::Error::last_os_error());
+            }
 
-            // Marker flag for a sent frame. We only want receiving frames, so skip this one.
-            if index == u64::MAX {
+            let key = recv.user_data();
+
+            // If upper bit is set, this was a write that is now complete. We can remove its buffer
+            // from the slab allocator.
+            if key & WRITE_MASK == WRITE_MASK {
+                fmt::trace!("Got a frame by key {} -> {}", key, key & !WRITE_MASK);
+                let key = key & !WRITE_MASK;
+
+                // Clear send buffer grant as it's been sent over the network
+                bufs.remove(key as usize);
+
                 continue;
             }
 
-            // NOTE: `as` truncates, but the original data was a `u8` anyway.
-            let index = index as u8;
+            // Original read did not succeed. Requeue read so we can try again.
+            if recv.result() == -libc::EWOULDBLOCK {
+                let (rx_entry, _buf) = bufs.get(key as usize).expect("Could not get retry entry");
 
-            // if let Some(frame) = bufs[usize::from(index)].take() {
-            if let Some(frame) = bufs.remove(&index) {
-                // dbg!(&recv, &buffers[recv.user_data() as usize].get_mut()[0..16]);
+                // SAFETY: `submission_shared` must not be held at the same time this one is
+                while unsafe { ring.submission_shared().push(&rx_entry).is_err() } {
+                    // If the submission queue is full, flush it to the kernel
+                    ring.submit().expect("Internal error, failed to submit ops");
+                }
+            } else if let Some((_entry, frame)) = bufs.try_remove(key as usize) {
+                let frame_index = frame[0x11];
+
                 fmt::trace!(
-                    "Raw frame #{} buffer idx {} {}",
-                    frame[0x11],
-                    index,
+                    "Raw frame #{} result {} buffer key {} {}",
+                    frame_index,
+                    recv.result(),
+                    key,
                     if frame[6] == 0x10 { "---->" } else { "<--" }
                 );
 
-                assert_eq!(
-                    frame[0x11],
-                    index,
-                    "{} == {}, sent {}",
-                    frame[0x11],
-                    index,
-                    sent * 2,
-                );
+                // assert_eq!(
+                //     frame[0x11],
+                //     index,
+                //     "{} == {}, sent {}",
+                //     frame[0x11],
+                //     index,
+                //     sent * 2,
+                // );
 
                 match pdu_rx.receive_frame(&frame) {
                     Ok(_) => (),
                     Err(Error::Pdu(PduError::NoWaker)) => {
                         fmt::debug!(
                             "No waker for received frame #{}, retrying receive later",
-                            index
+                            frame_index
                         );
 
                         retries.push_back(Retry {
                             retry_count: 1,
-                            index,
+                            index: frame_index,
                             frame,
                         });
 
@@ -426,7 +453,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                     Err(e) => return Err(io::Error::other(e)),
                 }
             } else {
-                fmt::warn!("Tried to receive frame #{} more than once", index);
+                fmt::warn!("Tried to receive frame key {} more than once", key);
             }
         }
 
@@ -447,6 +474,8 @@ pub fn tx_rx_task_io_uring<'sto>(
             signal.wait();
 
             fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
+        } else {
+            fmt::trace!("{} bufs, {} retries in flight", bufs.len(), retries.len());
         }
     }
 }

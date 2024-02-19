@@ -37,6 +37,9 @@ struct Groups {
     fast_outputs: SlaveGroup<1, 1>,
 }
 
+/// Interval in us
+const INTERVAL: u64 = 1000;
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
@@ -129,8 +132,10 @@ async fn main() -> Result<(), Error> {
         Timeouts {
             mailbox_echo: Duration::from_millis(1000),
             state_transition: Duration::from_millis(30_000),
-
-            ..Default::default()
+            pdu: Duration::from_millis(2000),
+            eeprom: Duration::from_millis(2000),
+            wait_loop_delay: Duration::from_millis(0),
+            mailbox_response: Duration::from_millis(2000),
         },
         ClientConfig::default(),
     );
@@ -241,7 +246,7 @@ async fn main() -> Result<(), Error> {
                     .await
                     .expect("PRE-OP -> OP");
 
-                let slow_cycle_time = Duration::from_micros(100);
+                let slow_cycle_time = Duration::from_micros(INTERVAL);
 
                 let mut tfd = TimerFd::new().unwrap();
 
@@ -307,7 +312,7 @@ async fn main() -> Result<(), Error> {
             futures_lite::future::block_on::<Result<(), Error>>(async {
                 let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
 
-                let fast_cycle_time = Duration::from_micros(100);
+                let fast_cycle_time = Duration::from_micros(INTERVAL);
 
                 let mut tfd = TimerFd::new().unwrap();
 
