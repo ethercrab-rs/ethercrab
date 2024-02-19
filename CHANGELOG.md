@@ -52,6 +52,8 @@ An EtherCAT master written in Rust.
 - [#151](https://github.com/ethercrab-rs/ethercrab/pull/151) Add `EepromError::ClearErrors` variant.
 - [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) Expose `error::CoeAbortCode` for
   matching on CoE transfer errors.
+- [#169](https://github.com/ethercrab-rs/ethercrab/pull/169) Linux only: add `io_uring`-based
+  blocking TX/RX loop for better performance.
 
 ### Fixed
 
