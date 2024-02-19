@@ -69,8 +69,6 @@ impl<'sto> SendableFrame<'sto> {
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::Sent);
         }
-
-        unsafe { self.inner.frame() }.waker.wake();
     }
 
     pub(crate) fn index(&self) -> u8 {

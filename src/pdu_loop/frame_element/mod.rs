@@ -206,7 +206,7 @@ impl<'sto> FrameBox<'sto> {
         }
     }
 
-    pub(crate) unsafe fn frame(&self) -> &PduFrame {
+    unsafe fn frame(&self) -> &PduFrame {
         unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
     }
 
