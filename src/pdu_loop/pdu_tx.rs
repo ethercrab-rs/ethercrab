@@ -14,6 +14,11 @@ impl<'sto> PduTx<'sto> {
         Self { storage }
     }
 
+    /// The number of frames that can be in flight at once.
+    pub fn capacity(&self) -> usize {
+        self.storage.num_frames
+    }
+
     /// Get the next sendable frame, if any are available.
     // NOTE: Mutable so it can only be used in one task.
     pub fn next_sendable_frame(&mut self) -> Option<SendableFrame<'sto>> {

@@ -8,7 +8,7 @@ mod linux;
 #[cfg(all(not(target_os = "linux"), unix))]
 use self::bpf::BpfDevice as RawSocketDesc;
 #[cfg(target_os = "linux")]
-use self::linux::RawSocketDesc;
+pub(in crate::std) use self::linux::RawSocketDesc;
 
 use crate::{
     error::Error,
@@ -134,6 +134,7 @@ pub fn tx_rx_task<'sto>(
 }
 
 // Unix only
+#[allow(trivial_numeric_casts)]
 fn ifreq_for(name: &str) -> ifreq {
     let mut ifreq = ifreq {
         ifr_name: [0; libc::IF_NAMESIZE],
@@ -147,6 +148,7 @@ fn ifreq_for(name: &str) -> ifreq {
 
 #[repr(C)]
 #[derive(Debug)]
+#[allow(non_camel_case_types)]
 struct ifreq {
     ifr_name: [libc::c_char; libc::IF_NAMESIZE],
     ifr_data: libc::c_int, /* ifr_ifindex or ifr_mtu */

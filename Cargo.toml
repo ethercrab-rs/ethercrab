@@ -43,6 +43,7 @@ smoltcp = { version = "0.11.0", default-features = false, features = [
 ] }
 ethercrab-wire = { version = "0.1.2", path = "./ethercrab-wire" }
 
+
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.34.0", features = ["std"], optional = true }
 blocking = "1.4.1"
@@ -53,6 +54,12 @@ nix = { version = "0.27.1", features = ["net"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.149"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = { version = "0.6.3", features = ["io_safety"] }
+smallvec = { version = "1.13.1", features = ["const_generics"] }
+slab = "0.4.9"
+timerfd = "1.5.0"
 
 [target.'cfg(miri)'.dependencies]
 tokio = { version = "1.33.0", features = ["rt", "macros", "time"] }
@@ -73,11 +80,11 @@ tokio = { version = "1.33.0", features = [
     "sync",
     "time",
 ] }
-# Used in `performance` example to set CPU affinity
-rustix = { version = "0.38.21", default-features = false, features = [
-    "process",
-] }
 thread-priority = "0.15.1"
+
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+core_affinity = "0.8.1"
 
 [features]
 default = ["std"]

@@ -205,6 +205,8 @@ pub enum PduError {
     /// This is an internal error and should not appear in user code. Please [open an
     /// issue](https://github.com/ethercrab-rs/ethercrab/issues/new) if this is encountered.
     SwapState,
+    /// Mostly for internal use.
+    NoWaker,
 }
 
 impl core::fmt::Display for PduError {
@@ -218,6 +220,7 @@ impl core::fmt::Display for PduError {
             PduError::Validation(e) => write!(f, "received PDU validation failed: {}", e),
             PduError::InvalidFrameState => f.write_str("invalid PDU frame state"),
             PduError::SwapState => f.write_str("failed to swap frame state"),
+            PduError::NoWaker => f.write_str("response was received but this frame has no waker"),
         }
     }
 }
