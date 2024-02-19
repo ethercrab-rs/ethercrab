@@ -376,7 +376,7 @@ pub fn tx_rx_task_io_uring<'sto>(
         let now = Instant::now();
 
         if sent > 0 {
-            ring.submit_and_wait(sent)?;
+            ring.submit_and_wait(sent * 2)?;
         }
 
         fmt::trace!(
@@ -393,10 +393,20 @@ pub fn tx_rx_task_io_uring<'sto>(
 
             let key = recv.user_data();
 
+            fmt::trace!(
+                "Got a frame by key {} -> {} {}",
+                key,
+                key & !WRITE_MASK,
+                if key & WRITE_MASK == WRITE_MASK {
+                    "---->"
+                } else {
+                    "<--"
+                }
+            );
+
             // If upper bit is set, this was a write that is now complete. We can remove its buffer
             // from the slab allocator.
             if key & WRITE_MASK == WRITE_MASK {
-                fmt::trace!("Got a frame by key {} -> {}", key, key & !WRITE_MASK);
                 let key = key & !WRITE_MASK;
 
                 // Clear send buffer grant as it's been sent over the network
@@ -407,6 +417,8 @@ pub fn tx_rx_task_io_uring<'sto>(
 
             // Original read did not succeed. Requeue read so we can try again.
             if recv.result() == -libc::EWOULDBLOCK {
+                fmt::trace!("Frame key {} would block. Queuing for retry", key);
+
                 let (rx_entry, _buf) = bufs.get(key as usize).expect("Could not get retry entry");
 
                 // SAFETY: `submission_shared` must not be held at the same time this one is
@@ -418,11 +430,10 @@ pub fn tx_rx_task_io_uring<'sto>(
                 let frame_index = frame[0x11];
 
                 fmt::trace!(
-                    "Raw frame #{} result {} buffer key {} {}",
+                    "Raw frame #{} result {} buffer key {}",
                     frame_index,
                     recv.result(),
                     key,
-                    if frame[6] == 0x10 { "---->" } else { "<--" }
                 );
 
                 // assert_eq!(
@@ -475,7 +486,11 @@ pub fn tx_rx_task_io_uring<'sto>(
 
             fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
         } else {
-            fmt::trace!("{} bufs, {} retries in flight", bufs.len(), retries.len());
+            fmt::trace!(
+                "Buf keys {:?} and {} retries in flight",
+                bufs.iter().map(|(k, _v)| k).collect::<Vec<_>>(),
+                retries.len()
+            );
         }
     }
 }

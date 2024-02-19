@@ -38,7 +38,7 @@ struct Groups {
 }
 
 /// Interval in us
-const INTERVAL: u64 = 1000;
+const INTERVAL: u64 = 100;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
