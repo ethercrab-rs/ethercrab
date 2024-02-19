@@ -44,6 +44,12 @@ struct Groups {
     fast_outputs: SlaveGroup<1, 1>,
 }
 
+#[cfg(not(target_os = "linux"))]
+fn main() {
+    eprintln!("This example is only supported on Linux systems");
+}
+
+#[cfg(target_os = "linux")]
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .format_timestamp(Some(TimestampPrecision::Nanos))

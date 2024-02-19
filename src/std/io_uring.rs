@@ -52,7 +52,6 @@ struct Retry {
 /// Use the upper bit of a u64 to mark whether a frame is a write (`1`) or a read (`0`).
 const WRITE_MASK: u64 = 1 << 63;
 
-// TODO: Linux-only
 /// Create a blocking TX/RX loop using `io_uring`.
 ///
 /// This function is only available on `linux` targets as it requires `io_uring` support. Older
