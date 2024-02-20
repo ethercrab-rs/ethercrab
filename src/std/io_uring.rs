@@ -8,7 +8,6 @@ use core::{mem::MaybeUninit, task::Waker};
 use io_uring::{opcode, IoUring};
 use smallvec::{smallvec, SmallVec};
 use std::{
-    collections::VecDeque,
     io,
     os::fd::AsRawFd,
     sync::Arc,
@@ -41,12 +40,6 @@ impl Wake for ParkSignal {
     fn wake(self: Arc<Self>) {
         self.current_thread.unpark()
     }
-}
-
-struct Retry {
-    retry_count: usize,
-    index: u8,
-    frame: SmallVec<[u8; 1518]>,
 }
 
 /// Use the upper bit of a u64 to mark whether a frame is a write (`1`) or a read (`0`).
@@ -84,49 +77,15 @@ pub fn tx_rx_task_io_uring<'sto>(
     let mut bufs: slab::Slab<(io_uring::squeue::Entry, SmallVec<[u8; 1518]>)> =
         slab::Slab::with_capacity(ENTRIES * 2);
 
-    // Race condition: sometimes a response can be received before the original future has been
-    // polled, therefore has no waker. This is bad but reasonably rare. To mitigate (bandaid...)
-    // this problem, we'll add a retry queue that will attempt to re-receive a frame in the hopes
-    // that the future has been polled at least once by then, and its waker registered.
-    let mut retries: VecDeque<Retry> = VecDeque::<Retry>::with_capacity(32);
-
     let mut ring = IoUring::new(ENTRIES as u32)?;
 
     let mut high_water_mark = 0;
-    let mut retries_high_water_mark = 0;
 
     let signal = Arc::new(ParkSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
 
     loop {
         pdu_tx.replace_waker(&waker);
-
-        while let Some(mut retry) = retries.pop_front() {
-            match pdu_rx.receive_frame(&retry.frame) {
-                Ok(_) => (),
-                Err(Error::Pdu(PduError::NoWaker)) => {
-                    // If this happens too much at startup, there's a chance the TX/RX thread is
-                    // taking too long to start. Adding a delay between the TX/RX thread spawn and
-                    // the rest of the app may help.
-                    fmt::trace!(
-                        "No waker for frame #{} receive retry attempt {}, requeueing to try again later",
-                        retry.index,
-                        retry.retry_count
-                    );
-
-                    retry.retry_count += 1;
-
-                    retries.push_back(retry);
-
-                    retries_high_water_mark = retries_high_water_mark.max(retries.len());
-                }
-                Err(e) => {
-                    fmt::error!("Receive frame #{} retry failed: {}", retry.index, e);
-
-                    return Err(io::Error::other(e));
-                }
-            }
-        }
 
         let mut sent = 0;
 
@@ -221,6 +180,8 @@ pub fn tx_rx_task_io_uring<'sto>(
 
             let key = recv.user_data();
 
+            let received = Instant::now();
+
             fmt::trace!(
                 "Got a frame by key {} -> {} {}",
                 key,
@@ -254,7 +215,9 @@ pub fn tx_rx_task_io_uring<'sto>(
                     // If the submission queue is full, flush it to the kernel
                     ring.submit().expect("Internal error, failed to submit ops");
                 }
-            } else if let Some((_entry, frame)) = bufs.try_remove(key as usize) {
+            } else {
+                let (_entry, frame) = bufs.remove(key as usize);
+
                 let frame_index = frame[0x11];
 
                 fmt::trace!(
@@ -264,30 +227,26 @@ pub fn tx_rx_task_io_uring<'sto>(
                     key,
                 );
 
-                match pdu_rx.receive_frame(&frame) {
-                    Ok(_) => (),
-                    Err(Error::Pdu(PduError::NoWaker)) => {
-                        fmt::trace!(
-                            "No waker for received frame #{}, retrying receive later",
-                            frame_index
-                        );
+                loop {
+                    match pdu_rx.receive_frame(&frame) {
+                        Ok(_) => break,
+                        Err(Error::Pdu(PduError::NoWaker)) => {
+                            fmt::trace!(
+                                "No waker for received frame #{}, retrying receive",
+                                frame_index
+                            );
 
-                        retries.push_back(Retry {
-                            retry_count: 1,
-                            index: frame_index,
-                            frame,
-                        });
-
-                        retries_high_water_mark = retries_high_water_mark.max(retries.len());
+                            thread::yield_now();
+                        }
+                        Err(e) => return Err(io::Error::other(e)),
                     }
-                    Err(e) => return Err(io::Error::other(e)),
                 }
-            } else {
-                fmt::warn!("Tried to receive frame key {} more than once", key);
+
+                fmt::trace!("Received frame in {} ns", received.elapsed().as_nanos());
             }
         }
 
-        if bufs.is_empty() && retries.is_empty() {
+        if bufs.is_empty() {
             fmt::trace!("No frames in flight, waiting to be woken with new frames to send");
 
             let start = Instant::now();
@@ -303,9 +262,8 @@ pub fn tx_rx_task_io_uring<'sto>(
             fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
         } else {
             fmt::trace!(
-                "Buf keys {:?} and {} retries in flight",
+                "Buf keys {:?} in flight",
                 bufs.iter().map(|(k, _v)| k).collect::<Vec<_>>(),
-                retries.len()
             );
         }
     }
