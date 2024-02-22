@@ -3,9 +3,12 @@
 use env_logger::Env;
 use ethercrab::{
     error::Error, std::tx_rx_task, Client, ClientConfig, Command, PduStorage, RegisterAddress,
-    Timeouts,
+    SlaveGroupState, Timeouts,
 };
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::time::MissedTickBehavior;
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
@@ -70,6 +73,8 @@ mod lan9252 {
 
 use lan9252::*;
 
+const TICK_INTERVAL: Duration = Duration::from_millis(5);
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -87,24 +92,59 @@ async fn main() -> Result<(), Error> {
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(5),
+            state_transition: Duration::from_secs(10),
             ..Timeouts::default()
         },
-        ClientConfig::default(),
+        ClientConfig {
+            dc_static_sync_iterations: 1000,
+            ..ClientConfig::default()
+        },
     ));
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     // The group will be in PRE-OP at this point
-    let group = client
+    let mut group = client
         .init_single_group::<MAX_SLAVES, PDI_LEN>()
         .await
         .expect("Init");
 
-    // LAN9252 DC canot be configured in PRE-OP
-    let mut group = group
-        .into_safe_op(&client)
-        .await
-        .expect("PRE-OP -> SAFE-OP");
+    // for slave in group.iter(&client) {
+    //     if slave.name() == "LAN9252-EVB-HBI" {
+    //         log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
+
+    //         // Sync mode 02 = SYNC0
+    //         slave
+    //             .sdo_write(0x1c32, 1, 2u16)
+    //             .await
+    //             .expect("Set sync mode");
+    //     }
+    // }
+
+    let client2 = client.clone();
+    let group_len = group.len() as u16;
+
+    // Start continuous drift compensation in PRE-OP
+    // This visibly moves the second LAN9252 sync pulse back to 0. Very impressive.
+    tokio::spawn(async move {
+        let mut sync_tick = tokio::time::interval(Duration::from_millis(1));
+
+        sync_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let fake_systime = Instant::now();
+
+        loop {
+            // TODO: Find first DC slave instead of hardcoded address.
+            // Dynamic drift compensation. Assumes first device supports DC
+            Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
+                .wrap(&client2)
+                .with_wkc(group_len)
+                .send(fake_systime.elapsed().as_nanos() as u64)
+                .await
+                .unwrap();
+
+            sync_tick.tick().await;
+        }
+    });
 
     for slave in group.iter(&client) {
         if slave.name() == "LAN9252-EVB-HBI" {
@@ -150,66 +190,68 @@ async fn main() -> Result<(), Error> {
             log::info!("LAN9252 config reg 0x0151: {:?}", v);
 
             // Table 27 – Distributed Clock sync parameter
-            {
-                // Disable cyclic op
-                slave
-                    .register_write(RegisterAddress::DcSyncActive, 0u8)
-                    .await
-                    .expect("DcSyncActive");
+            // First slave only. TODO: First DC supporting slave
+            // if slave.configured_address() == 0x1000 {
+            //     log::info!("--> First device configuring for DC");
 
-                // // SOEM does it :shrug:. 0x0980 is just marked "reserved" in ETG1000.4.
-                // slave.register_write(0x980u16, 0u8).await.expect("0x980u16");
+            // Disable cyclic op
+            slave
+                .register_write(RegisterAddress::DcSyncActive, 0u8)
+                .await
+                .expect("DcSyncActive");
 
-                let device_time = slave
-                    .register_read::<i64>(RegisterAddress::DcSystemTime)
-                    .await
-                    .expect("DcSystemTime");
+            let device_time = slave
+                .register_read::<i64>(RegisterAddress::DcSystemTime)
+                .await
+                .expect("DcSystemTime");
 
-                log::info!("Device time {}", device_time);
+            log::info!("Device time {}", device_time);
 
-                let sync0_cycle_time = 100_000;
-                let sync1_cycle_time = 100_000;
-                let cycle_shift = 0;
+            let sync0_cycle_time = TICK_INTERVAL.as_nanos() as i64;
+            let sync1_cycle_time = TICK_INTERVAL.as_nanos() as i64;
+            let cycle_shift = 0;
 
-                let true_cycle_time =
-                    ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
+            let true_cycle_time = ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
 
-                // 100ms
-                let first_pulse_delay = 100000000;
+            // 100ms
+            let first_pulse_delay = 100000000;
 
-                dbg!(true_cycle_time);
+            let t = (device_time + first_pulse_delay) / true_cycle_time * true_cycle_time
+                + true_cycle_time
+                + cycle_shift;
 
-                let t = (device_time + first_pulse_delay) / true_cycle_time * true_cycle_time
-                    + true_cycle_time
-                    + cycle_shift;
+            log::info!("t: {}", t);
 
-                log::info!("t: {}", t);
+            slave
+                .register_write(RegisterAddress::DcSyncStartTime, t)
+                .await
+                .expect("DcSyncStartTime");
 
-                slave
-                    .register_write(RegisterAddress::DcSyncStartTime, t)
-                    .await
-                    .expect("DcSyncStartTime");
+            // Cycle time in nanoseconds
+            slave
+                .register_write(RegisterAddress::DcSync0CycleTime, sync0_cycle_time)
+                .await
+                .expect("DcSync0CycleTime");
+            // slave
+            //     .register_write(RegisterAddress::DcSync1CycleTime, sync1_cycle_time)
+            //     .await
+            //     .expect("DcSync1CycleTime");
 
-                // Cycle time in nanoseconds
-                slave
-                    .register_write(RegisterAddress::DcSync0CycleTime, sync0_cycle_time)
-                    .await
-                    .expect("DcSync0CycleTime");
-                slave
-                    .register_write(RegisterAddress::DcSync1CycleTime, sync1_cycle_time)
-                    .await
-                    .expect("DcSync1CycleTime");
-
-                slave
-                    .register_write(
-                        RegisterAddress::DcSyncActive,
-                        SYNC0_ACTIVATE | SYNC1_ACTIVATE | CYCLIC_OP_ENABLE,
-                    )
-                    .await
-                    .expect("DcSyncActive");
-            }
+            slave
+                .register_write(
+                    RegisterAddress::DcSyncActive,
+                    SYNC0_ACTIVATE | CYCLIC_OP_ENABLE,
+                )
+                .await
+                .expect("DcSyncActive");
         }
+        // }
     }
+
+    let mut group = group
+        .into_safe_op(&client)
+        .await
+        .expect("PRE-OP -> SAFE-OP");
 
     log::info!("Group has {} slaves", group.len());
 
@@ -225,26 +267,17 @@ async fn main() -> Result<(), Error> {
         );
     }
 
-    let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
+    let mut tick_interval = tokio::time::interval(TICK_INTERVAL);
     tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs are
     // not present.
-    for _ in 0..100 {
-        group.tx_rx(&client).await.expect("TX/RX");
-    }
+    group.tx_rx(&client).await.expect("TX/RX");
 
     let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
 
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
-
-        // // Dynamic drift compensation
-        // let _ = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
-        //     .wrap(&client)
-        //     .with_wkc(group.len() as u16)
-        //     .receive::<u64>()
-        //     .await?;
 
         for mut slave in group.iter(&client) {
             let (_i, o) = slave.io_raw_mut();
