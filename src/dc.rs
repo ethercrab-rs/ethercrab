@@ -27,13 +27,10 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
     for slave in slaves.iter_mut().filter(|slave| slave.flags.dc_supported) {
         let sl = SlaveRef::new(client, slave.configured_address, ());
 
-        // NOTE: Defined as a u64, not i64, in the spec
-        // TODO: Remember why this is i64 here. SOEM uses i64 I think, and I seem to remember things
-        // breaking/being weird if it wasn't i64? Was it something to do with wraparound/overflow?
         let dc_receive_time = sl
             .read(RegisterAddress::DcReceiveTime)
             .ignore_wkc()
-            .receive::<i64>()
+            .receive::<u64>()
             .await?;
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
@@ -64,8 +61,8 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 async fn write_dc_parameters(
     client: &Client<'_>,
     slave: &Slave,
-    dc_receive_time: i64,
-    now_nanos: i64,
+    dc_receive_time: u64,
+    now_nanos: u64,
 ) -> Result<(), Error> {
     Command::fpwr(
         slave.configured_address,
@@ -73,7 +70,7 @@ async fn write_dc_parameters(
     )
     .wrap(client)
     .ignore_wkc()
-    .send(-dc_receive_time + now_nanos)
+    .send(dc_receive_time + now_nanos)
     .await?;
 
     Command::fpwr(
@@ -672,7 +669,7 @@ mod tests {
 
         configure_slave_offsets(&mut slave, &mut parents, &mut delay_accum);
 
-        assert_eq!(slave.dc_receive_time, 0i64);
+        assert_eq!(slave.dc_receive_time, 0u64);
     }
 
     /// Create a ports object with active flags and DC receive times.

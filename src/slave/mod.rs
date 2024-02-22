@@ -62,7 +62,7 @@ pub struct Slave {
     pub(crate) ports: Ports,
 
     /// Distributed Clock latch receive time.
-    pub(crate) dc_receive_time: i64,
+    pub(crate) dc_receive_time: u64,
 
     /// The index of the slave in the EtherCAT tree.
     pub(crate) index: usize,

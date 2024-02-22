@@ -98,6 +98,8 @@ where
         Ok(())
     }
 
+    // FIXME: This is called twice from group init code, so the SMs and FMMUs are loaded from EEPROM
+    // twice.
     /// Second state configuration (PRE-OP -> SAFE-OP).
     ///
     /// PDOs must be configured in the PRE-OP state.
