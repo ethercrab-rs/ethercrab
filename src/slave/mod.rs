@@ -33,7 +33,7 @@ use core::{
 };
 use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
-    EtherCrabWireWriteSized,
+    EtherCrabWireWrite,
 };
 
 pub use self::pdi::SlavePdi;
@@ -539,33 +539,50 @@ where
         value: T,
     ) -> Result<(), Error>
     where
-        T: EtherCrabWireWriteSized,
+        T: EtherCrabWireWrite,
     {
         let sub_index = sub_index.into();
 
-        let counter = self.mailbox_counter();
+        if value.packed_len() <= 4 {
+            let counter = self.mailbox_counter();
 
-        if value.packed_len() > 4 {
-            fmt::error!("Only 4 byte SDO writes or smaller are supported currently.");
+            let mut buf = [0u8; 4];
 
-            // TODO: Normal SDO download. Only expedited requests for now
-            return Err(Error::Internal);
+            value.pack_to_slice(&mut buf)?;
+
+            let request = coe::services::download_expedited(
+                counter,
+                index,
+                sub_index,
+                buf,
+                value.packed_len() as u8,
+            );
+
+            fmt::trace!("CoE download expedited");
+
+            let (_response, _data) = self.send_coe_service(request).await?;
+
+            // TODO: Validate reply?
+
+            Ok(())
+        } else if value.packed_len() <= 8 {
+            let counter = self.mailbox_counter();
+
+            let mut buf = [0u8; 8];
+
+            value.pack_to_slice(&mut buf)?;
+
+            let request =
+                coe::services::download(counter, index, sub_index, buf, value.packed_len() as u8);
+
+            fmt::trace!("CoE download 8 bytes");
+
+            let (_response, _data) = self.send_coe_service(request).await?;
+
+            Ok(())
+        } else {
+            todo!("Only 8 byte or less writes are currently supported");
         }
-
-        let mut buf = [0u8; 4];
-
-        value.pack_to_slice(&mut buf)?;
-
-        let request =
-            coe::services::download(counter, index, sub_index, buf, value.packed_len() as u8);
-
-        fmt::trace!("CoE download");
-
-        let (_response, _data) = self.send_coe_service(request).await?;
-
-        // TODO: Validate reply?
-
-        Ok(())
     }
 
     pub(crate) async fn sdo_read_expedited<T>(

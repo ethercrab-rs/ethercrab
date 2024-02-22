@@ -63,6 +63,17 @@ impl Display for SdoNormal {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 20)]
+pub struct SdoNormalDownload {
+    #[wire(bytes = 12)]
+    pub headers: SdoNormal,
+    #[wire(bytes = 8)]
+    // TODO: Swap out for a `T` when const generics lets us do BASIC MATHS REEEEEE. This is
+    // currently a kludge to be able to write `u64`s into SDOs.
+    pub data: [u8; 8],
+}
+
 /// Headers belonging to segmented SDO transfers.
 #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 9)]
@@ -101,13 +112,19 @@ impl CoeServiceRequest for SdoNormal {
     }
 }
 
+impl<'a> CoeServiceRequest for SdoNormalDownload {
+    fn counter(&self) -> u8 {
+        self.headers.header.counter
+    }
+}
+
 impl CoeServiceRequest for SdoSegmented {
     fn counter(&self) -> u8 {
         self.header.counter
     }
 }
 
-pub fn download(
+pub fn download_expedited(
     counter: u8,
     index: u16,
     access: SubIndex,
@@ -128,6 +145,37 @@ pub fn download(
                 size_indicator: true,
                 expedited_transfer: true,
                 size: 4u8.saturating_sub(len),
+                complete_access: access.complete_access(),
+                command: super::CoeCommand::DownloadRequest,
+                index,
+                sub_index: access.sub_index(),
+            },
+        },
+        data,
+    }
+}
+
+pub fn download(
+    counter: u8,
+    index: u16,
+    access: SubIndex,
+    data: [u8; 8],
+    len: u8,
+) -> SdoNormalDownload {
+    SdoNormalDownload {
+        headers: SdoNormal {
+            header: MailboxHeader {
+                length: 0x0a + u16::from(len),
+                // address: 0x0000,
+                priority: Priority::Lowest,
+                mailbox_type: MailboxType::Coe,
+                counter,
+                service: CoeService::SdoRequest,
+            },
+            sdo_header: InitSdoHeader {
+                size_indicator: true,
+                expedited_transfer: false,
+                size: len,
                 complete_access: access.complete_access(),
                 command: super::CoeCommand::DownloadRequest,
                 index,
@@ -217,7 +265,8 @@ mod tests {
     fn encode_sdo_request() {
         let buf = [0xaau8, 0xbb, 0xcc, 0xdd];
 
-        let request = download(123, 0x1234, 3.into(), buf.clone(), buf.packed_len() as u8);
+        let request =
+            download_expedited(123, 0x1234, 3.into(), buf.clone(), buf.packed_len() as u8);
 
         pretty_assertions::assert_eq!(
             request,
@@ -250,7 +299,8 @@ mod tests {
     fn encode_sdo_request_complete() {
         let buf = [0xaau8, 0xbb, 0xcc, 0xdd];
 
-        let request = download(123, 0x1234, SubIndex::Complete, buf, buf.packed_len() as u8);
+        let request =
+            download_expedited(123, 0x1234, SubIndex::Complete, buf, buf.packed_len() as u8);
 
         pretty_assertions::assert_eq!(
             request,
