@@ -11,7 +11,7 @@ use tokio::time::MissedTickBehavior;
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
 const MAX_PDU_DATA: usize = 1100;
-const MAX_FRAMES: usize = 16;
+const MAX_FRAMES: usize = 32;
 const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
@@ -85,7 +85,10 @@ async fn main() -> Result<(), Error> {
 
     let client = Arc::new(Client::new(
         pdu_loop,
-        Timeouts::default(),
+        Timeouts {
+            wait_loop_delay: Duration::from_millis(5),
+            ..Timeouts::default()
+        },
         ClientConfig::default(),
     ));
 
@@ -166,13 +169,15 @@ async fn main() -> Result<(), Error> {
 
                 let sync0_cycle_time = 100_000;
                 let sync1_cycle_time = 100_000;
-                let cycle_shift = 1;
+                let cycle_shift = 0;
 
                 let true_cycle_time =
                     ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
 
                 // 100ms
                 let first_pulse_delay = 100000000;
+
+                dbg!(true_cycle_time);
 
                 let t = (device_time + first_pulse_delay) / true_cycle_time * true_cycle_time
                     + true_cycle_time
@@ -225,7 +230,9 @@ async fn main() -> Result<(), Error> {
 
     // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs are
     // not present.
-    group.tx_rx(&client).await.expect("TX/RX");
+    for _ in 0..100 {
+        group.tx_rx(&client).await.expect("TX/RX");
+    }
 
     let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
 
