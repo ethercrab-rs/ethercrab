@@ -16,6 +16,10 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
+const CYCLIC_OP_ENABLE: u8 = 0b0000_0001;
+const SYNC0_ACTIVATE: u8 = 0b0000_0010;
+const SYNC1_ACTIVATE: u8 = 0b0000_0100;
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -67,6 +71,95 @@ async fn main() -> Result<(), Error> {
             let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
             let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
             log::info!("Inputs sync type {sync_type}, cycle time {cycle_time} ns");
+
+            #[repr(u16)]
+            enum Lan9252Register {
+                /// 12.14.29 SYNC/LATCH PDI CONFIGURATION REGISTER.
+                SyncLatchConfig = 0x0151,
+            }
+
+            #[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
+            #[repr(u8)]
+            enum SyncLatchDrivePolarity {
+                /// 00: Push-Pull Active Low.
+                PushPullActiveLow = 0b00,
+                /// 01: Open Drain (Active Low).
+                OpenDrainActiveLow = 0b01,
+                /// 10: Push-Pull Active High.
+                PushPullActiveHigh = 0b10,
+                /// 11: Open Source (Active High).
+                OpenSourceActiveHigh = 0b11,
+            }
+
+            /// LAN9252 12.14.29 SYNC/LATCH PDI CONFIGURATION REGISTER
+            #[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
+            #[wire(bytes = 1)]
+            struct Lan9252Conf {
+                #[wire(bits = 2)]
+                sync0_drive_polarity: SyncLatchDrivePolarity,
+
+                /// `true` = SYNC0 (output), `false` = `LATCH0` (input).
+                #[wire(bits = 1)]
+                sync0_latch0: bool,
+
+                #[wire(bits = 1)]
+                sync0_map: bool,
+
+                #[wire(bits = 2)]
+                sync1_drive_polarity: SyncLatchDrivePolarity,
+
+                /// `true` = SYNC1 (output), `false` = `LATCH1` (input).
+                #[wire(bits = 1)]
+                sync1_latch1: bool,
+
+                #[wire(bits = 1)]
+                sync1_map: bool,
+            }
+
+            let v = slave
+                .register_read::<Lan9252Conf>(Lan9252Register::SyncLatchConfig as u16)
+                .await
+                .expect("0x0151u16");
+
+            log::info!("LAN9252 config reg 0x0151: {:?}", v);
+
+            // Table 27 – Distributed Clock sync parameter
+            {
+                // Disable cyclic op
+                slave
+                    .register_write(RegisterAddress::DcSyncActive, 0u8)
+                    .await
+                    .expect("DcSyncActive");
+
+                // SOEM does it :shrug:. 0x0980 is just marked "reserved" in ETG1000.4.
+                slave
+                    .register_write(0x980u16, 0u8)
+                    .await
+                    .expect("DcSyncActive");
+
+                let device_time = slave
+                    .register_read::<i64>(RegisterAddress::DcSystemTime)
+                    .await
+                    .expect("DcSystemTime");
+
+                log::info!("Device time {}", device_time);
+
+                slave
+                    .register_write(RegisterAddress::DcSyncStartTime, device_time + 10_000)
+                    .await
+                    .expect("DcSyncStartTime");
+
+                // Cycle time in nanoseconds
+                slave
+                    .register_write(RegisterAddress::DcSync0CycleTime, 10_000)
+                    .await
+                    .expect("DcSync0CycleTime");
+
+                // slave
+                //     .register_write(RegisterAddress::DcSyncActive, SYNC0_ACTIVATE)
+                //     .await
+                //     .expect("DcSyncActive");
+            }
         }
     }
 
@@ -89,14 +182,27 @@ async fn main() -> Result<(), Error> {
         );
     }
 
+    let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
+    tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
     // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs are
     // not present.
     group.tx_rx(&client).await.expect("TX/RX");
 
     let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
 
-    let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
-    tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    // Enable cyclic op for all devices
+    for slave in group.iter(&client) {
+        // Enabling CYCLIC_OP_ENABLE gives "Failed to claim receiving frame" if not in OP state,
+        // which is a bizarre error to encounter.
+        slave
+            .register_write(
+                RegisterAddress::DcSyncActive,
+                SYNC0_ACTIVATE | CYCLIC_OP_ENABLE,
+            )
+            .await
+            .expect("DcSyncActive OP");
+    }
 
     loop {
         group.tx_rx(&client).await.expect("TX/RX");

@@ -189,6 +189,8 @@ pub enum RegisterAddress {
     /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u32`.
     ///
     /// AKA ETG1000.4 Table 61 DC user P5.
+    ///
+    /// Cycle time is in nanoseconds.
     DcSync0CycleTime = 0x09A0,
 }
 
