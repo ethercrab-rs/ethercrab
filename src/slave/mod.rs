@@ -712,22 +712,24 @@ impl<'a, S> SlaveRef<'a, S> {
             .await
             .and_then(|ctl| {
                 if ctl.error {
-                    // TODO: Better error variant.
-                    Err(Error::Internal)
+                    Err(Error::SubDevice(AlStatusCode::Unknown(0)))
                 } else {
                     Ok(ctl.state)
                 }
             }) {
             Ok(state) => Ok(state),
-            Err(e) => {
-                let code = self
-                    .read(RegisterAddress::AlStatusCode)
-                    .receive::<AlStatusCode>()
-                    .await
-                    .unwrap_or(AlStatusCode::Unknown(0));
+            Err(e) => match e {
+                Error::SubDevice(AlStatusCode::Unknown(0)) => {
+                    let code = self
+                        .read(RegisterAddress::AlStatusCode)
+                        .receive::<AlStatusCode>()
+                        .await
+                        .unwrap_or(AlStatusCode::Unknown(0));
 
-                Err(Error::SubDevice(code))
-            }
+                    Err(Error::SubDevice(code))
+                }
+                e => Err(e),
+            },
         }
     }
 
