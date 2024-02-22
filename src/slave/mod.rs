@@ -224,6 +224,11 @@ impl Slave {
         self.propagation_delay
     }
 
+    /// Returns true if the subdevice supports DC (Distributed Clocks).
+    pub fn supports_dc(&self) -> bool {
+        self.flags.dc_supported
+    }
+
     pub(crate) fn io_segments(&self) -> &IoRanges {
         &self.config.io
     }
@@ -296,6 +301,11 @@ where
     /// always return `0`.
     pub fn propagation_delay(&self) -> u32 {
         self.state.propagation_delay
+    }
+
+    /// Returns true if the subdevice supports DC (Distributed Clocks).
+    pub fn supports_dc(&self) -> bool {
+        self.state.flags.dc_supported
     }
 
     /// Return the current cyclic mailbox counter value, from 0-7.
