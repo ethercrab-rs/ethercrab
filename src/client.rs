@@ -99,6 +99,31 @@ impl<'sto> Client<'sto> {
             core::mem::size_of::<u32>() as u16,
         )
         .await?;
+        self.blank_memory(
+            RegisterAddress::DcSystemTimeDifference,
+            core::mem::size_of::<u32>() as u16,
+        )
+        .await?;
+        self.blank_memory(
+            RegisterAddress::DcSyncActive,
+            core::mem::size_of::<u8>() as u16,
+        )
+        .await?;
+        self.blank_memory(
+            RegisterAddress::DcSyncStartTime,
+            core::mem::size_of::<u32>() as u16,
+        )
+        .await?;
+        self.blank_memory(
+            RegisterAddress::DcSync0CycleTime,
+            core::mem::size_of::<u32>() as u16,
+        )
+        .await?;
+        self.blank_memory(
+            RegisterAddress::DcSync1CycleTime,
+            core::mem::size_of::<u32>() as u16,
+        )
+        .await?;
 
         // ETG1020 Section 22.2.4 defines these initial parameters. The data types are defined in
         // ETG1000.4 Table 60 – Distributed clock local time parameter, helpfully named "Control
