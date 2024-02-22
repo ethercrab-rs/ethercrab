@@ -33,7 +33,7 @@ use core::{
 };
 use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
-    EtherCrabWireWrite,
+    EtherCrabWireWriteSized,
 };
 
 pub use self::pdi::SlavePdi;
@@ -529,7 +529,7 @@ where
         value: T,
     ) -> Result<(), Error>
     where
-        T: EtherCrabWireWrite,
+        T: EtherCrabWireWriteSized,
     {
         let sub_index = sub_index.into();
 
