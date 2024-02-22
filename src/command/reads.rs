@@ -41,14 +41,6 @@ pub enum Reads {
         /// Logical address.
         address: u32,
     },
-    /// FRMW.
-    Frmw {
-        /// Configured station address.
-        address: u16,
-
-        /// Memory location to read from.
-        register: u16,
-    },
 }
 
 impl Reads {

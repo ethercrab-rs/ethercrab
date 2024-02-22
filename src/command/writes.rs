@@ -36,6 +36,14 @@ pub enum Writes {
         /// Memory location to read from.
         register: u16,
     },
+    /// FRMW.
+    Frmw {
+        /// Configured station address.
+        address: u16,
+
+        /// Memory location to read from.
+        register: u16,
+    },
     /// LWR.
     Lwr {
         /// Logical address.

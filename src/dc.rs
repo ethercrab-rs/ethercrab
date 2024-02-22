@@ -424,7 +424,9 @@ pub(crate) async fn run_dc_static_sync(
             RegisterAddress::DcSystemTime.into(),
         )
         .wrap(client)
-        .receive_wkc::<u64>()
+        .ignore_wkc()
+        // TODO: Send provided system time
+        .send(0u64)
         .await?;
     }
 

@@ -106,9 +106,9 @@ impl EtherCrabWireWrite for Command {
             Command::Read(Reads::Aprd { address, register })
             | Command::Read(Reads::Brd { address, register })
             | Command::Read(Reads::Fprd { address, register })
-            | Command::Read(Reads::Frmw { address, register })
             | Command::Write(Writes::Apwr { address, register })
             | Command::Write(Writes::Fpwr { address, register })
+            | Command::Write(Writes::Frmw { address, register })
             | Command::Write(Writes::Bwr { address, register }) => {
                 address.pack_to_slice_unchecked(&mut buf[0..2]);
                 register.pack_to_slice_unchecked(&mut buf[2..4]);
@@ -145,9 +145,6 @@ impl core::fmt::Display for Command {
                     write!(f, "BRD(addr {}, reg {})", address, register)
                 }
                 Reads::Lrd { address } => write!(f, "LRD(addr {})", address),
-                Reads::Frmw { address, register } => {
-                    write!(f, "FRMW(addr {}, reg {})", address, register)
-                }
             },
 
             Command::Write(write) => match write {
@@ -159,6 +156,9 @@ impl core::fmt::Display for Command {
                 }
                 Writes::Fpwr { address, register } => {
                     write!(f, "FPWR(addr {}, reg {})", address, register)
+                }
+                Writes::Frmw { address, register } => {
+                    write!(f, "FRMW(addr {}, reg {})", address, register)
                 }
 
                 Writes::Lwr { address } => write!(f, "LWR(addr {})", address),
@@ -221,8 +221,8 @@ impl Command {
     ///
     /// This can be used to distribute a value from one slave to all others on the network, e.g.
     /// with distributed clocks.
-    pub fn frmw(address: u16, register: u16) -> Reads {
-        Reads::Frmw { address, register }
+    pub fn frmw(address: u16, register: u16) -> Writes {
+        Writes::Frmw { address, register }
     }
 
     /// Logical Read Write (LRW), used mainly for sending and receiving PDI.
@@ -245,12 +245,12 @@ impl Command {
                 Reads::Fprd { .. } => FPRD,
                 Reads::Brd { .. } => BRD,
                 Reads::Lrd { .. } => LRD,
-                Reads::Frmw { .. } => FRMW,
             },
 
             Self::Write(write) => match write {
                 Writes::Bwr { .. } => BWR,
                 Writes::Apwr { .. } => APWR,
+                Writes::Frmw { .. } => FRMW,
                 Writes::Fpwr { .. } => FPWR,
                 Writes::Lwr { .. } => LWR,
                 Writes::Lrw { .. } => LRW,
@@ -275,10 +275,6 @@ impl Command {
                 let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
                 Ok(Command::Read(Reads::Brd { address, register }))
             }
-            FRMW => {
-                let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
-                Ok(Command::Read(Reads::Frmw { address, register }))
-            }
             LRD => Ok(Command::Read(Reads::Lrd {
                 address: u32::from_le_bytes(data),
             })),
@@ -295,6 +291,10 @@ impl Command {
             FPWR => {
                 let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
                 Ok(Command::Write(Writes::Fpwr { address, register }))
+            }
+            FRMW => {
+                let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
+                Ok(Command::Write(Writes::Frmw { address, register }))
             }
             LWR => Ok(Command::Write(Writes::Lwr {
                 address: u32::from_le_bytes(data),
