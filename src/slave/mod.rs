@@ -706,10 +706,29 @@ impl<'a, S> SlaveRef<'a, S> {
 
     /// Get the sub device status.
     pub(crate) async fn state(&self) -> Result<SlaveState, Error> {
-        self.read(RegisterAddress::AlStatus)
+        match self
+            .read(RegisterAddress::AlStatus)
             .receive::<AlControl>()
             .await
-            .map(|ctl| ctl.state)
+            .and_then(|ctl| {
+                if ctl.error {
+                    // TODO: Better error variant.
+                    Err(Error::Internal)
+                } else {
+                    Ok(ctl.state)
+                }
+            }) {
+            Ok(state) => Ok(state),
+            Err(e) => {
+                let code = self
+                    .read(RegisterAddress::AlStatusCode)
+                    .receive::<AlStatusCode>()
+                    .await
+                    .unwrap_or(AlStatusCode::Unknown(0));
+
+                Err(Error::SubDevice(code))
+            }
+        }
     }
 
     /// Get the EtherCAT state machine state of the sub device.
