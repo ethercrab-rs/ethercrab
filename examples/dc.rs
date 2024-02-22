@@ -31,11 +31,7 @@ async fn main() -> Result<(), Error> {
 
     let client = Arc::new(Client::new(
         pdu_loop,
-        Timeouts {
-            wait_loop_delay: Duration::from_millis(2),
-            mailbox_response: Duration::from_millis(1000),
-            ..Default::default()
-        },
+        Timeouts::default(),
         ClientConfig::default(),
     ));
 
@@ -66,13 +62,11 @@ async fn main() -> Result<(), Error> {
 
             let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
             let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
-            let shift_time = slave.sdo_read::<u32>(0x1c32, 3).await.unwrap_or(0);
-            log::info!("Outputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
+            log::info!("Outputs sync type {sync_type}, cycle time {cycle_time} ns");
 
             let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
             let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
-            let shift_time = slave.sdo_read::<u32>(0x1c33, 3).await.unwrap_or(0);
-            log::info!("Inputs sync stuff {sync_type} {cycle_time} ns, shift {shift_time} ns");
+            log::info!("Inputs sync type {sync_type}, cycle time {cycle_time} ns");
         }
     }
 
@@ -95,6 +89,10 @@ async fn main() -> Result<(), Error> {
         );
     }
 
+    // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs are
+    // not present.
+    group.tx_rx(&client).await.expect("TX/RX");
+
     let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
 
     let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
@@ -103,11 +101,12 @@ async fn main() -> Result<(), Error> {
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
-        // Dynamic drift compensation
-        let _ = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
-            .wrap(&client)
-            .receive::<u64>()
-            .await?;
+        // // Dynamic drift compensation
+        // let _ = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
+        //     .wrap(&client)
+        //     .with_wkc(group.len() as u16)
+        //     .receive::<u64>()
+        //     .await?;
 
         for mut slave in group.iter(&client) {
             let (_i, o) = slave.io_raw_mut();

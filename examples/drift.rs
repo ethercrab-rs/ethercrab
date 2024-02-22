@@ -4,7 +4,7 @@ use env_logger::Env;
 use ethercrab::{std::tx_rx_task, Client, ClientConfig, PduStorage, RegisterAddress, Timeouts};
 use futures_lite::StreamExt;
 use rustix::time::ClockId;
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 128;
@@ -23,6 +23,12 @@ fn main() {
     let interface = std::env::args()
         .nth(1)
         .expect("Provide network interface as first argument.");
+
+    let mut csv_path = PathBuf::from(
+        std::env::args()
+            .nth(2)
+            .expect("Provide CSV output path as second argument."),
+    );
 
     log::info!("Discovering EtherCAT devices on {}...", interface);
 
@@ -56,46 +62,98 @@ fn main() {
             );
         }
 
-        let mut tick = smol::Timer::interval(Duration::from_millis(1000));
+        let mut tick = smol::Timer::interval(Duration::from_millis(200));
 
-        while let Some(_) = tick.next().await {
+        csv_path.set_extension("csv");
+
+        let mut wtr = csv::Writer::from_path(&csv_path).expect("Unable to create writer");
+
+        #[derive(serde::Serialize)]
+        struct CsvRow {
+            name: String,
+            cycle: usize,
+            slave: u16,
+            system_time: u64,
+            system_time_offset: i64,
+            xmit_delay: u32,
+            diff: i32,
+        }
+
+        let mut cycle = 0;
+
+        for _ in 0..200 {
             let t_ns = {
                 let t = rustix::time::clock_gettime(ClockId::Realtime);
 
                 (t.tv_sec * 1000 * 1000) + t.tv_nsec
             };
 
-            log::info!("Master time {} ns", t_ns);
+            // log::info!("Master time {} ns", t_ns);
 
             for s in group.iter(&client) {
-                log::info!(
-                    "--> {:#06x} system time {} ns, offset {} ns, xmit delay {} ns, diff {} ns",
-                    s.configured_address(),
-                    s.register_read::<u64>(RegisterAddress::DcSystemTime)
-                        .await
-                        .unwrap_or(0),
-                    s.register_read::<u64>(RegisterAddress::DcSystemTimeOffset)
-                        .await
-                        .unwrap_or(0),
-                    s.register_read::<u32>(RegisterAddress::DcSystemTimeTransmissionDelay)
-                        .await
-                        .unwrap_or(0),
-                    s.register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
-                        .await
-                        .map(|raw: u32| {
-                            let greater_than = (raw & (1u32 << 31)) == 0;
+                let system_time = s
+                    .register_read::<u64>(RegisterAddress::DcSystemTime)
+                    .await
+                    .unwrap_or(0);
+                let system_time_offset = s
+                    .register_read::<i64>(RegisterAddress::DcSystemTimeOffset)
+                    .await
+                    .unwrap_or(0);
+                let xmit_delay = s
+                    .register_read::<u32>(RegisterAddress::DcSystemTimeTransmissionDelay)
+                    .await
+                    .unwrap_or(0);
+                let diff = s
+                    .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+                    .await
+                    .map(|raw: u32| {
+                        let greater_than = (raw & (1u32 << 31)) == 0;
 
-                            let value = (raw & (u32::MAX >> 1)) as i32;
+                        let value = (raw & (u32::MAX >> 1)) as i32;
 
-                            if greater_than {
-                                value
-                            } else {
-                                -value
-                            }
-                        })
-                        .unwrap_or(0),
-                );
+                        if greater_than {
+                            value
+                        } else {
+                            -value
+                        }
+                    })
+                    .unwrap_or(0);
+
+                wtr.serialize(CsvRow {
+                    name: csv_path.file_stem().unwrap().to_string_lossy().to_string(),
+                    cycle,
+                    slave: s.configured_address(),
+                    system_time,
+                    system_time_offset,
+                    xmit_delay,
+                    diff,
+                })
+                .expect("CSV write");
+
+                wtr.serialize(CsvRow {
+                    name: csv_path.file_stem().unwrap().to_string_lossy().to_string(),
+                    cycle,
+                    slave: 0x0000,
+                    system_time: t_ns as u64,
+                    system_time_offset: 0,
+                    xmit_delay: 0,
+                    diff: 0,
+                })
+                .expect("CSV write");
+
+                // log::info!(
+                //     "--> {:#06x} system time {} ns, offset {} ns, xmit delay {} ns, diff {} ns",
+                //     s.configured_address(),
+                //     system_time,
+                //     system_time_offset,
+                //     xmit_delay,
+                //     diff,
+                // );
             }
+
+            cycle += 1;
+
+            tick.next().await;
         }
     });
 
