@@ -95,7 +95,7 @@ pub trait EtherCrabWireSized {
 ///
 /// This trait is implemented automatically if [`EtherCrabWireWrite`] or [`EtherCrabWireReadWrite`]
 /// is [derived](https://docs.rs/ethercrab-wire-derive).
-pub trait EtherCrabWireWriteSized: EtherCrabWireSized {
+pub trait EtherCrabWireWriteSized: EtherCrabWireWrite + EtherCrabWireSized {
     /// Pack this item to a fixed sized array.
     fn pack(&self) -> Self::Buffer;
 }
