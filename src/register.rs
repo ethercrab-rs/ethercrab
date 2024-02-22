@@ -155,7 +155,7 @@ pub enum RegisterAddress {
     DcTimePort3 = 0x090c,
     /// DC system receive time.
     DcReceiveTime = 0x0918,
-    /// DC system time.
+    /// DC system time, `u64`.
     DcSystemTime = 0x0910,
     /// DC system time offset, `u64`.
     ///
@@ -176,17 +176,17 @@ pub enum RegisterAddress {
     /// DC system time difference, `u32`.
     DcSystemTimeDifference = 0x092C,
 
-    /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u8`.
+    /// ETG1000.6 Table 27 - Distributed Clock sync parameter, `u8`.
     ///
     /// AKA ETG1000.4 Table 61 DC user P1.
     DcSyncActive = 0x0981,
 
-    /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u32`.
+    /// ETG1000.6 Table 27 - Distributed Clock sync parameter, `u32`.
     ///
     /// AKA ETG1000.4 Table 61 DC user P4.
     DcSyncStartTime = 0x0990,
 
-    /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u32`.
+    /// ETG1000.6 Table 27 - Distributed Clock sync parameter, `u32`.
     ///
     /// AKA ETG1000.4 Table 61 DC user P6.
     ///
