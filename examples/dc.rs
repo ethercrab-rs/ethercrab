@@ -309,6 +309,8 @@ async fn main() -> Result<(), Error> {
     let mut now = Instant::now();
     let start = Instant::now();
     let mut headers = false;
+    // Compile time switch
+    let debug_csv = option_env!("ETHERCRAB_CSV");
 
     loop {
         // group.tx_rx(&client).await.expect("TX/RX");
@@ -320,9 +322,9 @@ async fn main() -> Result<(), Error> {
 
             let mut row = Vec::with_capacity(group.len());
 
-            // if !headers {
-            //     print!("t_ms");
-            // }
+            if debug_csv.is_some() && !headers {
+                print!("t_ms");
+            }
 
             for s1 in group.iter(&client) {
                 // let s1 = group.slave(&client, 1).unwrap();
@@ -373,19 +375,21 @@ async fn main() -> Result<(), Error> {
                 }
             }
 
-            // if !headers {
-            //     println!();
-            // }
+            if debug_csv.is_some() && !headers {
+                println!();
+            }
 
-            // println!(
-            //     "{},{}",
-            //     start.elapsed().as_millis(),
-            //     row.into_iter()
-            //         .map(|v| v.to_string())
-            //         .collect::<Vec<_>>()
-            //         .as_slice()
-            //         .join(",")
-            // );
+            if debug_csv.is_some() {
+                println!(
+                    "{},{}",
+                    start.elapsed().as_millis(),
+                    row.into_iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .as_slice()
+                        .join(",")
+                );
+            }
 
             headers = true;
         }
