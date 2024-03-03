@@ -215,8 +215,8 @@ impl<'sto> Client<'sto> {
     /// ```
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
-
         mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn SlaveGroupHandle, Error>,
+        now: impl Fn() -> u64,
     ) -> Result<G, Error>
     where
         G: Default,
@@ -260,13 +260,21 @@ impl<'sto> Client<'sto> {
 
         fmt::debug!("Configuring topology/distributed clocks");
 
+        let now_nanos = now();
+
         // Configure distributed clock offsets/propagation delays, perform static drift
         // compensation. We need the slaves in a single list so we can read the topology.
-        let dc_master = dc::configure_dc(self, slaves.as_mut_slices().0).await?;
+        let dc_master = dc::configure_dc(self, slaves.as_mut_slices().0, now_nanos).await?;
 
         // If there are slave devices that support distributed clocks, run static drift compensation
         if let Some(dc_master) = dc_master {
-            dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations).await?;
+            dc::run_dc_static_sync(
+                self,
+                dc_master,
+                self.config.dc_static_sync_iterations,
+                now_nanos,
+            )
+            .await?;
         }
 
         // This block is to reduce the lifetime of the groups map references
@@ -387,8 +395,10 @@ impl<'sto> Client<'sto> {
     /// ```
     pub async fn init_single_group<const MAX_SLAVES: usize, const MAX_PDI: usize>(
         &self,
+        now: impl Fn() -> u64,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, slave_group::PreOp>, Error> {
-        self.init::<MAX_SLAVES, _>(|group, _slave| Ok(group)).await
+        self.init::<MAX_SLAVES, _>(|group, _slave| Ok(group), now)
+            .await
     }
 
     /// Count the number of slaves on the network.

@@ -376,15 +376,11 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
 pub(crate) async fn configure_dc<'slaves>(
     client: &Client<'_>,
     slaves: &'slaves mut [Slave],
+    now_nanos: u64,
 ) -> Result<Option<&'slaves Slave>, Error> {
     latch_dc_times(client, slaves).await?;
 
     // let ethercat_offset = Utc.ymd(2000, 01, 01).and_hms(0, 0, 0);
-
-    // TODO: Allow passing in of an initial value
-    // let now_nanos =
-    //     chrono::Utc::now().timestamp_nanos() - dbg!(ethercat_offset.timestamp_nanos());
-    let now_nanos = 0;
 
     assign_parent_relationships(slaves)?;
 
@@ -406,6 +402,7 @@ pub(crate) async fn run_dc_static_sync(
     client: &Client<'_>,
     dc_reference_slave: &Slave,
     iterations: u32,
+    now_nanos: u64,
 ) -> Result<(), Error> {
     fmt::debug!(
         "Performing static drift compensation using slave {:#06x} {} as reference. This can take some time...",
@@ -422,8 +419,7 @@ pub(crate) async fn run_dc_static_sync(
         )
         .wrap(client)
         .ignore_wkc()
-        // TODO: Send provided system time
-        .send(0u64)
+        .send(now_nanos)
         .await?;
     }
 
