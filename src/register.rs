@@ -302,6 +302,18 @@ pub struct SupportFlags {
     pub special_fmmu: bool,
 }
 
+impl SupportFlags {
+    pub fn dc_support(&self) -> DcSupport {
+        if !self.dc_supported {
+            DcSupport::None
+        } else if self.has_64bit_dc {
+            DcSupport::Bits64
+        } else {
+            DcSupport::Bits32
+        }
+    }
+}
+
 impl core::fmt::Display for SupportFlags {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         // Just print DC for now
@@ -324,6 +336,26 @@ impl core::fmt::Display for SupportFlags {
         }
 
         Ok(())
+    }
+}
+
+/// SubDevice DC support status.
+#[derive(Copy, Clone, Debug)]
+pub enum DcSupport {
+    /// No support at all.
+    None,
+    /// 64 bit time support.
+    Bits64,
+    /// 32 bit time support.
+    Bits32,
+}
+
+impl DcSupport {
+    pub fn any(&self) -> bool {
+        match self {
+            DcSupport::None => false,
+            DcSupport::Bits64 | DcSupport::Bits32 => true,
+        }
     }
 }
 

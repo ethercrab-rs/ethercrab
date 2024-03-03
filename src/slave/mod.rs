@@ -19,7 +19,7 @@ use crate::{
     fmt,
     mailbox::{MailboxHeader, MailboxType},
     pdu_loop::RxFrameDataBuf,
-    register::{RegisterAddress, SupportFlags},
+    register::{DcSupport, RegisterAddress, SupportFlags},
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
     timer_factory::IntoTimeout,
@@ -224,9 +224,9 @@ impl Slave {
         self.propagation_delay
     }
 
-    /// Returns true if the subdevice supports DC (Distributed Clocks).
-    pub fn supports_dc(&self) -> bool {
-        self.flags.dc_supported
+    /// Distributed Clock (DC) support.
+    pub fn dc_support(&self) -> DcSupport {
+        self.flags.dc_support()
     }
 
     pub(crate) fn io_segments(&self) -> &IoRanges {
@@ -303,9 +303,9 @@ where
         self.state.propagation_delay
     }
 
-    /// Returns true if the subdevice supports DC (Distributed Clocks).
-    pub fn supports_dc(&self) -> bool {
-        self.state.flags.dc_supported
+    /// Distributed Clock (DC) support.
+    pub fn dc_support(&self) -> DcSupport {
+        self.state.flags.dc_support()
     }
 
     /// Return the current cyclic mailbox counter value, from 0-7.
