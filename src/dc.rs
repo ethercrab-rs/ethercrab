@@ -49,6 +49,12 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
         slave.dc_receive_time = dc_receive_time;
 
+        fmt::trace!(
+            "Slave {:#06x} DC receive time {} ns",
+            slave.configured_address,
+            slave.dc_receive_time
+        );
+
         slave
             .ports
             .set_receive_times(time_p0, time_p3, time_p1, time_p2);
@@ -376,7 +382,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
 pub(crate) async fn configure_dc<'slaves>(
     client: &Client<'_>,
     slaves: &'slaves mut [Slave],
-    now_nanos: u64,
+    now: impl Fn() -> u64,
 ) -> Result<Option<&'slaves Slave>, Error> {
     latch_dc_times(client, slaves).await?;
 
@@ -385,7 +391,7 @@ pub(crate) async fn configure_dc<'slaves>(
     assign_parent_relationships(slaves)?;
 
     for slave in slaves.iter() {
-        write_dc_parameters(client, slave, slave.dc_receive_time, now_nanos).await?;
+        write_dc_parameters(client, slave, slave.dc_receive_time, now()).await?;
     }
 
     let first_dc_slave = slaves.iter().find(|slave| slave.flags.dc_supported);
@@ -402,7 +408,7 @@ pub(crate) async fn run_dc_static_sync(
     client: &Client<'_>,
     dc_reference_slave: &Slave,
     iterations: u32,
-    now_nanos: u64,
+    now: impl Fn() -> u64,
 ) -> Result<(), Error> {
     fmt::debug!(
         "Performing static drift compensation using slave {:#06x} {} as reference. This can take some time...",
@@ -419,7 +425,7 @@ pub(crate) async fn run_dc_static_sync(
         )
         .wrap(client)
         .ignore_wkc()
-        .send(now_nanos)
+        .send(now())
         .await?;
     }
 

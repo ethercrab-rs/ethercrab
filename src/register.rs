@@ -176,6 +176,7 @@ pub enum RegisterAddress {
     /// DC system time difference, `u32`.
     DcSystemTimeDifference = 0x092C,
 
+    // TODO: 0x0980. Not sure what it is though. SOEM calls it DCCUC.
     /// ETG1000.6 Table 27 - Distributed Clock sync parameter, `u8`.
     ///
     /// AKA ETG1000.4 Table 61 DC user P1.
