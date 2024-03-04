@@ -33,6 +33,11 @@ static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 #[derive(Copy, Clone, Debug)]
 pub struct PreOp;
 
+/// The same as [`PreOp`] but with access to PDI methods. All slave configuration should be complete
+/// at this point.
+#[derive(Copy, Clone, Debug)]
+pub struct PreOpPdi;
+
 /// A typestate for [`SlaveGroup`] representing a group that is in SAFE-OP.
 #[derive(Copy, Clone, Debug)]
 pub struct SafeOp;
@@ -200,16 +205,55 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         self_.into_op(client).await
     }
 
-    /// Transition the slave group from PRE-OP to SAFE-OP.
-    pub async fn into_safe_op(
+    /// Configure FMMUs, but leave the group in [`PreOp`] state.
+    ///
+    /// This method is used to obtain access to the group's PDI and related functionality. All SDO
+    /// and other configuration should be complete at this point otherwise issues with cyclic data
+    /// may occur (e.g. incorrect lengths, misplaced fields, etc).
+    pub async fn into_pre_op_pdi(
         mut self,
         client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, PreOpPdi>, Error> {
         self.configure_fmmus(client).await?;
+
+        Ok(SlaveGroup {
+            id: self.id,
+            pdi: self.pdi,
+            read_pdi_len: self.read_pdi_len,
+            pdi_len: self.pdi_len,
+            inner: UnsafeCell::new(self.inner.into_inner()),
+            _state: PhantomData,
+        })
+    }
+
+    /// Transition the slave group from PRE-OP to SAFE-OP.
+    pub async fn into_safe_op(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
+        let self_ = self.into_pre_op_pdi(client).await?;
 
         // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
         // SAFE-OP
+        self_.transition_to(client, SlaveState::SafeOp).await
+    }
+}
+
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, PreOpPdi> {
+    /// Transition the slave group from PRE-OP to SAFE-OP.
+    pub async fn into_safe_op(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
         self.transition_to(client, SlaveState::SafeOp).await
+    }
+
+    /// Transition all slave devices in the group from PRE-OP to SAFE-OP.
+    pub async fn into_op(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
+        self.transition_to(client, SlaveState::Op).await
     }
 }
 
@@ -420,6 +464,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupState
 #[doc(hidden)]
 pub trait HasPdi {}
 
+impl HasPdi for PreOpPdi {}
 impl HasPdi for SafeOp {}
 impl HasPdi for Op {}
 
