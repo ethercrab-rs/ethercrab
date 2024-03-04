@@ -285,14 +285,14 @@ async fn main() -> Result<(), Error> {
         sync_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         loop {
-            let system_time = {
-                let Timespec { tv_sec, tv_nsec } = rustix::time::clock_gettime(ClockId::Monotonic);
+            // let system_time = {
+            //     let Timespec { tv_sec, tv_nsec } = rustix::time::clock_gettime(ClockId::Monotonic);
 
-                tv_sec * 1000 * 1000 * 1000 + tv_nsec
-            } as u64;
+            //     tv_sec * 1000 * 1000 * 1000 + tv_nsec
+            // } as u64;
 
-            // EtherCAT's epoch is 2000-01-01, not 1970-01-01
-            let system_time = system_time.saturating_sub(946684800);
+            // // EtherCAT's epoch is 2000-01-01, not 1970-01-01
+            // let system_time = system_time.saturating_sub(946684800);
 
             // TODO: Find first DC slave instead of hardcoded address.
             // Dynamic drift compensation. Assumes first device supports DC
@@ -323,8 +323,10 @@ async fn main() -> Result<(), Error> {
         averages.push(ExponentialMovingAverage::new(64).unwrap());
     }
 
+    let mut group = group.into_pre_op_pdi(&client).await?;
+
     loop {
-        // group.tx_rx(&client).await.expect("TX/RX");
+        group.tx_rx(&client).await.expect("TX/RX");
 
         if now.elapsed() >= Duration::from_millis(25) {
             now = Instant::now();
@@ -401,13 +403,28 @@ async fn main() -> Result<(), Error> {
                 println!(
                     "{},{}",
                     start.elapsed().as_millis(),
-                    row.into_iter()
+                    row.iter()
                         .flatten()
                         .map(|v| v.to_string())
                         .collect::<Vec<_>>()
                         .as_slice()
                         .join(","),
                 );
+            }
+
+            let max_deviation = row
+                .iter()
+                .map(|[_diff, diff_ema]| diff_ema.abs() as u32)
+                .max()
+                .unwrap_or(u32::MAX);
+
+            // Less than 100ns max deviation.
+            // <https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585>
+            // mentions less than 100us as a good enough value as well.
+            if max_deviation < 100 {
+                log::info!("Clocks settled after {} ms", start.elapsed().as_millis());
+
+                break;
             }
 
             headers = true;
@@ -418,16 +435,20 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Sync done");
 
-    let mut group = group
+    let group = group
         .into_safe_op(&client)
         .await
         .expect("PRE-OP -> SAFE-OP");
 
-    // // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs are
-    // // not present.
-    // group.tx_rx(&client).await.expect("TX/RX");
+    log::info!("SAFE-OP");
 
-    let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
+    // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs are
+    // not present.
+    group.tx_rx(&client).await.expect("TX/RX");
+
+    let group = group.into_op(&client).await.expect("SAFE-OP -> OP");
+
+    log::info!("OP");
 
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
