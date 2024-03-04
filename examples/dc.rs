@@ -323,7 +323,7 @@ async fn main() -> Result<(), Error> {
     loop {
         // group.tx_rx(&client).await.expect("TX/RX");
 
-        if now.elapsed() >= Duration::from_millis(1000) {
+        if now.elapsed() >= Duration::from_millis(25) {
             now = Instant::now();
 
             log::debug!("Stat");
@@ -358,9 +358,9 @@ async fn main() -> Result<(), Error> {
                     Err(e) => return Err(e),
                 };
 
-                row.push(diff);
-
                 let ema_next = ema.next(diff as f64);
+
+                row.push([diff as f64, ema_next]);
 
                 log::debug!(
                     "--> Sys time {} offs {}, diff {} (EMA {:0.3})",
@@ -382,7 +382,11 @@ async fn main() -> Result<(), Error> {
                 );
 
                 if !headers {
-                    print!(",{:#06x}", s1.configured_address());
+                    print!(
+                        ",{:#06x},{:#06x} EMA",
+                        s1.configured_address(),
+                        s1.configured_address()
+                    );
                 }
             }
 
@@ -395,10 +399,11 @@ async fn main() -> Result<(), Error> {
                     "{},{}",
                     start.elapsed().as_millis(),
                     row.into_iter()
+                        .flatten()
                         .map(|v| v.to_string())
                         .collect::<Vec<_>>()
                         .as_slice()
-                        .join(",")
+                        .join(","),
                 );
             }
 
