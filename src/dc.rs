@@ -1,4 +1,8 @@
 //! Distributed Clocks (DC).
+//!
+//! SubDevice propagation time measurement and DC offset calculation documentation can be found in
+//! [Hardware Data Sheet Section
+//! I](https://download.beckhoff.com/download/document/io/ethercat-development-products/ethercat_esc_datasheet_sec1_technology_2i3.pdf).
 
 use crate::{
     command::Command,
@@ -396,15 +400,15 @@ pub(crate) async fn configure_dc<'slaves>(
 ) -> Result<Option<&'slaves Slave>, Error> {
     latch_dc_times(client, slaves).await?;
 
-    // let ethercat_offset = Utc.ymd(2000, 01, 01).and_hms(0, 0, 0);
-
     assign_parent_relationships(slaves)?;
 
     let first_dc_slave = slaves.iter().find(|slave| slave.flags.dc_supported);
 
     if let Some(first_dc_slave) = first_dc_slave.as_ref() {
+        let now_nanos = now();
+
         for slave in slaves.iter().filter(|sl| sl.dc_support().any()) {
-            write_dc_parameters(client, slave, first_dc_slave.dc_receive_time, now()).await?;
+            write_dc_parameters(client, slave, first_dc_slave.dc_receive_time, now_nanos).await?;
         }
     } else {
         fmt::debug!("No SubDevices with DC support found");
@@ -418,6 +422,8 @@ pub(crate) async fn configure_dc<'slaves>(
     Ok(first_dc_slave)
 }
 
+/// Send `iterations` FRMW frames to synchronise the network with the reference clock in the
+/// designated DC SubDevice.
 pub(crate) async fn run_dc_static_sync(
     client: &Client<'_>,
     dc_reference_slave: &Slave,
