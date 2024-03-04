@@ -138,7 +138,7 @@ pub fn tx_rx_task_io_uring<'sto>(
             .user_data(rx_key as u64);
 
             fmt::trace!(
-                "Insert frame TX #{}, key {}, RX key {}",
+                "Insert frame TX {:#04x}, key {}, RX key {}",
                 idx,
                 tx_key,
                 rx_key
@@ -158,28 +158,31 @@ pub fn tx_rx_task_io_uring<'sto>(
         // assert_eq!(ring.submission().cq_overflow(), false);
         // assert_eq!(ring.submission().dropped(), 0);
 
-        ring.submission().sync();
-
+        #[allow(unused_variables)]
         let now = Instant::now();
 
         if sent > 0 {
             ring.submit_and_wait(sent * 2)?;
         }
 
-        fmt::trace!(
-            "Submitted, waited for {} completions for {} us",
-            ring.completion().len(),
-            now.elapsed().as_micros(),
-        );
+        ring.submission().sync();
+        ring.completion().sync();
+
+        // Keep around for debugging
+        // fmt::trace!(
+        //     "Submitted, waited for {} completions for {} us",
+        //     ring.completion().len(),
+        //     now.elapsed().as_micros(),
+        // );
+
+        // Number of CQEs to resubmit, usually required because it returned `EWOULDBLOCK`.
+        let mut resubmit = 0;
 
         // SAFETY: We must never call `completion_shared` or `completion` inside this loop.
         for recv in unsafe { ring.completion_shared() } {
-            if recv.result() < 0 && recv.result() != -libc::EWOULDBLOCK {
-                return Err(io::Error::last_os_error());
-            }
-
             let key = recv.user_data();
 
+            #[allow(unused_variables)]
             let received = Instant::now();
 
             fmt::trace!(
@@ -204,6 +207,8 @@ pub fn tx_rx_task_io_uring<'sto>(
                 continue;
             }
 
+            // TODO: Can we use something like liburing's `io_uring_peek_cqe` here instead of
+            // requeuing the entire CQE? <https://github.com/tokio-rs/io-uring/issues/262>
             // Original read did not succeed. Requeue read so we can try again.
             if recv.result() == -libc::EWOULDBLOCK {
                 fmt::trace!("Frame key {} would block. Queuing for retry", key);
@@ -215,6 +220,8 @@ pub fn tx_rx_task_io_uring<'sto>(
                     // If the submission queue is full, flush it to the kernel
                     ring.submit().expect("Internal error, failed to submit ops");
                 }
+
+                resubmit += 1;
             } else {
                 let (_entry, frame) = bufs.remove(key as usize);
 
@@ -242,9 +249,19 @@ pub fn tx_rx_task_io_uring<'sto>(
                     }
                 }
 
-                fmt::trace!("Received frame in {} ns", received.elapsed().as_nanos());
+                // Keep around to debug slow RX bottlenecks here
+                // fmt::trace!("Received frame in {} ns", received.elapsed().as_nanos());
             }
         }
+
+        if resubmit > 0 {
+            fmt::trace!("Resubmit {}", resubmit);
+
+            ring.submit_and_wait(resubmit).expect("Resubmit");
+        }
+
+        ring.submission().sync();
+        ring.completion().sync();
 
         if bufs.is_empty() {
             fmt::trace!("No frames in flight, waiting to be woken with new frames to send");
@@ -261,10 +278,10 @@ pub fn tx_rx_task_io_uring<'sto>(
 
             fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
         } else {
-            fmt::trace!(
-                "Buf keys {:?} in flight",
-                bufs.iter().map(|(k, _v)| k).collect::<Vec<_>>(),
-            );
+            // fmt::trace!(
+            //     "Buf keys {:?} in flight",
+            //     bufs.iter().map(|(k, _v)| k).collect::<Vec<_>>(),
+            // );
         }
     }
 }
