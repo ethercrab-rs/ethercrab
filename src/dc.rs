@@ -300,11 +300,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
             "Slave {:#06x} {} {}",
             slave.configured_address,
             slave.name,
-            if slave.flags.dc_supported {
-                "has DC"
-            } else {
-                "no DC"
-            }
+            slave.flags
         );
 
         // If this slave has a parent, find it, then assign the parent's next open port to this

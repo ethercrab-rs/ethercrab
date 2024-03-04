@@ -297,6 +297,9 @@ pub struct SupportFlags {
     pub mii_enhanced_link_detection: bool,
     #[wire(bits = 1)]
     pub separate_fcs_error_handling: bool,
+    /// Indicates whether registers `0x0981` - `0x0984` are usable.
+    ///
+    /// ETG1000.4 Table 31 – DL information.
     #[wire(bits = 1)]
     pub enhanced_dc_sync: bool,
     #[wire(bits = 1)]
@@ -311,6 +314,8 @@ impl SupportFlags {
     pub fn dc_support(&self) -> DcSupport {
         if !self.dc_supported {
             DcSupport::None
+        } else if !self.enhanced_dc_sync {
+            DcSupport::RefOnly
         } else if self.has_64bit_dc {
             DcSupport::Bits64
         } else {
@@ -349,6 +354,8 @@ impl core::fmt::Display for SupportFlags {
 pub enum DcSupport {
     /// No support at all.
     None,
+    /// This device can be used as the DC reference, but cannot be configured for `SYNC`/`LATCH`.
+    RefOnly,
     /// 64 bit time support.
     Bits64,
     /// 32 bit time support.
@@ -356,10 +363,19 @@ pub enum DcSupport {
 }
 
 impl DcSupport {
+    /// Reference only, 32 or 64 bit counters.
     pub fn any(&self) -> bool {
         match self {
             DcSupport::None => false,
+            DcSupport::RefOnly | DcSupport::Bits64 | DcSupport::Bits32 => true,
+        }
+    }
+
+    /// Whether this device can be configured for `SYNC`/`LATCH`.
+    pub fn enhanced(&self) -> bool {
+        match self {
             DcSupport::Bits64 | DcSupport::Bits32 => true,
+            _ => false,
         }
     }
 }
