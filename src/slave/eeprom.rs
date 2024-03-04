@@ -234,7 +234,12 @@ where
                 e
             })?;
 
-            fmt::trace!("Range {:?} value {}", valid_range, pdo.index);
+            fmt::trace!(
+                "Range {:#06x}..={:#06x} value {:#06x}",
+                valid_range.start(),
+                valid_range.end(),
+                pdo.index
+            );
 
             if !valid_range.contains(&pdo.index) {
                 fmt::error!("Invalid PDO range");
