@@ -219,6 +219,9 @@ impl Command {
 
     /// Configured address read, multiple write (FRMW).
     ///
+    /// Slave puts read data into the EtherCAT datagram if address matches with one of its
+    /// configured addresses, otherwise slave writes the data into memory location.
+    ///
     /// This can be used to distribute a value from one slave to all others on the network, e.g.
     /// with distributed clocks.
     pub fn frmw(address: u16, register: u16) -> Writes {
