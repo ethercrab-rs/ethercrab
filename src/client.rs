@@ -266,8 +266,7 @@ impl<'sto> Client<'sto> {
 
         // If there are slave devices that support distributed clocks, run static drift compensation
         if let Some(dc_master) = dc_master {
-            dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations, now)
-                .await?;
+            dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations).await?;
         }
 
         // This block is to reduce the lifetime of the groups map references

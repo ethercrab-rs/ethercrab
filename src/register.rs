@@ -157,9 +157,13 @@ pub enum RegisterAddress {
     DcReceiveTime = 0x0918,
     /// DC system time, `u64`.
     DcSystemTime = 0x0910,
-    /// DC system time offset, `u64`.
+    /// DC system time offset, `i64`.
     ///
-    /// Offset between the local time (in ns) and the local system time (in ns).
+    /// Time difference between System Time (set by first DC-captable SubDevice) and this
+    /// SubDevice's local time.
+    ///
+    /// NOTE: The spec defines this as a `UINT64`, however negative values are required sometimes
+    /// and they work fine in practice, so I'm inclined to say this should actually be an `INT64`.
     DcSystemTimeOffset = 0x0920,
     /// Transmission delay, `u32`.
     ///

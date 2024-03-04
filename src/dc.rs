@@ -67,16 +67,26 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 async fn write_dc_parameters(
     client: &Client<'_>,
     slave: &Slave,
-    dc_receive_time: u64,
+    dc_system_time: u64,
     now_nanos: u64,
 ) -> Result<(), Error> {
+    let system_time_offset = (dc_system_time as i64) - (slave.dc_receive_time as i64);
+
+    fmt::trace!(
+        "Setting slave {:#06x} system time offset to {} ns (system time is {} ns, DC receive time is {})",
+        slave.configured_address,
+        system_time_offset,
+        dc_system_time,
+        slave.dc_receive_time
+    );
+
     Command::fpwr(
         slave.configured_address,
         RegisterAddress::DcSystemTimeOffset.into(),
     )
     .wrap(client)
     .ignore_wkc()
-    .send(dc_receive_time + now_nanos)
+    .send(system_time_offset + now_nanos as i64)
     .await?;
 
     Command::fpwr(
@@ -390,11 +400,15 @@ pub(crate) async fn configure_dc<'slaves>(
 
     assign_parent_relationships(slaves)?;
 
-    for slave in slaves.iter() {
-        write_dc_parameters(client, slave, slave.dc_receive_time, now()).await?;
-    }
-
     let first_dc_slave = slaves.iter().find(|slave| slave.flags.dc_supported);
+
+    if let Some(first_dc_slave) = first_dc_slave.as_ref() {
+        for slave in slaves.iter().filter(|sl| sl.dc_support().any()) {
+            write_dc_parameters(client, slave, first_dc_slave.dc_receive_time, now()).await?;
+        }
+    } else {
+        fmt::debug!("No SubDevices with DC support found");
+    }
 
     fmt::debug!("Distributed clock config complete");
 
@@ -408,7 +422,6 @@ pub(crate) async fn run_dc_static_sync(
     client: &Client<'_>,
     dc_reference_slave: &Slave,
     iterations: u32,
-    now: impl Fn() -> u64,
 ) -> Result<(), Error> {
     fmt::debug!(
         "Performing static drift compensation using slave {:#06x} {} as reference. This can take some time...",
