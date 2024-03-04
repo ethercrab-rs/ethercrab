@@ -54,6 +54,7 @@ An EtherCAT master written in Rust.
   matching on CoE transfer errors.
 - [#169](https://github.com/ethercrab-rs/ethercrab/pull/169) Linux only: add `io_uring`-based
   blocking TX/RX loop for better performance.
+- [#173](https://github.com/ethercrab-rs/ethercrab/pull/173) Add MUSL libc support.
 
 ### Fixed
 
