@@ -390,7 +390,7 @@ async fn main() -> Result<(), Error> {
                     ema_next,
                 );
 
-                if !headers {
+                if debug_csv.is_some() && !headers {
                     print!(
                         ",{:#06x},{:#06x} EMA",
                         s1.configured_address(),
