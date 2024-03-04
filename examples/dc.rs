@@ -178,9 +178,6 @@ async fn main() -> Result<(), Error> {
         }
     }
 
-    let client2 = client.clone();
-    let group_len = group.len() as u16;
-
     for slave in group.iter(&client) {
         if slave.name() == "LAN9252-EVB-HBI" {
             // log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
@@ -205,7 +202,7 @@ async fn main() -> Result<(), Error> {
             log::info!("LAN9252 config reg 0x0151: {:?}", v);
         }
 
-        if slave.dc_support().any() {
+        if slave.dc_support().enhanced() {
             // log::info!("{} supports DC", slave.name());
 
             // Disable cyclic op, ignore WKC
@@ -279,26 +276,27 @@ async fn main() -> Result<(), Error> {
         }
     }
 
+    let client2 = client.clone();
+    let expected_dc_wkc = group
+        .iter(&client)
+        .filter(|s| s.dc_support().enhanced())
+        .count() as u16
+        // TODO: Compute this dynamically based on ref clock featureset.
+        // The read from the reference clock increments the WKC by 1. The reference clock may not
+        // support enhanced DC.
+        + 1;
+
     // Start continuous drift compensation in PRE-OP
     tokio::spawn(async move {
         let mut sync_tick = tokio::time::interval(TICK_INTERVAL);
         sync_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         loop {
-            // let system_time = {
-            //     let Timespec { tv_sec, tv_nsec } = rustix::time::clock_gettime(ClockId::Monotonic);
-
-            //     tv_sec * 1000 * 1000 * 1000 + tv_nsec
-            // } as u64;
-
-            // // EtherCAT's epoch is 2000-01-01, not 1970-01-01
-            // let system_time = system_time.saturating_sub(946684800);
-
             // TODO: Find first DC slave instead of hardcoded address.
             // Dynamic drift compensation. Assumes first device supports DC
             let t = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
                 .wrap(&client2)
-                .with_wkc(group_len)
+                .with_wkc(expected_dc_wkc)
                 .receive::<u64>()
                 .await
                 .expect("Sync tick");
@@ -446,20 +444,20 @@ async fn main() -> Result<(), Error> {
     // not present.
     group.tx_rx(&client).await.expect("TX/RX");
 
-    let group = group.into_op(&client).await.expect("SAFE-OP -> OP");
+    let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
 
     log::info!("OP");
 
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
-        // for mut slave in group.iter(&client) {
-        //     let (_i, o) = slave.io_raw_mut();
+        for mut slave in group.iter(&client) {
+            let (_i, o) = slave.io_raw_mut();
 
-        //     for byte in o.iter_mut() {
-        //         *byte = byte.wrapping_add(1);
-        //     }
-        // }
+            for byte in o.iter_mut() {
+                *byte = byte.wrapping_add(1);
+            }
+        }
 
         tick_interval.tick().await;
     }
