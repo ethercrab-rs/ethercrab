@@ -137,6 +137,7 @@ async fn main() -> Result<(), Error> {
 
             let t = (tv_sec * 1000 * 1000 * 1000 + tv_nsec) as u64;
 
+            // EtherCAT epoch is 2000-01-01
             t.saturating_sub(946684800)
         })
         .await
@@ -295,12 +296,14 @@ async fn main() -> Result<(), Error> {
 
             // TODO: Find first DC slave instead of hardcoded address.
             // Dynamic drift compensation. Assumes first device supports DC
-            Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
+            let t = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
                 .wrap(&client2)
                 .with_wkc(group_len)
-                .send(system_time)
+                .receive::<u64>()
                 .await
                 .expect("Sync tick");
+
+            // dbg!(t);
 
             sync_tick.tick().await;
         }
