@@ -146,7 +146,7 @@ impl<'client> WrappedWrite<'client> {
             match frame.timeout(self.client.timeouts.pdu).await {
                 Ok(result) => return Ok(result.into_data()),
                 Err(Error::Timeout) => {
-                    fmt::error!("Frame {} timed out", frame_idx);
+                    fmt::error!("Frame {:#04x} timed out", frame_idx);
 
                     // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
                     // state to `None`, ready for reuse.
