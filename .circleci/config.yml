@@ -127,6 +127,12 @@ jobs:
       - TARGET: "x86_64-unknown-linux-gnu"
     <<: *target_steps_std
 
+  target-x86_64-unknown-linux-musl:
+    resource_class: large
+    environment:
+      - TARGET: "x86_64-unknown-linux-musl"
+    <<: *target_steps_std
+
   miri-x86_64-unknown-linux-gnu:
     resource_class: large
     environment:
@@ -181,6 +187,7 @@ jobs:
 build_jobs: &build_jobs
   jobs:
     - target-x86_64-unknown-linux-gnu
+    - target-x86_64-unknown-linux-musl
     - miri-x86_64-unknown-linux-gnu
     - windows-cross
     - macos-cross
