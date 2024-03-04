@@ -10,6 +10,8 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use ta::indicators::ExponentialMovingAverage;
+use ta::Next;
 use tokio::time::MissedTickBehavior;
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
@@ -312,10 +314,16 @@ async fn main() -> Result<(), Error> {
     // Compile time switch
     let debug_csv = option_env!("ETHERCRAB_CSV");
 
+    let mut averages = Vec::new();
+
+    for _ in 0..group.len() {
+        averages.push(ExponentialMovingAverage::new(64).unwrap());
+    }
+
     loop {
         // group.tx_rx(&client).await.expect("TX/RX");
 
-        if now.elapsed() >= Duration::from_millis(25) {
+        if now.elapsed() >= Duration::from_millis(1000) {
             now = Instant::now();
 
             log::debug!("Stat");
@@ -326,7 +334,7 @@ async fn main() -> Result<(), Error> {
                 print!("t_ms");
             }
 
-            for s1 in group.iter(&client) {
+            for (s1, ema) in group.iter(&client).zip(averages.iter_mut()) {
                 // let s1 = group.slave(&client, 1).unwrap();
 
                 let diff = match s1
@@ -352,8 +360,10 @@ async fn main() -> Result<(), Error> {
 
                 row.push(diff);
 
+                let ema_next = ema.next(diff as f64);
+
                 log::debug!(
-                    "--> Sys time {} offs {}, diff {}",
+                    "--> Sys time {} offs {}, diff {} (EMA {:0.3})",
                     match s1.register_read::<u64>(RegisterAddress::DcSystemTime).await {
                         Ok(diff) => diff,
                         Err(Error::WorkingCounter { .. }) => 0,
@@ -368,6 +378,7 @@ async fn main() -> Result<(), Error> {
                         Err(e) => return Err(e),
                     },
                     diff,
+                    ema_next,
                 );
 
                 if !headers {

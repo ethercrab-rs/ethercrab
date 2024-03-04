@@ -87,6 +87,7 @@ rustix = { version = "0.38.21", default-features = false, features = [
 thread-priority = "0.15.1"
 csv = "1.3.0"
 serde = { version = "1.0.190", features = ["derive"] }
+ta = "0.5.0"
 
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
