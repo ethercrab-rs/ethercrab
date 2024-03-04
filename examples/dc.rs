@@ -281,10 +281,16 @@ async fn main() -> Result<(), Error> {
         .iter(&client)
         .filter(|s| s.dc_support().enhanced())
         .count() as u16
-        // TODO: Compute this dynamically based on ref clock featureset.
-        // The read from the reference clock increments the WKC by 1. The reference clock may not
-        // support enhanced DC.
-        + 1;
+        + {
+            // TODO: Use designated device, not just assume the first one is the DC reference
+            if group.slave(&client, 0).unwrap().dc_support().enhanced() {
+                0
+            }
+            // Reference clock doesn't support enhanced DC so we manually add to the expected WKC.
+            else {
+                1
+            }
+        };
 
     // Start continuous drift compensation in PRE-OP
     tokio::spawn(async move {
