@@ -220,7 +220,7 @@ impl core::fmt::Display for PduError {
             PduError::Ethernet => f.write_str("network"),
             PduError::TooLong => f.write_str("data is too long to fit in given buffer"),
             PduError::CreateFrame => f.write_str("failed to create frame"),
-            PduError::InvalidIndex(index) => write!(f, "invalid PDU index {}", index),
+            PduError::InvalidIndex(index) => write!(f, "invalid PDU index {:#04x}", index),
             PduError::Validation(e) => write!(f, "received PDU validation failed: {}", e),
             PduError::InvalidFrameState => f.write_str("invalid PDU frame state"),
             PduError::SwapState => f.write_str("failed to swap frame state"),
