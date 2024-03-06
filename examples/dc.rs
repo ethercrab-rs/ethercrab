@@ -102,6 +102,15 @@ pub struct SupportedModes {
 
 const TICK_INTERVAL: Duration = Duration::from_millis(1);
 
+fn get_time() -> u64 {
+    let Timespec { tv_sec, tv_nsec } = rustix::time::clock_gettime(ClockId::Monotonic);
+
+    let t = (tv_sec * 1000 * 1000 * 1000 + tv_nsec) as u64;
+
+    // EtherCAT epoch is 2000-01-01
+    t.saturating_sub(946684800)
+}
+
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
@@ -153,14 +162,7 @@ fn main() -> Result<(), Error> {
 
     smol::block_on(async {
         let mut group = client
-            .init_single_group::<MAX_SLAVES, PDI_LEN>(|| {
-                let Timespec { tv_sec, tv_nsec } = rustix::time::clock_gettime(ClockId::Monotonic);
-
-                let t = (tv_sec * 1000 * 1000 * 1000 + tv_nsec) as u64;
-
-                // EtherCAT epoch is 2000-01-01
-                t.saturating_sub(946684800)
-            })
+            .init_single_group::<MAX_SLAVES, PDI_LEN>(get_time)
             .await
             .expect("Init");
 
@@ -352,7 +354,7 @@ fn main() -> Result<(), Error> {
         let mut group = group.into_pre_op_pdi(&client).await?;
 
         loop {
-            group.tx_rx(&client).await.expect("TX/RX");
+            group.tx_rx(&client, get_time).await.expect("TX/RX");
 
             if now.elapsed() >= Duration::from_millis(25) {
                 now = Instant::now();
@@ -470,14 +472,14 @@ fn main() -> Result<(), Error> {
 
         // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs are
         // not present.
-        group.tx_rx(&client).await.expect("TX/RX");
+        group.tx_rx(&client, get_time).await.expect("TX/RX");
 
         let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
 
         log::info!("OP");
 
         loop {
-            group.tx_rx(&client).await.expect("TX/RX");
+            group.tx_rx(&client, get_time).await.expect("TX/RX");
 
             for mut slave in group.iter(&client) {
                 let (_i, o) = slave.io_raw_mut();

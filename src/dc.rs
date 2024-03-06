@@ -74,14 +74,15 @@ async fn write_dc_parameters(
     dc_system_time: u64,
     now_nanos: u64,
 ) -> Result<(), Error> {
-    let system_time_offset = (dc_system_time as i64) - (slave.dc_receive_time as i64);
+    let system_time_offset = -(slave.dc_receive_time as i64) + now_nanos as i64;
 
     fmt::trace!(
-        "Setting slave {:#06x} system time offset to {} ns (system time is {} ns, DC receive time is {})",
+        "Setting slave {:#06x} system time offset to {} ns (system time is {} ns, DC receive time is {}, now is {} ns)",
         slave.configured_address,
         system_time_offset,
         dc_system_time,
-        slave.dc_receive_time
+        slave.dc_receive_time,
+        now_nanos
     );
 
     Command::fpwr(
@@ -90,7 +91,7 @@ async fn write_dc_parameters(
     )
     .wrap(client)
     .ignore_wkc()
-    .send(system_time_offset + now_nanos as i64)
+    .send(system_time_offset)
     .await?;
 
     Command::fpwr(

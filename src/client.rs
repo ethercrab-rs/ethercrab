@@ -37,7 +37,6 @@ pub struct Client<'sto> {
     /// If no DC subdevices are found, this will be `0`.
     dc_reference_configured_address: AtomicU16,
     pub(crate) timeouts: Timeouts,
-
     pub(crate) config: ClientConfig,
 }
 
