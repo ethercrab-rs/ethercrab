@@ -134,3 +134,16 @@ pub fn tx_rx_task(
 
     Ok(task)
 }
+
+/// Get the current time in nanoseconds from the EtherCAT epoch, 2000-01-01.
+///
+/// Note that on Windows this clock is not monotonic.
+pub fn ethercat_now() -> u64 {
+    let t = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64;
+
+    // EtherCAT epoch is 2000-01-01
+    t.saturating_sub(946684800)
+}
