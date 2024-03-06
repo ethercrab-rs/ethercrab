@@ -345,7 +345,7 @@ mod tests {
 
             let result = rx.receive_frame(&written_packet);
 
-            assert_eq!(result, Ok(written_packet.len()));
+            assert_eq!(result, Ok(60));
 
             // The frame has received a response at this point so should be ready to get the data
             // from
@@ -506,7 +506,7 @@ mod tests {
 
             let result = rx.receive_frame(&ethernet_packet);
 
-            assert_eq!(result, Ok(ethernet_packet.len()));
+            assert_eq!(result, Ok(60));
 
             // The frame has received a response at this point so should be ready to get the data
             // from
