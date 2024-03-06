@@ -90,44 +90,40 @@ impl Future for TxRxFut<'_> {
 
                     // Loop through multiple EtherCAT frames (when supported)
                     // 'packet: while !packet.is_empty() {
-                    while !packet.is_empty() {
-                        // Loop single packet receive until waker is available
-                        loop {
-                            match self.rx.receive_frame(packet) {
-                                // Should be unreachable but whatever, let's be safe
-                                Ok(0) => {
-                                    break;
-                                }
-                                // TODO: Re-enable when multiple packets are supported
-                                // Ok((_n, true)) => {
-                                //     fmt::error!(
-                                //         "Multiple PDUs in one Ethernet frame are not yet supported"
-                                //     );
 
-                                //     // This will be used when we do support them
-                                //     // packet = &packet[n..];
-
-                                //     return Poll::Ready(Err(Error::ReceiveFrame));
-                                // }
-                                // Ok((_, false)) => {
-                                //     break 'packet;
-                                // }
-                                Err(Error::Pdu(PduError::NoWaker)) => {
-                                    fmt::debug!(
-                                        "No waker for frame {:#04x}, retrying",
-                                        packet[0x11]
-                                    );
-
-                                    thread::yield_now();
-                                }
-                                Err(e) => {
-                                    fmt::error!("Failed to receive frame: {}", e);
-
-                                    return Poll::Ready(Err(Error::ReceiveFrame));
-                                }
-                                // Packet received successfully. Break out of waker wait loop
-                                _ => break,
+                    // Loop single packet receive until waker is available
+                    loop {
+                        match self.rx.receive_frame(packet) {
+                            // Should be unreachable but whatever, let's be safe
+                            Ok(0) => {
+                                break;
                             }
+                            // TODO: Re-enable when multiple packets are supported
+                            // Ok((_n, true)) => {
+                            //     fmt::error!(
+                            //         "Multiple PDUs in one Ethernet frame are not yet supported"
+                            //     );
+
+                            //     // This will be used when we do support them
+                            //     // packet = &packet[n..];
+
+                            //     return Poll::Ready(Err(Error::ReceiveFrame));
+                            // }
+                            // Ok((_, false)) => {
+                            //     break 'packet;
+                            // }
+                            Err(Error::Pdu(PduError::NoWaker)) => {
+                                fmt::debug!("No waker for frame {:#04x}, retrying", packet[0x11]);
+
+                                thread::yield_now();
+                            }
+                            Err(e) => {
+                                fmt::error!("Failed to receive frame: {}", e);
+
+                                return Poll::Ready(Err(Error::ReceiveFrame));
+                            }
+                            // Packet received successfully. Break out of waker wait loop
+                            _ => break,
                         }
                     }
                 }
