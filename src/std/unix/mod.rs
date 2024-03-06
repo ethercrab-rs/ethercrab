@@ -11,13 +11,14 @@ use self::bpf::BpfDevice as RawSocketDesc;
 pub(in crate::std) use self::linux::RawSocketDesc;
 
 use crate::{
-    error::Error,
+    error::{Error, PduError},
     fmt,
     pdu_loop::{PduRx, PduTx},
 };
 use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
 use futures_lite::{AsyncRead, AsyncWrite};
+use std::thread;
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
@@ -71,8 +72,14 @@ impl Future for TxRxFut<'_> {
 
         loop {
             match Pin::new(&mut self.socket).poll_read(ctx, &mut buf) {
+                Poll::Ready(Ok(0)) => {
+                    fmt::warn!("Received zero bytes");
+
+                    break;
+                }
                 Poll::Ready(Ok(n)) => {
                     fmt::trace!("Poll ready");
+
                     // Wake again in case there are more frames to consume. This is additionally
                     // important for macOS as multiple packets may be received for one `poll_read`
                     // call, but will only be returned during the _next_ `poll_read`. If this line
@@ -81,16 +88,46 @@ impl Future for TxRxFut<'_> {
 
                     let packet = &buf[0..n];
 
-                    if n == 0 {
-                        fmt::warn!("Received zero bytes");
+                    // Loop through multiple EtherCAT frames (when supported)
+                    'packet: while !packet.is_empty() {
+                        // Loop single packet receive until waker is available
+                        loop {
+                            match self.rx.receive_frame(packet) {
+                                // Should be unreachable but whatever, let's be safe
+                                Ok(0) => {
+                                    break;
+                                }
+                                // TODO: Re-enable when multiple packets are supported
+                                // Ok((_n, true)) => {
+                                //     fmt::error!(
+                                //         "Multiple PDUs in one Ethernet frame are not yet supported"
+                                //     );
 
-                        break;
-                    }
+                                //     // This will be used when we do support them
+                                //     // packet = &packet[n..];
 
-                    if let Err(e) = self.rx.receive_frame(packet) {
-                        fmt::error!("Failed to receive frame: {}", e);
+                                //     return Poll::Ready(Err(Error::ReceiveFrame));
+                                // }
+                                // Ok((_, false)) => {
+                                //     break 'packet;
+                                // }
+                                Err(Error::Pdu(PduError::NoWaker)) => {
+                                    fmt::debug!(
+                                        "No waker for frame {:#04x}, retrying",
+                                        packet[0x11]
+                                    );
 
-                        return Poll::Ready(Err(Error::ReceiveFrame));
+                                    thread::yield_now();
+                                }
+                                Err(e) => {
+                                    fmt::error!("Failed to receive frame: {}", e);
+
+                                    return Poll::Ready(Err(Error::ReceiveFrame));
+                                }
+                                // Packet received successfully. Break out of waker wait loop
+                                _ => break,
+                            }
+                        }
                     }
                 }
                 Poll::Ready(Err(e)) => {
