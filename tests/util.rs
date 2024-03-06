@@ -131,7 +131,7 @@ impl Future for DummyTxRxFut<'_> {
                 .pop_front()
                 .expect("Not enough packets for this preamble");
 
-            self.rx.receive_frame(expected.as_ref()).expect("Frame RX")
+            self.rx.receive_frame(expected.as_ref()).expect("Frame RX");
         }
 
         Poll::Pending

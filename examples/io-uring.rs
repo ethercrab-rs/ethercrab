@@ -111,13 +111,22 @@ fn main() -> Result<(), ethercrab::error::Error> {
     let Groups {
         slow_outputs,
         fast_outputs,
-    } = futures_lite::future::block_on(client.init::<MAX_SLAVES, _>(|groups: &Groups, slave| {
-        match slave.name() {
+    } = futures_lite::future::block_on(client.init::<MAX_SLAVES, _>(
+        |groups: &Groups, slave| match slave.name() {
             "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
             "EL2828" => Ok(&groups.fast_outputs),
             _ => Err(Error::UnknownSlave),
-        }
-    }))
+        },
+        || {
+            let rustix::fs::Timespec { tv_sec, tv_nsec } =
+                rustix::time::clock_gettime(rustix::time::ClockId::Monotonic);
+
+            let t = (tv_sec * 1000 * 1000 * 1000 + tv_nsec) as u64;
+
+            // EtherCAT epoch is 2000-01-01
+            t.saturating_sub(946684800)
+        },
+    ))
     .expect("Init");
 
     let client_slow = client.clone();

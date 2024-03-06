@@ -8,6 +8,7 @@ use env_logger::Env;
 use ethercrab::{
     error::Error, Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState, Timeouts,
 };
+use rustix::time::ClockId;
 
 const MAX_SLAVES: usize = 16;
 const MAX_PDU_DATA: usize = 1100;
@@ -36,11 +37,22 @@ async fn replay_segmented_upload() -> Result<(), Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let group = client
-        .init::<32, SlaveGroup<MAX_SLAVES, PDI_LEN>>(|group, slave| {
-            assert_eq!(slave.name(), "EK1914");
+        .init::<32, SlaveGroup<MAX_SLAVES, PDI_LEN>>(
+            |group, slave| {
+                assert_eq!(slave.name(), "EK1914");
 
-            Ok(group)
-        })
+                Ok(group)
+            },
+            || {
+                let rustix::fs::Timespec { tv_sec, tv_nsec } =
+                    rustix::time::clock_gettime(ClockId::Monotonic);
+
+                let t = (tv_sec * 1000 * 1000 * 1000 + tv_nsec) as u64;
+
+                // EtherCAT epoch is 2000-01-01
+                t.saturating_sub(946684800)
+            },
+        )
         .await
         .expect("Init");
 

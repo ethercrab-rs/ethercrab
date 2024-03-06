@@ -47,7 +47,15 @@ fn main() {
         smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
         let mut group = client
-            .init_single_group::<MAX_SLAVES, PDI_LEN>()
+            .init_single_group::<MAX_SLAVES, PDI_LEN>(|| {
+                let rustix::fs::Timespec { tv_sec, tv_nsec } =
+                    rustix::time::clock_gettime(rustix::time::ClockId::Monotonic);
+
+                let t = (tv_sec * 1000 * 1000 * 1000 + tv_nsec) as u64;
+
+                // EtherCAT epoch is 2000-01-01
+                t.saturating_sub(946684800)
+            })
             .await
             .expect("Init");
 
