@@ -102,6 +102,7 @@ impl<'sto> PduLoop<'sto> {
 
     /// Tell the packet sender there are PDUs ready to send.
     pub(crate) fn wake_sender(&self) {
+        // self.storage.wakeups.fetch_add(1, Ordering::Acquire);
         self.storage.tx_waker.wake();
     }
 
@@ -344,7 +345,7 @@ mod tests {
 
             let result = rx.receive_frame(&written_packet);
 
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok(written_packet.len()));
 
             // The frame has received a response at this point so should be ready to get the data
             // from
@@ -505,7 +506,7 @@ mod tests {
 
             let result = rx.receive_frame(&ethernet_packet);
 
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok(ethernet_packet.len()));
 
             // The frame has received a response at this point so should be ready to get the data
             // from

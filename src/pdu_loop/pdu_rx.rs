@@ -33,9 +33,22 @@ impl<'sto> PduRx<'sto> {
 
     /// Given a complete Ethernet II frame, parse a response PDU from it and wake the future that
     /// sent the frame.
+    ///
+    /// Returns the number of bytes consumed from the given buffer.
     // NOTE: &mut self so this struct can only be used in one place.
-    pub fn receive_frame(&mut self, ethernet_frame: &[u8]) -> Result<(), Error> {
+    pub fn receive_frame(&mut self, ethernet_frame: &[u8]) -> Result<usize, Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
+
+        let i = raw_packet.payload();
+
+        let frame_header = FrameHeader::unpack_from_slice(i).map_err(|e| {
+            fmt::error!("Failed to parse frame header: {}", e);
+
+            e
+        })?;
+
+        let consumed =
+            EthernetFrame::<&[u8]>::buffer_len(usize::from(frame_header.payload_len)).max(60);
 
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self. As per
         // <https://github.com/OpenEtherCATsociety/SOEM/issues/585#issuecomment-1013688786>, the
@@ -46,16 +59,8 @@ impl<'sto> PduRx<'sto> {
         {
             fmt::trace!("Ignore frame");
 
-            return Ok(());
+            return Ok(consumed);
         }
-
-        let i = raw_packet.payload();
-
-        let frame_header = FrameHeader::unpack_from_slice(i).map_err(|e| {
-            fmt::error!("Failed to parse frame header: {}", e);
-
-            e
-        })?;
 
         let i = i
             // Strip EtherCAT frame header...
@@ -123,6 +128,6 @@ impl<'sto> PduRx<'sto> {
 
         frame.mark_received(flags, irq, working_counter)?;
 
-        Ok(())
+        Ok(consumed)
     }
 }

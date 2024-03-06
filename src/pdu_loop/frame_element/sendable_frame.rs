@@ -105,7 +105,8 @@ impl<'sto> SendableFrame<'sto> {
         usize::from(self.ethercat_payload_len()) + FrameHeader::PACKED_LEN
     }
 
-    fn write_ethernet_payload<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+    /// Write PDU to buffer. Returns remaining buffer.
+    fn write_ethernet_payload<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
         let (frame, data) = unsafe { self.inner.frame_and_buf() };
 
         let header = FrameHeader::pdu(self.ethercat_payload_len());
@@ -132,9 +133,7 @@ impl<'sto> SendableFrame<'sto> {
         };
 
         // Working counter is always zero when sending
-        let buf = write_packed(0u16, buf);
-
-        buf
+        write_packed(0u16, buf)
     }
 
     /// Write an Ethernet II frame containing the EtherCAT payload into `buf`.

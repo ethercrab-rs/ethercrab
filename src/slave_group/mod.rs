@@ -15,7 +15,7 @@ use crate::{
     pdi::PdiOffset,
     slave::{configuration::PdoDirection, pdi::SlavePdi, IoRanges, Slave, SlaveRef},
     timer_factory::IntoTimeout,
-    Client, SlaveState,
+    Client, RegisterAddress, SlaveState,
 };
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 use core::{cell::UnsafeCell, marker::PhantomData, slice, sync::atomic::AtomicUsize};
@@ -576,11 +576,29 @@ where
             self.read_pdi_len
         );
 
-        let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
-            .wrap(client)
-            .send_receive_slice_mut(self.pdi_mut(), self.read_pdi_len)
+        if let Some(dc_ref) = client.dc_ref_address() {
+            let (_, (_res, wkc)) = futures_lite::future::try_zip(
+                // TODO: Store time in group so we can figure out when to send PDI if DC is in use.
+                Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into())
+                    .wrap(client)
+                    .ignore_wkc()
+                    // TODO
+                    // .with_wkc(expected_dc_wkc)
+                    .receive::<u64>(),
+                Command::lrw(self.inner().pdi_start.start_address)
+                    .wrap(client)
+                    .send_receive_slice_mut(self.pdi_mut(), self.read_pdi_len),
+            )
             .await?;
 
-        Ok(wkc)
+            Ok(wkc)
+        } else {
+            let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
+                .wrap(client)
+                .send_receive_slice_mut(self.pdi_mut(), self.read_pdi_len)
+                .await?;
+
+            Ok(wkc)
+        }
     }
 }
