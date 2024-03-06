@@ -83,6 +83,8 @@ impl Future for TxRxFut<'_> {
 
                     if n == 0 {
                         fmt::warn!("Received zero bytes");
+
+                        break;
                     }
 
                     if let Err(e) = self.rx.receive_frame(packet) {
