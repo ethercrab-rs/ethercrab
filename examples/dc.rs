@@ -1,20 +1,18 @@
 //! Configure Distributed Clocks (DC) for EK1100 and a couple of other modules.
 
-use core_affinity::CoreId;
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::tx_rx_task, Client, ClientConfig, Command, PduStorage, RegisterAddress,
-    SlaveGroupState, Timeouts,
+    error::Error,
+    std::{ethercat_now, tx_rx_task},
+    Client, ClientConfig, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
-use rustix::{fs::Timespec, time::ClockId};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
 use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
-use tokio::time::MissedTickBehavior;
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -102,15 +100,6 @@ pub struct SupportedModes {
 
 const TICK_INTERVAL: Duration = Duration::from_millis(1);
 
-fn get_time() -> u64 {
-    let Timespec { tv_sec, tv_nsec } = rustix::time::clock_gettime(ClockId::Monotonic);
-
-    let t = (tv_sec * 1000 * 1000 * 1000 + tv_nsec) as u64;
-
-    // EtherCAT epoch is 2000-01-01
-    t.saturating_sub(946684800)
-}
-
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
@@ -162,7 +151,7 @@ fn main() -> Result<(), Error> {
 
     smol::block_on(async {
         let mut group = client
-            .init_single_group::<MAX_SLAVES, PDI_LEN>(get_time)
+            .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
             .await
             .expect("Init");
 
@@ -354,7 +343,7 @@ fn main() -> Result<(), Error> {
         let mut group = group.into_pre_op_pdi(&client).await?;
 
         loop {
-            group.tx_rx(&client, get_time).await.expect("TX/RX");
+            group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
             if now.elapsed() >= Duration::from_millis(25) {
                 now = Instant::now();
@@ -470,16 +459,16 @@ fn main() -> Result<(), Error> {
 
         log::info!("SAFE-OP");
 
-        // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs are
-        // not present.
-        group.tx_rx(&client, get_time).await.expect("TX/RX");
+        // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs
+        // are not present.
+        group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
         let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
 
         log::info!("OP");
 
         loop {
-            group.tx_rx(&client, get_time).await.expect("TX/RX");
+            group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
             for mut slave in group.iter(&client) {
                 let (_i, o) = slave.io_raw_mut();

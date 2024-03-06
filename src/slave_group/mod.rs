@@ -566,13 +566,7 @@ where
     ///
     /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
-    ///
-    /// This method returns the working counter on success.
-    pub async fn tx_rx<'sto>(
-        &self,
-        client: &'sto Client<'sto>,
-        now: impl Fn() -> u64,
-    ) -> Result<u16, Error> {
+    pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<u16, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -580,9 +574,34 @@ where
             self.read_pdi_len
         );
 
+        let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
+            .wrap(client)
+            .send_receive_slice_mut(self.pdi_mut(), self.read_pdi_len)
+            .await?;
+
+        Ok(wkc)
+    }
+
+    /// Drive the slave group's inputs and outputs and synchronise EtherCAT system time with `FRMW`.
+    ///
+    /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
+    /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
+    ///
+    /// This method returns the working counter and the current EtherCAT system time in nanoseconds
+    /// on success.
+    pub async fn tx_rx_sync_dc<'sto>(
+        &self,
+        client: &'sto Client<'sto>,
+    ) -> Result<(u16, Option<u64>), Error> {
+        fmt::trace!(
+            "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
+            self.inner().pdi_start.start_address,
+            self.pdi().len(),
+            self.read_pdi_len
+        );
+
         if let Some(dc_ref) = client.dc_ref_address() {
             let (time, (_res, wkc)) = futures_lite::future::try_zip(
-                // TODO: Store time in group so we can figure out when to send PDI if DC is in use.
                 Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into())
                     .wrap(client)
                     .ignore_wkc()
@@ -595,18 +614,14 @@ where
             )
             .await?;
 
-            let time_delta = time as i64 - now() as i64;
-
-            // dbg!(time_delta);
-
-            Ok(wkc)
+            Ok((wkc, Some(time)))
         } else {
             let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
                 .wrap(client)
                 .send_receive_slice_mut(self.pdi_mut(), self.read_pdi_len)
                 .await?;
 
-            Ok(wkc)
+            Ok((wkc, None))
         }
     }
 }

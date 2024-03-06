@@ -408,6 +408,18 @@ impl<'sto> Client<'sto> {
             .await
     }
 
+    // /// Sync DC system time across all subdevices in the network.
+    // ///
+    // /// Returns the current system time in nanoseconds.
+    // ///
+    // /// Note that this value is relative to the EtherCAT epoch of 2000-01-01, not the Unix epoch of
+    // /// 1970-01-01. EtherCAT time can be converted to unix time by subtracting `946684800` from the
+    // /// value returned by this method.
+    // ///
+    // /// If no subdevices that support distributed clocks are found, this method will return
+    // /// `Ok(None)`.
+    // pub fn sync_system_time(&self) -> Result<Option<u64>, Error> {}
+
     /// Get the number of discovered slaves in the EtherCAT network.
     ///
     /// As [`init`](crate::Client::init) runs slave autodetection, it must be called before this
