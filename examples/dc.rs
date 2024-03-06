@@ -98,7 +98,7 @@ pub struct SupportedModes {
     dynamic: bool,
 }
 
-const TICK_INTERVAL: Duration = Duration::from_millis(1);
+const TICK_INTERVAL: Duration = Duration::from_millis(25);
 
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
