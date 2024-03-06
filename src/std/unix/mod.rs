@@ -89,7 +89,8 @@ impl Future for TxRxFut<'_> {
                     let packet = &buf[0..n];
 
                     // Loop through multiple EtherCAT frames (when supported)
-                    'packet: while !packet.is_empty() {
+                    // 'packet: while !packet.is_empty() {
+                    while !packet.is_empty() {
                         // Loop single packet receive until waker is available
                         loop {
                             match self.rx.receive_frame(packet) {
