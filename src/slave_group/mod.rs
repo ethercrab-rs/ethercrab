@@ -18,7 +18,9 @@ use crate::{
     Client, RegisterAddress, SlaveState,
 };
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
-use core::{cell::UnsafeCell, marker::PhantomData, slice, sync::atomic::AtomicUsize};
+use core::{
+    cell::UnsafeCell, future::ready, marker::PhantomData, slice, sync::atomic::AtomicUsize,
+};
 
 pub use self::group_id::GroupId;
 pub use self::handle::SlaveGroupHandle;
@@ -575,8 +577,7 @@ where
         );
 
         let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
-            .wrap(client)
-            .send_receive_slice_mut(self.pdi_mut(), self.read_pdi_len)
+            .send_receive_slice_mut(client, self.pdi_mut(), self.read_pdi_len)
             .await?;
 
         Ok(wkc)
@@ -603,22 +604,22 @@ where
         if let Some(dc_ref) = client.dc_ref_address() {
             let (time, (_res, wkc)) = futures_lite::future::try_zip(
                 Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into())
-                    .wrap(client)
                     .ignore_wkc()
                     // TODO
                     // .with_wkc(expected_dc_wkc)
-                    .receive::<u64>(),
-                Command::lrw(self.inner().pdi_start.start_address)
-                    .wrap(client)
-                    .send_receive_slice_mut(self.pdi_mut(), self.read_pdi_len),
+                    .receive::<u64>(client),
+                Command::lrw(self.inner().pdi_start.start_address).send_receive_slice_mut(
+                    client,
+                    self.pdi_mut(),
+                    self.read_pdi_len,
+                ),
             )
             .await?;
 
             Ok((wkc, Some(time)))
         } else {
             let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
-                .wrap(client)
-                .send_receive_slice_mut(self.pdi_mut(), self.read_pdi_len)
+                .send_receive_slice_mut(client, self.pdi_mut(), self.read_pdi_len)
                 .await?;
 
             Ok((wkc, None))

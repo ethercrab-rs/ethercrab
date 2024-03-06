@@ -114,7 +114,7 @@ impl<'sto> PduLoop<'sto> {
     ) -> Result<ReceivedFrame<'_>, Error> {
         let frame = self
             .storage
-            .alloc_frame(Command::Write(Command::bwr(register)), payload_length)?;
+            .alloc_frame(Command::bwr(register).into(), payload_length)?;
 
         let frame = frame.mark_sendable();
 
@@ -123,22 +123,7 @@ impl<'sto> PduLoop<'sto> {
         frame.await
     }
 
-    /// Send data to and read data back from the slave devices.
-    ///
-    /// This method allows overriding the minimum data length of the payload.
-    ///
-    /// The PDU data length will be the larger of the payload data length and the length override
-    /// (if provided). If a larger **response** than the sent data is desired, set the expected
-    /// response length in `len_override`.
-    ///
-    /// This is useful for e.g. sending a 10 byte PDI with 4 output bytes and 6 input bytes. In this
-    /// case, `data` will be a slice of length `4` containing the outputs to send, and
-    /// `len_override` will be `Some(10)`. This makes the latter 6 bytes available for writing the
-    /// PDU response into.
-    // NOTE: Should be `pub(crate)` but the benchmarks need this internal method so we'll just hide
-    // it instead.
-    #[doc(hidden)]
-    pub fn pdu_send(
+    fn pdu_send_no_wake(
         &self,
         command: Command,
         data: impl EtherCrabWireWrite,
@@ -172,9 +157,80 @@ impl<'sto> PduLoop<'sto> {
 
         let frame = frame.mark_sendable();
 
+        Ok((frame, frame_idx))
+    }
+
+    /// Send data to and read data back from the slave devices.
+    ///
+    /// This method allows overriding the minimum data length of the payload.
+    ///
+    /// Returns the frame future that can be `.await`ed for a response, and the EtherCAT frame
+    /// index.
+    ///
+    /// The PDU data length will be the larger of the payload data length and the length override
+    /// (if provided). If a larger **response** than the sent data is desired, set the expected
+    /// response length in `len_override`.
+    ///
+    /// This is useful for e.g. sending a 10 byte PDI with 4 output bytes and 6 input bytes. In this
+    /// case, `data` will be a slice of length `4` containing the outputs to send, and
+    /// `len_override` will be `Some(10)`. This makes the latter 6 bytes available for writing the
+    /// PDU response into.
+    // NOTE: Should be `pub(crate)` but the benchmarks need this internal method so we'll just hide
+    // it instead.
+    #[doc(hidden)]
+    pub fn pdu_send(
+        &self,
+        command: Command,
+        data: impl EtherCrabWireWrite,
+        len_override: Option<u16>,
+    ) -> Result<
+        (
+            impl core::future::Future<Output = Result<ReceivedFrame<'_>, Error>>,
+            u8,
+        ),
+        Error,
+    > {
+        let f = self.pdu_send_no_wake(command, data, len_override)?;
+
         self.wake_sender();
 
-        Ok((frame, frame_idx))
+        Ok(f)
+    }
+
+    pub(crate) fn submit_multi<F, O>(
+        &'sto self,
+        f: impl FnOnce(MultiSubmitter<'sto>) -> Result<F, Error>,
+    ) -> Result<F, Error>
+    where
+        F: core::future::Future<Output = O>,
+    {
+        let fut = f(MultiSubmitter { inner: self })?;
+
+        self.wake_sender();
+
+        Ok(fut)
+    }
+}
+
+pub(crate) struct MultiSubmitter<'sto> {
+    inner: &'sto PduLoop<'sto>,
+}
+
+impl<'sto> MultiSubmitter<'sto> {
+    // Identical to `pdu_send` but without `wake_sender`.
+    pub(crate) fn submit(
+        &self,
+        command: Command,
+        data: impl EtherCrabWireWrite,
+        len_override: Option<u16>,
+    ) -> Result<
+        (
+            impl core::future::Future<Output = Result<ReceivedFrame<'_>, Error>>,
+            u8,
+        ),
+        Error,
+    > {
+        self.inner.pdu_send_no_wake(command, data, len_override)
     }
 }
 
@@ -243,10 +299,7 @@ mod tests {
 
         let mut frame = pdu_loop
             .storage
-            .alloc_frame(
-                Command::Write(Command::fpwr(0x5678, 0x1234)),
-                data.len() as u16,
-            )
+            .alloc_frame(Command::fpwr(0x5678, 0x1234).into(), data.len() as u16)
             .unwrap();
 
         frame.buf_mut().copy_from_slice(&data);
@@ -378,10 +431,7 @@ mod tests {
 
         let mut frame = pdu_loop
             .storage
-            .alloc_frame(
-                Command::Write(Command::fpwr(0x5678, 0x1234)),
-                data.len() as u16,
-            )
+            .alloc_frame(Command::fpwr(0x5678, 0x1234).into(), data.len() as u16)
             .unwrap();
 
         frame.buf_mut().copy_from_slice(&data);
@@ -402,10 +452,7 @@ mod tests {
 
         let mut frame = pdu_loop
             .storage
-            .alloc_frame(
-                Command::Write(Command::fpwr(0x6789, 0x1234)),
-                data.len() as u16,
-            )
+            .alloc_frame(Command::fpwr(0x6789, 0x1234).into(), data.len() as u16)
             .unwrap();
 
         frame.buf_mut().copy_from_slice(&data);

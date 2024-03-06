@@ -163,12 +163,12 @@ impl Slave {
 
         let flags = slave_ref
             .read(RegisterAddress::SupportFlags)
-            .receive::<SupportFlags>()
+            .receive::<SupportFlags>(&client)
             .await?;
 
         let ports = slave_ref
             .read(RegisterAddress::DlStatus)
-            .receive::<DlStatus>()
+            .receive::<DlStatus>(&client)
             .await
             .map(|dl_status| {
                 // NOTE: dc_receive_times are populated during DC initialisation
@@ -358,7 +358,7 @@ where
         {
             let sm_status = self
                 .read(mailbox_read_sm_status)
-                .receive::<crate::sync_manager_channel::Status>()
+                .receive::<crate::sync_manager_channel::Status>(&self.client)
                 .await?;
 
             // If flag is set, read entire mailbox to clear it
@@ -370,7 +370,7 @@ where
 
                 self.read(read_mailbox.address)
                     .ignore_wkc()
-                    .receive_slice(read_mailbox.len)
+                    .receive_slice(&self.client, read_mailbox.len)
                     .await?;
             }
         }
@@ -380,7 +380,7 @@ where
             loop {
                 let sm_status = self
                     .read(mailbox_write_sm_status)
-                    .receive::<crate::sync_manager_channel::Status>()
+                    .receive::<crate::sync_manager_channel::Status>(&self.client)
                     .await?;
 
                 if !sm_status.mailbox_full {
@@ -414,7 +414,7 @@ where
             loop {
                 let sm_status = self
                     .read(mailbox_read_sm)
-                    .receive::<crate::sync_manager_channel::Status>()
+                    .receive::<crate::sync_manager_channel::Status>(&self.client)
                     .await?;
 
                 if sm_status.mailbox_full {
@@ -439,7 +439,7 @@ where
         // Read acknowledgement from slave OUT mailbox
         let response = self
             .read(read_mailbox.address)
-            .receive_slice(read_mailbox.len)
+            .receive_slice(&self.client, read_mailbox.len)
             .await?;
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
@@ -460,7 +460,7 @@ where
         // Send data to slave IN mailbox
         self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
-            .send(&request.pack().as_ref())
+            .send(&self.client, &request.pack().as_ref())
             .await?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
@@ -735,7 +735,7 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn state(&self) -> Result<SlaveState, Error> {
         match self
             .read(RegisterAddress::AlStatus)
-            .receive::<AlControl>()
+            .receive::<AlControl>(&self.client)
             .await
             .and_then(|ctl| {
                 if ctl.error {
@@ -749,7 +749,7 @@ impl<'a, S> SlaveRef<'a, S> {
                 Error::SubDevice(AlStatusCode::Unknown(0)) => {
                     let code = self
                         .read(RegisterAddress::AlStatusCode)
-                        .receive::<AlStatusCode>()
+                        .receive::<AlStatusCode>(&self.client)
                         .await
                         .unwrap_or(AlStatusCode::Unknown(0));
 
@@ -764,7 +764,7 @@ impl<'a, S> SlaveRef<'a, S> {
     pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
         let code = self
             .read(RegisterAddress::AlStatusCode)
-            .receive::<AlStatusCode>();
+            .receive::<AlStatusCode>(&self.client);
 
         let (status, code) = embassy_futures::join::join(self.state(), code).await;
 
@@ -786,7 +786,7 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: EtherCrabWireReadSized,
     {
-        self.read(register.into()).receive().await
+        self.read(register.into()).receive(&self.client).await
     }
 
     /// Write a register.
@@ -797,7 +797,9 @@ impl<'a, S> SlaveRef<'a, S> {
     where
         T: EtherCrabWireReadWrite,
     {
-        self.write(register.into()).send_receive(value).await
+        self.write(register.into())
+            .send_receive(&self.client, value)
+            .await
     }
 
     pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
@@ -806,7 +808,7 @@ impl<'a, S> SlaveRef<'a, S> {
                 let status = self
                     .read(RegisterAddress::AlStatus)
                     .ignore_wkc()
-                    .receive::<AlControl>()
+                    .receive::<AlControl>(&self.client)
                     .await?;
 
                 if status.state == desired_state {
@@ -821,11 +823,11 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     pub(crate) fn write(&self, register: impl Into<u16>) -> WrappedWrite {
-        Command::fpwr(self.configured_address, register.into()).wrap(self.client)
+        Command::fpwr(self.configured_address, register.into())
     }
 
     pub(crate) fn read(&self, register: impl Into<u16>) -> WrappedRead {
-        Command::fprd(self.configured_address, register.into()).wrap(self.client)
+        Command::fprd(self.configured_address, register.into())
     }
 
     pub(crate) async fn request_slave_state_nowait(
@@ -841,13 +843,13 @@ impl<'a, S> SlaveRef<'a, S> {
         // Send state request
         let response = self
             .write(RegisterAddress::AlControl)
-            .send_receive::<AlControl>(AlControl::new(desired_state))
+            .send_receive::<AlControl>(&self.client, AlControl::new(desired_state))
             .await?;
 
         if response.error {
             let error = self
                 .read(RegisterAddress::AlStatus)
-                .receive::<AlStatusCode>()
+                .receive::<AlStatusCode>(&self.client)
                 .await?;
 
             fmt::error!(
@@ -872,9 +874,13 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
         // ETG1000.4 Table 48 – Slave information interface access
         // A value of 2 sets owner to Master (not PDI) and cancels access
-        self.write(RegisterAddress::SiiConfig).send(2u16).await?;
+        self.write(RegisterAddress::SiiConfig)
+            .send(&self.client, 2u16)
+            .await?;
 
-        self.write(RegisterAddress::SiiConfig).send(mode).await?;
+        self.write(RegisterAddress::SiiConfig)
+            .send(&self.client, mode)
+            .await?;
 
         Ok(())
     }
