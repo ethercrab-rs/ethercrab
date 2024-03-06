@@ -106,6 +106,12 @@ impl<const N: usize> FrameElement<N> {
         (*addr_of_mut!((*fptr).status)).store(state, Ordering::Release);
     }
 
+    pub(crate) unsafe fn is_sendable(this: NonNull<FrameElement<0>>) -> bool {
+        let fptr = this.as_ptr();
+
+        (*addr_of_mut!((*fptr).status)).load(Ordering::Acquire) == FrameState::Sendable
+    }
+
     /// Atomically swap the frame state from `from` to `to`.
     ///
     /// If the frame is not currently in the given `from` state, this method will return an error
@@ -208,6 +214,10 @@ impl<'sto> FrameBox<'sto> {
 
     unsafe fn frame(&self) -> &PduFrame {
         unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
+    }
+
+    unsafe fn frame_mut(&mut self) -> &mut PduFrame {
+        unsafe { &mut *addr_of_mut!((*self.frame.as_ptr()).frame) }
     }
 
     unsafe fn buf_len(&self) -> usize {

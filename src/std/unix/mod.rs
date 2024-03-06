@@ -37,37 +37,79 @@ impl Future for TxRxFut<'_> {
         // Re-register waker to make sure this future is polled again
         self.tx.replace_waker(ctx.waker());
 
-        while let Some(frame) = self.tx.next_sendable_frame() {
-            let res = frame.send_blocking(&mut buf, |data| {
-                match Pin::new(&mut self.socket).poll_write(ctx, data) {
-                    Poll::Ready(Ok(bytes_written)) => {
-                        if bytes_written != data.len() {
-                            fmt::error!("Only wrote {} of {} bytes", bytes_written, data.len());
+        loop {
+            match self.tx.pack_buffer(&mut buf) {
+                Ok(Some(data)) => {
+                    let res = match Pin::new(&mut self.socket).poll_write(ctx, data) {
+                        Poll::Ready(Ok(bytes_written)) => {
+                            if bytes_written != data.len() {
+                                fmt::error!("Only wrote {} of {} bytes", bytes_written, data.len());
 
-                            Err(Error::PartialSend {
-                                len: data.len(),
-                                sent: bytes_written,
-                            })
-                        } else {
-                            Ok(bytes_written)
+                                Err(Error::PartialSend {
+                                    len: data.len(),
+                                    sent: bytes_written,
+                                })
+                            } else {
+                                Ok(bytes_written)
+                            }
                         }
-                    }
 
-                    Poll::Ready(Err(e)) => {
+                        Poll::Ready(Err(e)) => {
+                            fmt::error!("Send PDU failed: {}", e);
+
+                            Err(Error::SendFrame)
+                        }
+                        Poll::Pending => Ok(0),
+                    };
+
+                    if let Err(e) = res {
                         fmt::error!("Send PDU failed: {}", e);
 
-                        Err(Error::SendFrame)
+                        return Poll::Ready(Err(e));
                     }
-                    Poll::Pending => Ok(0),
                 }
-            });
+                Ok(None) => {
+                    break;
+                }
+                Err(e) => {
+                    fmt::error!("Failed to pack multi send: {}", e);
 
-            if let Err(e) = res {
-                fmt::error!("Send PDU failed: {}", e);
-
-                return Poll::Ready(Err(e));
+                    return Poll::Ready(Err(e));
+                }
             }
         }
+
+        // while let Some(frame) = self.tx.next_sendable_frame() {
+        //     let res = frame.send_blocking(&mut buf, |data| {
+        //         match Pin::new(&mut self.socket).poll_write(ctx, data) {
+        //             Poll::Ready(Ok(bytes_written)) => {
+        //                 if bytes_written != data.len() {
+        //                     fmt::error!("Only wrote {} of {} bytes", bytes_written, data.len());
+
+        //                     Err(Error::PartialSend {
+        //                         len: data.len(),
+        //                         sent: bytes_written,
+        //                     })
+        //                 } else {
+        //                     Ok(bytes_written)
+        //                 }
+        //             }
+
+        //             Poll::Ready(Err(e)) => {
+        //                 fmt::error!("Send PDU failed: {}", e);
+
+        //                 Err(Error::SendFrame)
+        //             }
+        //             Poll::Pending => Ok(0),
+        //         }
+        //     });
+
+        //     if let Err(e) = res {
+        //         fmt::error!("Send PDU failed: {}", e);
+
+        //         return Poll::Ready(Err(e));
+        //     }
+        // }
 
         let mut buf = vec![0; self.mtu];
 

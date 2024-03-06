@@ -602,19 +602,47 @@ where
         );
 
         if let Some(dc_ref) = client.dc_ref_address() {
-            let (time, (_res, wkc)) = futures_lite::future::try_zip(
-                Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into())
+            // let (time, (_res, wkc)) = futures_lite::future::try_zip(
+            //     Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into())
+            //         .ignore_wkc()
+            //         // TODO
+            //         // .with_wkc(expected_dc_wkc)
+            //         .receive::<u64>(client),
+            //     Command::lrw(self.inner().pdi_start.start_address).send_receive_slice_mut(
+            //         client,
+            //         self.pdi_mut(),
+            //         self.read_pdi_len,
+            //     ),
+            // )
+            // .await?;
+
+            // Ok((wkc, Some(time)))
+
+            let fut = client.pdu_loop.submit_multi(|submitter| {
+                let f1 = Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into())
                     .ignore_wkc()
                     // TODO
                     // .with_wkc(expected_dc_wkc)
-                    .receive::<u64>(client),
-                Command::lrw(self.inner().pdi_start.start_address).send_receive_slice_mut(
-                    client,
-                    self.pdi_mut(),
-                    self.read_pdi_len,
-                ),
-            )
-            .await?;
+                    .receive_deferred::<u64>(submitter);
+
+                let f2 = Command::lrw(self.inner().pdi_start.start_address)
+                    .send_receive_slice_mut_deferred(submitter, self.pdi_mut(), self.read_pdi_len);
+
+                Ok(futures_lite::future::try_zip(f1, f2))
+            })?;
+
+            let (time, (_res, wkc)) = match fut.timeout(client.timeouts.pdu).await {
+                Ok(result) => result,
+                Err(Error::Timeout) => {
+                    fmt::error!("Multi send timed out");
+
+                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
+                    // state to `None`, ready for reuse.
+
+                    return Err(Error::Timeout);
+                }
+                Err(e) => return Err(e),
+            };
 
             Ok((wkc, Some(time)))
         } else {

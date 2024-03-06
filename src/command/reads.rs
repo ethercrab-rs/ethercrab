@@ -1,7 +1,7 @@
 use crate::{
     error::Error,
     fmt,
-    pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
+    pdu_loop::{CheckWorkingCounter, MultiSubmitter, PduResponse, RxFrameDataBuf},
     timer_factory::IntoTimeout,
     Client,
 };
@@ -124,6 +124,25 @@ impl WrappedRead {
     {
         self.common(client, T::PACKED_LEN as u16)
             .await?
+            .maybe_wkc(self.wkc)
+            .and_then(|data| Ok(T::unpack_from_slice(&data)?))
+    }
+
+    pub(crate) async fn receive_deferred<'client, T>(
+        self,
+        submitter: MultiSubmitter<'client>,
+    ) -> Result<T, Error>
+    where
+        T: EtherCrabWireRead + EtherCrabWireSized,
+    {
+        let (frame, _frame_idx) =
+            submitter.submit(self.command.into(), (), Some(T::PACKED_LEN as u16))?;
+
+        // TODO: Timeouts?
+
+        frame
+            .await
+            .map(|result| result.into_data())?
             .maybe_wkc(self.wkc)
             .and_then(|data| Ok(T::unpack_from_slice(&data)?))
     }

@@ -1,7 +1,7 @@
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
+    pdu_loop::{CheckWorkingCounter, MultiSubmitter, PduResponse, RxFrameDataBuf},
     timer_factory::IntoTimeout,
     Client,
 };
@@ -181,6 +181,41 @@ impl WrappedWrite {
         let (data, wkc) = self
             .common(client, value.as_ref(), self.len_override)
             .await?;
+
+        if data.len() != value.len() {
+            fmt::error!(
+                "Data length {} does not match value length {}",
+                data.len(),
+                value.len()
+            );
+            return Err(Error::Pdu(PduError::Decode));
+        }
+
+        value[0..read_back_len].copy_from_slice(&data[0..read_back_len]);
+
+        Ok((&*value, wkc))
+    }
+
+    pub(crate) async fn send_receive_slice_mut_deferred<'buf, 'client>(
+        self,
+        submitter: MultiSubmitter<'client>,
+        value: &'buf mut [u8],
+        read_back_len: usize,
+    ) -> Result<PduResponse<&'buf [u8]>, Error> {
+        // TODO
+        // assert!(
+        //     value.len() <= client.max_frame_data(),
+        //     "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
+        //     value.len(),
+        //     client.max_frame_data()
+        // );
+
+        let (frame, _frame_idx) =
+            submitter.submit(self.command.into(), value.as_ref(), self.len_override)?;
+
+        // TODO: Timeouts?
+
+        let (data, wkc) = frame.await.map(|result| result.into_data())?;
 
         if data.len() != value.len() {
             fmt::error!(

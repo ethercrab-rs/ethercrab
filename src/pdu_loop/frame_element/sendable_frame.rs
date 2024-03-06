@@ -77,14 +77,15 @@ impl<'sto> SendableFrame<'sto> {
 
     /// Used on send failure to release the frame sending claim so the frame can attempt to be sent
     /// again, or reclaimed for reuse.
-    fn release_sending_claim(self) {
+    pub(crate) fn release_sending_claim(self) {
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::Sendable);
         }
     }
 
-    /// The size of the total payload to be insterted into an EtherCAT frame.
-    fn ethercat_payload_len(&self) -> u16 {
+    /// The size of the total payload to be insterted into an EtherCAT frame excluding EtherCAT AND
+    /// Ethernet header.
+    pub(crate) fn ethercat_payload_len(&self) -> u16 {
         let pdu_overhead = 12;
 
         unsafe { self.inner.frame() }.flags.len() + pdu_overhead
@@ -105,13 +106,44 @@ impl<'sto> SendableFrame<'sto> {
         usize::from(self.ethercat_payload_len()) + FrameHeader::PACKED_LEN
     }
 
+    pub(crate) fn set_more_follows(&mut self, more_follows: bool) {
+        unsafe { self.inner.frame_mut() }.flags.more_follows = more_follows;
+    }
+
     /// Write PDU to buffer. Returns remaining buffer.
-    fn write_ethernet_payload<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+    pub(crate) fn write_ethernet_payload<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
         let (frame, data) = unsafe { self.inner.frame_and_buf() };
 
         let header = FrameHeader::pdu(self.ethercat_payload_len());
 
         let buf = write_packed(header, buf);
+
+        let buf = write_packed(frame.command.code(), buf);
+        let buf = write_packed(frame.index, buf);
+
+        // Write address and register data
+        let buf = write_packed(frame.command, buf);
+
+        let buf = write_packed(frame.flags, buf);
+        let buf = write_packed(frame.irq, buf);
+
+        // Probably a read; the data area of the frame to send could be any old garbage, so we'll
+        // skip over it.
+        let buf = if data.is_empty() {
+            skip(usize::from(frame.flags.len()), buf)
+        }
+        // Probably a write
+        else {
+            write_packed(data, buf)
+        };
+
+        // Working counter is always zero when sending
+        write_packed(0u16, buf)
+    }
+
+    /// Write PDU to buffer (no header). Returns remaining buffer.
+    pub(crate) fn write_pdu<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+        let (frame, data) = unsafe { self.inner.frame_and_buf() };
 
         let buf = write_packed(frame.command.code(), buf);
         let buf = write_packed(frame.index, buf);

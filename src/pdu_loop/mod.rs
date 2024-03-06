@@ -202,7 +202,7 @@ impl<'sto> PduLoop<'sto> {
         f: impl FnOnce(MultiSubmitter<'sto>) -> Result<F, Error>,
     ) -> Result<F, Error>
     where
-        F: core::future::Future<Output = O>,
+        F: core::future::Future<Output = O> + 'sto,
     {
         let fut = f(MultiSubmitter { inner: self })?;
 
@@ -212,6 +212,7 @@ impl<'sto> PduLoop<'sto> {
     }
 }
 
+#[derive(Copy, Clone)]
 pub(crate) struct MultiSubmitter<'sto> {
     inner: &'sto PduLoop<'sto>,
 }
