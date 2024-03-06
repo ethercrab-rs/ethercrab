@@ -113,7 +113,7 @@ impl<'sto> PduLoop<'sto> {
     ) -> Result<ReceivedFrame<'_>, Error> {
         let frame = self
             .storage
-            .alloc_frame(Command::Write(Command::bwr(register)), payload_length)?;
+            .alloc_frame(Command::bwr(register).into(), payload_length)?;
 
         let frame = frame.mark_sendable();
 
@@ -125,6 +125,9 @@ impl<'sto> PduLoop<'sto> {
     /// Send data to and read data back from the slave devices.
     ///
     /// This method allows overriding the minimum data length of the payload.
+    ///
+    /// Returns the frame future that can be `.await`ed for a response, and the EtherCAT frame
+    /// index.
     ///
     /// The PDU data length will be the larger of the payload data length and the length override
     /// (if provided). If a larger **response** than the sent data is desired, set the expected
@@ -242,10 +245,7 @@ mod tests {
 
         let mut frame = pdu_loop
             .storage
-            .alloc_frame(
-                Command::Write(Command::fpwr(0x5678, 0x1234)),
-                data.len() as u16,
-            )
+            .alloc_frame(Command::fpwr(0x5678, 0x1234).into(), data.len() as u16)
             .unwrap();
 
         frame.buf_mut().copy_from_slice(&data);
@@ -377,10 +377,7 @@ mod tests {
 
         let mut frame = pdu_loop
             .storage
-            .alloc_frame(
-                Command::Write(Command::fpwr(0x5678, 0x1234)),
-                data.len() as u16,
-            )
+            .alloc_frame(Command::fpwr(0x5678, 0x1234).into(), data.len() as u16)
             .unwrap();
 
         frame.buf_mut().copy_from_slice(&data);
@@ -401,10 +398,7 @@ mod tests {
 
         let mut frame = pdu_loop
             .storage
-            .alloc_frame(
-                Command::Write(Command::fpwr(0x6789, 0x1234)),
-                data.len() as u16,
-            )
+            .alloc_frame(Command::fpwr(0x6789, 0x1234).into(), data.len() as u16)
             .unwrap();
 
         frame.buf_mut().copy_from_slice(&data);

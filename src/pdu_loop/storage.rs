@@ -239,7 +239,7 @@ mod tests {
         let s = storage.as_ref();
 
         let mut frame = s
-            .alloc_frame(Command::Write(Command::fpwr(0x1234, 0x5678)), 4)
+            .alloc_frame(Command::fpwr(0x1234, 0x5678).into(), 4)
             .unwrap();
 
         frame.buf_mut().copy_from_slice(&[0xaa, 0xbb, 0xcc, 0xdd]);
@@ -248,7 +248,7 @@ mod tests {
         unsafe { FrameElement::set_state(frame.inner.frame, FrameState::None) };
 
         let mut frame = s
-            .alloc_frame(Command::Write(Command::fpwr(0x1234, 0x5678)), 8)
+            .alloc_frame(Command::fpwr(0x1234, 0x5678).into(), 8)
             .unwrap();
 
         assert_eq!(frame.buf_mut(), &[0u8; 8]);
@@ -264,14 +264,10 @@ mod tests {
         let s = storage.as_ref();
 
         for _ in 0..NUM_FRAMES {
-            assert!(s
-                .alloc_frame(Command::Write(Command::lwr(0x1234)), 128)
-                .is_ok());
+            assert!(s.alloc_frame(Command::lwr(0x1234).into(), 128).is_ok());
         }
 
-        assert!(s
-            .alloc_frame(Command::Write(Command::lwr(0x1234)), 128)
-            .is_err());
+        assert!(s.alloc_frame(Command::lwr(0x1234).into(), 128).is_err());
     }
 
     #[test]
@@ -283,8 +279,6 @@ mod tests {
         let storage: PduStorage<NUM_FRAMES, 128> = PduStorage::new();
         let s = storage.as_ref();
 
-        assert!(s
-            .alloc_frame(Command::Write(Command::lwr(0x1234)), 129)
-            .is_err());
+        assert!(s.alloc_frame(Command::lwr(0x1234).into(), 129).is_err());
     }
 }

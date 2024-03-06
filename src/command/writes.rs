@@ -49,27 +49,20 @@ pub enum Writes {
     },
 }
 
-impl Writes {
-    /// Wrap this command with a [`Client`]` to make it sendable over the wire.
-    pub fn wrap<'client>(self, client: &'client Client<'client>) -> WrappedWrite<'client> {
-        WrappedWrite::new(client, self)
-    }
-}
-
 /// A wrapped version of a [`Writes`] exposing a builder API used to send/receive data over the
 /// wire.
-pub struct WrappedWrite<'client> {
-    client: &'client Client<'client>,
-    command: Writes,
+#[derive(Debug, Copy, Clone)]
+pub struct WrappedWrite {
+    /// EtherCAT command.
+    pub command: Writes,
     /// Expected working counter.
     wkc: Option<u16>,
     len_override: Option<u16>,
 }
 
-impl<'client> WrappedWrite<'client> {
-    pub(crate) fn new(client: &'client Client<'client>, command: Writes) -> Self {
+impl WrappedWrite {
+    pub(crate) fn new(command: Writes) -> Self {
         Self {
-            client,
             command,
             wkc: Some(1),
             len_override: None,
@@ -103,47 +96,57 @@ impl<'client> WrappedWrite<'client> {
 
     /// Send a payload with a length set by [`with_len`](WrappedWrite::with_len), ignoring the
     /// response.
-    pub async fn send<'data>(self, data: impl EtherCrabWireWrite) -> Result<(), Error> {
-        self.common(data, self.len_override).await?;
+    pub async fn send<'data, 'client>(
+        self,
+        client: &'client Client<'client>,
+        data: impl EtherCrabWireWrite,
+    ) -> Result<(), Error> {
+        self.common(client, data, self.len_override).await?;
 
         Ok(())
     }
 
     /// Send a value, returning the response returned from the network.
-    pub async fn send_receive<'data, T>(self, value: impl EtherCrabWireWrite) -> Result<T, Error>
+    pub async fn send_receive<'data, 'client, T>(
+        self,
+        client: &'client Client<'client>,
+        value: impl EtherCrabWireWrite,
+    ) -> Result<T, Error>
     where
         T: EtherCrabWireRead,
     {
-        self.common(value, None)
+        self.common(client, value, None)
             .await?
             .maybe_wkc(self.wkc)
             .and_then(|data| Ok(T::unpack_from_slice(&data)?))
     }
 
     /// Similar to [`send_receive`](WrappedWrite::send_receive) but returns a slice.
-    pub async fn send_receive_slice<'data>(
+    pub async fn send_receive_slice<'data, 'client>(
         self,
+        client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
     ) -> Result<RxFrameDataBuf<'data>, Error>
     where
         'client: 'data,
     {
-        self.common(value, None).await?.maybe_wkc(self.wkc)
+        self.common(client, value, None).await?.maybe_wkc(self.wkc)
     }
 
     // Some manual monomorphisation
-    async fn common(
+    async fn common<'client>(
         &self,
+        client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
         len_override: Option<u16>,
     ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
-        for _ in 0..self.client.config.retry_behaviour.loop_counts() {
+        for _ in 0..client.config.retry_behaviour.loop_counts() {
             let (frame, frame_idx) =
-                self.client
+                client
                     .pdu_loop
                     .pdu_send(self.command.into(), &value, len_override)?;
 
-            match frame.timeout(self.client.timeouts.pdu).await {
+            match frame.timeout(client.timeouts.pdu).await {
                 Ok(result) => return Ok(result.into_data()),
                 Err(Error::Timeout) => {
                     fmt::error!("Frame {:#04x} timed out", frame_idx);
@@ -162,19 +165,22 @@ impl<'client> WrappedWrite<'client> {
     ///
     /// This is pretty much only useful for group TX/RX which returns bytes like `IIIIOOOO`, where
     /// `I` is where the sub devices write their input data to.
-    pub(crate) async fn send_receive_slice_mut<'buf>(
+    pub(crate) async fn send_receive_slice_mut<'buf, 'client>(
         self,
+        client: &'client Client<'client>,
         value: &'buf mut [u8],
         read_back_len: usize,
-    ) -> Result<PduResponse<&[u8]>, Error> {
+    ) -> Result<PduResponse<&'buf [u8]>, Error> {
         assert!(
-            value.len() <= self.client.max_frame_data(),
+            value.len() <= client.max_frame_data(),
             "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
             value.len(),
-            self.client.max_frame_data()
+            client.max_frame_data()
         );
 
-        let (data, wkc) = self.common(value.as_ref(), self.len_override).await?;
+        let (data, wkc) = self
+            .common(client, value.as_ref(), self.len_override)
+            .await?;
 
         if data.len() != value.len() {
             fmt::error!(

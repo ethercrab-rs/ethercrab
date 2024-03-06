@@ -18,9 +18,8 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
     // Latch receive times into all ports of all slaves.
     Command::bwr(RegisterAddress::DcTimePort0.into())
-        .wrap(client)
         .with_wkc(num_slaves_with_dc as u16)
-        .send_receive(0u32)
+        .send_receive(client, 0u32)
         .await?;
 
     // Read receive times for all slaves and store on slave structs
@@ -33,12 +32,12 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
         let dc_receive_time = sl
             .read(RegisterAddress::DcReceiveTime)
             .ignore_wkc()
-            .receive::<i64>()
+            .receive::<i64>(client)
             .await?;
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
             .read(RegisterAddress::DcTimePort0)
-            .receive::<[u32; 4]>()
+            .receive::<[u32; 4]>(client)
             .await
             .map_err(|e| {
                 fmt::error!(
@@ -71,18 +70,16 @@ async fn write_dc_parameters(
         slave.configured_address,
         RegisterAddress::DcSystemTimeOffset.into(),
     )
-    .wrap(client)
     .ignore_wkc()
-    .send(-dc_receive_time + now_nanos)
+    .send(client, -dc_receive_time + now_nanos)
     .await?;
 
     Command::fpwr(
         slave.configured_address,
         RegisterAddress::DcSystemTimeTransmissionDelay.into(),
     )
-    .wrap(client)
     .ignore_wkc()
-    .send(slave.propagation_delay)
+    .send(client, slave.propagation_delay)
     .await?;
 
     Ok(())
@@ -423,8 +420,7 @@ pub(crate) async fn run_dc_static_sync(
             dc_reference_slave.configured_address,
             RegisterAddress::DcSystemTime.into(),
         )
-        .wrap(client)
-        .receive_wkc::<u64>()
+        .receive_wkc::<u64>(client)
         .await?;
     }
 
