@@ -133,7 +133,7 @@ impl<'sto> PduStorageRef<'sto> {
 
             let idx = usize::from(idx_u8);
 
-            fmt::trace!("Try to allocate frame #{}", idx);
+            fmt::trace!("Try to allocate frame {:#04x}", idx);
 
             // Claim frame so it is no longer free and can be used. It must be claimed before
             // initialisation to avoid race conditions with other threads potentially claiming the
