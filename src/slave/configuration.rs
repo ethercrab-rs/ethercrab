@@ -357,7 +357,12 @@ where
                     .sdo_read_expedited::<u8>(pdo, SubIndex::Index(0))
                     .await?;
 
-                fmt::trace!("--> #{} data: {:#06x} ({} mappings):", i, pdo, num_mappings);
+                fmt::trace!(
+                    "--> {:#04x} data: {:#06x} ({} mappings):",
+                    i,
+                    pdo,
+                    num_mappings
+                );
 
                 for i in 1..=num_mappings {
                     /// Defined in ETG1000.6 Table 74/Table 75 Receive PDO Mapping.

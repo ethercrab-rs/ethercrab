@@ -182,7 +182,10 @@ pub fn dummy_tx_rx_task(
                 (f, preamble)
             }
             Block::InterfaceDescription(_) | Block::InterfaceStatistics(_) => continue,
-            other => panic!("Frame {} is not correct type: {:?}", packet_number, other),
+            other => panic!(
+                "Frame {:#04x} is not correct type: {:?}",
+                packet_number, other
+            ),
         };
 
         if raw.src_addr() == MASTER_ADDR {
@@ -197,7 +200,7 @@ pub fn dummy_tx_rx_task(
                 .push_back((raw, packet_number));
         } else {
             panic!(
-                "Frame {} does not have EtherCAT address (has {:?} instead)",
+                "Frame {:#04x} does not have EtherCAT address (has {:?} instead)",
                 packet_number,
                 raw.src_addr()
             );
