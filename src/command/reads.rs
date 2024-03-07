@@ -53,23 +53,23 @@ pub enum Reads {
 
 impl Reads {
     /// Wrap this command with a client to make it sendable over the wire.
-    pub fn wrap<'client>(self, client: &'client Client<'client>) -> WrappedRead<'client> {
-        WrappedRead::new(client, self)
+    pub fn wrap(self) -> WrappedRead {
+        WrappedRead::new(self)
     }
 }
 
 /// A wrapped version of a [`Reads`] exposing a builder API used to send/receive data over the wire.
-pub struct WrappedRead<'client> {
-    client: &'client Client<'client>,
-    command: Reads,
+#[derive(Debug, Copy, Clone)]
+pub struct WrappedRead {
+    /// EtherCAT command.
+    pub command: Reads,
     /// Expected working counter.
     wkc: Option<u16>,
 }
 
-impl<'client> WrappedRead<'client> {
-    pub(crate) fn new(client: &'client Client<'client>, command: Reads) -> Self {
+impl WrappedRead {
+    pub(crate) fn new(command: Reads) -> Self {
         Self {
-            client,
             command,
             wkc: Some(1),
         }
@@ -91,14 +91,18 @@ impl<'client> WrappedRead<'client> {
     }
 
     // Some manual monomorphisation
-    async fn common(&self, len: u16) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
-        for _ in 0..self.client.config.retry_behaviour.loop_counts() {
+    async fn common<'client>(
+        &self,
+        client: &'client Client<'client>,
+        len: u16,
+    ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
+        for _ in 0..client.config.retry_behaviour.loop_counts() {
             let (frame, frame_idx) =
-                self.client
+                client
                     .pdu_loop
                     .pdu_send(self.command.into(), (), Some(len))?;
 
-            match frame.timeout(self.client.timeouts.pdu).await {
+            match frame.timeout(client.timeouts.pdu).await {
                 Ok(result) => return Ok(result.into_data()),
                 Err(Error::Timeout) => {
                     fmt::error!("Frame {:#04x} timed out", frame_idx);
@@ -114,19 +118,23 @@ impl<'client> WrappedRead<'client> {
     }
 
     /// Receive data and decode into a `T`.
-    pub async fn receive<T>(self) -> Result<T, Error>
+    pub async fn receive<'client, T>(self, client: &'client Client<'client>) -> Result<T, Error>
     where
         T: EtherCrabWireRead + EtherCrabWireSized,
     {
-        self.common(T::PACKED_LEN as u16)
+        self.common(client, T::PACKED_LEN as u16)
             .await?
             .maybe_wkc(self.wkc)
             .and_then(|data| Ok(T::unpack_from_slice(&data)?))
     }
 
     /// Receive a given number of bytes and return it as a slice.
-    pub async fn receive_slice(self, len: u16) -> Result<RxFrameDataBuf<'client>, Error> {
-        self.common(len).await?.maybe_wkc(self.wkc)
+    pub async fn receive_slice<'client>(
+        self,
+        client: &'client Client<'client>,
+        len: u16,
+    ) -> Result<RxFrameDataBuf<'client>, Error> {
+        self.common(client, len).await?.maybe_wkc(self.wkc)
     }
 
     /// Receive only the working counter.
@@ -136,11 +144,14 @@ impl<'client> WrappedRead<'client> {
     ///
     /// `T` determines the length of the read, which is required for valid reads. It is otherwise
     /// ignored.
-    pub(crate) async fn receive_wkc<T>(&self) -> Result<u16, Error>
+    pub(crate) async fn receive_wkc<'client, T>(
+        &self,
+        client: &'client Client<'client>,
+    ) -> Result<u16, Error>
     where
         T: EtherCrabWireRead + EtherCrabWireSized,
     {
-        self.common(T::PACKED_LEN as u16)
+        self.common(client, T::PACKED_LEN as u16)
             .await
             .map(|(_data, wkc)| wkc)
     }

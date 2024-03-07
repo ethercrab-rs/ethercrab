@@ -1,6 +1,6 @@
 //! EtherCrab error types.
 
-use crate::{command::Command, fmt, SlaveState};
+use crate::{command::Command, fmt, AlStatusCode, SlaveState};
 use core::{cell::BorrowError, num::TryFromIntError, str::Utf8Error};
 
 pub use crate::coe::abort_code::CoeAbortCode;
@@ -91,6 +91,9 @@ pub enum Error {
 
     /// An error occurred encoding or decoding an item.
     Wire(ethercrab_wire::WireError),
+
+    /// A subdevice produced an error.
+    SubDevice(AlStatusCode),
 }
 
 #[cfg(feature = "std")]
@@ -147,6 +150,7 @@ impl core::fmt::Display for Error {
                 configured_address, actual, expected
             ),
             Error::Wire(e) => write!(f, "wire encode/decode error: {}", e),
+            Error::SubDevice(e) => write!(f, "subdevice error: {}", e),
         }
     }
 }

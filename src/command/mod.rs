@@ -53,8 +53,7 @@ const LRW: u8 = 0x0c;
 ///
 /// # async {
 /// let value = Command::fprd(slave_configured_address, RegisterAddress::SiiData.into())
-///     .wrap(&client)
-///     .receive::<u32>()
+///     .receive::<u32>(&client)
 ///     .await?;
 /// # Result::<(), ethercrab::error::Error>::Ok(())
 /// # };
@@ -77,8 +76,7 @@ const LRW: u8 = 0x0c;
 ///
 /// # async {
 /// Command::fpwr(slave_configured_address, register)
-///     .wrap(&client)
-///     .send(data)
+///     .send(&client, data)
 ///     .await?;
 /// # Result::<(), ethercrab::error::Error>::Ok(())
 /// # };
@@ -172,67 +170,67 @@ impl Command {
     /// Create a broadcast read (BRD) command to the given register address.
     ///
     /// The configured station address is always zero when transmitted from the master.
-    pub fn brd(register: u16) -> Reads {
-        Reads::Brd {
+    pub fn brd(register: u16) -> WrappedRead {
+        WrappedRead::new(Reads::Brd {
             // This is a broadcast, so the address is always zero when sent from the master
             address: 0,
             register,
-        }
+        })
     }
 
     /// Create a broadcast write (BWR) command to the given register address.
     ///
     /// The configured station address is always zero when transmitted from the master.
-    pub fn bwr(register: u16) -> Writes {
-        Writes::Bwr {
+    pub fn bwr(register: u16) -> WrappedWrite {
+        WrappedWrite::new(Writes::Bwr {
             // This is a broadcast, so the address is always zero when sent from the master
             address: 0,
             register,
-        }
+        })
     }
 
     /// FPRD.
-    pub fn fprd(address: u16, register: u16) -> Reads {
-        Reads::Fprd { address, register }
+    pub fn fprd(address: u16, register: u16) -> WrappedRead {
+        WrappedRead::new(Reads::Fprd { address, register })
     }
 
     /// FPWR.
-    pub fn fpwr(address: u16, register: u16) -> Writes {
-        Writes::Fpwr { address, register }
+    pub fn fpwr(address: u16, register: u16) -> WrappedWrite {
+        WrappedWrite::new(Writes::Fpwr { address, register })
     }
 
     /// APRD.
-    pub fn aprd(address: u16, register: u16) -> Reads {
-        Reads::Aprd {
+    pub fn aprd(address: u16, register: u16) -> WrappedRead {
+        WrappedRead::new(Reads::Aprd {
             address: 0u16.wrapping_sub(address),
             register,
-        }
+        })
     }
 
     /// APWR.
-    pub fn apwr(address: u16, register: u16) -> Writes {
-        Writes::Apwr {
+    pub fn apwr(address: u16, register: u16) -> WrappedWrite {
+        WrappedWrite::new(Writes::Apwr {
             address: 0u16.wrapping_sub(address),
             register,
-        }
+        })
     }
 
     /// Configured address read, multiple write (FRMW).
     ///
     /// This can be used to distribute a value from one slave to all others on the network, e.g.
     /// with distributed clocks.
-    pub fn frmw(address: u16, register: u16) -> Reads {
-        Reads::Frmw { address, register }
+    pub fn frmw(address: u16, register: u16) -> WrappedRead {
+        WrappedRead::new(Reads::Frmw { address, register })
     }
 
     /// Logical Read Write (LRW), used mainly for sending and receiving PDI.
-    pub fn lrw(address: u32) -> Writes {
-        Writes::Lrw { address }
+    pub fn lrw(address: u32) -> WrappedWrite {
+        WrappedWrite::new(Writes::Lrw { address })
     }
 
     /// Logical Write (LWR).
-    pub fn lwr(address: u32) -> Writes {
-        Writes::Lwr { address }
+    pub fn lwr(address: u32) -> WrappedWrite {
+        WrappedWrite::new(Writes::Lwr { address })
     }
 
     /// Get just the command code for a command.
@@ -323,5 +321,17 @@ impl From<Reads> for Command {
 impl From<Writes> for Command {
     fn from(value: Writes) -> Self {
         Self::Write(value)
+    }
+}
+
+impl From<WrappedRead> for Command {
+    fn from(value: WrappedRead) -> Self {
+        Self::Read(value.command)
+    }
+}
+
+impl From<WrappedWrite> for Command {
+    fn from(value: WrappedWrite) -> Self {
+        Self::Write(value.command)
     }
 }
