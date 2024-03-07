@@ -143,7 +143,7 @@ mod tests {
                 flags: PduFlags {
                     length: 16,
                     circulated: false,
-                    is_not_last: false
+                    more_follows: false
                 },
                 irq: 0
             })
@@ -173,7 +173,7 @@ mod tests {
             flags: PduFlags {
                 length: 1,
                 circulated: false,
-                is_not_last: false,
+                more_follows: false,
             },
             irq: 0,
         };
@@ -185,7 +185,7 @@ mod tests {
             flags: PduFlags {
                 length: 1,
                 circulated: false,
-                is_not_last: false,
+                more_follows: false,
             },
             irq: 0,
         };
@@ -206,7 +206,7 @@ mod tests {
             flags: PduFlags {
                 length: 1,
                 circulated: false,
-                is_not_last: false,
+                more_follows: false,
             },
             irq: 0,
         };
@@ -218,7 +218,7 @@ mod tests {
             flags: PduFlags {
                 length: 1,
                 circulated: false,
-                is_not_last: false,
+                more_follows: false,
             },
             irq: 0,
         };
@@ -249,7 +249,7 @@ mod tests {
                 flags: PduFlags {
                     length: 1,
                     circulated: false,
-                    is_not_last: false,
+                    more_follows: false,
                 },
                 irq: 0,
             },
@@ -264,7 +264,7 @@ mod tests {
                 flags: PduFlags {
                     length: 1,
                     circulated: false,
-                    is_not_last: false,
+                    more_follows: false,
                 },
                 irq: 0,
             }),
@@ -284,7 +284,7 @@ mod tests {
                 flags: PduFlags {
                     length: 2,
                     circulated: false,
-                    is_not_last: false,
+                    more_follows: false,
                 },
                 irq: 0,
             },
@@ -299,7 +299,7 @@ mod tests {
                 flags: PduFlags {
                     length: 2,
                     circulated: false,
-                    is_not_last: false,
+                    more_follows: false,
                 },
                 irq: 0,
             }),
