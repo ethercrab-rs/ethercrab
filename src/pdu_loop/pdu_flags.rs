@@ -14,14 +14,14 @@ pub struct PduFlags {
     pub(crate) circulated: bool,
     /// 0: last EtherCAT PDU in EtherCAT frame
     /// 1: EtherCAT PDU in EtherCAT frame follows
-    pub(crate) is_not_last: bool,
+    pub(crate) more_follows: bool,
 }
 
 impl ethercrab_wire::EtherCrabWireWrite for PduFlags {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let raw = self.length & LEN_MASK
             | (self.circulated as u16) << 14
-            | (self.is_not_last as u16) << 15;
+            | (self.more_follows as u16) << 15;
 
         let buf = &mut buf[0..self.packed_len()];
 
@@ -46,7 +46,7 @@ impl EtherCrabWireRead for PduFlags {
         Ok(Self {
             length,
             circulated,
-            is_not_last,
+            more_follows: is_not_last,
         })
     }
 }
@@ -76,7 +76,7 @@ impl PduFlags {
         Self {
             length: len,
             circulated: false,
-            is_not_last: false,
+            more_follows: false,
         }
     }
 
@@ -96,7 +96,7 @@ mod tests {
         let flags = PduFlags {
             length: 0x110,
             circulated: false,
-            is_not_last: true,
+            more_follows: true,
         };
 
         let packed = flags.pack();
@@ -113,7 +113,7 @@ mod tests {
         let flags = PduFlags {
             length: 1036,
             circulated: false,
-            is_not_last: false,
+            more_follows: false,
         };
 
         assert_eq!(flags.len(), 1036);
