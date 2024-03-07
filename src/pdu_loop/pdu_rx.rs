@@ -85,12 +85,7 @@ impl<'sto> PduRx<'sto> {
             index, flags, irq, ..
         } = pdu_header;
 
-        fmt::trace!(
-            "Received frame with index {} ({:#04x}), WKC {}",
-            index,
-            index,
-            working_counter,
-        );
+        fmt::trace!("Received frame {:#04x}, WKC {}", index, working_counter,);
 
         let mut frame = self
             .storage
