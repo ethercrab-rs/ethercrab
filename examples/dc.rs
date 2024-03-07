@@ -105,8 +105,7 @@ async fn main() -> Result<(), Error> {
 
         // Dynamic drift compensation
         let _ = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
-            .wrap(&client)
-            .receive::<u64>()
+            .receive::<u64>(&client)
             .await?;
 
         for mut slave in group.iter(&client) {

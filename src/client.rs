@@ -73,9 +73,8 @@ impl<'sto> Client<'sto> {
 
         // Reset slaves to init
         Command::bwr(RegisterAddress::AlControl.into())
-            .wrap(self)
             .ignore_wkc()
-            .send(AlControl::reset())
+            .send(self, AlControl::reset())
             .await?;
 
         // Clear FMMUs. FMMU memory section is 0xff (255) bytes long - see ETG1000.4 Table 57
@@ -107,15 +106,13 @@ impl<'sto> Client<'sto> {
         // According to ETG1020, we'll use the mode where the DC reference clock is adjusted to the
         // master clock.
         Command::bwr(RegisterAddress::DcControlLoopParam3.into())
-            .wrap(self)
             .ignore_wkc()
-            .send(0x0c00u16)
+            .send(self, 0x0c00u16)
             .await?;
         // Must be after param 3 so DC control unit is reset
         Command::bwr(RegisterAddress::DcControlLoopParam1.into())
-            .wrap(self)
             .ignore_wkc()
-            .send(0x1000u16)
+            .send(self, 0x1000u16)
             .await?;
 
         fmt::debug!("--> Reset complete");
@@ -222,8 +219,7 @@ impl<'sto> Client<'sto> {
             let configured_address = BASE_SLAVE_ADDR.wrapping_add(slave_idx);
 
             Command::apwr(slave_idx, RegisterAddress::ConfiguredStationAddress.into())
-                .wrap(self)
-                .send(configured_address)
+                .send(self, configured_address)
                 .await?;
 
             let slave = Slave::new(self, usize::from(slave_idx), configured_address).await?;
@@ -369,8 +365,7 @@ impl<'sto> Client<'sto> {
     /// Count the number of slaves on the network.
     async fn count_slaves(&self) -> Result<u16, Error> {
         Command::brd(RegisterAddress::Type.into())
-            .wrap(self)
-            .receive_wkc::<u8>()
+            .receive_wkc::<u8>(self)
             .await
     }
 
@@ -389,9 +384,8 @@ impl<'sto> Client<'sto> {
         async {
             loop {
                 let status = Command::brd(RegisterAddress::AlStatus.into())
-                    .wrap(self)
                     .with_wkc(num_slaves)
-                    .receive::<AlControl>()
+                    .receive::<AlControl>(self)
                     .await?;
 
                 fmt::trace!("Global AL status {:?}", status);
@@ -406,9 +400,8 @@ impl<'sto> Client<'sto> {
                     {
                         let slave_status =
                             Command::fprd(slave_addr, RegisterAddress::AlStatusCode.into())
-                                .wrap(self)
                                 .ignore_wkc()
-                                .receive::<AlStatusCode>()
+                                .receive::<AlStatusCode>(self)
                                 .await
                                 .unwrap_or(AlStatusCode::UnspecifiedError);
 

@@ -1,7 +1,7 @@
 /// AL (Application Layer) Status Code.
 ///
 /// Defined in ETG1000.6 Table 11.
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u16)]
 pub enum AlStatusCode {
