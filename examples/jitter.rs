@@ -26,6 +26,7 @@ fn main() {
 
 #[cfg(target_os = "linux")]
 fn main() -> Result<(), Error> {
+    use ethercrab::std::ethercat_now;
     use thread_priority::{
         set_thread_priority_and_policy, thread_native_id, RealtimeThreadSchedulePolicy,
         ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
@@ -69,7 +70,7 @@ fn main() -> Result<(), Error> {
         smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
         let group = client
-            .init_single_group::<MAX_SLAVES, PDI_LEN>()
+            .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
             .await
             .expect("Init");
 

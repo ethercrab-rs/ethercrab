@@ -32,8 +32,11 @@ pub struct Client<'sto> {
     /// Using an `AtomicU16` here only to satisfy `Sync` requirements, but it's only ever written to
     /// once so its safety is largely unused.
     num_slaves: AtomicU16,
+    /// DC reference clock.
+    ///
+    /// If no DC subdevices are found, this will be `0`.
+    dc_reference_configured_address: AtomicU16,
     pub(crate) timeouts: Timeouts,
-
     pub(crate) config: ClientConfig,
 }
 
@@ -45,6 +48,7 @@ impl<'sto> Client<'sto> {
         Self {
             pdu_loop,
             num_slaves: AtomicU16::new(0),
+            dc_reference_configured_address: AtomicU16::new(0),
             timeouts,
             config,
         }
@@ -95,6 +99,31 @@ impl<'sto> Client<'sto> {
         .await?;
         self.blank_memory(
             RegisterAddress::DcSystemTimeTransmissionDelay,
+            core::mem::size_of::<u32>() as u16,
+        )
+        .await?;
+        self.blank_memory(
+            RegisterAddress::DcSystemTimeDifference,
+            core::mem::size_of::<u32>() as u16,
+        )
+        .await?;
+        self.blank_memory(
+            RegisterAddress::DcSyncActive,
+            core::mem::size_of::<u8>() as u16,
+        )
+        .await?;
+        self.blank_memory(
+            RegisterAddress::DcSyncStartTime,
+            core::mem::size_of::<u32>() as u16,
+        )
+        .await?;
+        self.blank_memory(
+            RegisterAddress::DcSync0CycleTime,
+            core::mem::size_of::<u32>() as u16,
+        )
+        .await?;
+        self.blank_memory(
+            RegisterAddress::DcSync1CycleTime,
             core::mem::size_of::<u32>() as u16,
         )
         .await?;
@@ -187,8 +216,8 @@ impl<'sto> Client<'sto> {
     /// ```
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
-
         mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn SlaveGroupHandle, Error>,
+        now: impl Fn() -> u64 + Copy,
     ) -> Result<G, Error>
     where
         G: Default,
@@ -233,10 +262,13 @@ impl<'sto> Client<'sto> {
 
         // Configure distributed clock offsets/propagation delays, perform static drift
         // compensation. We need the slaves in a single list so we can read the topology.
-        let dc_master = dc::configure_dc(self, slaves.as_mut_slices().0).await?;
+        let dc_master = dc::configure_dc(self, slaves.as_mut_slices().0, now).await?;
 
         // If there are slave devices that support distributed clocks, run static drift compensation
         if let Some(dc_master) = dc_master {
+            self.dc_reference_configured_address
+                .store(dc_master.configured_address, Ordering::Relaxed);
+
             dc::run_dc_static_sync(self, dc_master, self.config.dc_static_sync_iterations).await?;
         }
 
@@ -358,8 +390,10 @@ impl<'sto> Client<'sto> {
     /// ```
     pub async fn init_single_group<const MAX_SLAVES: usize, const MAX_PDI: usize>(
         &self,
+        now: impl Fn() -> u64 + Copy,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, slave_group::PreOp>, Error> {
-        self.init::<MAX_SLAVES, _>(|group, _slave| Ok(group)).await
+        self.init::<MAX_SLAVES, _>(|group, _slave| Ok(group), now)
+            .await
     }
 
     /// Count the number of slaves on the network.
@@ -375,6 +409,17 @@ impl<'sto> Client<'sto> {
     /// method to get an accurate count.
     pub fn num_slaves(&self) -> usize {
         usize::from(self.num_slaves.load(Ordering::Relaxed))
+    }
+
+    /// Get the configured address of the designated DC reference subdevice.
+    pub(crate) fn dc_ref_address(&self) -> Option<u16> {
+        let addr = self.dc_reference_configured_address.load(Ordering::Relaxed);
+
+        if addr > 0 {
+            Some(addr)
+        } else {
+            None
+        }
     }
 
     /// Wait for all slaves on the network to reach a given state.

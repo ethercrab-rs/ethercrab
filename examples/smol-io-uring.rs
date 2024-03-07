@@ -16,8 +16,9 @@ fn main() {
 fn main() -> Result<(), ethercrab::error::Error> {
     use env_logger::{Env, TimestampPrecision};
     use ethercrab::{
-        error::Error, std::tx_rx_task_io_uring, Client, ClientConfig, PduStorage, SlaveGroup,
-        SlaveGroupState, Timeouts,
+        error::Error,
+        std::{ethercat_now, tx_rx_task_io_uring},
+        Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState, Timeouts,
     };
     use futures_lite::StreamExt;
     use std::{
@@ -109,15 +110,15 @@ fn main() -> Result<(), ethercrab::error::Error> {
     let client = Arc::new(client);
 
     // Read configurations from slave EEPROMs and configure devices.
-    let groups =
-        smol::block_on(
-            client.init::<MAX_SLAVES, _>(|groups: &Groups, slave| match slave.name() {
-                "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
-                "EL2828" => Ok(&groups.fast_outputs),
-                _ => Err(Error::UnknownSlave),
-            }),
-        )
-        .expect("Init");
+    let groups = smol::block_on(client.init::<MAX_SLAVES, _>(
+        |groups: &Groups, slave| match slave.name() {
+            "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
+            "EL2828" => Ok(&groups.fast_outputs),
+            _ => Err(Error::UnknownSlave),
+        },
+        ethercat_now,
+    ))
+    .expect("Init");
 
     let Groups {
         slow_outputs,

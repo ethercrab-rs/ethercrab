@@ -15,7 +15,11 @@
 //! ```
 
 use env_logger::Env;
-use ethercrab::{error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts};
+use ethercrab::{
+    error::Error,
+    std::{ethercat_now, tx_rx_task},
+    Client, ClientConfig, PduStorage, Timeouts,
+};
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
 
@@ -59,7 +63,7 @@ async fn main() -> Result<(), Error> {
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     let mut group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>()
+        .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
 

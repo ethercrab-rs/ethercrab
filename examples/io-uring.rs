@@ -16,8 +16,9 @@ fn main() {
 fn main() -> Result<(), ethercrab::error::Error> {
     use env_logger::{Env, TimestampPrecision};
     use ethercrab::{
-        error::Error, std::tx_rx_task_io_uring, Client, ClientConfig, PduStorage, SlaveGroup,
-        SlaveGroupState, Timeouts,
+        error::Error,
+        std::{ethercat_now, tx_rx_task_io_uring},
+        Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState, Timeouts,
     };
     use std::{
         sync::Arc,
@@ -111,13 +112,14 @@ fn main() -> Result<(), ethercrab::error::Error> {
     let Groups {
         slow_outputs,
         fast_outputs,
-    } = futures_lite::future::block_on(client.init::<MAX_SLAVES, _>(|groups: &Groups, slave| {
-        match slave.name() {
+    } = futures_lite::future::block_on(client.init::<MAX_SLAVES, _>(
+        |groups: &Groups, slave| match slave.name() {
             "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
             "EL2828" => Ok(&groups.fast_outputs),
             _ => Err(Error::UnknownSlave),
-        }
-    }))
+        },
+        ethercat_now,
+    ))
     .expect("Init");
 
     let client_slow = client.clone();
