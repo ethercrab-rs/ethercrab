@@ -8,6 +8,7 @@ use core::future::Future;
 use embassy_futures::select;
 use pnet_datalink::{self, channel, Channel, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
+use std::time::SystemTime;
 
 /// Get a TX/RX pair.
 fn get_tx_rx(
