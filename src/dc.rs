@@ -410,9 +410,6 @@ pub(crate) async fn configure_dc<'slaves>(
 
     fmt::debug!("Distributed clock config complete");
 
-    // TODO: Set a flag so we can periodically send a FRMW to keep clocks in sync. Maybe add a
-    // config item to set minimum tick rate?
-
     Ok(first_dc_slave)
 }
 
