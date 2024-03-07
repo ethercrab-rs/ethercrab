@@ -106,7 +106,7 @@ impl<'a, 'group> SlaveRef<'a, SlavePdi<'group>> {
     /// # static PDU_STORAGE: PduStorage<8, 8> = PduStorage::new();
     /// # let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
     /// # let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
-    /// let mut group = client.init_single_group::<8, 8>().await.expect("Init");
+    /// let mut group = client.init_single_group::<8, 8>(ethercrab::std::ethercat_now).await.expect("Init");
     /// let group = group.into_op(&client).await.expect("Op");
     /// let mut slave = group.slave(&client, 0).expect("No device");
     ///
