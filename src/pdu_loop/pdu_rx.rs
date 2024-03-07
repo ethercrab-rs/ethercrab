@@ -91,8 +91,7 @@ impl<'sto> PduRx<'sto> {
             } = pdu_header;
 
             fmt::trace!(
-                "Received frame with index {} ({:#04x}), WKC {}",
-                index,
+                "Received frame with index {:#04x}, WKC {}",
                 index,
                 working_counter,
             );
