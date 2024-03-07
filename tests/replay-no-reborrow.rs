@@ -46,11 +46,14 @@ async fn replay_no_reborrow() -> Result<(), Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
-        .init::<MAX_SLAVES, _>(|groups: &Groups, slave| match slave.name() {
-            "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
-            "EL2828" => Ok(&groups.fast_outputs),
-            _ => Err(Error::UnknownSlave),
-        })
+        .init::<MAX_SLAVES, _>(
+            |groups: &Groups, slave| match slave.name() {
+                "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
+                "EL2828" => Ok(&groups.fast_outputs),
+                _ => Err(Error::UnknownSlave),
+            },
+            || 0,
+        )
         .await
         .expect("Init");
 

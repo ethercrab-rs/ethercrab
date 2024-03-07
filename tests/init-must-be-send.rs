@@ -1,7 +1,7 @@
 //! A weird looking test, but it just makes sure the EtherCrab init routines are `Send`.
 
 use core::future::Future;
-use ethercrab::{Client, ClientConfig, PduStorage, Timeouts};
+use ethercrab::{std::ethercat_now, Client, ClientConfig, PduStorage, Timeouts};
 use std::{sync::Arc, time::Duration};
 
 #[test]
@@ -39,7 +39,7 @@ async fn init() {
     ));
 
     let _group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>()
+        .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
 }

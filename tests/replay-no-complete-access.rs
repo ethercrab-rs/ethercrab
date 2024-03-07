@@ -38,7 +38,7 @@ async fn replay_no_complete_access() -> Result<(), Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>()
+        .init_single_group::<MAX_SLAVES, PDI_LEN>(|| 0)
         .await
         .expect("Init");
 
