@@ -1,5 +1,5 @@
 //! An EtherCAT frame header.
-//!
+
 use crate::LEN_MASK;
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 
@@ -16,7 +16,7 @@ pub(crate) enum ProtocolType {
 
 /// An EtherCAT frame header.
 ///
-/// An EtherCAT frame can contain one or more PDUs, each starting with a
+/// An EtherCAT frame can contain one or more PDUs after this header, each starting with a
 /// [`PduHeader`](crate::pdu_loop::pdu_header).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FrameHeader {

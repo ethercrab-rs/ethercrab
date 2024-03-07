@@ -18,7 +18,9 @@ use std::{
     task::Poll,
 };
 
-/// PDU frame header, command, index, flags and IRQ.
+/// Combined EtherCAT and PDU headers.
+///
+/// Only supports a PDU per EtherCAT frame.
 #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
 #[wire(bytes = 12)]
 pub struct FramePreamble {
