@@ -19,7 +19,10 @@ use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
 use futures_lite::{AsyncRead, AsyncWrite};
 use rustix::{fs::Timespec, time::ClockId};
-use std::thread;
+use std::{
+    io::{self, Read, Write},
+    thread,
+};
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
@@ -37,45 +40,73 @@ impl Future for TxRxFut<'_> {
         // Re-register waker to make sure this future is polled again
         self.tx.replace_waker(ctx.waker());
 
-        loop {
-            match self.tx.pack_buffer(&mut buf) {
-                Ok(Some(data)) => {
-                    let res = match Pin::new(&mut self.socket).poll_write(ctx, data) {
-                        Poll::Ready(Ok(bytes_written)) => {
+        match self.tx.pack_buffer(&mut buf) {
+            Ok(Some(data)) => {
+                // let res = match Pin::new(&mut self.socket).poll_write(ctx, data) {
+                //     Poll::Ready(Ok(bytes_written)) => {
+                //         if bytes_written != data.len() {
+                //             fmt::error!("Only wrote {} of {} bytes", bytes_written, data.len());
+
+                //             Err(Error::PartialSend {
+                //                 len: data.len(),
+                //                 sent: bytes_written,
+                //             })
+                //         } else {
+                //             Ok(bytes_written)
+                //         }
+                //     }
+
+                //     Poll::Ready(Err(e)) => {
+                //         fmt::error!("Send PDU failed: {}", e);
+
+                //         Err(Error::SendFrame)
+                //     }
+                //     Poll::Pending => Ok(0),
+                // };
+
+                let res = loop {
+                    match unsafe { self.socket.get_mut() }.write(&data) {
+                        Ok(bytes_written) => {
                             if bytes_written != data.len() {
                                 fmt::error!("Only wrote {} of {} bytes", bytes_written, data.len());
 
-                                Err(Error::PartialSend {
+                                break Err(Error::PartialSend {
                                     len: data.len(),
                                     sent: bytes_written,
-                                })
+                                });
                             } else {
-                                Ok(bytes_written)
+                                break Ok(bytes_written);
                             }
                         }
+                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                            fmt::trace!("TX WouldBlock");
 
-                        Poll::Ready(Err(e)) => {
-                            fmt::error!("Send PDU failed: {}", e);
-
-                            Err(Error::SendFrame)
+                            break Ok(0);
                         }
-                        Poll::Pending => Ok(0),
-                    };
+                        Err(e) => {
+                            fmt::error!("TX socket error: {}", e);
 
-                    if let Err(e) = res {
-                        fmt::error!("Send PDU failed: {}", e);
-
-                        return Poll::Ready(Err(e));
+                            break Err(Error::SendFrame);
+                        }
                     }
-                }
-                Ok(None) => {
-                    break;
-                }
-                Err(e) => {
-                    fmt::error!("Failed to pack multi send: {}", e);
+                };
+
+                if let Err(e) = res {
+                    fmt::error!("Send PDU failed: {}", e);
 
                     return Poll::Ready(Err(e));
                 }
+
+                // Might be some more frames to send, or the socket isn't ready yet (WouldBlock)
+                ctx.waker().wake_by_ref();
+            }
+            Ok(None) => {
+                // Nothing to send
+            }
+            Err(e) => {
+                fmt::error!("Failed to pack multi send: {}", e);
+
+                return Poll::Ready(Err(e));
             }
         }
 
@@ -113,67 +144,58 @@ impl Future for TxRxFut<'_> {
 
         let mut buf = vec![0; self.mtu];
 
-        loop {
-            match Pin::new(&mut self.socket).poll_read(ctx, &mut buf) {
-                Poll::Ready(Ok(0)) => {
-                    fmt::warn!("Received zero bytes");
+        match unsafe { self.socket.get_mut() }.read(&mut buf) {
+            Ok(0) => {
+                fmt::warn!("Received zero bytes");
+            }
+            Ok(n) => {
+                fmt::trace!("Poll ready");
 
-                    break;
-                }
-                Poll::Ready(Ok(n)) => {
-                    fmt::trace!("Poll ready");
+                // Wake again in case there are more frames to consume. This is additionally
+                // important for macOS as multiple packets may be received for one `poll_read`
+                // call, but will only be returned during the _next_ `poll_read`. If this line
+                // is removed, PDU response frames are missed, causing timeout errors.
+                ctx.waker().wake_by_ref();
 
-                    // Wake again in case there are more frames to consume. This is additionally
-                    // important for macOS as multiple packets may be received for one `poll_read`
-                    // call, but will only be returned during the _next_ `poll_read`. If this line
-                    // is removed, PDU response frames are missed, causing timeout errors.
-                    ctx.waker().wake_by_ref();
+                let packet = &buf[0..n];
 
-                    let packet = &buf[0..n];
+                // Loop through multiple EtherCAT frames (when supported)
+                // 'packet: while !packet.is_empty() {
 
-                    // Loop through multiple EtherCAT frames (when supported)
-                    // 'packet: while !packet.is_empty() {
+                // Loop single packet receive until waker is available
+                loop {
+                    match self.rx.receive_frame(packet) {
+                        // Should be unreachable but whatever, let's be safe
+                        Ok(0) => {
+                            break;
+                        }
+                        Err(Error::Pdu(PduError::NoWaker)) => {
+                            fmt::debug!("No waker for frame {:#04x}, retrying", packet[0x11]);
 
-                    // Loop single packet receive until waker is available
-                    loop {
-                        match self.rx.receive_frame(packet) {
-                            // Should be unreachable but whatever, let's be safe
-                            Ok(0) => {
-                                break;
-                            }
-                            // TODO: Re-enable when multiple packets are supported
-                            // Ok((_n, true)) => {
-                            //     fmt::error!(
-                            //         "Multiple PDUs in one Ethernet frame are not yet supported"
-                            //     );
+                            thread::yield_now();
+                        }
+                        Err(e) => {
+                            fmt::error!("Failed to receive frame: {}", e);
 
-                            //     // This will be used when we do support them
-                            //     // packet = &packet[n..];
-
-                            //     return Poll::Ready(Err(Error::ReceiveFrame));
-                            // }
-                            // Ok((_, false)) => {
-                            //     break 'packet;
-                            // }
-                            Err(Error::Pdu(PduError::NoWaker)) => {
-                                fmt::debug!("No waker for frame {:#04x}, retrying", packet[0x11]);
-
-                                thread::yield_now();
-                            }
-                            Err(e) => {
-                                fmt::error!("Failed to receive frame: {}", e);
-
-                                return Poll::Ready(Err(Error::ReceiveFrame));
-                            }
-                            // Packet received successfully. Break out of waker wait loop
-                            _ => break,
+                            return Poll::Ready(Err(Error::ReceiveFrame));
+                        }
+                        // Packet received successfully. Break out of waker wait loop
+                        Ok(_n) => {
+                            break;
                         }
                     }
                 }
-                Poll::Ready(Err(e)) => {
-                    fmt::error!("Receive PDU failed: {}", e);
-                }
-                Poll::Pending => break,
+            }
+            // No RX packets available, or socket is not ready to read
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                // Wake again so we retry the receive, at which time the socket is hopefully
+                // available again.
+                ctx.waker().wake_by_ref();
+            }
+            Err(e) => {
+                fmt::error!("Receive socket error: {}", e);
+
+                return Poll::Ready(Err(Error::ReceiveFrame));
             }
         }
 
