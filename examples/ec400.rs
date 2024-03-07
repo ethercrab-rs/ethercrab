@@ -11,7 +11,7 @@ use env_logger::Env;
 use ethercrab::{
     ds402::{Ds402, Ds402Sm},
     error::Error,
-    std::tx_rx_task,
+    std::{ethercat_now, tx_rx_task},
     Client, ClientConfig, PduStorage, SlaveGroupState, Timeouts,
 };
 use std::{
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Error> {
     .expect("Error setting Ctrl-C handler");
 
     let mut group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>()
+        .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
 

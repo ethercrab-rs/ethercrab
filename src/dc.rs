@@ -1,4 +1,8 @@
 //! Distributed Clocks (DC).
+//!
+//! SubDevice propagation time measurement and DC offset calculation documentation can be found in
+//! [Hardware Data Sheet Section
+//! I](https://download.beckhoff.com/download/document/io/ethercat-development-products/ethercat_esc_datasheet_sec1_technology_2i3.pdf).
 
 use crate::{
     command::Command,
@@ -26,13 +30,10 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
     for slave in slaves.iter_mut().filter(|slave| slave.flags.dc_supported) {
         let sl = SlaveRef::new(client, slave.configured_address, ());
 
-        // NOTE: Defined as a u64, not i64, in the spec
-        // TODO: Remember why this is i64 here. SOEM uses i64 I think, and I seem to remember things
-        // breaking/being weird if it wasn't i64? Was it something to do with wraparound/overflow?
         let dc_receive_time = sl
             .read(RegisterAddress::DcReceiveTime)
             .ignore_wkc()
-            .receive::<i64>(client)
+            .receive::<u64>(client)
             .await?;
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
@@ -51,6 +52,12 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
         slave.dc_receive_time = dc_receive_time;
 
+        fmt::trace!(
+            "Slave {:#06x} DC receive time {} ns",
+            slave.configured_address,
+            slave.dc_receive_time
+        );
+
         slave
             .ports
             .set_receive_times(time_p0, time_p3, time_p1, time_p2);
@@ -63,15 +70,26 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 async fn write_dc_parameters(
     client: &Client<'_>,
     slave: &Slave,
-    dc_receive_time: i64,
-    now_nanos: i64,
+    dc_system_time: u64,
+    now_nanos: u64,
 ) -> Result<(), Error> {
+    let system_time_offset = -(slave.dc_receive_time as i64) + now_nanos as i64;
+
+    fmt::trace!(
+        "Setting slave {:#06x} system time offset to {} ns (system time is {} ns, DC receive time is {}, now is {} ns)",
+        slave.configured_address,
+        system_time_offset,
+        dc_system_time,
+        slave.dc_receive_time,
+        now_nanos
+    );
+
     Command::fpwr(
         slave.configured_address,
         RegisterAddress::DcSystemTimeOffset.into(),
     )
     .ignore_wkc()
-    .send(client, -dc_receive_time + now_nanos)
+    .send(client, system_time_offset)
     .await?;
 
     Command::fpwr(
@@ -280,11 +298,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
             "Slave {:#06x} {} {}",
             slave.configured_address,
             slave.name,
-            if slave.flags.dc_supported {
-                "has DC"
-            } else {
-                "no DC"
-            }
+            slave.flags
         );
 
         // If this slave has a parent, find it, then assign the parent's next open port to this
@@ -376,32 +390,31 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
 pub(crate) async fn configure_dc<'slaves>(
     client: &Client<'_>,
     slaves: &'slaves mut [Slave],
+    now: impl Fn() -> u64,
 ) -> Result<Option<&'slaves Slave>, Error> {
     latch_dc_times(client, slaves).await?;
 
-    // let ethercat_offset = Utc.ymd(2000, 01, 01).and_hms(0, 0, 0);
-
-    // TODO: Allow passing in of an initial value
-    // let now_nanos =
-    //     chrono::Utc::now().timestamp_nanos() - dbg!(ethercat_offset.timestamp_nanos());
-    let now_nanos = 0;
-
     assign_parent_relationships(slaves)?;
-
-    for slave in slaves.iter() {
-        write_dc_parameters(client, slave, slave.dc_receive_time, now_nanos).await?;
-    }
 
     let first_dc_slave = slaves.iter().find(|slave| slave.flags.dc_supported);
 
-    fmt::debug!("Distributed clock config complete");
+    if let Some(first_dc_slave) = first_dc_slave.as_ref() {
+        let now_nanos = now();
 
-    // TODO: Set a flag so we can periodically send a FRMW to keep clocks in sync. Maybe add a
-    // config item to set minimum tick rate?
+        for slave in slaves.iter().filter(|sl| sl.dc_support().any()) {
+            write_dc_parameters(client, slave, first_dc_slave.dc_receive_time, now_nanos).await?;
+        }
+    } else {
+        fmt::debug!("No SubDevices with DC support found");
+    }
+
+    fmt::debug!("Distributed clock config complete");
 
     Ok(first_dc_slave)
 }
 
+/// Send `iterations` FRMW frames to synchronise the network with the reference clock in the
+/// designated DC SubDevice.
 pub(crate) async fn run_dc_static_sync(
     client: &Client<'_>,
     dc_reference_slave: &Slave,
@@ -666,7 +679,7 @@ mod tests {
 
         configure_slave_offsets(&mut slave, &mut parents, &mut delay_accum);
 
-        assert_eq!(slave.dc_receive_time, 0i64);
+        assert_eq!(slave.dc_receive_time, 0u64);
     }
 
     /// Create a ports object with active flags and DC receive times.

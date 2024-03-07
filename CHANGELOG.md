@@ -57,6 +57,10 @@ An EtherCAT master written in Rust.
 - [#173](https://github.com/ethercrab-rs/ethercrab/pull/173) Add MUSL libc support.
 - [#178](https://github.com/ethercrab-rs/ethercrab/pull/178) Add `Error::SubDevice` to get a
   subdevice status code on failure.
+- [#180](https://github.com/ethercrab-rs/ethercrab/pull/#180) Add `PreOpPdi` state, allowing access
+  to a group's PDI whilst in `PRE-OP`.
+- [#180](https://github.com/ethercrab-rs/ethercrab/pull/#180) Add `ethercrab::std::ethercat_now`
+  function to get the current time in nanoseconds from the EtherCAT epoch of 2000-01-01.
 
 ### Fixed
 

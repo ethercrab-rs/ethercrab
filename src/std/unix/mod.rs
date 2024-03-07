@@ -18,6 +18,7 @@ use crate::{
 use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
 use futures_lite::{AsyncRead, AsyncWrite};
+use rustix::{fs::Timespec, time::ClockId};
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
@@ -131,6 +132,18 @@ pub fn tx_rx_task<'sto>(
     };
 
     Ok(task)
+}
+
+/// Get the current time in nanoseconds from the EtherCAT epoch, 2000-01-01.
+///
+/// On POSIX systems, this function uses the monotonic clock provided by the system.
+pub fn ethercat_now() -> u64 {
+    let Timespec { tv_sec, tv_nsec } = rustix::time::clock_gettime(ClockId::Monotonic);
+
+    let t = (tv_sec * 1000 * 1000 * 1000 + tv_nsec) as u64;
+
+    // EtherCAT epoch is 2000-01-01
+    t.saturating_sub(946684800)
 }
 
 // Unix only

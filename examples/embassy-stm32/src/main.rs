@@ -167,7 +167,11 @@ async fn main(spawner: Spawner) {
 
     defmt::info!("Begin loop");
 
-    let group = defmt::unwrap!(client.init_single_group::<MAX_SLAVES, PDI_LEN>().await);
+    let group = defmt::unwrap!(
+        client
+            .init_single_group::<MAX_SLAVES, PDI_LEN>(|| Instant::now().as_micros() * 1000)
+            .await
+    );
 
     defmt::info!("Discovered {} slaves", group.len());
 

@@ -1,7 +1,10 @@
 //! Discover devices connected to the network.
 
 use env_logger::Env;
-use ethercrab::{std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts};
+use ethercrab::{
+    std::{ethercat_now, tx_rx_task},
+    Client, ClientConfig, PduStorage, Timeouts,
+};
 use std::sync::Arc;
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
@@ -39,7 +42,7 @@ fn main() {
         smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
         let mut group = client
-            .init_single_group::<MAX_SLAVES, PDI_LEN>()
+            .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
             .await
             .expect("Init");
 
