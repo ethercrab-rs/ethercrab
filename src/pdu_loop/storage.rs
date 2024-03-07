@@ -194,7 +194,7 @@ impl<'sto> PduStorageRef<'sto> {
             return None;
         }
 
-        fmt::trace!("--> Claim receiving {:04x}", idx);
+        fmt::trace!("--> Claim receiving {:#04x}", idx);
 
         let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(idx)) };
         let frame = unsafe { FrameElement::claim_receiving(frame)? };
