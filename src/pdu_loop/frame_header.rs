@@ -1,5 +1,5 @@
-//! An EtherCAT frame.
-
+//! An EtherCAT frame header.
+//!
 use crate::LEN_MASK;
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 
@@ -14,6 +14,10 @@ pub(crate) enum ProtocolType {
     // Unknown(u8),
 }
 
+/// An EtherCAT frame header.
+///
+/// An EtherCAT frame can contain one or more PDUs, each starting with a
+/// [`PduHeader`](crate::pdu_loop::pdu_header).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FrameHeader {
     pub(crate) payload_len: u16,

@@ -1,6 +1,7 @@
 mod frame_element;
 mod frame_header;
 mod pdu_flags;
+mod pdu_header;
 mod pdu_rx;
 mod pdu_tx;
 // NOTE: Pub so doc links work
@@ -22,7 +23,7 @@ pub use storage::PduStorage;
 use self::frame_element::received_frame::ReceivedFrame;
 
 #[cfg(feature = "__internals")]
-pub use pdu_rx::FramePreamble;
+pub use pdu_rx::PduHeader;
 
 pub type PduResponse<T> = (T, u16);
 
@@ -525,8 +526,8 @@ mod tests {
     // Test the whole TX/RX loop with multiple threads
     #[tokio::test]
     async fn parallel() {
-        // let _ = env_logger::builder().is_test(true).try_init();
-        // env_logger::try_init().ok();
+        let _ = env_logger::builder().is_test(true).try_init();
+        env_logger::try_init().ok();
 
         static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
         let (mut tx, mut rx, pdu_loop) = STORAGE.try_split().unwrap();
