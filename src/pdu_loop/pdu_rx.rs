@@ -62,7 +62,7 @@ impl<'sto> PduRx<'sto> {
             return Ok(consumed);
         }
 
-        let i = i
+        let mut i = i
             // Strip EtherCAT frame header...
             .get(FrameHeader::PACKED_LEN..)
             // ...then take as much as we're supposed to
@@ -73,60 +73,67 @@ impl<'sto> PduRx<'sto> {
                 Error::ReceiveFrame
             })?;
 
-        // `i` now contains a complete PDU including header
+        // `i` now contains one or more complete PDUs including header
 
-        // Only support a single PDU per frame for now
-        let pdu_header = PduHeader::unpack_from_slice(i)?;
+        loop {
+            let pdu_header = PduHeader::unpack_from_slice(i)?;
 
-        let (data, working_counter) = pdu_header.data_wkc(i).map_err(|e| {
-            fmt::error!("Could not get frame data/wkc: {}", e);
+            let (data, working_counter) = pdu_header.data_wkc(i).map_err(|e| {
+                fmt::error!("Could not get frame data/wkc: {}", e);
 
-            e
-        })?;
+                e
+            })?;
 
-        let command = pdu_header.command()?;
+            let command = pdu_header.command()?;
 
-        let PduHeader {
-            index, flags, irq, ..
-        } = pdu_header;
+            let PduHeader {
+                index, flags, irq, ..
+            } = pdu_header;
 
-        fmt::trace!(
-            "Received frame with index {} ({:#04x}), WKC {}",
-            index,
-            index,
-            working_counter,
-        );
+            fmt::trace!(
+                "Received frame with index {} ({:#04x}), WKC {}",
+                index,
+                index,
+                working_counter,
+            );
 
-        let mut frame = self
-            .storage
-            .claim_receiving(index)
-            .ok_or(PduError::InvalidIndex(index))?;
+            let mut frame = self
+                .storage
+                .claim_receiving(index)
+                .ok_or(PduError::InvalidIndex(index))?;
 
-        if frame.index() != index {
-            return Err(Error::Pdu(PduError::Validation(
-                PduValidationError::IndexMismatch {
-                    sent: frame.index(),
-                    received: index,
-                },
-            )));
+            if frame.index() != index {
+                return Err(Error::Pdu(PduError::Validation(
+                    PduValidationError::IndexMismatch {
+                        sent: frame.index(),
+                        received: index,
+                    },
+                )));
+            }
+
+            // Check for weird bugs where a slave might return a different command than the one sent for
+            // this PDU index.
+            if command.code() != frame.command().code() {
+                return Err(Error::Pdu(PduError::Validation(
+                    PduValidationError::CommandMismatch {
+                        sent: command,
+                        received: frame.command(),
+                    },
+                )));
+            }
+
+            let frame_data = frame.buf_mut();
+
+            frame_data[0..usize::from(flags.len())].copy_from_slice(data);
+
+            frame.mark_received(flags, irq, working_counter)?;
+
+            if !pdu_header.flags.more_follows {
+                break;
+            }
+
+            i = &i[pdu_header.pdu_len()..];
         }
-
-        // Check for weird bugs where a slave might return a different command than the one sent for
-        // this PDU index.
-        if command.code() != frame.command().code() {
-            return Err(Error::Pdu(PduError::Validation(
-                PduValidationError::CommandMismatch {
-                    sent: command,
-                    received: frame.command(),
-                },
-            )));
-        }
-
-        let frame_data = frame.buf_mut();
-
-        frame_data[0..usize::from(flags.len())].copy_from_slice(data);
-
-        frame.mark_received(flags, irq, working_counter)?;
 
         Ok(consumed)
     }

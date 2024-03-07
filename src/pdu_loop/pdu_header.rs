@@ -54,6 +54,11 @@ impl PduHeader {
         Ok((data, wkc))
     }
 
+    /// Length of this PDU including header, data, and working counter.
+    pub fn pdu_len(&self) -> usize {
+        Self::PACKED_LEN + usize::from(self.flags.len() + 2)
+    }
+
     /// Create a [`Command`] from the raw data in this header.
     pub fn command(&self) -> Result<Command, Error> {
         Command::parse_code_data(self.command_code, self.command_raw)

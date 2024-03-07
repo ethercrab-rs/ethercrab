@@ -78,10 +78,7 @@ impl<'sto> PduTx<'sto> {
 
         let mut total_len = 0;
 
-        let mut c = 0;
-
         while let Some(mut frame) = self.next_sendable_frame() {
-            c += 1;
             let pdu_len = usize::from(frame.ethercat_payload_len());
 
             // Buffer is too short to hold another frame
@@ -99,10 +96,6 @@ impl<'sto> PduTx<'sto> {
             ethernet_payload = frame.write_pdu(ethernet_payload);
 
             frame.mark_sent();
-        }
-
-        if c > 1 {
-            dbg!(c);
         }
 
         if total_len == 0 {
