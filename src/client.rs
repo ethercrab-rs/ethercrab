@@ -203,21 +203,21 @@ impl<'sto> Client<'sto> {
     ///
     /// # async {
     /// let groups = client
-    ///     .init::<MAX_SLAVES, _>(|groups: &Groups, slave| {
+    ///     .init::<MAX_SLAVES, _>(ethercat_now, |groups: &Groups, slave| {
     ///         match slave.name() {
     ///             "COUPLER" | "IO69420" => Ok(&groups.group_1),
     ///             "COOLSERVO" => Ok(&groups.group_2),
     ///             _ => Err(Error::UnknownSlave),
     ///         }
-    ///     }, ethercat_now)
+    ///     },)
     ///     .await
     ///     .expect("Init");
     /// # };
     /// ```
     pub async fn init<const MAX_SLAVES: usize, G>(
         &self,
-        mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn SlaveGroupHandle, Error>,
         now: impl Fn() -> u64 + Copy,
+        mut group_filter: impl for<'g> FnMut(&'g G, &Slave) -> Result<&'g dyn SlaveGroupHandle, Error>,
     ) -> Result<G, Error>
     where
         G: Default,
@@ -392,7 +392,7 @@ impl<'sto> Client<'sto> {
         &self,
         now: impl Fn() -> u64 + Copy,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, slave_group::PreOp>, Error> {
-        self.init::<MAX_SLAVES, _>(|group, _slave| Ok(group), now)
+        self.init::<MAX_SLAVES, _>(now, |group, _slave| Ok(group))
             .await
     }
 

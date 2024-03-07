@@ -53,12 +53,12 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
         .init::<MAX_SLAVES, _>(
+            || 0,
             |groups: &Groups, slave| match slave.name() {
                 "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
                 "EL2828" => Ok(&groups.fast_outputs),
                 _ => Err(Error::UnknownSlave),
             },
-            || 0,
         )
         .await
         .expect("Init");

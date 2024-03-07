@@ -111,12 +111,12 @@ fn main() -> Result<(), ethercrab::error::Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let groups = smol::block_on(client.init::<MAX_SLAVES, _>(
+        ethercat_now,
         |groups: &Groups, slave| match slave.name() {
             "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
             "EL2828" => Ok(&groups.fast_outputs),
             _ => Err(Error::UnknownSlave),
         },
-        ethercat_now,
     ))
     .expect("Init");
 
