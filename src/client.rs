@@ -178,8 +178,8 @@ impl<'sto> Client<'sto> {
     ///
     /// ```rust,no_run
     /// use ethercrab::{
-    ///     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
-    ///     slave_group
+    ///     error::Error, std::{ethercat_now, tx_rx_task}, Client, ClientConfig, PduStorage,
+    ///     SlaveGroup, Timeouts, slave_group
     /// };
     ///
     /// const MAX_SLAVES: usize = 2;
@@ -209,7 +209,7 @@ impl<'sto> Client<'sto> {
     ///             "COOLSERVO" => Ok(&groups.group_2),
     ///             _ => Err(Error::UnknownSlave),
     ///         }
-    ///     })
+    ///     }, ethercat_now)
     ///     .await
     ///     .expect("Init");
     /// # };
@@ -323,7 +323,7 @@ impl<'sto> Client<'sto> {
     ///
     /// ```rust,no_run
     /// use ethercrab::{
-    ///     error::Error, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    ///     error::Error, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts, std::ethercat_now
     /// };
     ///
     /// const MAX_SLAVES: usize = 2;
@@ -339,7 +339,7 @@ impl<'sto> Client<'sto> {
     ///
     /// # async {
     /// let group = client
-    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>()
+    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>(ethercat_now)
     ///     .await
     ///     .expect("Init");
     /// # };
@@ -349,7 +349,7 @@ impl<'sto> Client<'sto> {
     ///
     /// ```rust,no_run
     /// use ethercrab::{
-    ///     error::Error, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    ///     error::Error, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts, std::ethercat_now
     /// };
     ///
     /// const MAX_SLAVES: usize = 2;
@@ -365,7 +365,7 @@ impl<'sto> Client<'sto> {
     ///
     /// # async {
     /// let mut group = client
-    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>()
+    ///     .init_single_group::<MAX_SLAVES, MAX_PDI>(ethercat_now)
     ///     .await
     ///     .expect("Init");
     ///
