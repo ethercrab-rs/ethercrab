@@ -155,11 +155,19 @@ pub enum RegisterAddress {
     DcTimePort3 = 0x090c,
     /// DC system receive time.
     DcReceiveTime = 0x0918,
-    /// DC system time.
+    /// DC system time, `u64`.
     DcSystemTime = 0x0910,
-    /// DC system time offset, `u64`.
+    /// DC system time offset, `i64`.
+    ///
+    /// Time difference between System Time (set by first DC-captable SubDevice) and this
+    /// SubDevice's local time.
+    ///
+    /// NOTE: The spec defines this as a `UINT64`, however negative values are required sometimes
+    /// and they work fine in practice, so I'm inclined to say this should actually be an `INT64`.
     DcSystemTimeOffset = 0x0920,
     /// Transmission delay, `u32`.
+    ///
+    /// Offset between the reference system time (in ns) and the local system time (in ns).
     DcSystemTimeTransmissionDelay = 0x0928,
 
     /// DC control loop parameter, `u16`.
@@ -172,20 +180,26 @@ pub enum RegisterAddress {
     /// DC system time difference, `u32`.
     DcSystemTimeDifference = 0x092C,
 
-    /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u8`.
+    // TODO: 0x0980. Not sure what it is though. SOEM calls it DCCUC.
+    /// ETG1000.6 Table 27 - Distributed Clock sync parameter, `u8`.
     ///
     /// AKA ETG1000.4 Table 61 DC user P1.
     DcSyncActive = 0x0981,
 
-    /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u32`.
+    /// ETG1000.6 Table 27 - Distributed Clock sync parameter, `u32`.
     ///
     /// AKA ETG1000.4 Table 61 DC user P4.
     DcSyncStartTime = 0x0990,
 
-    /// ETG1000.6 Table 27 – Distributed Clock sync parameter, `u32`.
+    /// ETG1000.6 Table 27 - Distributed Clock sync parameter, `u32`.
     ///
-    /// AKA ETG1000.4 Table 61 DC user P5.
+    /// AKA ETG1000.4 Table 61 DC user P6.
+    ///
+    /// Cycle time is in nanoseconds.
     DcSync0CycleTime = 0x09A0,
+
+    /// See [`RegisterAddress::DcSync0CycleTime`].
+    DcSync1CycleTime = 0x09A4,
 }
 
 impl From<RegisterAddress> for u16 {
@@ -283,6 +297,9 @@ pub struct SupportFlags {
     pub mii_enhanced_link_detection: bool,
     #[wire(bits = 1)]
     pub separate_fcs_error_handling: bool,
+    /// Indicates whether registers `0x0981` - `0x0984` are usable.
+    ///
+    /// ETG1000.4 Table 31 – DL information.
     #[wire(bits = 1)]
     pub enhanced_dc_sync: bool,
     #[wire(bits = 1)]
@@ -291,6 +308,20 @@ pub struct SupportFlags {
     pub brw_aprw_fprw_supported: bool,
     #[wire(bits = 1, post_skip = 4)]
     pub special_fmmu: bool,
+}
+
+impl SupportFlags {
+    pub fn dc_support(&self) -> DcSupport {
+        if !self.dc_supported {
+            DcSupport::None
+        } else if !self.enhanced_dc_sync {
+            DcSupport::RefOnly
+        } else if self.has_64bit_dc {
+            DcSupport::Bits64
+        } else {
+            DcSupport::Bits32
+        }
+    }
 }
 
 impl core::fmt::Display for SupportFlags {
@@ -315,6 +346,37 @@ impl core::fmt::Display for SupportFlags {
         }
 
         Ok(())
+    }
+}
+
+/// SubDevice DC support status.
+#[derive(Copy, Clone, Debug)]
+pub enum DcSupport {
+    /// No support at all.
+    None,
+    /// This device can be used as the DC reference, but cannot be configured for `SYNC`/`LATCH`.
+    RefOnly,
+    /// 64 bit time support.
+    Bits64,
+    /// 32 bit time support.
+    Bits32,
+}
+
+impl DcSupport {
+    /// Reference only, 32 or 64 bit counters.
+    pub fn any(&self) -> bool {
+        match self {
+            DcSupport::None => false,
+            DcSupport::RefOnly | DcSupport::Bits64 | DcSupport::Bits32 => true,
+        }
+    }
+
+    /// Whether this device can be configured for `SYNC`/`LATCH`.
+    pub fn enhanced(&self) -> bool {
+        match self {
+            DcSupport::Bits64 | DcSupport::Bits32 => true,
+            _ => false,
+        }
     }
 }
 

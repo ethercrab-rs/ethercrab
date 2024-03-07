@@ -35,7 +35,7 @@ async fn replay_mailbox_el6910() -> Result<(), Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let mut group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>()
+        .init_single_group::<MAX_SLAVES, PDI_LEN>(|| 0)
         .await
         .expect("Init");
 

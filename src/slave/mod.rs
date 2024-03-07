@@ -19,7 +19,7 @@ use crate::{
     fmt,
     mailbox::{MailboxHeader, MailboxType},
     pdu_loop::RxFrameDataBuf,
-    register::{RegisterAddress, SupportFlags},
+    register::{DcSupport, RegisterAddress, SupportFlags},
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
     timer_factory::IntoTimeout,
@@ -62,7 +62,7 @@ pub struct Slave {
     pub(crate) ports: Ports,
 
     /// Distributed Clock latch receive time.
-    pub(crate) dc_receive_time: i64,
+    pub(crate) dc_receive_time: u64,
 
     /// The index of the slave in the EtherCAT tree.
     pub(crate) index: usize,
@@ -224,6 +224,11 @@ impl Slave {
         self.propagation_delay
     }
 
+    /// Distributed Clock (DC) support.
+    pub fn dc_support(&self) -> DcSupport {
+        self.flags.dc_support()
+    }
+
     pub(crate) fn io_segments(&self) -> &IoRanges {
         &self.config.io
     }
@@ -296,6 +301,11 @@ where
     /// always return `0`.
     pub fn propagation_delay(&self) -> u32 {
         self.state.propagation_delay
+    }
+
+    /// Distributed Clock (DC) support.
+    pub fn dc_support(&self) -> DcSupport {
+        self.state.flags.dc_support()
     }
 
     /// Return the current cyclic mailbox counter value, from 0-7.

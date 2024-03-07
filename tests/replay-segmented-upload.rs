@@ -36,11 +36,14 @@ async fn replay_segmented_upload() -> Result<(), Error> {
 
     // Read configurations from slave EEPROMs and configure devices.
     let group = client
-        .init::<32, SlaveGroup<MAX_SLAVES, PDI_LEN>>(|group, slave| {
-            assert_eq!(slave.name(), "EK1914");
+        .init::<32, SlaveGroup<MAX_SLAVES, PDI_LEN>>(
+            || 0,
+            |group, slave| {
+                assert_eq!(slave.name(), "EK1914");
 
-            Ok(group)
-        })
+                Ok(group)
+            },
+        )
         .await
         .expect("Init");
 

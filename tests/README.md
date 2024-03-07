@@ -17,6 +17,14 @@ just capture-replay replay-ek1100-el2828-el2889 enx00e04c680066
 
 The replay name must **exactly** match the name of a file in `tests/` (without the `.rs`) extension.
 
+Debian users may need to run:
+
+- `sudo apt install psmisc`
+- `cargo install fd-find`
+
+Note that the Debian apt package `fd-find` installs the binary as `fd-find`, however the script
+looks for just `fd`. Installing with `cargo` doesn't present this issue.
+
 ### Manually on local machine (terminal method)
 
 `sudo apt install -y tshark`
