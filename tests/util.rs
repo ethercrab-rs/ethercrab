@@ -1,6 +1,11 @@
 //! Utilities to replay Wireshark captures as part of regression/integration tests.
 
-use ethercrab::{error::Error, internals::FramePreamble, std::tx_rx_task, PduRx, PduTx};
+use ethercrab::{
+    error::Error,
+    internals::{FrameHeader, PduHeader},
+    std::tx_rx_task,
+    PduRx, PduTx,
+};
 use ethercrab_wire::EtherCrabWireRead;
 use pcap_file::pcapng::{Block, PcapNgReader};
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
@@ -12,6 +17,19 @@ use std::{
     pin::Pin,
     task::Poll,
 };
+
+/// Combined EtherCAT and PDU headers.
+///
+/// Only supports a PDU per EtherCAT frame.
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
+#[wire(bytes = 12)]
+pub struct FramePreamble {
+    #[wire(bytes = 2)]
+    header: FrameHeader,
+
+    #[wire(bytes = 10)]
+    pdu_header: PduHeader,
+}
 
 pub fn spawn_tx_rx(capture_file_path: &str, tx: PduTx<'static>, rx: PduRx<'static>) {
     let interface = std::env::var("INTERFACE");
@@ -40,13 +58,17 @@ impl Eq for PreambleHash {}
 
 impl PartialEq for PreambleHash {
     fn eq(&self, other: &Self) -> bool {
-        self.0.test_only_hacked_equal(&other.0)
+        self.0
+            .pdu_header
+            .test_only_hacked_equal(&other.0.pdu_header)
+            && self.0.header == other.0.header
     }
 }
 
 impl core::hash::Hash for PreambleHash {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.test_only_hacked_hash(state);
+        self.0.pdu_header.test_only_hacked_hash(state);
+        self.0.header.hash(state);
     }
 }
 
