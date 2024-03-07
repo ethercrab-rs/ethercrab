@@ -61,7 +61,7 @@ impl<'sto> ReceivedFrame<'sto> {
 
 impl<'sto> Drop for ReceivedFrame<'sto> {
     fn drop(&mut self) {
-        fmt::trace!("Drop frame element idx {}", self.frame().index);
+        fmt::trace!("Drop frame element idx {:#04x}", self.frame().index);
 
         unsafe {
             // Invariant: the frame can only be in `RxProcessing` at this point, so if this swap
