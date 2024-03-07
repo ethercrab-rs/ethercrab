@@ -1,4 +1,7 @@
 //! Configure Distributed Clocks (DC) for EK1100 and a couple of other modules.
+//!
+//! Please note this example uses experimental features and should not be used as a reference for
+//! other code. It is here (currently) primarily to help develop EtherCrab.
 
 use env_logger::Env;
 use ethercrab::{
@@ -343,6 +346,7 @@ fn main() -> Result<(), Error> {
         let mut group = group.into_pre_op_pdi(&client).await?;
 
         loop {
+            // Note this method is experimental and currently hidden from the crate docs.
             group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
             if now.elapsed() >= Duration::from_millis(25) {
@@ -461,6 +465,7 @@ fn main() -> Result<(), Error> {
 
         // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs
         // are not present.
+        // Note this method is experimental and currently hidden from the crate docs.
         group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
         let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
@@ -468,6 +473,7 @@ fn main() -> Result<(), Error> {
         log::info!("OP");
 
         loop {
+            // Note this method is experimental and currently hidden from the crate docs.
             group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
             for mut slave in group.iter(&client) {
