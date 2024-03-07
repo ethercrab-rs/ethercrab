@@ -46,7 +46,7 @@ impl<'sto> ReceivingFrame<'sto> {
                 .map(|_| {})
                 .map_err(|bad| {
                     fmt::error!(
-                        "Failed to set frame #{} state from RxBusy -> RxDone, got {:?}",
+                        "Failed to set frame {:#04x} state from RxBusy -> RxDone, got {:?}",
                         self.index(),
                         bad
                     );
@@ -58,7 +58,7 @@ impl<'sto> ReceivingFrame<'sto> {
         // If the wake fails, release the receiving claim so the frame receive can possibly be
         // reattempted at a later time.
         if let Err(()) = unsafe { self.inner.wake() } {
-            fmt::trace!("Failed to wake frame #{}: no waker", self.index());
+            fmt::trace!("Failed to wake frame {:#04x}: no waker", self.index());
 
             unsafe {
                 // Restore frame state to `Sent`, which is what `PduStorageRef::claim_receiving`
@@ -88,7 +88,7 @@ impl<'sto> ReceivingFrame<'sto> {
                     }
                     Err(bad_state) => {
                         fmt::error!(
-                            "Failed to set frame #{} state from RxDone -> Sent, got {:?}",
+                            "Failed to set frame {:#04x} state from RxDone -> Sent, got {:?}",
                             self.index(),
                             bad_state
                         );
@@ -167,14 +167,14 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         let was = match swappy {
             Ok(_frame_element) => {
-                fmt::trace!("Frame #{} is ready", idx);
+                fmt::trace!("frame {:#04x} is ready", idx);
 
                 return Poll::Ready(Ok(ReceivedFrame { inner: rxin }));
             }
             Err(e) => e,
         };
 
-        fmt::trace!("Frame #{} not ready yet ({:?})", idx, was);
+        fmt::trace!("frame {:#04x} not ready yet ({:?})", idx, was);
 
         match was {
             FrameState::Sendable | FrameState::Sending | FrameState::Sent | FrameState::RxBusy => {

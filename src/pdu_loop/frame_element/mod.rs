@@ -161,7 +161,7 @@ impl<const N: usize> FrameElement<N> {
         Self::swap_state(this, FrameState::Sent, FrameState::RxBusy)
             .map_err(|actual_state| {
                 fmt::error!(
-                    "Failed to claim receiving frame #{}: expected state {:?}, but got {:?}",
+                    "Failed to claim receiving frame {:#04x}: expected state {:?}, but got {:?}",
                     (*addr_of_mut!((*this.as_ptr()).frame.index)),
                     FrameState::Sent,
                     actual_state

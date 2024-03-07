@@ -138,7 +138,7 @@ pub fn tx_rx_task_io_uring<'sto>(
             .user_data(rx_key as u64);
 
             fmt::trace!(
-                "Insert frame TX #{}, key {}, RX key {}",
+                "Insert frame TX {:#04x}, key {}, RX key {}",
                 idx,
                 tx_key,
                 rx_key
@@ -221,7 +221,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                 let frame_index = frame[0x11];
 
                 fmt::trace!(
-                    "Raw frame #{} result {} buffer key {}",
+                    "Raw frame {:#04x} result {} buffer key {}",
                     frame_index,
                     recv.result(),
                     key,
@@ -232,7 +232,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                         Ok(_) => break,
                         Err(Error::Pdu(PduError::NoWaker)) => {
                             fmt::trace!(
-                                "No waker for received frame #{}, retrying receive",
+                                "No waker for received frame {:#04x}, retrying receive",
                                 frame_index
                             );
 
