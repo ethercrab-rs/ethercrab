@@ -3,7 +3,7 @@
 use crate::LEN_MASK;
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, ethercrab_wire::EtherCrabWireRead)]
 #[repr(u8)]
 pub(crate) enum ProtocolType {
     DlPdu = 0x01u8,
@@ -18,7 +18,7 @@ pub(crate) enum ProtocolType {
 ///
 /// An EtherCAT frame can contain one or more PDUs, each starting with a
 /// [`PduHeader`](crate::pdu_loop::pdu_header).
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FrameHeader {
     pub(crate) payload_len: u16,
     pub(crate) protocol: ProtocolType,

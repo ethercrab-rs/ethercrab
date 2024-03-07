@@ -23,7 +23,9 @@ pub use storage::PduStorage;
 use self::frame_element::received_frame::ReceivedFrame;
 
 #[cfg(feature = "__internals")]
-pub use pdu_rx::PduHeader;
+pub use frame_header::FrameHeader;
+#[cfg(feature = "__internals")]
+pub use pdu_header::PduHeader;
 
 pub type PduResponse<T> = (T, u16);
 

@@ -9,15 +9,25 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
 #[wire(bytes = 10)]
 pub struct PduHeader {
-    // NOTE: The following fields are included in the header length field value.
+    /// Raw command  code.
     #[wire(bytes = 1)]
     pub command_code: u8,
+
+    /// EtherCAT frame index.
     #[wire(bytes = 1)]
     pub index: u8,
+
+    /// Raw command data.
+    ///
+    /// This represents 2x `u16` or 1x `u32` depending on the command.
     #[wire(bytes = 4)]
     pub command_raw: [u8; 4],
+
+    /// PDU flags.
     #[wire(bytes = 2)]
     pub flags: PduFlags,
+
+    /// IRQ.
     #[wire(bytes = 2)]
     pub irq: u16,
 }
@@ -44,6 +54,7 @@ impl PduHeader {
         Ok((data, wkc))
     }
 
+    /// Create a [`Command`] from the raw data in this header.
     pub fn command(&self) -> Result<Command, Error> {
         Command::parse_code_data(self.command_code, self.command_raw)
     }
@@ -90,7 +101,6 @@ impl PduHeader {
             command_raw.hash(state);
         }
 
-        // flags.hash(state);
         irq.hash(state);
     }
 }
