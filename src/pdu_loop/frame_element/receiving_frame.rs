@@ -167,14 +167,14 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         let was = match swappy {
             Ok(_frame_element) => {
-                fmt::trace!("Frame #{} is ready", idx);
+                fmt::trace!("Frame {:#04x} is ready", idx);
 
                 return Poll::Ready(Ok(ReceivedFrame { inner: rxin }));
             }
             Err(e) => e,
         };
 
-        fmt::trace!("Frame #{} not ready yet ({:?})", idx, was);
+        fmt::trace!("Frame {:#04x} not ready yet ({:?})", idx, was);
 
         match was {
             FrameState::Sendable | FrameState::Sending | FrameState::Sent | FrameState::RxBusy => {
