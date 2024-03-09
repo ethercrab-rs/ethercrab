@@ -488,7 +488,7 @@ where
 
         let headers = HeadersRaw::unpack_from_slice(&response)?;
 
-        if headers.command == CoeCommand::AbortRequest {
+        if headers.command == CoeCommand::Abort {
             let code = CoeAbortCode::Incompatible;
 
             fmt::error!(

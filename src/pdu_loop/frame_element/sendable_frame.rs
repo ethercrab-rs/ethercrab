@@ -81,6 +81,7 @@ impl<'sto> SendableFrame<'sto> {
     }
 
     /// Get the Ethernet frame length of this frame.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.as_bytes().len()
     }
@@ -89,7 +90,7 @@ impl<'sto> SendableFrame<'sto> {
     ///
     /// The closure must return the number of bytes sent over the network interface. If this does
     /// not match the length of the packet passed to the closure, this method will return an error.
-    pub fn send_blocking<'buf>(
+    pub fn send_blocking(
         self,
         send: impl FnOnce(&[u8]) -> Result<usize, Error>,
     ) -> Result<usize, Error> {

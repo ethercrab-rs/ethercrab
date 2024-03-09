@@ -373,10 +373,7 @@ impl DcSupport {
 
     /// Whether this device can be configured for `SYNC`/`LATCH`.
     pub fn enhanced(&self) -> bool {
-        match self {
-            DcSupport::Bits64 | DcSupport::Bits32 => true,
-            _ => false,
-        }
+        matches!(self, DcSupport::Bits64 | DcSupport::Bits32)
     }
 }
 

@@ -34,10 +34,10 @@ pub enum CoeService {
 #[wire(bits = 3)]
 #[repr(u8)]
 pub enum CoeCommand {
-    DownloadRequest = 0x01,
-    UploadRequest = 0x02,
-    AbortRequest = 0x04,
-    UploadSegmentRequest = 0x03,
+    Download = 0x01,
+    Upload = 0x02,
+    Abort = 0x04,
+    UploadSegment = 0x03,
 }
 
 /// Defined in ETG1000.6 Section 5.6.2.1.1
