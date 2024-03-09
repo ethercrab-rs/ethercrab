@@ -1,5 +1,3 @@
-use core::fmt;
-
 /// ETG1000.6 Table 67 – CoE Communication Area, "Sync Manager Communication Type".
 pub const SM_TYPE_ADDRESS: u16 = 0x1c00;
 
@@ -25,7 +23,7 @@ pub struct SyncManagerChannel {
     pub enable: Enable,
 }
 
-impl fmt::Debug for SyncManagerChannel {
+impl core::fmt::Debug for SyncManagerChannel {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SyncManagerChannel")
             .field(
@@ -43,8 +41,8 @@ impl fmt::Debug for SyncManagerChannel {
     }
 }
 
-impl fmt::Display for SyncManagerChannel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for SyncManagerChannel {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_fmt(format_args!(
             "start {:#06x}, size {:#06x} ({}), direction {:?}, mode {:?}, {}",
             self.physical_start_address,

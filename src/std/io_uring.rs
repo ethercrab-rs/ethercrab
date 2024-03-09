@@ -53,7 +53,7 @@ pub fn tx_rx_task_io_uring<'sto>(
     interface: &str,
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
-) -> Result<(), std::io::Error> {
+) -> Result<(), io::Error> {
     let mut socket = RawSocketDesc::new(interface)?;
 
     let mtu = socket.interface_mtu()?;

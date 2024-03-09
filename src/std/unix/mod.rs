@@ -120,7 +120,7 @@ pub fn tx_rx_task<'sto>(
 
     fmt::debug!("Opening {} with MTU {}", interface, mtu);
 
-    let async_socket = async_io::Async::new(socket)?;
+    let async_socket = Async::new(socket)?;
 
     let task = TxRxFut {
         socket: async_socket,

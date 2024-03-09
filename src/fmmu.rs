@@ -1,7 +1,6 @@
 /// Fieldbus Memory Management Unit (FMMU).
 ///
 /// Used to map segments of the Process Data Image (PDI) to various parts of the slave memory space.
-use core::fmt;
 
 /// ETG1000.4 Table 56 – Fieldbus memory management unit (FMMU) entity.
 #[derive(Default, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
@@ -39,7 +38,7 @@ pub struct Fmmu {
     pub enable: bool,
 }
 
-impl fmt::Debug for Fmmu {
+impl core::fmt::Debug for Fmmu {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Fmmu")
             .field(
@@ -61,8 +60,8 @@ impl fmt::Debug for Fmmu {
     }
 }
 
-impl fmt::Display for Fmmu {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for Fmmu {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_fmt(format_args!(
             "logical start {:#010x}:{}, size {}, logical end bit {}, physical start {:#06x}:{}, {}{}, {}",
             self.logical_start_address,
