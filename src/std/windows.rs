@@ -61,7 +61,7 @@ pub fn tx_rx_task(
             loop {
                 while let Some(frame) = pdu_tx.next_sendable_frame() {
                     frame
-                        .send_blocking(|frame_bytes| async {
+                        .send_blocking(|frame_bytes| {
                             tx.send_to(frame_bytes, None)
                                 .unwrap()
                                 .map_err(|e| {
