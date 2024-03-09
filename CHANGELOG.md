@@ -30,6 +30,11 @@ An EtherCAT master written in Rust.
   of data, not for every chunk.
 - [#156](https://github.com/ethercrab-rs/ethercrab/pull/156) Update `embassy-time` from 0.2.0 to
   0.3.0.
+- [#181](https://github.com/ethercrab-rs/ethercrab/pull/181) `PduStorage` now stores complete
+  Ethernet frames instead of building them on the fly. This adds a little more overhead to each
+  slot, so the reserved data const parameter must be larger to compensate. Use the new
+  `PduStorage::element_size` method to calculate element sizes based on a given maximum PDU payload
+  value.
 
 ### Added
 
@@ -75,6 +80,8 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#145](https://github.com/ethercrab-rs/ethercrab/pull/145) Remove the `context`
   field from `Error::WorkingCounter`. The output from EtherCrab's error logging should be used
   instead.
+- **(breaking)** [#181](https://github.com/ethercrab-rs/ethercrab/pull/181) Remove async
+  `SendableFrame::send`. Use `SendableFrame::send_blocking` instead.
 
 ## [0.3.6] - 2024-02-14
 

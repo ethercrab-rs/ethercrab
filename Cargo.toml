@@ -23,7 +23,7 @@ targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu"]
 [dependencies]
 async-io = { version = "2.0.0", optional = true }
 atomic-waker = "1.1.2"
-atomic_enum = "0.2.0"
+atomic_enum = "0.3.0"
 atomic_refcell = "0.1.13"
 bitflags = "2.4.1"
 defmt = { version = "0.3.5", optional = true }
@@ -50,7 +50,7 @@ blocking = "1.4.1"
 
 # macOS
 [target.'cfg(all(not(target_os = "linux"), unix))'.dependencies]
-nix = { version = "0.27.1", features = ["net"] }
+nix = { version = "0.28.0", features = ["net"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.149"
@@ -81,7 +81,7 @@ tokio = { version = "1.33.0", features = [
     "sync",
     "time",
 ] }
-thread-priority = "0.15.1"
+thread-priority = "0.16.0"
 ta = "0.5.0"
 
 

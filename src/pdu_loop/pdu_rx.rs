@@ -2,7 +2,7 @@ use super::storage::PduStorageRef;
 use crate::{
     error::{Error, PduError, PduValidationError},
     fmt,
-    pdu_loop::{frame_header::FrameHeader, pdu_header::PduHeader},
+    pdu_loop::{frame_header::EthercatFrameHeader, pdu_header::PduHeader},
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
@@ -51,7 +51,7 @@ impl<'sto> PduRx<'sto> {
 
         let i = raw_packet.payload();
 
-        let frame_header = FrameHeader::unpack_from_slice(i).map_err(|e| {
+        let frame_header = EthercatFrameHeader::unpack_from_slice(i).map_err(|e| {
             fmt::error!("Failed to parse frame header: {}", e);
 
             e
@@ -59,7 +59,7 @@ impl<'sto> PduRx<'sto> {
 
         let i = i
             // Strip EtherCAT frame header...
-            .get(FrameHeader::PACKED_LEN..)
+            .get(EthercatFrameHeader::PACKED_LEN..)
             // ...then take as much as we're supposed to
             .and_then(|i| i.get(0..usize::from(frame_header.payload_len)))
             .ok_or_else(|| {

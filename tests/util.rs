@@ -2,7 +2,7 @@
 
 use ethercrab::{
     error::Error,
-    internals::{FrameHeader, PduHeader},
+    internals::{EthercatFrameHeader, PduHeader},
     std::tx_rx_task,
     PduRx, PduTx,
 };
@@ -25,7 +25,7 @@ use std::{
 #[wire(bytes = 12)]
 pub struct FramePreamble {
     #[wire(bytes = 2)]
-    header: FrameHeader,
+    header: EthercatFrameHeader,
 
     #[wire(bytes = 10)]
     pdu_header: PduHeader,
@@ -94,7 +94,7 @@ impl Future for DummyTxRxFut<'_> {
             let mut sent_preamble = None;
 
             frame
-                .send_blocking(&mut buf, |got| {
+                .send_blocking(|got| {
                     let frame = EthernetFrame::new_unchecked(got);
 
                     let got_preamble = FramePreamble::unpack_from_slice(frame.payload())

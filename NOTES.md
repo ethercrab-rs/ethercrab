@@ -1,3 +1,79 @@
+# Multi-frame design
+
+- Storage: Change from a list of PDUs to a list of Ethernet frames.
+
+  - Slightly higher memory overhead (14 bytes more. Not that bad lol)
+  - But a little more performant because the Ethernet header can be reused without writing to it all
+    the time
+    - `io_uring` can be zero copy!
+  - A cleaner API around sending multiple PDUs per frame
+
+- **Problem:** How do we free an Ethernet frame up for reuse if multiple PDUs are in it.
+
+  - Maybe a **solution**: Keep a counter of PDUs that have been added to the frame, and when one is
+    complete the counter is decremented? Then when it reaches zero we can drop the Ethernet frame.
+    It's basically a `RefCell`!
+
+- A trait to abstract over single sends and multiple sends? Would mean we don't need
+  `send_receive`/`send_receive_deferred`, etc
+- Scenarios:
+
+  - Send a single command immediately (e.g. subdevice status, init commands, EEPROM, etc)
+  - Send PDI that fits in a single frame
+  - Send PDI that spans multiple frames
+  - Send DC sync frame plus PDI that all fits in one frame
+  - Send DC sync frame plus PDI that spans multiple frames
+
+- Send single command
+  - Claim frame
+  - Write frame data
+  - Async send/receive
+  - Done
+  - If single command doesn't fit in a single frame, bad times, tell the user to increase frame
+    payload size or decrease data len. We won't try to cater for this case. Single command TX/RX is
+    meant for tiny stuff like status checks, EEPROM reads, etc.
+- Send multiple commands
+  - If all commands don't fit in a single frame, error out. This is not something we want to cater
+    to.
+  - Use case is e.g. slave status and status code
+  - Closure-based, returns a `try_zip` like I wrote the other day.
+- Send PDI
+  - One frame or spans multiple, doesn't matter
+  - Get frame payload length
+  - If we want to send DC sync PDU
+    - Don't use closure-based API as we need to hold the DC response future along with pushing the
+      first chunk fut to the receive vec/map. This means we can't just use the single returned
+      future as they may complete at different times.
+    - Reserve a frame
+    - Enqueue DC sync PDU to reserved frame, store fut in Some(dc_sync_fut)
+    - Split off PDI to min(pdi.len(), remaining frame payload length)
+    - Write PDI chunk into frame and push returned future into vec/map
+  - Chunk PDI into that length
+  - For each chunk
+    - Claim frame
+    - Write PDI chunk into frame payload
+    - Mark as sendable
+    - Wake sender so frames are sent as fast as possible
+    - Push frame future into a `heapless::Vec::<MAX_FRAMES>`, maybe with address and length so it
+      can be matched up back into the PDI?
+    - Read-back data is read into the beginning of the PDI, but we probably want to await _every_
+      frame response to make sure it was all returned and nothing errored out.
+  - `poll_fn`
+    - If `take Some(dc_sync_fut)`, poll it and if it's ready, don't replace back, and set response
+      to Some(dc_response).
+      - If it's `None`, nothing to do.
+    - If futures vec/map/queue is empty and `Some(dc_response)`, return `Poll::Ready(())`
+    - Iterate through futures and poll each one
+    - If it's ready, insert that result back into the passed-in `&mut pdi`
+    - Remove future from vec (maybe it should be a map keyed by index or start address instead
+      actually?)
+  - PDI has been sent and returned completely, so return the response portion and optional DC
+    response.
+
+```rust
+
+```
+
 # Setup
 
 ## Windows

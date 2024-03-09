@@ -13,16 +13,14 @@ where
     &mut buf[value.packed_len()..]
 }
 
-/// Skip `n` bytes.
-pub fn skip(len: usize, buf: &mut [u8]) -> &mut [u8] {
-    let len = len.min(buf.len());
-
-    &mut buf[len..]
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    /// Skip `n` bytes.
+    fn skip(len: usize, buf: &mut [u8]) -> &mut [u8] {
+        let len = len.min(buf.len());
+
+        &mut buf[len..]
+    }
 
     #[test]
     fn skip_clamp() {
@@ -36,7 +34,7 @@ mod tests {
     #[test]
     fn skip_0() {
         let mut buf = [0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        let mut expected = buf.clone();
+        let mut expected = buf;
 
         assert_eq!(skip(0, &mut buf), &mut expected);
     }

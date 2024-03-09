@@ -2,7 +2,7 @@ use super::{
     frame_element::{sendable_frame::SendableFrame, FrameBox, FrameElement},
     storage::PduStorageRef,
 };
-use core::{marker::PhantomData, ptr::NonNull, task::Waker};
+use core::{ptr::NonNull, task::Waker};
 
 /// EtherCAT frame transmit adapter.
 pub struct PduTx<'sto> {
@@ -26,10 +26,7 @@ impl<'sto> PduTx<'sto> {
             let frame = unsafe { NonNull::new_unchecked(self.storage.frame_at_index(idx)) };
 
             let sending = if let Some(frame) = unsafe { FrameElement::claim_sending(frame) } {
-                SendableFrame::new(FrameBox {
-                    frame,
-                    _lifetime: PhantomData,
-                })
+                SendableFrame::new(FrameBox::new(frame))
             } else {
                 continue;
             };
@@ -52,7 +49,7 @@ impl<'sto> PduTx<'sto> {
     /// use core::future::poll_fn;
     /// use core::task::Poll;
     ///
-    /// # static PDU_STORAGE: PduStorage<2, 2> = PduStorage::new();
+    /// # static PDU_STORAGE: PduStorage<2, { PduStorage::element_size(2) }> = PduStorage::new();
     /// let (pdu_tx, _pdu_rx, _pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
     ///
     /// poll_fn(|ctx| {

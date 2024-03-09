@@ -32,7 +32,7 @@ fn main() -> Result<(), ethercrab::error::Error> {
     /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
     const MAX_SLAVES: usize = 16;
     /// Maximum PDU data payload size - set this to the max PDI size or higher.
-    const MAX_PDU_DATA: usize = 1100;
+    const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
     /// Maximum number of EtherCAT frames that can be in flight at any one time.
     const MAX_FRAMES: usize = 16;
     /// Interval in microseconds.
@@ -71,7 +71,7 @@ fn main() -> Result<(), ethercrab::error::Error> {
     let core_ids = core_affinity::get_core_ids().expect("Couldn't get core IDs");
 
     let tx_rx_core = core_ids
-        .get(0)
+        .first()
         .copied()
         .expect("At least one core is required. Are you running on a potato?");
     let slow_core = core_ids

@@ -23,7 +23,7 @@ pub use storage::PduStorage;
 use self::frame_element::received_frame::ReceivedFrame;
 
 #[cfg(feature = "__internals")]
-pub use frame_header::FrameHeader;
+pub use frame_header::EthercatFrameHeader;
 #[cfg(feature = "__internals")]
 pub use pdu_header::PduHeader;
 
@@ -186,15 +186,12 @@ mod tests {
     use crate::{
         fmt,
         pdu_loop::frame_element::{
-            created_frame::CreatedFrame, sendable_frame::SendableFrame, FrameBox, FrameElement,
-            FrameState,
+            created_frame::CreatedFrame, sendable_frame::SendableFrame, FrameElement, FrameState,
         },
         timer_factory::IntoTimeout,
         Command, Reads,
     };
-    use core::{
-        future::poll_fn, marker::PhantomData, ops::Deref, pin::pin, task::Poll, time::Duration,
-    };
+    use core::{future::poll_fn, ops::Deref, pin::pin, task::Poll, time::Duration};
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
@@ -203,7 +200,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     async fn timed_out_frame_is_reallocatable() {
         // One 16 byte frame
-        static STORAGE: PduStorage<1, 16> = PduStorage::new();
+        static STORAGE: PduStorage<1, { PduStorage::element_size(32) }> = PduStorage::new();
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
 
         let send_result = pdu_loop
@@ -238,6 +235,8 @@ mod tests {
 
     #[test]
     fn write_frame() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         static STORAGE: PduStorage<1, 128> = PduStorage::<1, 128>::new();
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
 
@@ -250,17 +249,10 @@ mod tests {
 
         frame.buf_mut().copy_from_slice(&data);
 
-        let frame = SendableFrame::new(FrameBox {
-            frame: frame.inner.frame,
-            _lifetime: PhantomData,
-        });
-
-        let mut packet_buf = [0u8; 1536];
-
-        let packet = frame.write_ethernet_packet(&mut packet_buf).unwrap();
+        let frame = SendableFrame::new(frame.inner);
 
         assert_eq!(
-            packet,
+            frame.as_bytes(),
             &[
                 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
                 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
@@ -312,18 +304,15 @@ mod tests {
                 "frame fut should be pending"
             );
 
-            let mut packet_buf = [0u8; 1536];
-
             let frame = tx.next_sendable_frame().expect("need a frame");
 
             let send_fut = pin!(async move {
                 frame
-                    .send(&mut packet_buf, |bytes| async {
+                    .send_blocking(|bytes| {
                         written_packet.copy_from_slice(bytes);
 
                         Ok(bytes.len())
                     })
-                    .await
                     .expect("send");
 
                 // Munge fake sent frame into a fake received frame
@@ -369,8 +358,6 @@ mod tests {
         static STORAGE: PduStorage<1, 128> = PduStorage::<1, 128>::new();
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
 
-        let mut packet_buf = [0u8; 1536];
-
         // ---
 
         let data = [0xaau8, 0xbb, 0xcc];
@@ -382,12 +369,7 @@ mod tests {
 
         frame.buf_mut().copy_from_slice(&data);
 
-        let frame = SendableFrame::new(FrameBox {
-            frame: frame.inner.frame,
-            _lifetime: PhantomData,
-        });
-
-        let _packet_1 = frame.write_ethernet_packet(&mut packet_buf).unwrap();
+        let frame = SendableFrame::new(frame.inner);
 
         // Manually reset frame state so it can be reused.
         unsafe { FrameElement::set_state(frame.inner.frame, FrameState::None) };
@@ -403,17 +385,12 @@ mod tests {
 
         frame.buf_mut().copy_from_slice(&data);
 
-        let frame = SendableFrame::new(FrameBox {
-            frame: frame.inner.frame,
-            _lifetime: PhantomData,
-        });
-
-        let packet_2 = frame.write_ethernet_packet(&mut packet_buf).unwrap();
+        let frame = SendableFrame::new(frame.inner);
 
         // ---
 
         assert_eq!(
-            packet_2,
+            frame.as_bytes(),
             &[
                 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
                 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
@@ -476,24 +453,9 @@ mod tests {
                 "frame fut should be pending"
             );
 
-            let mut packet_buf = [0u8; 1536];
-
             let frame = tx.next_sendable_frame().expect("need a frame");
 
-            let send_fut = pin!(async move {
-                frame
-                    .send(&mut packet_buf, |bytes| async {
-                        // written_packet.copy_from_slice(bytes);
-
-                        Ok(bytes.len())
-                    })
-                    .await
-                    .expect("send");
-            });
-
-            let Poll::Ready(_) = send_fut.poll(ctx) else {
-                panic!("no send")
-            };
+            frame.send_blocking(|bytes| Ok(bytes.len())).expect("send");
 
             // ---
 
@@ -534,17 +496,14 @@ mod tests {
             let tx_task = async {
                 fmt::info!("Spawn TX task");
 
-                let mut packet_buf = [0u8; 1536];
-
                 loop {
                     while let Some(frame) = tx.next_sendable_frame() {
                         frame
-                            .send(&mut packet_buf, |bytes| async {
+                            .send_blocking(|bytes| {
                                 s.send(bytes.to_vec()).unwrap();
 
                                 Ok(bytes.len())
                             })
-                            .await
                             .unwrap();
                     }
 
