@@ -55,15 +55,13 @@ pub fn tx_rx_task(
 ) -> Result<impl Future<Output = Result<(), Error>>, std::io::Error> {
     let (mut tx, mut rx) = get_tx_rx(device)?;
 
-    let mut packet_buf = [0u8; 1536];
-
     let task = async move {
         // TODO: Unwraps
         let tx_task = async {
             loop {
                 while let Some(frame) = pdu_tx.next_sendable_frame() {
                     frame
-                        .send(&mut packet_buf, |frame_bytes| async {
+                        .send_blocking(|frame_bytes| async {
                             tx.send_to(frame_bytes, None)
                                 .unwrap()
                                 .map_err(|e| {
@@ -73,7 +71,6 @@ pub fn tx_rx_task(
 
                             Ok(frame_bytes.len())
                         })
-                        .await
                         .expect("TX");
                 }
 

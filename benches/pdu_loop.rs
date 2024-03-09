@@ -7,11 +7,10 @@ fn do_bench(b: &mut Bencher) {
     const FRAME_OVERHEAD: usize = 28;
 
     // 1 frame, up to 128 bytes payload
-    let storage = PduStorage::<1, 128>::new();
+    let storage = PduStorage::<1, { PduStorage::element_size(128) }>::new();
 
     let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
 
-    let mut packet_buf = [0u8; 1536];
     let mut written_packet = Vec::new();
     written_packet.resize(FRAME_OVERHEAD + DATA.len(), 0);
 
@@ -29,12 +28,11 @@ fn do_bench(b: &mut Bencher) {
             let frame = tx.next_sendable_frame().unwrap();
 
             frame
-                .send(&mut packet_buf, |bytes| async {
+                .send_blocking(|bytes| {
                     written_packet.copy_from_slice(bytes);
 
                     Ok(bytes.len())
                 })
-                .await
                 .unwrap();
         };
 

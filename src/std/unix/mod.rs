@@ -31,13 +31,11 @@ impl Future for TxRxFut<'_> {
     type Output = Result<(), Error>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
-        let mut buf = vec![0; self.mtu];
-
         // Re-register waker to make sure this future is polled again
         self.tx.replace_waker(ctx.waker());
 
         while let Some(frame) = self.tx.next_sendable_frame() {
-            let res = frame.send_blocking(&mut buf, |data| {
+            let res = frame.send_blocking(|data| {
                 match Pin::new(&mut self.socket).poll_write(ctx, data) {
                     Poll::Ready(Ok(bytes_written)) => {
                         if bytes_written != data.len() {

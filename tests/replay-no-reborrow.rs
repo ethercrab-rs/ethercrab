@@ -17,7 +17,7 @@ use std::time::Duration;
 use tokio::time::MissedTickBehavior;
 
 const MAX_SLAVES: usize = 16;
-const MAX_PDU_DATA: usize = 1100;
+const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 const MAX_FRAMES: usize = 128;
 
 #[derive(Default)]

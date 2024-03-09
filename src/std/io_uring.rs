@@ -100,7 +100,7 @@ pub fn tx_rx_task_io_uring<'sto>(
             ));
 
             frame
-                .send_blocking(tx_buf, |data: &[u8]| {
+                .send_blocking(|data: &[u8]| {
                     *tx_entry = opcode::Write::new(
                         io_uring::types::Fd(socket.as_raw_fd()),
                         data.as_ptr(),
@@ -110,6 +110,9 @@ pub fn tx_rx_task_io_uring<'sto>(
                     // Distinguish sent frames from received frames by using the upper bit of
                     // the user data as a flag.
                     .user_data(tx_key as u64 | WRITE_MASK);
+
+                    // TODO: Zero copy
+                    tx_buf[0..data.len()].copy_from_slice(data);
 
                     while unsafe { ring.submission().push(&tx_entry).is_err() } {
                         // If the submission queue is full, flush it to the kernel

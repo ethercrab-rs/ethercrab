@@ -9,7 +9,7 @@ use env_logger::Env;
 use ethercrab::{error::Error, Client, ClientConfig, PduStorage, Timeouts};
 
 const MAX_SLAVES: usize = 16;
-const MAX_PDU_DATA: usize = 1100;
+const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 const MAX_FRAMES: usize = 128;
 const PDI_LEN: usize = 128;
 

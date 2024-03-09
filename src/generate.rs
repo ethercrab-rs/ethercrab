@@ -13,16 +13,14 @@ where
     &mut buf[value.packed_len()..]
 }
 
-/// Skip `n` bytes.
-pub fn skip(len: usize, buf: &mut [u8]) -> &mut [u8] {
-    let len = len.min(buf.len());
-
-    &mut buf[len..]
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    /// Skip `n` bytes.
+    fn skip(len: usize, buf: &mut [u8]) -> &mut [u8] {
+        let len = len.min(buf.len());
+
+        &mut buf[len..]
+    }
 
     #[test]
     fn skip_clamp() {

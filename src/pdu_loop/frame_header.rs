@@ -19,12 +19,12 @@ pub(crate) enum ProtocolType {
 /// An EtherCAT frame can contain one or more PDUs after this header, each starting with a
 /// [`PduHeader`](crate::pdu_loop::pdu_header).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct FrameHeader {
+pub struct EthercatFrameHeader {
     pub(crate) payload_len: u16,
     pub(crate) protocol: ProtocolType,
 }
 
-impl EtherCrabWireSized for FrameHeader {
+impl EtherCrabWireSized for EthercatFrameHeader {
     const PACKED_LEN: usize = 2;
 
     type Buffer = [u8; 2];
@@ -34,7 +34,7 @@ impl EtherCrabWireSized for FrameHeader {
     }
 }
 
-impl EtherCrabWireRead for FrameHeader {
+impl EtherCrabWireRead for EthercatFrameHeader {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
         let raw = u16::unpack_from_slice(buf)?;
 
@@ -45,7 +45,7 @@ impl EtherCrabWireRead for FrameHeader {
     }
 }
 
-impl EtherCrabWireWrite for FrameHeader {
+impl EtherCrabWireWrite for EthercatFrameHeader {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         // Protocol in last 4 bits
         let raw = self.payload_len | (self.protocol as u16) << 12;
@@ -58,7 +58,7 @@ impl EtherCrabWireWrite for FrameHeader {
     }
 }
 
-impl FrameHeader {
+impl EthercatFrameHeader {
     /// Create a new PDU frame header.
     pub fn pdu(len: u16) -> Self {
         debug_assert!(
@@ -73,6 +73,11 @@ impl FrameHeader {
             protocol: ProtocolType::DlPdu,
         }
     }
+
+    /// Convenience method for naming consistency.
+    pub(crate) const fn header_len() -> usize {
+        Self::PACKED_LEN
+    }
 }
 
 #[cfg(test)]
@@ -81,7 +86,7 @@ mod tests {
 
     #[test]
     fn pdu_header() {
-        let header = FrameHeader::pdu(0x28);
+        let header = EthercatFrameHeader::pdu(0x28);
 
         let mut buf = [0u8; 2];
 
@@ -96,7 +101,7 @@ mod tests {
     fn decode_pdu_len() {
         let raw = 0b0001_0000_0010_1000u16;
 
-        let header = FrameHeader::unpack_from_slice(&raw.to_le_bytes()).unwrap();
+        let header = EthercatFrameHeader::unpack_from_slice(&raw.to_le_bytes()).unwrap();
 
         assert_eq!(header.payload_len, 0x28);
         assert_eq!(header.protocol, ProtocolType::DlPdu);
@@ -107,7 +112,7 @@ mod tests {
         // Header from packet #39, soem-slaveinfo-ek1100-only.pcapng
         let raw = [0x3cu8, 0x10];
 
-        let header = FrameHeader::unpack_from_slice(&raw).unwrap();
+        let header = EthercatFrameHeader::unpack_from_slice(&raw).unwrap();
 
         assert_eq!(header.payload_len, 0x3c);
         assert_eq!(header.protocol, ProtocolType::DlPdu);

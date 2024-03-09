@@ -6,7 +6,6 @@ use crate::{
     pdu_loop::{
         frame_element::{
             created_frame::CreatedFrame, receiving_frame::ReceivingFrame, FrameBox, FrameElement,
-            PduFrame,
         },
         pdu_flags::PduFlags,
     },
@@ -17,7 +16,7 @@ use core::{
     cell::UnsafeCell,
     marker::PhantomData,
     mem::MaybeUninit,
-    ptr::{addr_of_mut, NonNull},
+    ptr::NonNull,
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
@@ -35,6 +34,19 @@ pub struct PduStorage<const N: usize, const DATA: usize> {
 
 unsafe impl<const N: usize, const DATA: usize> Sync for PduStorage<N, DATA> {}
 
+/// Smallest frame size with a data payload of 0 length
+const MIN_DATA: usize = FrameBox::ethernet_buf_len(&PduFlags::const_default());
+
+impl PduStorage<0, 0> {
+    /// Calculate the size of a `PduStorage` buffer element to hold the given number of data bytes.
+    ///
+    /// This computes the additional overhead the Ethernet, EtherCAT frame and EtherCAT PDU headers
+    /// require.
+    pub const fn element_size(data_len: usize) -> usize {
+        MIN_DATA + data_len
+    }
+}
+
 impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     /// Create a new `PduStorage` instance.
     ///
@@ -47,6 +59,11 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
         );
         assert!(N > 0, "Storage must contain at least one element");
+
+        assert!(
+            DATA >= MIN_DATA,
+            "DATA must be at least 28 bytes large to hold all frame headers"
+        );
 
         // Index wrapping limitations require a power of 2 number of storage elements.
         if N > 1 {
@@ -163,27 +180,9 @@ impl<'sto> PduStorageRef<'sto> {
             }
         };
 
-        // Initialise frame with EtherCAT header and zeroed data buffer.
-        unsafe {
-            addr_of_mut!((*frame.as_ptr()).frame).write(PduFrame {
-                index: idx_u8,
-                waker: AtomicWaker::new(),
-                command,
-                flags: PduFlags::with_len(data_length),
-                irq: 0,
-                working_counter: 0,
-            });
+        let inner = FrameBox::init(frame, command, idx_u8, data_length)?;
 
-            let buf_ptr: *mut u8 = addr_of_mut!((*frame.as_ptr()).buffer).cast();
-            buf_ptr.write_bytes(0x00, data_length_usize);
-        }
-
-        Ok(CreatedFrame {
-            inner: FrameBox {
-                frame,
-                _lifetime: PhantomData,
-            },
-        })
+        Ok(CreatedFrame { inner })
     }
 
     /// Updates state from SENDING -> RX_BUSY
@@ -200,10 +199,7 @@ impl<'sto> PduStorageRef<'sto> {
         let frame = unsafe { FrameElement::claim_receiving(frame)? };
 
         Some(ReceivingFrame {
-            inner: FrameBox {
-                frame,
-                _lifetime: PhantomData,
-            },
+            inner: FrameBox::new(frame),
         })
     }
 
@@ -235,7 +231,7 @@ mod tests {
 
     #[test]
     fn zeroed_data() {
-        let storage: PduStorage<1, 8> = PduStorage::new();
+        let storage: PduStorage<1, { PduStorage::element_size(8) }> = PduStorage::new();
         let s = storage.as_ref();
 
         let mut frame = s
