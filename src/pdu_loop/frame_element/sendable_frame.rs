@@ -80,6 +80,11 @@ impl<'sto> SendableFrame<'sto> {
         unsafe { self.inner.ethernet_frame() }.into_inner()
     }
 
+    /// Get the Ethernet frame length of this frame.
+    pub fn len(&self) -> usize {
+        self.as_bytes().len()
+    }
+
     /// Send the frame using a blocking callback.
     ///
     /// The closure must return the number of bytes sent over the network interface. If this does

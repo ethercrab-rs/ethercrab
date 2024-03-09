@@ -44,9 +44,8 @@ async fn tx_rx_task(
     fn send_ecat(tx: embassy_stm32::eth::TxToken<'_, '_>, frame: SendableFrame<'_>) {
         tx.consume(frame.len(), |tx_buf| {
             defmt::unwrap!(frame
-                .send_blocking(tx_buf, |ethernet_frame| {
-                    // Frame is copied into `tx_buf` inside `send_blocking` so we don't need to do
-                    // anything here. The frame is sent once the outer closure in `tx.consume` ends.
+                .send_blocking(|ethernet_frame| {
+                    tx_buf[0..ethernet_frame.len()].copy_from_slice(ethernet_frame);
 
                     Ok(ethernet_frame.len())
                 })
