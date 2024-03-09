@@ -180,8 +180,7 @@ impl<'sto> PduStorageRef<'sto> {
             }
         };
 
-        let inner =
-            unsafe { FrameBox::init(frame, command, idx_u8, data_length, self.frame_data_len)? };
+        let inner = FrameBox::init(frame, command, idx_u8, data_length, self.frame_data_len)?;
 
         Ok(CreatedFrame { inner })
     }

@@ -236,12 +236,7 @@ impl<'sto> FrameBox<'sto> {
 
     /// Wrap a [`FrameElement`] pointer in a `FrameBox` but reset Ethernet and EtherCAT headers, as
     /// well as zero out data payload.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the desired PDU payload length plus all headers fits within the
-    /// backing store's `DATA` length.
-    pub(crate) unsafe fn init(
+    pub(crate) fn init(
         frame: NonNull<FrameElement<0>>,
         command: Command,
         idx_u8: u8,
