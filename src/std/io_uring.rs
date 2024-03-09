@@ -53,7 +53,7 @@ pub fn tx_rx_task_io_uring<'sto>(
     interface: &str,
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
-) -> Result<(), std::io::Error> {
+) -> Result<(), io::Error> {
     let mut socket = RawSocketDesc::new(interface)?;
 
     let mtu = socket.interface_mtu()?;
@@ -100,7 +100,7 @@ pub fn tx_rx_task_io_uring<'sto>(
             ));
 
             frame
-                .send_blocking(tx_buf, |data: &[u8]| {
+                .send_blocking(|data: &[u8]| {
                     *tx_entry = opcode::Write::new(
                         io_uring::types::Fd(socket.as_raw_fd()),
                         data.as_ptr(),
@@ -111,7 +111,10 @@ pub fn tx_rx_task_io_uring<'sto>(
                     // the user data as a flag.
                     .user_data(tx_key as u64 | WRITE_MASK);
 
-                    while unsafe { ring.submission().push(&tx_entry).is_err() } {
+                    // TODO: Zero copy
+                    tx_buf[0..data.len()].copy_from_slice(data);
+
+                    while unsafe { ring.submission().push(tx_entry).is_err() } {
                         // If the submission queue is full, flush it to the kernel
                         ring.submit().expect("Internal error, failed to submit ops");
                     }
@@ -144,7 +147,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                 rx_key
             );
 
-            while unsafe { ring.submission().push(&rx_entry).is_err() } {
+            while unsafe { ring.submission().push(rx_entry).is_err() } {
                 // If the submission queue is full, flush it to the kernel
                 ring.submit().expect("Internal error, failed to submit ops");
             }
@@ -211,7 +214,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                 let (rx_entry, _buf) = bufs.get(key as usize).expect("Could not get retry entry");
 
                 // SAFETY: `submission_shared` must not be held at the same time this one is
-                while unsafe { ring.submission_shared().push(&rx_entry).is_err() } {
+                while unsafe { ring.submission_shared().push(rx_entry).is_err() } {
                     // If the submission queue is full, flush it to the kernel
                     ring.submit().expect("Internal error, failed to submit ops");
                 }

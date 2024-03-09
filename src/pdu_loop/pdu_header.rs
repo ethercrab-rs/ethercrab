@@ -115,7 +115,7 @@ mod tests {
     impl Eq for PduHeader {}
     impl PartialEq for PduHeader {
         fn eq(&self, other: &Self) -> bool {
-            self.test_only_hacked_equal(&other)
+            self.test_only_hacked_equal(other)
         }
     }
     impl Hash for PduHeader {

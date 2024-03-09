@@ -17,6 +17,24 @@ pub struct PduFlags {
     pub(crate) more_follows: bool,
 }
 
+impl PduFlags {
+    pub const fn with_len(len: u16) -> Self {
+        Self {
+            length: len,
+            circulated: false,
+            more_follows: false,
+        }
+    }
+
+    pub const fn len(self) -> u16 {
+        self.length
+    }
+
+    pub const fn const_default() -> Self {
+        Self::with_len(0)
+    }
+}
+
 impl ethercrab_wire::EtherCrabWireWrite for PduFlags {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let raw = self.length & LEN_MASK
@@ -68,20 +86,6 @@ impl ethercrab_wire::EtherCrabWireWriteSized for PduFlags {
         ethercrab_wire::EtherCrabWireWrite::pack_to_slice_unchecked(self, &mut buf);
 
         buf
-    }
-}
-
-impl PduFlags {
-    pub const fn with_len(len: u16) -> Self {
-        Self {
-            length: len,
-            circulated: false,
-            more_follows: false,
-        }
-    }
-
-    pub const fn len(self) -> u16 {
-        self.length
     }
 }
 

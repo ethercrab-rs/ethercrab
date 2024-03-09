@@ -36,9 +36,9 @@ pub fn usize_attr(attrs: &[syn::Attribute], search: &str) -> Result<Option<usize
 
         for meta in nested {
             match meta {
-                syn::Meta::Path(_) => (),
-                syn::Meta::List(_) => (),
-                syn::Meta::NameValue(nv) if nv.path.is_ident(search) => {
+                Meta::Path(_) => (),
+                Meta::List(_) => (),
+                Meta::NameValue(nv) if nv.path.is_ident(search) => {
                     if let Expr::Lit(ExprLit {
                         lit: Lit::Int(lit), ..
                     }) = &nv.value
@@ -72,9 +72,9 @@ pub fn all_valid_attrs(attrs: &[syn::Attribute], allowed: &[&str]) -> Result<(),
 
         for meta in nested {
             let ident = match meta {
-                syn::Meta::Path(p) => p.get_ident().cloned().expect("Path identifier required"),
-                syn::Meta::List(_) => unreachable!("Unsupported"),
-                syn::Meta::NameValue(nv) => nv
+                Meta::Path(p) => p.get_ident().cloned().expect("Path identifier required"),
+                Meta::List(_) => unreachable!("Unsupported"),
+                Meta::NameValue(nv) => nv
                     .path
                     .get_ident()
                     .cloned()
@@ -105,7 +105,7 @@ pub fn attr_exists(attrs: &[syn::Attribute], search: &str) -> Result<bool, syn::
 
         for meta in nested {
             match meta {
-                syn::Meta::Path(p) if p.is_ident(search) => return Ok(true),
+                Meta::Path(p) if p.is_ident(search) => return Ok(true),
                 _ => (),
             }
         }
@@ -123,9 +123,9 @@ pub fn attr_exists(attrs: &[syn::Attribute], search: &str) -> Result<bool, syn::
 
 //         for meta in nested {
 //             match meta {
-//                 syn::Meta::Path(_) => (),
-//                 syn::Meta::List(_) => (),
-//                 syn::Meta::NameValue(nv) if nv.path.is_ident("ty") => {
+//                 Meta::Path(_) => (),
+//                 Meta::List(_) => (),
+//                 Meta::NameValue(nv) if nv.path.is_ident("ty") => {
 //                     if let Expr::Lit(ExprLit {
 //                         lit: Lit::Str(s), ..
 //                     }) = &nv.value
@@ -144,7 +144,7 @@ pub fn attr_exists(attrs: &[syn::Attribute], search: &str) -> Result<bool, syn::
 pub fn enum_repr_ty(attrs: &[syn::Attribute], ident: &Ident) -> Result<Ident, syn::Error> {
     for attr in attrs {
         match attr.meta.clone() {
-            syn::Meta::List(l) if l.path.is_ident("repr") => {
+            Meta::List(l) if l.path.is_ident("repr") => {
                 let ty = l.parse_args::<Type>()?;
 
                 if let Type::Path(ty) = ty {
@@ -175,9 +175,9 @@ pub fn variant_alternatives(attrs: &[syn::Attribute]) -> Result<Vec<i128>, syn::
 
         for meta in nested {
             match meta {
-                syn::Meta::Path(_) => (),
-                syn::Meta::List(_) => (),
-                syn::Meta::NameValue(nv) if nv.path.is_ident("alternatives") => {
+                Meta::Path(_) => (),
+                Meta::List(_) => (),
+                Meta::NameValue(nv) if nv.path.is_ident("alternatives") => {
                     if let Expr::Array(ExprArray { elems, .. }) = &nv.value {
                         return elems
                             .iter()

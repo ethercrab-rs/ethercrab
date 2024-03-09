@@ -129,7 +129,7 @@ pub fn download(
                 expedited_transfer: true,
                 size: 4u8.saturating_sub(len),
                 complete_access: access.complete_access(),
-                command: super::CoeCommand::DownloadRequest,
+                command: super::CoeCommand::Download,
                 index,
                 sub_index: access.sub_index(),
             },
@@ -153,7 +153,7 @@ pub fn upload_segmented(counter: u8, toggle: bool) -> SdoSegmented {
             is_last_segment: false,
             segment_data_size: 0,
             toggle,
-            command: super::CoeCommand::UploadSegmentRequest,
+            command: super::CoeCommand::UploadSegment,
         },
     }
 }
@@ -173,7 +173,7 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
             expedited_transfer: false,
             size: 0,
             complete_access: access.complete_access(),
-            command: super::CoeCommand::UploadRequest,
+            command: super::CoeCommand::Upload,
             index,
             sub_index: access.sub_index(),
         },
@@ -204,7 +204,7 @@ mod tests {
                 expedited_transfer: true,
                 size: 3,
                 complete_access: false,
-                command: crate::coe::CoeCommand::UploadRequest,
+                command: crate::coe::CoeCommand::Upload,
                 index: 0x1c00,
                 sub_index: 4,
             },
@@ -217,7 +217,7 @@ mod tests {
     fn encode_sdo_request() {
         let buf = [0xaau8, 0xbb, 0xcc, 0xdd];
 
-        let request = download(123, 0x1234, 3.into(), buf.clone(), buf.packed_len() as u8);
+        let request = download(123, 0x1234, 3.into(), buf, buf.packed_len() as u8);
 
         pretty_assertions::assert_eq!(
             request,
@@ -236,7 +236,7 @@ mod tests {
                         expedited_transfer: true,
                         size: 0,
                         complete_access: false,
-                        command: crate::coe::CoeCommand::DownloadRequest,
+                        command: crate::coe::CoeCommand::Download,
                         index: 0x1234,
                         sub_index: 3,
                     },
@@ -269,7 +269,7 @@ mod tests {
                         expedited_transfer: true,
                         size: 0,
                         complete_access: true,
-                        command: crate::coe::CoeCommand::DownloadRequest,
+                        command: crate::coe::CoeCommand::Download,
                         index: 0x1234,
                         // MUST be 1 if complete access is used
                         sub_index: 1,
@@ -300,7 +300,7 @@ mod tests {
                     expedited_transfer: false,
                     size: 0,
                     complete_access: false,
-                    command: crate::coe::CoeCommand::UploadRequest,
+                    command: crate::coe::CoeCommand::Upload,
                     index: 0x4567,
                     sub_index: 2,
                 },
@@ -331,7 +331,7 @@ mod tests {
                 expedited_transfer: false,
                 size: 0,
                 complete_access: false,
-                command: crate::coe::CoeCommand::UploadRequest,
+                command: crate::coe::CoeCommand::Upload,
                 index: 0x1008,
                 sub_index: 0,
             },
@@ -369,7 +369,7 @@ mod tests {
                 expedited_transfer: false,
                 size: 0,
                 complete_access: false,
-                command: crate::coe::CoeCommand::AbortRequest,
+                command: crate::coe::CoeCommand::Abort,
                 index: 0x1001,
                 sub_index: 0,
             },

@@ -39,14 +39,14 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
         start_word: u16,
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
         Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
-            .send_receive(&self.client, SiiRequest::read(start_word))
+            .send_receive(self.client, SiiRequest::read(start_word))
             .await?;
 
         let status = async {
             loop {
                 let control: SiiControl =
                     Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-                        .receive::<SiiControl>(&self.client)
+                        .receive::<SiiControl>(self.client)
                         .await?;
 
                 if !control.busy {
@@ -60,7 +60,7 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
         .await?;
 
         Command::fprd(self.configured_address, RegisterAddress::SiiData.into())
-            .receive_slice(&self.client, status.read_size.chunk_len())
+            .receive_slice(self.client, status.read_size.chunk_len())
             .await
             .map(|data| {
                 #[cfg(not(feature = "defmt"))]
@@ -74,7 +74,7 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
 
     async fn clear_errors(&self) -> Result<(), Error> {
         let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-            .receive::<SiiControl>(&self.client)
+            .receive::<SiiControl>(self.client)
             .await?;
 
         // Clear errors
@@ -82,12 +82,12 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
             fmt::trace!("Resetting EEPROM error flags");
 
             Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
-                .send(&self.client, status.error_reset())
+                .send(self.client, status.error_reset())
                 .await?;
         }
 
         let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-            .receive::<SiiControl>(&self.client)
+            .receive::<SiiControl>(self.client)
             .await?;
 
         if status.has_error() {

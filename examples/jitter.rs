@@ -11,7 +11,7 @@ use std::{
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
-const MAX_PDU_DATA: usize = 1100;
+const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
 const MAX_FRAMES: usize = 16;
 /// Maximum total PDI length.

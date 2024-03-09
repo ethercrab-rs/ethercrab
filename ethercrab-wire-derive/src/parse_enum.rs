@@ -37,7 +37,7 @@ pub fn parse_enum(
     if ["isize", "usize"].iter().any(|bad| repr == bad) {
         return Err(syn::Error::new(
             repr.span(),
-            format!("usize and isize may not be used as enum repr as these types can change size based on target platform. Use an i* or u* type instead."),
+            "usize and isize may not be used as enum repr as these types can change size based on target platform. Use an i* or u* type instead.".to_string(),
         ));
     }
 
