@@ -236,11 +236,17 @@ impl<'sto> FrameBox<'sto> {
 
     /// Wrap a [`FrameElement`] pointer in a `FrameBox` but reset Ethernet and EtherCAT headers, as
     /// well as zero out data payload.
-    pub(crate) fn init(
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the desired PDU payload length plus all headers fits within the
+    /// backing store's `DATA` length.
+    pub(crate) unsafe fn init(
         frame: NonNull<FrameElement<0>>,
         command: Command,
         idx_u8: u8,
         data_length: u16,
+        max_len: usize,
     ) -> Result<FrameBox<'sto>, Error> {
         let flags = PduFlags::with_len(data_length);
 
@@ -255,39 +261,43 @@ impl<'sto> FrameBox<'sto> {
                 irq: 0,
                 working_counter: 0,
             });
-
-            // Only single PDU for now
-            let frame_length = Self::ethernet_buf_len(&flags);
-
-            let mut ethernet_frame = {
-                let buf = core::slice::from_raw_parts_mut(
-                    addr_of_mut!((*frame.as_ptr()).ethernet_frame).cast(),
-                    frame_length,
-                );
-
-                EthernetFrame::new_checked(buf)?
-            };
-
-            ethernet_frame.set_src_addr(MASTER_ADDR);
-            ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
-            ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
-
-            let buf = ethernet_frame.payload_mut();
-
-            // EtherCAT frame header (one per Ethernet frame, regardless of PDU count)
-            let header = EthercatFrameHeader::pdu(PduFrame::header_len() as u16 + data_length + 2);
-            let buf = write_packed(header, buf);
-
-            // PDU follows. Only supports one PDU per EtherCAT frame for now.
-            let buf = write_packed(command.code(), buf);
-            let buf = write_packed(idx_u8, buf);
-            let buf = write_packed(command, buf);
-            let buf = write_packed(flags, buf);
-            // IRQ
-            let buf = write_packed(0u16, buf);
-
-            buf.fill(0);
         }
+
+        // Only single PDU for now
+        let frame_length = Self::ethernet_buf_len(&flags);
+
+        if frame_length > max_len {
+            return Err(PduError::TooLong.into());
+        }
+
+        let mut ethernet_frame = unsafe {
+            let buf = core::slice::from_raw_parts_mut(
+                addr_of_mut!((*frame.as_ptr()).ethernet_frame).cast(),
+                frame_length,
+            );
+
+            EthernetFrame::new_checked(buf)?
+        };
+
+        ethernet_frame.set_src_addr(MASTER_ADDR);
+        ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
+        ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
+
+        let buf = ethernet_frame.payload_mut();
+
+        // EtherCAT frame header (one per Ethernet frame, regardless of PDU count)
+        let header = EthercatFrameHeader::pdu(PduFrame::header_len() as u16 + data_length + 2);
+        let buf = write_packed(header, buf);
+
+        // PDU follows. Only supports one PDU per EtherCAT frame for now.
+        let buf = write_packed(command.code(), buf);
+        let buf = write_packed(idx_u8, buf);
+        let buf = write_packed(command, buf);
+        let buf = write_packed(flags, buf);
+        // IRQ
+        let buf = write_packed(0u16, buf);
+
+        buf.fill(0);
 
         Ok(Self {
             frame,

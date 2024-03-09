@@ -180,7 +180,8 @@ impl<'sto> PduStorageRef<'sto> {
             }
         };
 
-        let inner = FrameBox::init(frame, command, idx_u8, data_length)?;
+        let inner =
+            unsafe { FrameBox::init(frame, command, idx_u8, data_length, self.frame_data_len)? };
 
         Ok(CreatedFrame { inner })
     }
@@ -256,7 +257,7 @@ mod tests {
 
         const NUM_FRAMES: usize = 16;
 
-        let storage: PduStorage<NUM_FRAMES, 128> = PduStorage::new();
+        let storage: PduStorage<NUM_FRAMES, { PduStorage::element_size(128) }> = PduStorage::new();
         let s = storage.as_ref();
 
         for _ in 0..NUM_FRAMES {
@@ -272,7 +273,7 @@ mod tests {
 
         const NUM_FRAMES: usize = 16;
 
-        let storage: PduStorage<NUM_FRAMES, 128> = PduStorage::new();
+        let storage: PduStorage<NUM_FRAMES, { PduStorage::element_size(128) }> = PduStorage::new();
         let s = storage.as_ref();
 
         assert!(s.alloc_frame(Command::lwr(0x1234).into(), 129).is_err());

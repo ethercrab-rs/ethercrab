@@ -200,7 +200,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     async fn timed_out_frame_is_reallocatable() {
         // One 16 byte frame
-        static STORAGE: PduStorage<1, 32> = PduStorage::new();
+        static STORAGE: PduStorage<1, { PduStorage::element_size(32) }> = PduStorage::new();
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
 
         let send_result = pdu_loop
@@ -453,8 +453,6 @@ mod tests {
                 "frame fut should be pending"
             );
 
-            let mut packet_buf = [0u8; 1536];
-
             let frame = tx.next_sendable_frame().expect("need a frame");
 
             frame.send_blocking(|bytes| Ok(bytes.len())).expect("send");
@@ -497,8 +495,6 @@ mod tests {
 
             let tx_task = async {
                 fmt::info!("Spawn TX task");
-
-                let mut packet_buf = [0u8; 1536];
 
                 loop {
                     while let Some(frame) = tx.next_sendable_frame() {
