@@ -70,8 +70,7 @@ fn main() -> Result<(), ethercrab::error::Error> {
 
     let core_ids = core_affinity::get_core_ids().expect("Couldn't get core IDs");
 
-    let tx_rx_core = core_ids
-        .get(0)
+    let tx_rx_core = core_ids.first()
         .copied()
         .expect("At least one core is required. Are you running on a potato?");
     let slow_core = core_ids

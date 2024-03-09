@@ -34,7 +34,7 @@ mod tests {
     #[test]
     fn skip_0() {
         let mut buf = [0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        let mut expected = buf.clone();
+        let mut expected = buf;
 
         assert_eq!(skip(0, &mut buf), &mut expected);
     }

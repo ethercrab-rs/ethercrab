@@ -191,7 +191,7 @@ where
         };
 
         self.write(RegisterAddress::sync_manager(sync_manager_index))
-            .send(&self.client, sm_config)
+            .send(self.client, sm_config)
             .await?;
 
         fmt::debug!(
@@ -450,7 +450,7 @@ where
         // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
         let mut fmmu_config = self
             .read(RegisterAddress::fmmu(fmmu_index as u8))
-            .receive::<Fmmu>(&self.client)
+            .receive::<Fmmu>(self.client)
             .await?;
 
         // We can use the enable flag as a sentinel for existing config because EtherCrab inits
@@ -476,7 +476,7 @@ where
         };
 
         self.write(RegisterAddress::fmmu(fmmu_index as u8))
-            .send(&self.client, fmmu_config)
+            .send(self.client, fmmu_config)
             .await?;
 
         fmt::debug!(

@@ -217,7 +217,7 @@ mod tests {
     fn encode_sdo_request() {
         let buf = [0xaau8, 0xbb, 0xcc, 0xdd];
 
-        let request = download(123, 0x1234, 3.into(), buf.clone(), buf.packed_len() as u8);
+        let request = download(123, 0x1234, 3.into(), buf, buf.packed_len() as u8);
 
         pretty_assertions::assert_eq!(
             request,

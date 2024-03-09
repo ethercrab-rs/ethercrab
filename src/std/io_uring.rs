@@ -114,7 +114,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                     // TODO: Zero copy
                     tx_buf[0..data.len()].copy_from_slice(data);
 
-                    while unsafe { ring.submission().push(&tx_entry).is_err() } {
+                    while unsafe { ring.submission().push(tx_entry).is_err() } {
                         // If the submission queue is full, flush it to the kernel
                         ring.submit().expect("Internal error, failed to submit ops");
                     }
@@ -147,7 +147,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                 rx_key
             );
 
-            while unsafe { ring.submission().push(&rx_entry).is_err() } {
+            while unsafe { ring.submission().push(rx_entry).is_err() } {
                 // If the submission queue is full, flush it to the kernel
                 ring.submit().expect("Internal error, failed to submit ops");
             }
@@ -214,7 +214,7 @@ pub fn tx_rx_task_io_uring<'sto>(
                 let (rx_entry, _buf) = bufs.get(key as usize).expect("Could not get retry entry");
 
                 // SAFETY: `submission_shared` must not be held at the same time this one is
-                while unsafe { ring.submission_shared().push(&rx_entry).is_err() } {
+                while unsafe { ring.submission_shared().push(rx_entry).is_err() } {
                     // If the submission queue is full, flush it to the kernel
                     ring.submit().expect("Internal error, failed to submit ops");
                 }
