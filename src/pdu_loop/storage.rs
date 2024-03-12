@@ -116,7 +116,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(in crate::pdu_loop) struct PduStorageRef<'sto> {
     pub frames: NonNull<FrameElement<0>>,
     pub num_frames: usize,

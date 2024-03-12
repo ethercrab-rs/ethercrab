@@ -5,6 +5,7 @@ use super::{
 use core::{ptr::NonNull, task::Waker};
 
 /// EtherCAT frame transmit adapter.
+#[derive(Clone, Copy)]
 pub struct PduTx<'sto> {
     storage: PduStorageRef<'sto>,
 }

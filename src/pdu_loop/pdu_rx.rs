@@ -9,6 +9,7 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 /// EtherCAT frame receive adapter.
+#[derive(Clone, Copy)]
 pub struct PduRx<'sto> {
     storage: PduStorageRef<'sto>,
     source_mac: EthernetAddress,

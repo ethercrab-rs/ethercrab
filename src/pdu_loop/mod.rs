@@ -83,7 +83,7 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 ///     TXRX ->> PDU: Parse response, wake future
 ///     PDU ->> call: Response ready to use
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PduLoop<'sto> {
     storage: PduStorageRef<'sto>,
 }
