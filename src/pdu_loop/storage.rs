@@ -270,27 +270,51 @@ unsafe impl<'sto> Sync for PduStorageRef<'sto> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pdu_loop::frame_element::FrameState;
+    use crate::{
+        pdu_loop::{frame_element::FrameState, pdu_header::PduHeader},
+        Command,
+    };
 
     #[test]
     fn zeroed_data() {
         let storage: PduStorage<1, { PduStorage::element_size(8) }> = PduStorage::new();
         let s = storage.as_ref();
 
-        let frame = s.alloc_frame().unwrap();
+        let mut frame = s.alloc_frame().unwrap();
 
-        // TODO: Push a PDU instead
-        // frame.buf_mut().copy_from_slice(&[0xaa, 0xbb, 0xcc, 0xdd]);
+        frame
+            .push_pdu::<()>(
+                Command::bwr(0x1000).into(),
+                [0xaa, 0xbb, 0xcc, 0xdd],
+                None,
+                false,
+            )
+            .unwrap();
 
         // Manually reset frame state so it can be reused.
         unsafe { FrameElement::set_state(frame.inner().frame, FrameState::None) };
 
-        // TODO: Free reserved PDUs? Might not need to bother here.
+        let mut frame = s.alloc_frame().unwrap();
 
-        let frame = s.alloc_frame().unwrap();
+        const LEN: usize = 8;
+
+        frame
+            .push_pdu::<()>(Command::Nop, (), Some(LEN as u16), false)
+            .unwrap();
+
+        let frame = frame.finish();
+
+        let pdu_start = EthernetFrame::<&[u8]>::header_len()
+            + EthercatFrameHeader::header_len()
+            + PduHeader::PACKED_LEN;
 
         // 10 byte PDU header, 8 byte payload, 2 byte WKC
-        assert_eq!(frame.buf(), &[0u8; 10 + 8 + 2]);
+        assert_eq!(
+            // Skip all headers
+            &frame.buf()[pdu_start..],
+            // PDU payload plus working counter
+            &[0u8; { LEN + 2 }]
+        );
     }
 
     #[test]
@@ -308,17 +332,4 @@ mod tests {
 
         assert!(s.alloc_frame().is_err());
     }
-
-    // TODO: Move this into `CreatedFrame`
-    // #[test]
-    // fn too_long() {
-    //     let _ = env_logger::builder().is_test(true).try_init();
-
-    //     const NUM_FRAMES: usize = 16;
-
-    //     let storage: PduStorage<NUM_FRAMES, 128> = PduStorage::new();
-    //     let s = storage.as_ref();
-
-    //     assert!(s.alloc_frame().is_err());
-    // }
 }

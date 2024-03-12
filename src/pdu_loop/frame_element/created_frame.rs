@@ -158,6 +158,7 @@ impl<'sto> CreatedFrame<'sto> {
 // a 'static bound.
 unsafe impl<'sto> Send for CreatedFrame<'sto> {}
 
+#[derive(Debug)]
 pub struct PduResponseHandle<T> {
     _ty: PhantomData<T>,
     buf_range: Range<usize>,
@@ -212,5 +213,46 @@ mod tests {
             .expect("Push 1");
 
         dbg!(&created);
+    }
+
+    #[test]
+    fn too_long() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const BUF_LEN: usize = 16;
+
+        let pdu_idx = AtomicU8::new(0);
+
+        let pdu_states: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
+        pdu_states[0].init();
+
+        let frames = UnsafeCell::new([FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::Created),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+        }]);
+
+        // Only one element, and it's the first one, so we don't have to do any pointer arithmetic -
+        // just point to the beginning of the array.
+        let frame_ptr = frames.get().cast();
+
+        let frame_box = FrameBox::new(
+            unsafe { NonNull::new_unchecked(frame_ptr) },
+            &pdu_states,
+            &pdu_idx,
+            BUF_LEN,
+        );
+
+        let mut created = CreatedFrame::new(frame_box);
+
+        let handle = created.push_pdu::<u32>(
+            Command::fpwr(0x1000, 0x0918).into(),
+            [0xffu8; 9],
+            None,
+            false,
+        );
+
+        assert_eq!(handle.unwrap_err(), PduError::TooLong);
     }
 }

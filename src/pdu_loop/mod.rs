@@ -389,12 +389,12 @@ mod tests {
             .push_pdu::<()>(Command::fpwr(0x6789, 0x1234).into(), data, None, false)
             .expect("Push second PDU");
 
-        let frame = SendableFrame::new(frame.inner());
+        let frame = frame.finish();
 
         // ---
 
         assert_eq!(
-            frame.as_bytes(),
+            frame.buf(),
             &[
                 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
                 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
