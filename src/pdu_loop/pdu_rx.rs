@@ -69,34 +69,43 @@ impl<'sto> PduRx<'sto> {
             })?;
 
         // `i` now contains the EtherCAT frame payload, consisting of one or more PDUs including
-        // header and payload.
+        // their headers and payloads.
 
-        // Only support a single PDU per frame for now
-        let pdu_header = PduHeader::unpack_from_slice(i)?;
+        // // Only support a single PDU per frame for now
+        // let pdu_header = PduHeader::unpack_from_slice(i)?;
+
+        // // PDU has its own EtherCAT index. This needs mapping back to the original frame.
+        // // TODO: Put this in a method that checks for sentinel. Should also take a `&PduHeader` for
+        // // more type safety.
+        // let frame_index = self.storage.pdu_states[usize::from(pdu_header.index)].frame_index();
+
+        // fmt::trace!("Received frame index {}", frame_index);
+
+        // let (data, working_counter) = pdu_header.data_wkc(i).map_err(|e| {
+        //     fmt::error!("Could not get frame data/wkc: {}", e);
+
+        //     e
+        // })?;
+
+        // let command = pdu_header.command()?;
+
+        // let PduHeader {
+        //     index: pdu_idx,
+        //     flags,
+        //     irq,
+        //     ..
+        // } = pdu_header;
+
+        // fmt::trace!("--> Received PDU {:#04x}, WKC {}", pdu_idx, working_counter,);
+
+        // First two bytes of a PDU header is command code and PDU index.
+        let (_command_code, pdu_idx) = <(u8, u8)>::unpack_from_slice(i)?;
+
+        // We're assuming all PDUs in the returned frame have the same frame index, so we can just
+        // use the first one.
 
         // PDU has its own EtherCAT index. This needs mapping back to the original frame.
-        // TODO: Put this in a method that checks for sentinel. Should also take a `&PduHeader` for
-        // more type safety.
-        let frame_index = self.storage.pdu_states[usize::from(pdu_header.index)].frame_index();
-
-        fmt::trace!("Received frame index {}", frame_index);
-
-        let (data, working_counter) = pdu_header.data_wkc(i).map_err(|e| {
-            fmt::error!("Could not get frame data/wkc: {}", e);
-
-            e
-        })?;
-
-        let command = pdu_header.command()?;
-
-        let PduHeader {
-            index: pdu_idx,
-            flags,
-            irq,
-            ..
-        } = pdu_header;
-
-        fmt::trace!("--> Received PDU {:#04x}, WKC {}", pdu_idx, working_counter,);
+        let frame_index = self.storage.pdu_states[usize::from(pdu_idx)].frame_index();
 
         let mut frame = self
             .storage
@@ -127,7 +136,7 @@ impl<'sto> PduRx<'sto> {
 
         let frame_data = frame.buf_mut();
 
-        frame_data[0..usize::from(flags.len())].copy_from_slice(data);
+        frame_data[0..usize::from(i.len())].copy_from_slice(i);
 
         frame.mark_received()?;
 

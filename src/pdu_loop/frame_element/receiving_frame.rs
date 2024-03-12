@@ -166,7 +166,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
             Ok(_frame_element) => {
                 fmt::trace!("frame index {} is ready", frame_idx);
 
-                return Poll::Ready(Ok(ReceivedFrame { inner: rxin }));
+                return Poll::Ready(Ok(ReceivedFrame::new(rxin)));
             }
             Err(e) => e,
         };

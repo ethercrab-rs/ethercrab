@@ -306,7 +306,7 @@ mod tests {
 
         const NUM_FRAMES: usize = 16;
 
-        let storage: PduStorage<NUM_FRAMES, { PduStorage::element_size(128) }> = PduStorage::new();
+        let storage: PduStorage<NUM_FRAMES, 128> = PduStorage::new();
         let s = storage.as_ref();
 
         assert!(s.alloc_frame(Command::lwr(0x1234).into(), 129).is_err());

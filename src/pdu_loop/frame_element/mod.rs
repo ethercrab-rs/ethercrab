@@ -317,7 +317,7 @@ pub struct FrameBox<'sto> {
 
 impl<'sto> Debug for FrameBox<'sto> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let data = unsafe { self.pdu_buf_mut() };
+        let data = unsafe { self.pdu_buf() };
 
         f.debug_struct("FrameBox")
             .field("state", unsafe {
@@ -469,6 +469,19 @@ impl<'sto> FrameBox<'sto> {
             EthernetFrame::<&[u8]>::header_len() + EthercatFrameHeader::header_len();
 
         core::slice::from_raw_parts_mut(
+            ptr.as_ptr().byte_add(pdu_payload_start),
+            self.max_len - pdu_payload_start,
+        )
+    }
+
+    /// Get frame payload area.
+    unsafe fn pdu_buf(&self) -> &[u8] {
+        let ptr = FrameElement::<0>::ethercat_payload_ptr(self.frame);
+
+        let pdu_payload_start =
+            EthernetFrame::<&[u8]>::header_len() + EthercatFrameHeader::header_len();
+
+        core::slice::from_raw_parts(
             ptr.as_ptr().byte_add(pdu_payload_start),
             self.max_len - pdu_payload_start,
         )

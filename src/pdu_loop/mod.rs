@@ -344,8 +344,8 @@ mod tests {
             // The frame has received a response at this point so should be ready to get the data
             // from
             match frame_fut.poll(ctx) {
-                Poll::Ready(Ok(frame)) => {
-                    assert_eq!(frame.into_data().deref(), &data);
+                Poll::Ready(Ok(mut frame)) => {
+                    assert_eq!(frame.next_pdu().unwrap().unwrap().0.deref(), &data);
                 }
                 Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
                 Poll::Pending => panic!("frame future still pending"),
@@ -472,8 +472,8 @@ mod tests {
             // The frame has received a response at this point so should be ready to get the data
             // from
             match frame_fut.poll(ctx) {
-                Poll::Ready(Ok(frame)) => {
-                    assert_eq!(frame.into_data().deref(), &data_bytes);
+                Poll::Ready(Ok(mut frame)) => {
+                    assert_eq!(frame.next_pdu().unwrap().unwrap().0.deref(), &data_bytes);
                 }
                 Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
                 Poll::Pending => panic!("frame future still pending"),
@@ -550,7 +550,10 @@ mod tests {
                 .0
                 .await
                 .unwrap()
-                .into_data();
+                .next_pdu()
+                .unwrap()
+                .unwrap()
+                .0;
 
             assert_eq!(&*result, &data);
         }

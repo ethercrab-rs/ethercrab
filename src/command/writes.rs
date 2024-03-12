@@ -147,7 +147,7 @@ impl WrappedWrite {
                     .pdu_send(self.command.into(), &value, len_override)?;
 
             match frame.timeout(client.timeouts.pdu).await {
-                Ok(result) => return Ok(result.into_data()),
+                Ok(mut result) => return Ok(result.next_pdu()?.unwrap()),
                 Err(Error::Timeout) => {
                     fmt::error!("Frame {:#04x} timed out", frame_idx);
 
