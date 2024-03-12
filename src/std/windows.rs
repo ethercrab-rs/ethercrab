@@ -5,10 +5,9 @@ use crate::{
     pdu_loop::{PduRx, PduTx},
 };
 use core::future::Future;
-use embassy_futures::select;
 use pnet_datalink::{self, channel, Channel, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
-use std::time::SystemTime;
+use std::{thread, time::SystemTime};
 
 /// Get a TX/RX pair.
 fn get_tx_rx(
@@ -46,40 +45,46 @@ fn get_tx_rx(
     Ok((tx, rx))
 }
 
-// TODO: Proper error - there are a couple of unwraps in here
 /// Create a task that waits for PDUs to send, and receives PDU responses.
-pub fn tx_rx_task(
+pub fn tx_rx_task<'sto>(
     device: &str,
-    mut pdu_tx: PduTx<'static>,
-    mut pdu_rx: PduRx<'static>,
-) -> Result<impl Future<Output = Result<(), Error>>, std::io::Error> {
+    mut pdu_tx: PduTx<'sto>,
+    mut pdu_rx: PduRx<'sto>,
+) -> Result<impl Future<Output = Result<(), Error>> + 'sto, std::io::Error> {
     let (mut tx, mut rx) = get_tx_rx(device)?;
 
     let task = async move {
-        // TODO: Unwraps
         let tx_task = async {
             loop {
                 while let Some(frame) = pdu_tx.next_sendable_frame() {
-                    frame
-                        .send_blocking(|frame_bytes| {
-                            tx.send_to(frame_bytes, None)
-                                .unwrap()
-                                .map_err(|e| {
-                                    log::error!("Failed to send packet: {e}");
-                                })
-                                .expect("TX");
+                    let idx = frame.index();
 
-                            Ok(frame_bytes.len())
-                        })
-                        .expect("TX");
+                    frame.send_blocking(|frame_bytes| {
+                        log::trace!("Send frame {:#04x}, {} bytes", idx, frame_bytes.len());
+
+                        tx.send_to(frame_bytes, None)
+                            .ok_or(Error::SendFrame)?
+                            .map_err(|e| {
+                                log::error!("Failed to send packet: {}", e);
+
+                                Error::SendFrame
+                            })?;
+
+                        Ok(frame_bytes.len())
+                    })?;
                 }
 
                 futures_lite::future::yield_now().await;
             }
+
+            #[allow(unreachable_code)]
+            Ok::<(), Error>(())
         };
 
-        // TODO: Unwraps
-        let rx_task = blocking::unblock(move || {
+        let (receive_frame_tx, receive_frame_rx) =
+            async_channel::unbounded::<Result<Vec<u8>, Error>>();
+
+        thread::spawn(move || {
             let mut frame_buf: Vec<u8> = Vec::new();
 
             loop {
@@ -104,20 +109,20 @@ pub fn tx_rx_task(
                             }
                         };
 
-                        pdu_rx
-                            .receive_frame(&frame_buf)
-                            .map_err(|e| {
-                                dbg!(frame_buf.len());
-
-                                e
-                            })
-                            .expect("RX");
+                        receive_frame_tx
+                            .send_blocking(Ok(frame_buf.clone()))
+                            .expect("Channel full or closed");
 
                         frame_buf.truncate(0);
                     }
                     Err(e) => {
-                        // If an error occurs, we can handle it here
-                        panic!("An error occurred while reading: {e}");
+                        log::error!("An error occurred while receiving frame bytes: {}", e);
+
+                        receive_frame_tx
+                            .send_blocking(Err(Error::ReceiveFrame))
+                            .ok();
+
+                        break;
                     }
                 }
 
@@ -125,9 +130,27 @@ pub fn tx_rx_task(
             }
         });
 
-        select::select(tx_task, rx_task).await;
+        let rx_task = async {
+            while let Ok(frame_buf) = receive_frame_rx.recv().await {
+                let frame_buf = frame_buf?;
 
-        Ok(())
+                pdu_rx.receive_frame(&frame_buf).map_err(|e| {
+                    log::error!(
+                        "Failed to parse received frame: {} (len {} bytes)",
+                        e,
+                        frame_buf.len()
+                    );
+
+                    e
+                })?;
+            }
+
+            Result::<(), Error>::Ok(())
+        };
+
+        futures_lite::future::try_zip(tx_task, rx_task)
+            .await
+            .map(|_| ())
     };
 
     Ok(task)
