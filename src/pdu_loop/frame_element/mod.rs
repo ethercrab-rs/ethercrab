@@ -13,7 +13,7 @@ use core::{
     fmt::Debug,
     marker::PhantomData,
     ptr::{addr_of, addr_of_mut, NonNull},
-    sync::atomic::{AtomicU16, Ordering},
+    sync::atomic::{AtomicU16, AtomicU8, Ordering},
     task::Waker,
 };
 use ethercrab_wire::EtherCrabWireSized;
@@ -187,7 +187,7 @@ pub struct FrameElement<const N: usize> {
     // pub frame: PduFrame,
     /// Ethernet frame index. Has nothing to do with PDU header index field.
     // TODO: Can we move this into `FrameBox`? Is it needed at all beyond debug logging?
-    pub index: u8,
+    pub frame_index: u8,
     status: AtomicFrameState,
     pub waker: AtomicWaker,
 
@@ -202,7 +202,7 @@ impl<const N: usize> Default for FrameElement<N> {
             // frame: Default::default(),
             status: AtomicFrameState::new(FrameState::None),
             ethernet_frame: [0; N],
-            index: 0,
+            frame_index: 0,
             waker: AtomicWaker::default(),
         }
     }
@@ -279,7 +279,7 @@ impl<const N: usize> FrameElement<N> {
             PduError::SwapState
         })?;
 
-        (*addr_of_mut!((*this.as_ptr()).index)) = frame_index;
+        (*addr_of_mut!((*this.as_ptr()).frame_index)) = frame_index;
 
         Ok(this)
     }
@@ -297,7 +297,7 @@ impl<const N: usize> FrameElement<N> {
             .map_err(|actual_state| {
                 fmt::error!(
                     "Failed to claim receiving frame {}: expected state {:?}, but got {:?}",
-                    (*addr_of_mut!((*this.as_ptr()).index)),
+                    (*addr_of_mut!((*this.as_ptr()).frame_index)),
                     FrameState::Sent,
                     actual_state
                 );
@@ -312,6 +312,7 @@ pub struct FrameBox<'sto> {
     pub(in crate::pdu_loop) frame: NonNull<FrameElement<0>>,
     _lifetime: PhantomData<&'sto mut FrameElement<0>>,
     pdu_states: &'sto [PduMarker],
+    pdu_idx: &'sto AtomicU8,
     max_len: usize,
 }
 
@@ -334,12 +335,14 @@ impl<'sto> FrameBox<'sto> {
     pub(crate) fn new(
         frame: NonNull<FrameElement<0>>,
         pdu_states: &'sto [PduMarker],
+        pdu_idx: &'sto AtomicU8,
         max_len: usize,
     ) -> FrameBox<'sto> {
         Self {
             frame,
             max_len,
             pdu_states,
+            pdu_idx,
             _lifetime: PhantomData,
         }
     }
@@ -352,6 +355,7 @@ impl<'sto> FrameBox<'sto> {
         // command: Command,
         // pdu_idx: u8,
         // data_length: u16,
+        pdu_idx: &'sto AtomicU8,
         max_len: usize,
     ) -> Result<FrameBox<'sto>, Error> {
         // let flags = PduFlags::with_len(data_length);
@@ -410,8 +414,13 @@ impl<'sto> FrameBox<'sto> {
             max_len,
             frame,
             pdu_states,
+            pdu_idx,
             _lifetime: PhantomData,
         })
+    }
+
+    pub fn next_pdu_idx(&self) -> u8 {
+        self.pdu_idx.fetch_add(1, Ordering::Relaxed)
     }
 
     unsafe fn replace_waker(&self, waker: &Waker) {
@@ -433,26 +442,13 @@ impl<'sto> FrameBox<'sto> {
     // }
 
     unsafe fn frame_index(&self) -> u8 {
-        unsafe { *addr_of!((*self.frame.as_ptr()).index) }
+        unsafe { *addr_of!((*self.frame.as_ptr()).frame_index) }
     }
 
     // /// Payload length of frame
     // unsafe fn buf_len(&self) -> usize {
     //     usize::from(self.frame().flags.len())
     // }
-
-    /// Convenience method to calculate buffer length required to hold complete Ethernet/EtherCAT
-    /// frame for the given PDU length in `flags`.
-    pub(crate) const fn ethernet_buf_len(flags: &PduFlags) -> usize {
-        EthernetFrame::<&[u8]>::buffer_len(
-            EthercatFrameHeader::header_len()
-                    + PduHeader::PACKED_LEN
-                    // PDU payload
-                    + flags.len() as usize
-                    // Working counter
-                    + 2,
-        )
-    }
 
     // unsafe fn frame_and_buf(&self) -> (&PduFrame, &[u8]) {
     //     let buf_ptr = unsafe { addr_of!((*self.frame.as_ptr()).ethernet_frame).cast::<u8>() };
@@ -461,6 +457,18 @@ impl<'sto> FrameBox<'sto> {
     //     (frame, buf)
     // }
 
+    /// Get EtherCAT frame header buffer.
+    unsafe fn ecat_frame_header_mut(&mut self) -> &mut [u8] {
+        let ptr = FrameElement::<0>::ptr(self.frame);
+
+        let ethercat_header_start = EthernetFrame::<&[u8]>::header_len();
+
+        core::slice::from_raw_parts_mut(
+            ptr.as_ptr().byte_add(ethercat_header_start),
+            EthercatFrameHeader::PACKED_LEN,
+        )
+    }
+
     /// Get frame payload for writing PDUs into
     unsafe fn pdu_buf_mut(&mut self) -> &mut [u8] {
         let ptr = FrameElement::<0>::ethercat_payload_ptr(self.frame);
@@ -468,10 +476,7 @@ impl<'sto> FrameBox<'sto> {
         let pdu_payload_start =
             EthernetFrame::<&[u8]>::header_len() + EthercatFrameHeader::header_len();
 
-        core::slice::from_raw_parts_mut(
-            ptr.as_ptr().byte_add(pdu_payload_start),
-            self.max_len - pdu_payload_start,
-        )
+        core::slice::from_raw_parts_mut(ptr.as_ptr(), self.max_len - pdu_payload_start)
     }
 
     /// Get frame payload area.
@@ -481,10 +486,7 @@ impl<'sto> FrameBox<'sto> {
         let pdu_payload_start =
             EthernetFrame::<&[u8]>::header_len() + EthercatFrameHeader::header_len();
 
-        core::slice::from_raw_parts(
-            ptr.as_ptr().byte_add(pdu_payload_start),
-            self.max_len - pdu_payload_start,
-        )
+        core::slice::from_raw_parts(ptr.as_ptr(), self.max_len - pdu_payload_start)
     }
 
     unsafe fn ethernet_frame(&self) -> EthernetFrame<&[u8]> {

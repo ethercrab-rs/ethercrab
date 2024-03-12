@@ -1,6 +1,7 @@
-use super::{frame_element::PduMarker, pdu_rx::PduRx, pdu_tx::PduTx, PDU_UNUSED_SENTINEL};
+use super::{
+    frame_element::PduMarker, frame_header::EthercatFrameHeader, pdu_rx::PduRx, pdu_tx::PduTx,
+};
 use crate::{
-    command::Command,
     error::{Error, PduError},
     fmt,
     pdu_loop::{
@@ -17,12 +18,21 @@ use core::{
     marker::PhantomData,
     mem::MaybeUninit,
     ptr::NonNull,
-    sync::atomic::{AtomicBool, AtomicU16, AtomicU8, Ordering},
+    sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
+use ethercrab_wire::EtherCrabWireSized;
+use smoltcp::wire::EthernetFrame;
 
 const PDU_SLOTS: usize = 256;
 /// Smallest frame size with a data payload of 0 length
-const MIN_DATA: usize = FrameBox::ethernet_buf_len(&PduFlags::const_default());
+const MIN_DATA: usize = EthernetFrame::<&[u8]>::buffer_len(
+    EthercatFrameHeader::header_len()
+                    + super::pdu_header::PduHeader::PACKED_LEN
+                    // PDU payload
+                    + PduFlags::const_default().len() as usize
+                    // Working counter
+                    + 2,
+);
 
 /// Stores PDU frames that are currently being prepared to send, in flight, or being received and
 /// processed.
@@ -138,7 +148,7 @@ pub(in crate::pdu_loop) struct PduStorageRef<'sto> {
     pub num_frames: usize,
     pub frame_data_len: usize,
     frame_idx: &'sto AtomicU8,
-    pdu_idx: &'sto AtomicU8,
+    pub pdu_idx: &'sto AtomicU8,
     pub pdu_states: &'sto [PduMarker],
     pub tx_waker: &'sto AtomicWaker,
     _lifetime: PhantomData<&'sto ()>,
@@ -148,19 +158,19 @@ impl<'sto> PduStorageRef<'sto> {
     /// Allocate a PDU frame with the given command and data length.
     pub(in crate::pdu_loop) fn alloc_frame(
         &self,
-        command: Command,
-        data_length: u16,
+        // command: Command,
+        // data_length: u16,
     ) -> Result<CreatedFrame<'sto>, Error> {
-        let data_length_usize = usize::from(data_length);
+        // let data_length_usize = usize::from(data_length);
 
-        if data_length_usize > self.frame_data_len {
-            return Err(PduError::TooLong.into());
-        }
+        // if data_length_usize > self.frame_data_len {
+        //     return Err(PduError::TooLong.into());
+        // }
 
         let mut search = 0;
 
         // Find next frame that is not currently in use.
-        let (frame, frame_idx) = loop {
+        let frame = loop {
             let frame_idx = self.frame_idx.fetch_add(1, Ordering::Relaxed) % self.num_frames as u8;
 
             fmt::trace!("Try to allocate frame {}", frame_idx);
@@ -173,7 +183,7 @@ impl<'sto> PduStorageRef<'sto> {
             let frame = unsafe { FrameElement::claim_created(frame, frame_idx) };
 
             if let Ok(f) = frame {
-                break (f, frame_idx);
+                break f;
             }
 
             search += 1;
@@ -194,14 +204,12 @@ impl<'sto> PduStorageRef<'sto> {
             }
         };
 
-        let pdu_idx = self.pdu_idx.fetch_add(1, Ordering::Relaxed);
-
-        // Establish mapping between this PDU index and the Ethernet frame it's being put in
-        self.pdu_states[usize::from(pdu_idx)]
-            // TODO: More follows for multiple frames
-            .reserve(frame_idx, command, PduFlags::with_len(data_length))
-            // TODO: Better error to explain that the requested PDU is already in flight
-            .expect("In use!");
+        // // Establish mapping between this PDU index and the Ethernet frame it's being put in
+        // self.pdu_states[usize::from(pdu_idx)]
+        //     // TODO: More follows for multiple frames
+        //     .reserve(frame_idx, command, PduFlags::with_len(data_length))
+        //     // TODO: Better error to explain that the requested PDU is already in flight
+        //     .expect("In use!");
 
         let inner = FrameBox::init(
             frame,
@@ -209,10 +217,11 @@ impl<'sto> PduStorageRef<'sto> {
             // command,
             // pdu_idx,
             // data_length,
+            &self.pdu_idx,
             self.frame_data_len,
         )?;
 
-        Ok(CreatedFrame { inner })
+        Ok(CreatedFrame::new(inner))
     }
 
     /// Updates state from SENDING -> RX_BUSY
@@ -232,7 +241,7 @@ impl<'sto> PduStorageRef<'sto> {
         let frame = unsafe { FrameElement::claim_receiving(frame)? };
 
         Some(ReceivingFrame {
-            inner: FrameBox::new(frame, &self.pdu_states, self.frame_data_len),
+            inner: FrameBox::new(frame, &self.pdu_states, self.pdu_idx, self.frame_data_len),
             pdu_states: &self.pdu_states,
         })
     }
@@ -268,20 +277,20 @@ mod tests {
         let storage: PduStorage<1, { PduStorage::element_size(8) }> = PduStorage::new();
         let s = storage.as_ref();
 
-        let mut frame = s
-            .alloc_frame(Command::fpwr(0x1234, 0x5678).into(), 4)
-            .unwrap();
+        let frame = s.alloc_frame().unwrap();
 
-        frame.buf_mut().copy_from_slice(&[0xaa, 0xbb, 0xcc, 0xdd]);
+        // TODO: Push a PDU instead
+        // frame.buf_mut().copy_from_slice(&[0xaa, 0xbb, 0xcc, 0xdd]);
 
         // Manually reset frame state so it can be reused.
-        unsafe { FrameElement::set_state(frame.inner.frame, FrameState::None) };
+        unsafe { FrameElement::set_state(frame.inner().frame, FrameState::None) };
 
-        let mut frame = s
-            .alloc_frame(Command::fpwr(0x1234, 0x5678).into(), 8)
-            .unwrap();
+        // TODO: Free reserved PDUs? Might not need to bother here.
 
-        assert_eq!(frame.buf_mut(), &[0u8; 8]);
+        let frame = s.alloc_frame().unwrap();
+
+        // 10 byte PDU header, 8 byte payload, 2 byte WKC
+        assert_eq!(frame.buf(), &[0u8; 10 + 8 + 2]);
     }
 
     #[test]
@@ -294,21 +303,22 @@ mod tests {
         let s = storage.as_ref();
 
         for _ in 0..NUM_FRAMES {
-            assert!(s.alloc_frame(Command::lwr(0x1234).into(), 128).is_ok());
+            assert!(s.alloc_frame().is_ok());
         }
 
-        assert!(s.alloc_frame(Command::lwr(0x1234).into(), 128).is_err());
+        assert!(s.alloc_frame().is_err());
     }
 
-    #[test]
-    fn too_long() {
-        let _ = env_logger::builder().is_test(true).try_init();
+    // TODO: Move this into `CreatedFrame`
+    // #[test]
+    // fn too_long() {
+    //     let _ = env_logger::builder().is_test(true).try_init();
 
-        const NUM_FRAMES: usize = 16;
+    //     const NUM_FRAMES: usize = 16;
 
-        let storage: PduStorage<NUM_FRAMES, 128> = PduStorage::new();
-        let s = storage.as_ref();
+    //     let storage: PduStorage<NUM_FRAMES, 128> = PduStorage::new();
+    //     let s = storage.as_ref();
 
-        assert!(s.alloc_frame(Command::lwr(0x1234).into(), 129).is_err());
-    }
+    //     assert!(s.alloc_frame().is_err());
+    // }
 }

@@ -29,6 +29,7 @@ impl<'sto> PduTx<'sto> {
                 SendableFrame::new(FrameBox::new(
                     frame,
                     self.storage.pdu_states,
+                    &self.storage.pdu_idx,
                     self.storage.frame_data_len,
                 ))
             } else {

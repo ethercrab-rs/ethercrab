@@ -58,6 +58,7 @@ impl<'sto> ReceivedFrame<'sto> {
     //     }
     // }
 
+    #[deprecated(note = "Need to use PDU handles to extract PDU out of raw buffer")]
     pub(crate) fn next_pdu(&mut self) -> Result<Option<PduResponse<RxFrameDataBuf<'sto>>>, Error> {
         // TODO: Validate PDU header against what was sent. Uh how???? lmao
 

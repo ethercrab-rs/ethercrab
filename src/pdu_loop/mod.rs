@@ -7,12 +7,7 @@ mod pdu_tx;
 // NOTE: Pub so doc links work
 pub mod storage;
 
-use crate::{
-    command::Command,
-    error::{Error, PduError},
-    pdu_loop::storage::PduStorageRef,
-};
-
+use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
 use ethercrab_wire::EtherCrabWireWrite;
 pub use frame_element::received_frame::RxFrameDataBuf;
 pub use frame_element::sendable_frame::SendableFrame;
@@ -116,16 +111,23 @@ impl<'sto> PduLoop<'sto> {
         &self,
         register: u16,
         payload_length: u16,
-    ) -> Result<ReceivedFrame<'_>, Error> {
-        let frame = self
-            .storage
-            .alloc_frame(Command::bwr(register).into(), payload_length)?;
+    ) -> Result<(), Error> {
+        let mut frame = self.storage.alloc_frame()?;
+
+        frame.push_pdu::<()>(
+            Command::bwr(register).into(),
+            (),
+            Some(payload_length),
+            false,
+        )?;
 
         let frame = frame.mark_sendable();
 
         self.wake_sender();
 
-        frame.await
+        frame.await?;
+
+        Ok(())
     }
 
     /// Send data to and read data back from the slave devices.
@@ -158,31 +160,35 @@ impl<'sto> PduLoop<'sto> {
         ),
         Error,
     > {
-        // Length of data to populate in the send buffer
-        let send_data_len = data.packed_len() as u16;
+        Ok((core::future::ready(Err(Error::Internal)), 0u8))
+        // // Length of data to populate in the send buffer
+        // let send_data_len = data.packed_len() as u16;
 
-        // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
-        // inputs in the remaining buffer.
-        let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
+        // // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
+        // // inputs in the remaining buffer.
+        // let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
 
-        let mut frame = self.storage.alloc_frame(command, total_payload_len)?;
+        // let mut frame = self.storage.alloc_frame()?;
 
-        let frame_idx = frame.frame_index();
+        // let handle = frame.push_pdu(command, data, len_override, false)?;
 
-        let payload = frame
-            .buf_mut()
-            .get_mut(0..usize::from(send_data_len))
-            .ok_or(Error::Pdu(PduError::TooLong))?;
+        // // let frame_idx = frame.frame_index();
 
-        // SAFETY: We ensure the payload length is at least the length of the packed input data
-        // above, as well as the data to be written is not longer than the payload buffer.
-        data.pack_to_slice_unchecked(payload);
+        // // let payload = frame
+        // //     .buf_mut()
+        // //     .get_mut(0..usize::from(send_data_len))
+        // //     .ok_or(Error::Pdu(PduError::TooLong))?;
 
-        let frame = frame.mark_sendable();
+        // // // SAFETY: We ensure the payload length is at least the length of the packed input data
+        // // // above, as well as the data to be written is not longer than the payload buffer.
+        // // data.pack_to_slice_unchecked(payload);
 
-        self.wake_sender();
+        // let frame = frame.mark_sendable();
 
-        Ok((frame, frame_idx))
+        // self.wake_sender();
+
+        // todo!()
+        // // Ok((frame, frame_idx))
     }
 }
 
@@ -229,12 +235,7 @@ mod tests {
 
         // We should be able to reuse the frame slot now
         assert!(matches!(
-            pdu_loop.storage.alloc_frame(
-                Command::Read(Reads::Lrd {
-                    address: 0x1234_5678,
-                }),
-                16,
-            ),
+            pdu_loop.storage.alloc_frame(),
             Ok(CreatedFrame { .. })
         ));
     }
@@ -248,17 +249,16 @@ mod tests {
 
         let data = [0xaau8, 0xbb, 0xcc];
 
-        let mut frame = pdu_loop
-            .storage
-            .alloc_frame(Command::fpwr(0x5678, 0x1234).into(), data.len() as u16)
-            .unwrap();
+        let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
-        frame.buf_mut().copy_from_slice(&data);
+        let handle = frame
+            .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
+            .expect("Push");
 
-        let frame = SendableFrame::new(frame.inner);
+        let frame = frame.finish();
 
         assert_eq!(
-            frame.as_bytes(),
+            frame.buf(),
             &[
                 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
                 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
@@ -368,14 +368,13 @@ mod tests {
 
         let data = [0xaau8, 0xbb, 0xcc];
 
-        let mut frame = pdu_loop
-            .storage
-            .alloc_frame(Command::fpwr(0x5678, 0x1234).into(), data.len() as u16)
-            .unwrap();
+        let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
-        frame.buf_mut().copy_from_slice(&data);
+        let _handle = frame
+            .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
+            .expect("Push PDU");
 
-        let frame = SendableFrame::new(frame.inner);
+        let frame = SendableFrame::new(frame.inner());
 
         // Manually reset frame state so it can be reused.
         unsafe { FrameElement::set_state(frame.inner.frame, FrameState::None) };
@@ -384,14 +383,13 @@ mod tests {
 
         let data = [0xaau8, 0xbb];
 
-        let mut frame = pdu_loop
-            .storage
-            .alloc_frame(Command::fpwr(0x6789, 0x1234).into(), data.len() as u16)
-            .unwrap();
+        let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
-        frame.buf_mut().copy_from_slice(&data);
+        let _handle = frame
+            .push_pdu::<()>(Command::fpwr(0x6789, 0x1234).into(), data, None, false)
+            .expect("Push second PDU");
 
-        let frame = SendableFrame::new(frame.inner);
+        let frame = SendableFrame::new(frame.inner());
 
         // ---
 

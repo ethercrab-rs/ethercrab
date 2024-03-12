@@ -2,17 +2,9 @@ use super::{received_frame::ReceivedFrame, FrameBox, PduMarker};
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::{
-        frame_element::{FrameElement, FrameState},
-        pdu_flags::PduFlags,
-    },
+    pdu_loop::frame_element::{FrameElement, FrameState},
 };
-
-use core::{
-    future::Future,
-    ptr::{addr_of_mut, NonNull},
-    task::Poll,
-};
+use core::{future::Future, task::Poll};
 
 /// A frame has been sent and is now waiting for a response from the network.
 ///
@@ -105,14 +97,6 @@ impl<'sto> ReceivingFrame<'sto> {
             Ok(())
         }
     }
-
-    // unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
-    //     let frame = NonNull::new_unchecked(addr_of_mut!((*self.inner.frame.as_ptr()).frame));
-
-    //     *addr_of_mut!((*frame.as_ptr()).flags) = flags;
-    //     *addr_of_mut!((*frame.as_ptr()).irq) = irq;
-    //     *addr_of_mut!((*frame.as_ptr()).working_counter) = working_counter;
-    // }
 
     pub fn buf_mut(&mut self) -> &mut [u8] {
         unsafe { self.inner.pdu_buf_mut() }
