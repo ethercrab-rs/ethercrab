@@ -6,84 +6,8 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
-### Changed
-
-- **(breaking)** [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Bump MSRV to 1.75.0
-- [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Refactor sub device EEPROM reader to be
-  more efficient when skipping sections of the device EEPROM map.
-- **(breaking)** [#142](https://github.com/ethercrab-rs/ethercrab/pull/142) Remove `PduRead` and
-  `PduData` traits. These are replaced with `EtherCrabWireRead` and `EtherCrabWireReadWrite` traits
-  respectively, along with `EtherCrabWireReadWrite` for write-only items.
-
-  Some pertinent trait bounds changes in the public API:
-
-  - `SlaveRef::sdo_read` from `PduData` to `EtherCrabWireWrite`
-  - `SlaveRef::sdo_write` from `PduData` to `EtherCrabWireReadSized`
-  - `SlaveRef::register_read` from `PduData` to `EtherCrabWireWrite`
-  - `SlaveRef::register_write` from `PduData` to `EtherCrabWireReadWrite`
-
-- **(breaking)** [#144](https://github.com/ethercrab-rs/ethercrab/pull/144)
-  `PduError::InvalidIndex(usize)` is now a `PduError::InvalidIndex(u8)` as the EtherCAT index field
-  is itself onl a `u8`.
-- [#151](https://github.com/ethercrab-rs/ethercrab/pull/151) Reduced overhead for EEPROM reads. Each
-  chunk reader now only checks for and (attempt to) clear device errors once before reading a chunk
-  of data, not for every chunk.
-- [#156](https://github.com/ethercrab-rs/ethercrab/pull/156) Update `embassy-time` from 0.2.0 to
-  0.3.0.
-- [#181](https://github.com/ethercrab-rs/ethercrab/pull/181) `PduStorage` now stores complete
-  Ethernet frames instead of building them on the fly. This adds a little more overhead to each
-  slot, so the reserved data const parameter must be larger to compensate. Use the new
-  `PduStorage::element_size` method to calculate element sizes based on a given maximum PDU payload
-  value.
-
-### Added
-
-- [#141](https://github.com/ethercrab-rs/ethercrab/pull/141) Added the `ethercat-wire` and
-  `ethercat-wire-derive` crates.
-
-  These crates are **EXPERIMENTAL**. They may be improved for public use in the future but are
-  currently designed around EtherCrab's internal needs and may be rough and/or buggy. Use with
-  caution, and expect breaking changes.
-
-- [#141](https://github.com/ethercrab-rs/ethercrab/pull/141) Re-export the following traits from
-  `ethercrab-wire` for dealing with packing/unpacking data:
-
-  - `EtherCrabWireRead`
-  - `EtherCrabWireReadSized`
-  - `EtherCrabWireReadWrite`
-  - `EtherCrabWireSized`
-  - `EtherCrabWireWrite`
-
-- [#151](https://github.com/ethercrab-rs/ethercrab/pull/151) Add `EepromError::ClearErrors` variant.
-- [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) Expose `error::CoeAbortCode` for
-  matching on CoE transfer errors.
-- [#169](https://github.com/ethercrab-rs/ethercrab/pull/169) Linux only: add `io_uring`-based
-  blocking TX/RX loop for better performance.
-- [#173](https://github.com/ethercrab-rs/ethercrab/pull/173) Add MUSL libc support.
-- [#178](https://github.com/ethercrab-rs/ethercrab/pull/178) Add `Error::SubDevice` to get a
-  subdevice status code on failure.
-- [#180](https://github.com/ethercrab-rs/ethercrab/pull/#180) Add `PreOpPdi` state, allowing access
-  to a group's PDI whilst in `PRE-OP`.
-- [#180](https://github.com/ethercrab-rs/ethercrab/pull/#180) Add `ethercrab::std::ethercat_now`
-  function to get the current time in nanoseconds from the EtherCAT epoch of 2000-01-01.
-
-### Fixed
-
-- **(breaking)** (technically) [#143](https://github.com/ethercrab-rs/ethercrab/pull/143) Fix typo
-  in name `AlStatusCode::ApplicationControllerAvailableI` ->
-  `AlStatusCode::ApplicationControllerAvailable`
-- [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) CoE errors are not reported correctly
-  from `sdo_read` and `sdo_write`.
 - [#183](https://github.com/ethercrab-rs/ethercrab/pull/183) Relax `'static` bound for `tx_rx_task`
   on Windows.
-
-### Removed
-
-- **(breaking)** [#145](https://github.com/ethercrab-rs/ethercrab/pull/145) Remove the `context`
-  field from `Error::WorkingCounter`. The output from EtherCrab's error logging should be used
-  instead.
-- **(breaking)** [#181](https://github.com/ethercrab-rs/ethercrab/pull/181) Remove async
-  `SendableFrame::send`. Use `SendableFrame::send_blocking` instead.
 
 ## [0.3.6] - 2024-02-14
 
@@ -331,8 +255,8 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...HEAD
 [0.3.6]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.3...v0.3.4
