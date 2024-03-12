@@ -42,7 +42,7 @@ smoltcp = { version = "0.10.0", default-features = false, features = [
 
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.34.0", features = ["std"], optional = true }
-blocking = "1.4.1"
+async-channel = "2.2.0"
 
 # macOS
 [target.'cfg(all(not(target_os = "linux"), unix))'.dependencies]
