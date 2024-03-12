@@ -17,8 +17,13 @@ use core::{
     marker::PhantomData,
     mem::MaybeUninit,
     ptr::NonNull,
-    sync::atomic::{AtomicBool, AtomicU8, Ordering},
+    sync::atomic::{AtomicBool, AtomicU16, AtomicU8, Ordering},
 };
+
+const PDU_UNUSED_SENTINEL: u16 = u16::MAX;
+const PDU_SLOTS: usize = 256;
+/// Smallest frame size with a data payload of 0 length
+const MIN_DATA: usize = FrameBox::ethernet_buf_len(&PduFlags::const_default());
 
 /// Stores PDU frames that are currently being prepared to send, in flight, or being received and
 /// processed.
@@ -26,16 +31,15 @@ use core::{
 /// The number of storage elements `N` must be a power of 2.
 pub struct PduStorage<const N: usize, const DATA: usize> {
     frames: UnsafeCell<MaybeUninit<[FrameElement<DATA>; N]>>,
-    idx: AtomicU8,
+    pdu_states: [AtomicU16; PDU_SLOTS],
+    frame_idx: AtomicU8,
+    pdu_idx: AtomicU8,
     is_split: AtomicBool,
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     pub(in crate::pdu_loop) tx_waker: AtomicWaker,
 }
 
 unsafe impl<const N: usize, const DATA: usize> Sync for PduStorage<N, DATA> {}
-
-/// Smallest frame size with a data payload of 0 length
-const MIN_DATA: usize = FrameBox::ethernet_buf_len(&PduFlags::const_default());
 
 impl PduStorage<0, 0> {
     /// Calculate the size of a `PduStorage` buffer element to hold the given number of data bytes.
@@ -75,9 +79,20 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 
         let frames = UnsafeCell::new(MaybeUninit::zeroed());
 
+        // MSRV: When `array::from_fn` is const-stabilised
+        // let pdu_states = array::from_fn(|_| AtomicU16::new(PDU_UNUSED_SENTINEL))
+        // SAFETY: `AtomicU16` has the same underlying representation as `u16`
+        let pdu_states = unsafe {
+            core::mem::transmute::<[u16; PDU_SLOTS], [AtomicU16; PDU_SLOTS]>(
+                [PDU_UNUSED_SENTINEL; PDU_SLOTS],
+            )
+        };
+
         Self {
             frames,
-            idx: AtomicU8::new(0),
+            frame_idx: AtomicU8::new(0),
+            pdu_idx: AtomicU8::new(0),
+            pdu_states,
             is_split: AtomicBool::new(false),
             tx_waker: AtomicWaker::new(),
         }
@@ -109,7 +124,9 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             num_frames: N,
             frame_data_len: DATA,
-            idx: &self.idx,
+            frame_idx: &self.frame_idx,
+            pdu_idx: &self.pdu_idx,
+            pdu_states: &self.pdu_states,
             tx_waker: &self.tx_waker,
             _lifetime: PhantomData,
         }
@@ -121,10 +138,9 @@ pub(in crate::pdu_loop) struct PduStorageRef<'sto> {
     pub frames: NonNull<FrameElement<0>>,
     pub num_frames: usize,
     pub frame_data_len: usize,
-    /// EtherCAT frame index.
-    ///
-    /// This is incremented atomically to allow simultaneous allocation of available frame elements.
-    idx: &'sto AtomicU8,
+    frame_idx: &'sto AtomicU8,
+    pdu_idx: &'sto AtomicU8,
+    pdu_states: &'sto [AtomicU16],
     pub tx_waker: &'sto AtomicWaker,
     _lifetime: PhantomData<&'sto ()>,
 }
@@ -145,21 +161,20 @@ impl<'sto> PduStorageRef<'sto> {
         let mut search = 0;
 
         // Find next frame that is not currently in use.
-        let (frame, idx_u8) = loop {
-            let idx_u8 = self.idx.fetch_add(1, Ordering::Relaxed) % self.num_frames as u8;
+        let (frame, frame_idx) = loop {
+            let frame_idx = self.frame_idx.fetch_add(1, Ordering::Relaxed) % self.num_frames as u8;
 
-            let idx = usize::from(idx_u8);
-
-            fmt::trace!("Try to allocate frame {:#04x}", idx);
+            fmt::trace!("Try to allocate frame {}", frame_idx);
 
             // Claim frame so it is no longer free and can be used. It must be claimed before
             // initialisation to avoid race conditions with other threads potentially claiming the
             // same frame.
-            let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(idx)) };
+            let frame =
+                unsafe { NonNull::new_unchecked(self.frame_at_index(usize::from(frame_idx))) };
             let frame = unsafe { FrameElement::claim_created(frame) };
 
             if let Ok(f) = frame {
-                break (f, idx_u8);
+                break (f, frame_idx);
             }
 
             search += 1;
@@ -180,7 +195,20 @@ impl<'sto> PduStorageRef<'sto> {
             }
         };
 
-        let inner = FrameBox::init(frame, command, idx_u8, data_length, self.frame_data_len)?;
+        let pdu_idx = self.pdu_idx.fetch_add(1, Ordering::Relaxed);
+
+        // Establish mapping between this PDU index and the Ethernet frame it's being put in
+        self.pdu_states[usize::from(pdu_idx)]
+            .compare_exchange(
+                PDU_UNUSED_SENTINEL,
+                u16::from(frame_idx),
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            )
+            // TODO: Better error to explain that the requested PDU is already in flight
+            .expect("In use!");
+
+        let inner = FrameBox::init(frame, command, pdu_idx, data_length, self.frame_data_len)?;
 
         Ok(CreatedFrame { inner })
     }
