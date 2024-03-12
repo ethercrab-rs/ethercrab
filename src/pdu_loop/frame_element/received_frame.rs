@@ -1,4 +1,4 @@
-use super::{FrameBox, FrameElement, PduFrame};
+use super::{FrameBox, FrameElement};
 use crate::{
     fmt,
     pdu_loop::{frame_element::FrameState, PduResponse},
@@ -15,41 +15,31 @@ pub struct ReceivedFrame<'sto> {
 }
 
 impl<'sto> ReceivedFrame<'sto> {
-    pub(crate) fn working_counter(&self) -> u16 {
-        unsafe { self.inner.frame() }.working_counter
-    }
+    // pub(crate) fn working_counter(&self) -> u16 {
+    //     unsafe { self.inner.frame() }.working_counter
+    // }
 
-    #[cfg(test)]
-    pub fn wkc(self, expected: u16) -> Result<RxFrameDataBuf<'sto>, crate::error::Error> {
-        let frame = self.frame();
-        let act_wc = frame.working_counter;
+    // #[cfg(test)]
+    // pub fn wkc(self, expected: u16) -> Result<RxFrameDataBuf<'sto>, crate::error::Error> {
+    //     let frame = self.frame();
+    //     let act_wc = frame.working_counter;
 
-        if act_wc == expected {
-            Ok(self.into_data_buf())
-        } else {
-            Err(crate::error::Error::WorkingCounter {
-                expected,
-                received: act_wc,
-            })
-        }
-    }
+    //     if act_wc == expected {
+    //         Ok(self.into_data_buf())
+    //     } else {
+    //         Err(crate::error::Error::WorkingCounter {
+    //             expected,
+    //             received: act_wc,
+    //         })
+    //     }
+    // }
 
     /// Retrieve the frame's internal data and working counter without checking whether the working
     /// counter has a valid value.
-    pub fn into_data(self) -> PduResponse<RxFrameDataBuf<'sto>> {
-        let wkc = self.working_counter();
+    pub fn into_data(self) -> RxFrameDataBuf<'sto> {
+        let sptr = unsafe { FrameElement::ethercat_payload_ptr(self.inner.frame) };
 
-        (self.into_data_buf(), wkc)
-    }
-
-    fn frame(&self) -> &PduFrame {
-        unsafe { self.inner.frame() }
-    }
-
-    fn into_data_buf(self) -> RxFrameDataBuf<'sto> {
-        let len: usize = self.frame().flags.len().into();
-
-        let sptr = unsafe { FrameElement::buf_ptr(self.inner.frame) };
+        let len = self.inner.max_len;
 
         RxFrameDataBuf {
             _lt: PhantomData,
@@ -57,6 +47,12 @@ impl<'sto> ReceivedFrame<'sto> {
             len,
         }
     }
+
+    // fn frame(&self) -> &PduFrame {
+    //     unsafe { self.inner.frame() }
+    // }
+
+    // fn into_data_buf(self) -> RxFrameDataBuf<'sto> {}
 }
 
 impl<'sto> Drop for ReceivedFrame<'sto> {

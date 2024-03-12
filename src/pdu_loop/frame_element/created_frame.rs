@@ -26,11 +26,11 @@ impl<'sto> CreatedFrame<'sto> {
     }
 
     pub fn buf_mut(&mut self) -> &mut [u8] {
-        unsafe { self.inner.buf_mut() }
+        unsafe { self.inner.pdu_buf_mut() }
     }
 
-    pub fn index(&self) -> u8 {
-        unsafe { self.inner.frame() }.index
+    pub fn frame_index(&self) -> u8 {
+        unsafe { self.inner.frame_index() }
     }
 }
 

@@ -30,11 +30,11 @@ impl<'sto> ReceivingFrame<'sto> {
     /// and stored in the frame element.
     pub fn mark_received(
         &self,
-        flags: PduFlags,
-        irq: u16,
-        working_counter: u16,
+        // flags: PduFlags,
+        // irq: u16,
+        // working_counter: u16,
     ) -> Result<(), PduError> {
-        unsafe { self.set_metadata(flags, irq, working_counter) };
+        // unsafe { self.set_metadata(flags, irq, working_counter) };
 
         // Frame state must be updated BEFORE the waker is awoken so the future impl returns
         // `Poll::Ready`. The future will poll, see the `FrameState` as RxDone and return
@@ -47,7 +47,7 @@ impl<'sto> ReceivingFrame<'sto> {
                 .map_err(|bad| {
                     fmt::error!(
                         "Failed to set frame {:#04x} state from RxBusy -> RxDone, got {:?}",
-                        self.index(),
+                        self.frame_index(),
                         bad
                     );
 
@@ -58,7 +58,7 @@ impl<'sto> ReceivingFrame<'sto> {
         // If the wake fails, release the receiving claim so the frame receive can possibly be
         // reattempted at a later time.
         if let Err(()) = unsafe { self.inner.wake() } {
-            fmt::trace!("Failed to wake frame {:#04x}: no waker", self.index());
+            fmt::trace!("Failed to wake frame {:#04x}: no waker", self.frame_index());
 
             unsafe {
                 // Restore frame state to `Sent`, which is what `PduStorageRef::claim_receiving`
@@ -89,7 +89,7 @@ impl<'sto> ReceivingFrame<'sto> {
                     Err(bad_state) => {
                         fmt::error!(
                             "Failed to set frame {:#04x} state from RxDone -> Sent, got {:?}",
-                            self.index(),
+                            self.frame_index(),
                             bad_state
                         );
 
@@ -106,20 +106,21 @@ impl<'sto> ReceivingFrame<'sto> {
         }
     }
 
-    unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
-        let frame = NonNull::new_unchecked(addr_of_mut!((*self.inner.frame.as_ptr()).frame));
+    // unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
+    //     let frame = NonNull::new_unchecked(addr_of_mut!((*self.inner.frame.as_ptr()).frame));
 
-        *addr_of_mut!((*frame.as_ptr()).flags) = flags;
-        *addr_of_mut!((*frame.as_ptr()).irq) = irq;
-        *addr_of_mut!((*frame.as_ptr()).working_counter) = working_counter;
-    }
+    //     *addr_of_mut!((*frame.as_ptr()).flags) = flags;
+    //     *addr_of_mut!((*frame.as_ptr()).irq) = irq;
+    //     *addr_of_mut!((*frame.as_ptr()).working_counter) = working_counter;
+    // }
 
     pub fn buf_mut(&mut self) -> &mut [u8] {
-        unsafe { self.inner.buf_mut() }
+        unsafe { self.inner.pdu_buf_mut() }
     }
 
-    pub fn index(&self) -> u8 {
-        unsafe { self.inner.frame() }.index
+    /// Ethernet frame index.
+    pub fn frame_index(&self) -> u8 {
+        unsafe { self.inner.frame_index() }
     }
 }
 

@@ -129,7 +129,7 @@ impl<'sto> PduRx<'sto> {
 
         frame_data[0..usize::from(flags.len())].copy_from_slice(data);
 
-        frame.mark_received(flags, irq, working_counter)?;
+        frame.mark_received()?;
 
         Ok(())
     }

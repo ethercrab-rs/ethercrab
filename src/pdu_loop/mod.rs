@@ -167,7 +167,7 @@ impl<'sto> PduLoop<'sto> {
 
         let mut frame = self.storage.alloc_frame(command, total_payload_len)?;
 
-        let frame_idx = frame.index();
+        let frame_idx = frame.frame_index();
 
         let payload = frame
             .buf_mut()
@@ -345,7 +345,7 @@ mod tests {
             // from
             match frame_fut.poll(ctx) {
                 Poll::Ready(Ok(frame)) => {
-                    assert_eq!(frame.into_data().0.deref(), &data);
+                    assert_eq!(frame.into_data().deref(), &data);
                 }
                 Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
                 Poll::Pending => panic!("frame future still pending"),
@@ -473,7 +473,7 @@ mod tests {
             // from
             match frame_fut.poll(ctx) {
                 Poll::Ready(Ok(frame)) => {
-                    assert_eq!(frame.into_data().0.deref(), &data_bytes);
+                    assert_eq!(frame.into_data().deref(), &data_bytes);
                 }
                 Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
                 Poll::Pending => panic!("frame future still pending"),
@@ -550,8 +550,7 @@ mod tests {
                 .0
                 .await
                 .unwrap()
-                .wkc(0)
-                .unwrap();
+                .into_data();
 
             assert_eq!(&*result, &data);
         }

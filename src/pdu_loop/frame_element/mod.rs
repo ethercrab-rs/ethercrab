@@ -1,3 +1,4 @@
+use super::{frame_header::EthercatFrameHeader, pdu_header::PduHeader, PDU_UNUSED_SENTINEL};
 use crate::{
     command::Command,
     error::{Error, PduError},
@@ -15,9 +16,8 @@ use core::{
     sync::atomic::{AtomicU16, Ordering},
     task::Waker,
 };
+use ethercrab_wire::EtherCrabWireSized;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
-
-use super::{frame_header::EthercatFrameHeader, PDU_UNUSED_SENTINEL};
 
 pub mod created_frame;
 pub mod received_frame;
@@ -140,22 +140,22 @@ impl PduMarker {
     }
 }
 
-// DELETEME
-#[derive(Debug, Default)]
-pub struct PduFrame {
-    pub index: u8,
-    pub command: Command,
-    pub flags: PduFlags,
-    pub irq: u16,
-    pub working_counter: u16,
-}
+// // DELETEME
+// #[derive(Debug, Default)]
+// pub struct PduFrame {
+//     pub index: u8,
+//     pub command: Command,
+//     pub flags: PduFlags,
+//     pub irq: u16,
+//     pub working_counter: u16,
+// }
 
-impl PduFrame {
-    /// EtherCAT PDU header length (index, command, etc)
-    const fn header_len() -> usize {
-        10
-    }
-}
+// impl PduFrame {
+//     /// EtherCAT PDU header length (index, command, etc)
+//     const fn header_len() -> usize {
+//         10
+//     }
+// }
 
 /// An individual frame state, PDU header config, and data buffer.
 ///
@@ -183,9 +183,10 @@ impl PduFrame {
 pub struct FrameElement<const N: usize> {
     /// A copy of the PDU header written into the buffer used to match received frames to this
     /// element.
-    // TODO: Subset of fields.
-    pub frame: PduFrame,
+    // DELETEME
+    // pub frame: PduFrame,
     /// Ethernet frame index. Has nothing to do with PDU header index field.
+    // TODO: Can we move this into `FrameBox`? Is it needed at all beyond debug logging?
     pub index: u8,
     status: AtomicFrameState,
     pub waker: AtomicWaker,
@@ -198,7 +199,7 @@ pub struct FrameElement<const N: usize> {
 impl<const N: usize> Default for FrameElement<N> {
     fn default() -> Self {
         Self {
-            frame: Default::default(),
+            // frame: Default::default(),
             status: AtomicFrameState::new(FrameState::None),
             ethernet_frame: [0; N],
             index: 0,
@@ -208,22 +209,23 @@ impl<const N: usize> Default for FrameElement<N> {
 }
 
 impl<const N: usize> FrameElement<N> {
-    /// Get pointer to Ethernet frame including header.
-    unsafe fn ethernet_ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
+    /// Get pointer to entire data: the Ethernet frame including header and all subsequent EtherCAT
+    /// payload.
+    unsafe fn ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
         let buf_ptr: *mut [u8; N] = unsafe { addr_of_mut!((*this.as_ptr()).ethernet_frame) };
         let buf_ptr: *mut u8 = buf_ptr.cast();
         NonNull::new_unchecked(buf_ptr)
     }
 
-    /// Get pointer to EtherCAT frame payload.
-    unsafe fn buf_ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
+    /// Get pointer to EtherCAT frame payload. i.e. the buffer after the end of the EtherCAT frame
+    /// header where all the PDUs (header and data) go.
+    unsafe fn ethercat_payload_ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
         // MSRV: `feature(non_null_convenience)` when stabilised
         NonNull::new_unchecked(
-            Self::ethernet_ptr(this)
+            Self::ptr(this)
                 .as_ptr()
                 .byte_add(EthernetFrame::<&[u8]>::header_len())
-                .byte_add(EthercatFrameHeader::header_len())
-                .byte_add(PduFrame::header_len()),
+                .byte_add(EthercatFrameHeader::header_len()), // .byte_add(PduFrame::header_len()),
         )
     }
 
@@ -294,8 +296,8 @@ impl<const N: usize> FrameElement<N> {
         Self::swap_state(this, FrameState::Sent, FrameState::RxBusy)
             .map_err(|actual_state| {
                 fmt::error!(
-                    "Failed to claim receiving frame {:#04x}: expected state {:?}, but got {:?}",
-                    (*addr_of_mut!((*this.as_ptr()).frame.index)),
+                    "Failed to claim receiving frame {}: expected state {:?}, but got {:?}",
+                    (*addr_of_mut!((*this.as_ptr()).index)),
                     FrameState::Sent,
                     actual_state
                 );
@@ -310,17 +312,18 @@ pub struct FrameBox<'sto> {
     pub(in crate::pdu_loop) frame: NonNull<FrameElement<0>>,
     _lifetime: PhantomData<&'sto mut FrameElement<0>>,
     pdu_states: &'sto [PduMarker],
+    max_len: usize,
 }
 
 impl<'sto> Debug for FrameBox<'sto> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let (frame, data) = unsafe { self.frame_and_buf() };
+        let data = unsafe { self.pdu_buf_mut() };
 
         f.debug_struct("FrameBox")
             .field("state", unsafe {
                 &(*addr_of!((*self.frame.as_ptr()).status))
             })
-            .field("frame", frame)
+            .field("frame_index", &unsafe { self.frame_index() })
             .field("data_hex", &format_args!("{:02x?}", data))
             .finish()
     }
@@ -331,9 +334,11 @@ impl<'sto> FrameBox<'sto> {
     pub(crate) fn new(
         frame: NonNull<FrameElement<0>>,
         pdu_states: &'sto [PduMarker],
+        max_len: usize,
     ) -> FrameBox<'sto> {
         Self {
             frame,
+            max_len,
             pdu_states,
             _lifetime: PhantomData,
         }
@@ -344,38 +349,36 @@ impl<'sto> FrameBox<'sto> {
     pub(crate) fn init(
         frame: NonNull<FrameElement<0>>,
         pdu_states: &'sto [PduMarker],
-        command: Command,
-        pdu_idx: u8,
-        data_length: u16,
+        // command: Command,
+        // pdu_idx: u8,
+        // data_length: u16,
         max_len: usize,
     ) -> Result<FrameBox<'sto>, Error> {
-        let flags = PduFlags::with_len(data_length);
+        // let flags = PduFlags::with_len(data_length);
 
-        // Initialise frame with Ethernet header, EtherCAT header, single PDU header and zeroed data
-        // buffer ready for read or write.
         unsafe {
-            addr_of_mut!((*frame.as_ptr()).frame).write(PduFrame {
-                index: pdu_idx,
-                command,
-                flags,
-                irq: 0,
-                working_counter: 0,
-            });
+            // addr_of_mut!((*frame.as_ptr()).frame).write(PduFrame {
+            //     index: pdu_idx,
+            //     command,
+            //     flags,
+            //     irq: 0,
+            //     working_counter: 0,
+            // });
 
             addr_of_mut!((*frame.as_ptr()).waker).write(AtomicWaker::new());
         }
 
-        // Only single PDU for now
-        let frame_length = Self::ethernet_buf_len(&flags);
+        // // Only single PDU for now
+        // let frame_length = Self::ethernet_buf_len(&flags);
 
-        if frame_length > max_len {
-            return Err(PduError::TooLong.into());
-        }
+        // if frame_length > max_len {
+        //     return Err(PduError::TooLong.into());
+        // }
 
         let mut ethernet_frame = unsafe {
             let buf = core::slice::from_raw_parts_mut(
                 addr_of_mut!((*frame.as_ptr()).ethernet_frame).cast(),
-                frame_length,
+                max_len,
             );
 
             EthernetFrame::new_checked(buf)?
@@ -387,21 +390,24 @@ impl<'sto> FrameBox<'sto> {
 
         let buf = ethernet_frame.payload_mut();
 
+        // TODO: This gets populated when we mark frame as sendable
         // EtherCAT frame header (one per Ethernet frame, regardless of PDU count)
-        let header = EthercatFrameHeader::pdu(PduFrame::header_len() as u16 + data_length + 2);
-        let buf = write_packed(header, buf);
+        // let header = EthercatFrameHeader::pdu(PduHeader::PACKED_LEN as u16 + data_length + 2);
+        // let buf = write_packed(header, buf);
 
-        // PDU follows. Only supports one PDU per EtherCAT frame for now.
-        let buf = write_packed(command.code(), buf);
-        let buf = write_packed(pdu_idx, buf);
-        let buf = write_packed(command, buf);
-        let buf = write_packed(flags, buf);
-        // IRQ
-        let buf = write_packed(0u16, buf);
+        // TODO: Init PDU header and length in `CreatedFrame` or whatever
+        // // PDU follows. Only supports one PDU per EtherCAT frame for now.
+        // let buf = write_packed(command.code(), buf);
+        // let buf = write_packed(pdu_idx, buf);
+        // let buf = write_packed(command, buf);
+        // let buf = write_packed(flags, buf);
+        // // IRQ
+        // let buf = write_packed(0u16, buf);
 
         buf.fill(0);
 
         Ok(Self {
+            max_len,
             frame,
             pdu_states,
             _lifetime: PhantomData,
@@ -422,24 +428,25 @@ impl<'sto> FrameBox<'sto> {
         }
     }
 
-    unsafe fn frame(&self) -> &PduFrame {
-        unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
-    }
+    // unsafe fn frame(&self) -> &PduFrame {
+    //     unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
+    // }
 
     unsafe fn frame_index(&self) -> u8 {
         unsafe { *addr_of!((*self.frame.as_ptr()).index) }
     }
 
-    /// Payload length of frame
-    unsafe fn buf_len(&self) -> usize {
-        usize::from(self.frame().flags.len())
-    }
+    // /// Payload length of frame
+    // unsafe fn buf_len(&self) -> usize {
+    //     usize::from(self.frame().flags.len())
+    // }
 
-    /// Buffer length of complete Ethernet frame
+    /// Convenience method to calculate buffer length required to hold complete Ethernet/EtherCAT
+    /// frame for the given PDU length in `flags`.
     pub(crate) const fn ethernet_buf_len(flags: &PduFlags) -> usize {
         EthernetFrame::<&[u8]>::buffer_len(
             EthercatFrameHeader::header_len()
-                    + PduFrame::header_len()
+                    + PduHeader::PACKED_LEN
                     // PDU payload
                     + flags.len() as usize
                     // Working counter
@@ -447,26 +454,30 @@ impl<'sto> FrameBox<'sto> {
         )
     }
 
-    unsafe fn frame_and_buf(&self) -> (&PduFrame, &[u8]) {
-        let buf_ptr = unsafe { addr_of!((*self.frame.as_ptr()).ethernet_frame).cast::<u8>() };
-        let buf = unsafe { core::slice::from_raw_parts(buf_ptr, self.buf_len()) };
-        let frame = unsafe { &*addr_of!((*self.frame.as_ptr()).frame) };
-        (frame, buf)
-    }
+    // unsafe fn frame_and_buf(&self) -> (&PduFrame, &[u8]) {
+    //     let buf_ptr = unsafe { addr_of!((*self.frame.as_ptr()).ethernet_frame).cast::<u8>() };
+    //     let buf = unsafe { core::slice::from_raw_parts(buf_ptr, self.buf_len()) };
+    //     let frame = unsafe { &*addr_of!((*self.frame.as_ptr()).frame) };
+    //     (frame, buf)
+    // }
 
-    /// Get frame payload for writing data into
-    unsafe fn buf_mut(&mut self) -> &mut [u8] {
-        let ptr = FrameElement::<0>::buf_ptr(self.frame);
-        core::slice::from_raw_parts_mut(ptr.as_ptr(), self.buf_len())
+    /// Get frame payload for writing PDUs into
+    unsafe fn pdu_buf_mut(&mut self) -> &mut [u8] {
+        let ptr = FrameElement::<0>::ethercat_payload_ptr(self.frame);
+
+        let pdu_payload_start =
+            EthernetFrame::<&[u8]>::header_len() + EthercatFrameHeader::header_len();
+
+        core::slice::from_raw_parts_mut(
+            ptr.as_ptr().byte_add(pdu_payload_start),
+            self.max_len - pdu_payload_start,
+        )
     }
 
     unsafe fn ethernet_frame(&self) -> EthernetFrame<&[u8]> {
-        let ptr = FrameElement::<0>::ethernet_ptr(self.frame);
+        let ptr = FrameElement::<0>::ptr(self.frame);
 
-        EthernetFrame::new_unchecked(core::slice::from_raw_parts(
-            ptr.as_ptr(),
-            Self::ethernet_buf_len(&self.frame().flags),
-        ))
+        EthernetFrame::new_unchecked(core::slice::from_raw_parts(ptr.as_ptr(), self.max_len))
     }
 
     pub(crate) fn release_pdu_claims(&self) {
