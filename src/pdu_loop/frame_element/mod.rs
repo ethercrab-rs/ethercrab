@@ -8,6 +8,7 @@ use crate::{
 };
 use atomic_waker::AtomicWaker;
 use core::{
+    cell::Cell,
     fmt::Debug,
     marker::PhantomData,
     ptr::{addr_of, addr_of_mut, NonNull},
@@ -52,7 +53,94 @@ pub enum FrameState {
     RxProcessing = 7,
 }
 
-// TODO: Can we delete this and just use `PduHeader`?
+#[derive(Debug)]
+pub struct PduMarker {
+    /// Ethernet frame index (`u8`) plus marker to indicate if this PDU is in flight (uses `u16`
+    /// high bits).
+    ///
+    /// The marker value is defined by [`PDU_UNUSED_SENTINEL`].
+    frame_index: AtomicU16,
+
+    // NOTE: Not keeping PDU index as this is implicit to the PDU -> frame mapping array. No sense
+    // in duplicating information.
+    inner: Cell<PduMarkerInner>,
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct PduMarkerInner {
+    // Keep so we can check received PDU against this one
+    pub command: Command,
+    // Keep so we can check received PDU against this one
+    pub flags: PduFlags,
+    // Always sent as zero plus we never check or use it currently
+    // pub irq: u16,
+    // Sent working counter is always zero, and the received WKC is checked outside the PDU loop
+    // pub working_counter: u16,
+}
+
+impl PduMarker {
+    /// Try to reserve this PDU for use in a TX/RX.
+    ///
+    /// If the given index is already reserved, an error will be returned.
+    pub fn reserve(
+        &self,
+        frame_idx: u8,
+        command: Command,
+        flags: PduFlags,
+    ) -> Result<&Self, PduError> {
+        // Try to reserve the frame by switching the flag state from unused to the frame
+        if let Err(bad_state) = self.frame_index.compare_exchange(
+            PDU_UNUSED_SENTINEL,
+            u16::from(frame_idx),
+            Ordering::Acquire,
+            Ordering::Relaxed,
+        ) {
+            fmt::error!(
+                "Bad PDU marker state: {}, expecting sentinel {}",
+                bad_state,
+                PDU_UNUSED_SENTINEL
+            );
+
+            // TODO: Maybe a unique error variant here?
+            return Err(PduError::InvalidFrameState);
+        }
+
+        self.inner.replace(PduMarkerInner { command, flags });
+
+        Ok(self)
+    }
+
+    pub fn frame_index(&self) -> u8 {
+        let raw = self.frame_index.load(Ordering::Relaxed);
+
+        assert_ne!(raw, PDU_UNUSED_SENTINEL);
+
+        raw as u8
+    }
+
+    pub fn init(&self) {
+        assert!(self
+            .frame_index
+            .compare_exchange(0, PDU_UNUSED_SENTINEL, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok());
+    }
+
+    /// Reset this marker to unused if it belongs to the given frame index.
+    ///
+    /// This method is a no-op if the frame indices don't match.
+    fn release(&self, frame_index: u16) {
+        self.frame_index
+            .compare_exchange(
+                frame_index,
+                PDU_UNUSED_SENTINEL,
+                Ordering::Release,
+                Ordering::Relaxed,
+            )
+            .ok();
+    }
+}
+
+// DELETEME
 #[derive(Debug, Default)]
 pub struct PduFrame {
     pub index: u8,
@@ -221,7 +309,7 @@ pub struct FrameBox<'sto> {
     // NOTE: Only pub for tests
     pub(in crate::pdu_loop) frame: NonNull<FrameElement<0>>,
     _lifetime: PhantomData<&'sto mut FrameElement<0>>,
-    pdu_states: &'sto [AtomicU16],
+    pdu_states: &'sto [PduMarker],
 }
 
 impl<'sto> Debug for FrameBox<'sto> {
@@ -242,7 +330,7 @@ impl<'sto> FrameBox<'sto> {
     /// Wrap a [`FrameElement`] pointer in a `FrameBox` without modifying the underlying data.
     pub(crate) fn new(
         frame: NonNull<FrameElement<0>>,
-        pdu_states: &'sto [AtomicU16],
+        pdu_states: &'sto [PduMarker],
     ) -> FrameBox<'sto> {
         Self {
             frame,
@@ -255,7 +343,7 @@ impl<'sto> FrameBox<'sto> {
     /// well as zero out data payload.
     pub(crate) fn init(
         frame: NonNull<FrameElement<0>>,
-        pdu_states: &'sto [AtomicU16],
+        pdu_states: &'sto [PduMarker],
         command: Command,
         pdu_idx: u8,
         data_length: u16,
@@ -387,14 +475,7 @@ impl<'sto> FrameBox<'sto> {
         fmt::trace!("Releasing PDUs from frame index {}", frame_index);
 
         for state in self.pdu_states {
-            state
-                .compare_exchange(
-                    frame_index,
-                    PDU_UNUSED_SENTINEL,
-                    Ordering::Release,
-                    Ordering::Relaxed,
-                )
-                .ok();
+            state.release(frame_index);
         }
     }
 }

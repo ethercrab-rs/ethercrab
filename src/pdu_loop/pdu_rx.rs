@@ -77,14 +77,7 @@ impl<'sto> PduRx<'sto> {
         // PDU has its own EtherCAT index. This needs mapping back to the original frame.
         // TODO: Put this in a method that checks for sentinel. Should also take a `&PduHeader` for
         // more type safety.
-        let frame_index = {
-            let value = self.storage.pdu_states[usize::from(pdu_header.index)]
-                .load(core::sync::atomic::Ordering::Acquire);
-
-            assert_ne!(value, PDU_UNUSED_SENTINEL, "Desired PDU marked as unused");
-
-            value as u8
-        };
+        let frame_index = self.storage.pdu_states[usize::from(pdu_header.index)].frame_index();
 
         fmt::trace!("Received frame index {}", frame_index);
 

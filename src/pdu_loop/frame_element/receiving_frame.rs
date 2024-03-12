@@ -1,4 +1,4 @@
-use super::{received_frame::ReceivedFrame, FrameBox};
+use super::{received_frame::ReceivedFrame, FrameBox, PduMarker};
 use crate::{
     error::{Error, PduError},
     fmt,
@@ -11,7 +11,6 @@ use crate::{
 use core::{
     future::Future,
     ptr::{addr_of_mut, NonNull},
-    sync::atomic::AtomicU16,
     task::Poll,
 };
 
@@ -21,7 +20,7 @@ use core::{
 #[derive(Debug)]
 pub struct ReceivingFrame<'sto> {
     pub inner: FrameBox<'sto>,
-    pub pdu_states: &'sto [AtomicU16],
+    pub pdu_states: &'sto [PduMarker],
 }
 
 impl<'sto> ReceivingFrame<'sto> {

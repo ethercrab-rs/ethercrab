@@ -1,4 +1,4 @@
-use super::{pdu_rx::PduRx, pdu_tx::PduTx, PDU_UNUSED_SENTINEL};
+use super::{frame_element::PduMarker, pdu_rx::PduRx, pdu_tx::PduTx, PDU_UNUSED_SENTINEL};
 use crate::{
     command::Command,
     error::{Error, PduError},
@@ -30,7 +30,8 @@ const MIN_DATA: usize = FrameBox::ethernet_buf_len(&PduFlags::const_default());
 /// The number of storage elements `N` must be a power of 2.
 pub struct PduStorage<const N: usize, const DATA: usize> {
     frames: UnsafeCell<MaybeUninit<[FrameElement<DATA>; N]>>,
-    pdu_states: [AtomicU16; PDU_SLOTS],
+    /// Maps PDUs to the frame that is holding their TX/RX data.
+    pdu_states: [PduMarker; PDU_SLOTS],
     frame_idx: AtomicU8,
     pdu_idx: AtomicU8,
     is_split: AtomicBool,
@@ -81,11 +82,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
         // MSRV: When `array::from_fn` is const-stabilised
         // let pdu_states = array::from_fn(|_| AtomicU16::new(PDU_UNUSED_SENTINEL))
         // SAFETY: `AtomicU16` has the same underlying representation as `u16`
-        let pdu_states = unsafe {
-            core::mem::transmute::<[u16; PDU_SLOTS], [AtomicU16; PDU_SLOTS]>(
-                [PDU_UNUSED_SENTINEL; PDU_SLOTS],
-            )
-        };
+        let pdu_states = unsafe { MaybeUninit::zeroed().assume_init() };
 
         Self {
             frames,
@@ -119,6 +116,9 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     }
 
     fn as_ref(&self) -> PduStorageRef {
+        // Initialise all PDU markers as available
+        self.pdu_states.iter().for_each(|marker| marker.init());
+
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             num_frames: N,
@@ -139,7 +139,7 @@ pub(in crate::pdu_loop) struct PduStorageRef<'sto> {
     pub frame_data_len: usize,
     frame_idx: &'sto AtomicU8,
     pdu_idx: &'sto AtomicU8,
-    pub pdu_states: &'sto [AtomicU16],
+    pub pdu_states: &'sto [PduMarker],
     pub tx_waker: &'sto AtomicWaker,
     _lifetime: PhantomData<&'sto ()>,
 }
@@ -198,12 +198,8 @@ impl<'sto> PduStorageRef<'sto> {
 
         // Establish mapping between this PDU index and the Ethernet frame it's being put in
         self.pdu_states[usize::from(pdu_idx)]
-            .compare_exchange(
-                PDU_UNUSED_SENTINEL,
-                u16::from(frame_idx),
-                Ordering::Acquire,
-                Ordering::Relaxed,
-            )
+            // TODO: More follows for multiple frames
+            .reserve(frame_idx, command, PduFlags::with_len(data_length))
             // TODO: Better error to explain that the requested PDU is already in flight
             .expect("In use!");
 

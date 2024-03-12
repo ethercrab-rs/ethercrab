@@ -27,6 +27,10 @@ pub use frame_header::EthercatFrameHeader;
 #[cfg(feature = "__internals")]
 pub use pdu_header::PduHeader;
 
+/// Unused PDU marker.
+///
+/// The value this is set to should be larger than `u8::MAX` to ensure no valid frame index can
+/// equal it.
 const PDU_UNUSED_SENTINEL: u16 = u16::MAX;
 
 pub type PduResponse<T> = (T, u16);
