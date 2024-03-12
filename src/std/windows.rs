@@ -5,7 +5,6 @@ use crate::{
     pdu_loop::{PduRx, PduTx},
 };
 use core::future::Future;
-use embassy_futures::select;
 use pnet_datalink::{self, channel, Channel, DataLinkReceiver, DataLinkSender};
 use smoltcp::wire::EthernetFrame;
 use std::{thread, time::SystemTime};
@@ -58,75 +57,77 @@ pub fn tx_rx_task<'sto>(
         let tx_task = async {
             loop {
                 while let Some(frame) = pdu_tx.next_sendable_frame() {
-                    frame
-                        .send_blocking(|frame_bytes| {
-                            tx.send_to(frame_bytes, None)
-                                .ok_or(Error::SendFrame)?
-                                .map_err(|e| {
-                                    log::error!("Failed to send packet: {e}");
+                    let idx = frame.index();
 
-                                    Error::SendFrame
-                                })?;
+                    frame.send_blocking(|frame_bytes| {
+                        log::trace!("Send frame {:#04x}, {} bytes", idx, frame_bytes.len());
 
-                            Ok(frame_bytes.len())
-                        })
-                        .map_err(std::io::Error::other)?;
+                        tx.send_to(frame_bytes, None)
+                            .ok_or(Error::SendFrame)?
+                            .map_err(|e| {
+                                log::error!("Failed to send packet: {}", e);
+
+                                Error::SendFrame
+                            })?;
+
+                        Ok(frame_bytes.len())
+                    })?;
                 }
 
                 futures_lite::future::yield_now().await;
             }
 
             #[allow(unreachable_code)]
-            Ok::<(), std::io::Error>(())
+            Ok::<(), Error>(())
         };
 
         let (receive_frame_tx, receive_frame_rx) =
-            async_channel::unbounded::<Result<Vec<u8>, std::io::Error>>();
+            async_channel::unbounded::<Result<Vec<u8>, Error>>();
 
-        let _rx_thread = thread::scope(|s| {
-            s.spawn(move || {
-                let mut frame_buf: Vec<u8> = Vec::new();
+        thread::spawn(move || {
+            let mut frame_buf: Vec<u8> = Vec::new();
 
-                loop {
-                    match rx.next() {
-                        Ok(ethernet_frame) => {
-                            match EthernetFrame::new_unchecked(ethernet_frame).check_len() {
-                                // We got a full frame
-                                Ok(_) => {
-                                    if !frame_buf.is_empty() {
-                                        log::warn!("{} existing frame bytes", frame_buf.len());
-                                    }
-
-                                    frame_buf.extend_from_slice(ethernet_frame);
+            loop {
+                match rx.next() {
+                    Ok(ethernet_frame) => {
+                        match EthernetFrame::new_unchecked(ethernet_frame).check_len() {
+                            // We got a full frame
+                            Ok(_) => {
+                                if !frame_buf.is_empty() {
+                                    log::warn!("{} existing frame bytes", frame_buf.len());
                                 }
-                                // Truncated frame - try adding them together
-                                Err(_) => {
-                                    log::warn!("Truncated frame: len {}", ethernet_frame.len());
 
-                                    frame_buf.extend_from_slice(ethernet_frame);
+                                frame_buf.extend_from_slice(ethernet_frame);
+                            }
+                            // Truncated frame - try adding them together
+                            Err(_) => {
+                                log::warn!("Truncated frame: len {}", ethernet_frame.len());
 
-                                    continue;
-                                }
-                            };
+                                frame_buf.extend_from_slice(ethernet_frame);
 
-                            receive_frame_tx
-                                .send_blocking(Ok(frame_buf.clone()))
-                                .expect("Channel full or closed");
+                                continue;
+                            }
+                        };
 
-                            frame_buf.truncate(0);
-                        }
-                        Err(e) => {
-                            log::error!("An error occurred while receiving frame bytes: {}", e);
+                        receive_frame_tx
+                            .send_blocking(Ok(frame_buf.clone()))
+                            .expect("Channel full or closed");
 
-                            receive_frame_tx.send_blocking(Err(e)).ok();
-
-                            break;
-                        }
+                        frame_buf.truncate(0);
                     }
+                    Err(e) => {
+                        log::error!("An error occurred while receiving frame bytes: {}", e);
 
-                    std::thread::yield_now();
+                        receive_frame_tx
+                            .send_blocking(Err(Error::ReceiveFrame))
+                            .ok();
+
+                        break;
+                    }
                 }
-            });
+
+                std::thread::yield_now();
+            }
         });
 
         // // TODO: Unwraps
@@ -187,16 +188,16 @@ pub fn tx_rx_task<'sto>(
                         frame_buf.len()
                     );
 
-                    std::io::Error::other(e)
+                    e
                 })?;
             }
 
-            Result::<(), std::io::Error>::Ok(())
+            Result::<(), Error>::Ok(())
         };
 
-        select::select(tx_task, rx_task).await;
-
-        Ok(())
+        futures_lite::future::try_zip(tx_task, rx_task)
+            .await
+            .map(|_| ())
     };
 
     Ok(task)
