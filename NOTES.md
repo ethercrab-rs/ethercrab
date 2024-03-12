@@ -1,3 +1,77 @@
+# Multiple PDUs per frame (again)
+
+- One waker per frame
+- A frame is received from the network
+  - Multiple PDUs in the frame
+  - Write their responses back into the buffer in a loop
+  - When this is all done, all PDUs are ready to be used
+  - Wait on the FRAME, not any PDU. Should be pretty much the same code as today
+- This can be a safe but fragile API as it's just internal
+- Submit a PDU with (data, len override, more follows, etc whatever)
+
+  - Get back a range into the response frame to drag the data out of
+  - Range can also be used to get wkc (just `end.. (end+2)`).
+
+  ```rust
+  let mut frame = pdu_loop.allocate_frame();
+
+  let sub1 = frame.submit(Command::FRMW, 0u64, None, true);
+  let sub2 = frame.submit(Command::LRW, &pdi, None, false);
+
+  let result = frame.mark_sent().await;
+
+  let res1 = result.take(sub1);
+  let res2 = result.take(sub2);
+  ```
+
+- Don't need to store a refcount. If you want the frame data back you gotta `take()` it while
+  `result` is still around.
+
+- Same problem as before: multiple PDUs within the frame contain the index, but the receiving frame
+  itself (which holds the waker) has no way of matching up what was sent. This means that even with
+  a single waker, this is hard to fix.
+  - One possible solution would be to store a sum/hash/`Range<>` of the indices in the PDUs and
+    match against that, but that requires parsing the entire frame first.
+- Another same problem as before is making sure we only have one of each PDU index in flight.
+
+  Some solutions:
+
+  1. Keep an array of PDU statuses that index back to the in-flight frame.
+
+     - A map, essentially, where array index is PDU index, and the value in that cell is the frame
+       index
+     - Don't need to store anything else because we're staying with the single future per frame
+       thing
+     - Types
+       - `[u8; 256]`? How do we represent "available" state?
+       - `[u16; 256]`? A bit wasteful but we have a whole byte to play with for state bits. Only 512
+         bytes or a third the nomal MTU so not awful tbh...
+       - `[AtomicU16; 256]` for thread safety. Don't have to mess around with `mut`. `u16::MAX` can
+         be "not occupied" sentinel.
+     - When we try to reserve an index in `CreatedFrame::submit()`, if its slot is occupied, error
+       out - stuff is either too small or too fast.
+     - When a frame is received, we parse the first PDU header, look its index up in the array, and
+       match that through to the frame index, then `claim_receiving`.
+       - We should `assert` every PDU in that same frame after has the same frame index because it's
+         a logic bug if it isn't, but in prod we can assume they're the same.
+       - Can't have multiple receiving claims either, so it's ok to assume that all PDUs have the
+         same frame index.
+     - What happens to the index mappings when the backing frame is dropped due to
+       error/timeout/finished with result?
+       - Keep the frame's index in the `FrameElement`/`FrameBox`/whatever
+       - Loop through array, do a `compare_exchange(u16::from(this_frame.index), u16::MAX).ok()`. An
+         error means it's not our PDU, success means yay reset.
+
+  2. For the first PDU pushed into the frame, store its index in the
+     `FrameElement`/`FrameBox`/whatever. When parsing the frame back, we can match up based on that
+     expected index.
+
+     - Store command too for tighter matching?
+     - No way to check if index is already in flight :(
+       - Also no way to free them all on drop. I think solution 1. might have to be the way to go
+       - Actually what about a tail counter? Eugh then I have to do overflowy maths and stuff. Maybe
+         I cba.
+
 # Multi-frame design
 
 - Storage: Change from a list of PDUs to a list of Ethernet frames.
