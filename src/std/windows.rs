@@ -130,53 +130,6 @@ pub fn tx_rx_task<'sto>(
             }
         });
 
-        // // TODO: Unwraps
-        // let rx_task = blocking::unblock(move || {
-        //     let mut frame_buf: Vec<u8> = Vec::new();
-
-        //     loop {
-        //         match rx.next() {
-        //             Ok(ethernet_frame) => {
-        //                 match EthernetFrame::new_unchecked(ethernet_frame).check_len() {
-        //                     // We got a full frame
-        //                     Ok(_) => {
-        //                         if !frame_buf.is_empty() {
-        //                             log::warn!("{} existing frame bytes", frame_buf.len());
-        //                         }
-
-        //                         frame_buf.extend_from_slice(ethernet_frame);
-        //                     }
-        //                     // Truncated frame - try adding them together
-        //                     Err(_) => {
-        //                         log::warn!("Truncated frame: len {}", ethernet_frame.len());
-
-        //                         frame_buf.extend_from_slice(ethernet_frame);
-
-        //                         continue;
-        //                     }
-        //                 };
-
-        //                 pdu_rx
-        //                     .receive_frame(&frame_buf)
-        //                     .map_err(|e| {
-        //                         dbg!(frame_buf.len());
-
-        //                         e
-        //                     })
-        //                     .expect("RX");
-
-        //                 frame_buf.truncate(0);
-        //             }
-        //             Err(e) => {
-        //                 // If an error occurs, we can handle it here
-        //                 panic!("An error occurred while reading: {e}");
-        //             }
-        //         }
-
-        //         std::thread::yield_now();
-        //     }
-        // });
-
         let rx_task = async {
             while let Ok(frame_buf) = receive_frame_rx.recv().await {
                 let frame_buf = frame_buf?;
