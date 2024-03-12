@@ -6,6 +6,8 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.3.7] - 2024-03-12
+
 - [#183](https://github.com/ethercrab-rs/ethercrab/pull/183) Relax `'static` bound for `tx_rx_task`
   on Windows.
 
@@ -255,8 +257,9 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.7...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...HEAD
+[0.3.7]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.3...v0.3.4
