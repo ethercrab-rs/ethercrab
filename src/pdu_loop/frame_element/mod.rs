@@ -52,6 +52,7 @@ pub enum FrameState {
     RxProcessing = 7,
 }
 
+// TODO: Can we delete this and just use `PduHeader`?
 #[derive(Debug, Default)]
 pub struct PduFrame {
     pub index: u8,
@@ -59,8 +60,6 @@ pub struct PduFrame {
     pub flags: PduFlags,
     pub irq: u16,
     pub working_counter: u16,
-
-    pub waker: AtomicWaker,
 }
 
 impl PduFrame {
@@ -101,6 +100,10 @@ pub struct FrameElement<const N: usize> {
     /// Ethernet frame index. Has nothing to do with PDU header index field.
     pub index: u8,
     status: AtomicFrameState,
+    pub waker: AtomicWaker,
+
+    // MUST be the last element otherwise pointer arithmetic doesn't work for
+    // `NonNull<FrameElement<0>>`.
     pub ethernet_frame: [u8; N],
 }
 
@@ -111,6 +114,7 @@ impl<const N: usize> Default for FrameElement<N> {
             status: AtomicFrameState::new(FrameState::None),
             ethernet_frame: [0; N],
             index: 0,
+            waker: AtomicWaker::default(),
         }
     }
 }
@@ -253,7 +257,7 @@ impl<'sto> FrameBox<'sto> {
         frame: NonNull<FrameElement<0>>,
         pdu_states: &'sto [AtomicU16],
         command: Command,
-        idx_u8: u8,
+        pdu_idx: u8,
         data_length: u16,
         max_len: usize,
     ) -> Result<FrameBox<'sto>, Error> {
@@ -263,13 +267,14 @@ impl<'sto> FrameBox<'sto> {
         // buffer ready for read or write.
         unsafe {
             addr_of_mut!((*frame.as_ptr()).frame).write(PduFrame {
-                index: idx_u8,
-                waker: AtomicWaker::new(),
+                index: pdu_idx,
                 command,
                 flags,
                 irq: 0,
                 working_counter: 0,
             });
+
+            addr_of_mut!((*frame.as_ptr()).waker).write(AtomicWaker::new());
         }
 
         // Only single PDU for now
@@ -300,7 +305,7 @@ impl<'sto> FrameBox<'sto> {
 
         // PDU follows. Only supports one PDU per EtherCAT frame for now.
         let buf = write_packed(command.code(), buf);
-        let buf = write_packed(idx_u8, buf);
+        let buf = write_packed(pdu_idx, buf);
         let buf = write_packed(command, buf);
         let buf = write_packed(flags, buf);
         // IRQ
@@ -316,11 +321,11 @@ impl<'sto> FrameBox<'sto> {
     }
 
     unsafe fn replace_waker(&self, waker: &Waker) {
-        (*addr_of!((*self.frame.as_ptr()).frame.waker)).register(waker);
+        (*addr_of!((*self.frame.as_ptr()).waker)).register(waker);
     }
 
     unsafe fn wake(&self) -> Result<(), ()> {
-        if let Some(waker) = (*addr_of!((*self.frame.as_ptr()).frame.waker)).take() {
+        if let Some(waker) = (*addr_of!((*self.frame.as_ptr()).waker)).take() {
             waker.wake();
 
             Ok(())
