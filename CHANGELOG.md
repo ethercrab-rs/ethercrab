@@ -74,6 +74,8 @@ An EtherCAT master written in Rust.
   `AlStatusCode::ApplicationControllerAvailable`
 - [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) CoE errors are not reported correctly
   from `sdo_read` and `sdo_write`.
+- [#183](https://github.com/ethercrab-rs/ethercrab/pull/183) Relax `'static` bound for `tx_rx_task`
+  on Windows.
 
 ### Removed
 
