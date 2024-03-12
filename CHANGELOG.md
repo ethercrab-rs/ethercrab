@@ -74,8 +74,6 @@ An EtherCAT master written in Rust.
   `AlStatusCode::ApplicationControllerAvailable`
 - [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) CoE errors are not reported correctly
   from `sdo_read` and `sdo_write`.
-- [#183](https://github.com/ethercrab-rs/ethercrab/pull/183) Relax `'static` bound for `tx_rx_task`
-  on Windows.
 
 ### Removed
 
@@ -84,6 +82,13 @@ An EtherCAT master written in Rust.
   instead.
 - **(breaking)** [#181](https://github.com/ethercrab-rs/ethercrab/pull/181) Remove async
   `SendableFrame::send`. Use `SendableFrame::send_blocking` instead.
+
+## [0.3.7] - 2024-03-12
+
+### Fixed
+
+- [#183](https://github.com/ethercrab-rs/ethercrab/pull/183) Relax `'static` bound for `tx_rx_task`
+  on Windows.
 
 ## [0.3.6] - 2024-02-14
 
@@ -333,6 +338,7 @@ An EtherCAT master written in Rust.
 <!-- next-url -->
 
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...HEAD
+[0.3.7]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.3...v0.3.4
