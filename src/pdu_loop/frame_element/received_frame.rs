@@ -3,7 +3,7 @@ use crate::{
     fmt,
     pdu_loop::{frame_element::FrameState, PduResponse},
 };
-use core::{marker::PhantomData, ops::Deref, ptr::NonNull, sync::atomic::AtomicU16};
+use core::{marker::PhantomData, ops::Deref, ptr::NonNull};
 
 /// A frame element where response data has been received from the EtherCAT network.
 ///
@@ -12,7 +12,6 @@ use core::{marker::PhantomData, ops::Deref, ptr::NonNull, sync::atomic::AtomicU1
 #[derive(Debug)]
 pub struct ReceivedFrame<'sto> {
     pub(in crate::pdu_loop::frame_element) inner: FrameBox<'sto>,
-    pub(in crate::pdu_loop::frame_element) pdu_states: &'sto [AtomicU16],
 }
 
 impl<'sto> ReceivedFrame<'sto> {

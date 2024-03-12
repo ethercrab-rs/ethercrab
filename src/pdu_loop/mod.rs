@@ -399,7 +399,7 @@ mod tests {
                 0x88, 0xa4, // EtherCAT ethertype
                 0x0e, 0x10, // EtherCAT frame header: type PDU, length 2 (plus header)
                 0x05, // Command: FPWR
-                0x00, // Frame index 0
+                0x01, // Frame index 1 (first dropped frame used up index 0)
                 0x89, 0x67, // Slave address,
                 0x34, 0x12, // Register address
                 0x02, 0x00, // Flags, 2 byte length

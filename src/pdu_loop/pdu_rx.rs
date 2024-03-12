@@ -1,6 +1,6 @@
 use super::storage::PduStorageRef;
 use crate::{
-    error::{Error, PduError, PduValidationError},
+    error::{Error, PduError},
     fmt,
     pdu_loop::{frame_header::EthercatFrameHeader, pdu_header::PduHeader, PDU_UNUSED_SENTINEL},
     ETHERCAT_ETHERTYPE, MASTER_ADDR,

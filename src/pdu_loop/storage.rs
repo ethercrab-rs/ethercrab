@@ -216,10 +216,7 @@ impl<'sto> PduStorageRef<'sto> {
             self.frame_data_len,
         )?;
 
-        Ok(CreatedFrame {
-            inner,
-            pdu_states: &self.pdu_states,
-        })
+        Ok(CreatedFrame { inner })
     }
 
     /// Updates state from SENDING -> RX_BUSY

@@ -1,6 +1,5 @@
 use super::{received_frame::ReceivedFrame, FrameBox};
 use crate::{
-    command::Command,
     error::{Error, PduError},
     fmt,
     pdu_loop::{
@@ -123,15 +122,10 @@ impl<'sto> ReceivingFrame<'sto> {
     pub fn index(&self) -> u8 {
         unsafe { self.inner.frame() }.index
     }
-
-    pub fn command(&self) -> Command {
-        unsafe { self.inner.frame() }.command
-    }
 }
 
 pub struct ReceiveFrameFut<'sto> {
     pub(in crate::pdu_loop::frame_element) frame: Option<FrameBox<'sto>>,
-    pub(in crate::pdu_loop::frame_element) pdu_states: &'sto [AtomicU16],
 }
 
 // SAFETY: This unsafe impl is required due to `FrameBox` containing a `NonNull`, however this impl
@@ -172,10 +166,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
             Ok(_frame_element) => {
                 fmt::trace!("frame index {} is ready", frame_idx);
 
-                return Poll::Ready(Ok(ReceivedFrame {
-                    inner: rxin,
-                    pdu_states: self.pdu_states,
-                }));
+                return Poll::Ready(Ok(ReceivedFrame { inner: rxin }));
             }
             Err(e) => e,
         };
