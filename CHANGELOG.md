@@ -8,6 +8,8 @@ An EtherCAT master written in Rust.
 
 ## [0.3.7] - 2024-03-12
 
+### Fixed
+
 - [#183](https://github.com/ethercrab-rs/ethercrab/pull/183) Relax `'static` bound for `tx_rx_task`
   on Windows.
 
