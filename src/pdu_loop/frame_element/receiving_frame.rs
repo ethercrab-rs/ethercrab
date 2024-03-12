@@ -12,6 +12,7 @@ use crate::{
 use core::{
     future::Future,
     ptr::{addr_of_mut, NonNull},
+    sync::atomic::AtomicU16,
     task::Poll,
 };
 
@@ -21,6 +22,7 @@ use core::{
 #[derive(Debug)]
 pub struct ReceivingFrame<'sto> {
     pub inner: FrameBox<'sto>,
+    pub pdu_states: &'sto [AtomicU16],
 }
 
 impl<'sto> ReceivingFrame<'sto> {
@@ -129,6 +131,7 @@ impl<'sto> ReceivingFrame<'sto> {
 
 pub struct ReceiveFrameFut<'sto> {
     pub(in crate::pdu_loop::frame_element) frame: Option<FrameBox<'sto>>,
+    pub(in crate::pdu_loop::frame_element) pdu_states: &'sto [AtomicU16],
 }
 
 // SAFETY: This unsafe impl is required due to `FrameBox` containing a `NonNull`, however this impl
@@ -158,7 +161,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         unsafe { rxin.replace_waker(cx.waker()) };
 
-        let idx = unsafe { rxin.frame() }.index;
+        let frame_idx = unsafe { rxin.frame_index() };
 
         // RxDone is set by mark_received when the incoming packet has been parsed and stored
         let swappy = unsafe {
@@ -167,14 +170,17 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         let was = match swappy {
             Ok(_frame_element) => {
-                fmt::trace!("frame {:#04x} is ready", idx);
+                fmt::trace!("frame index {} is ready", frame_idx);
 
-                return Poll::Ready(Ok(ReceivedFrame { inner: rxin }));
+                return Poll::Ready(Ok(ReceivedFrame {
+                    inner: rxin,
+                    pdu_states: self.pdu_states,
+                }));
             }
             Err(e) => e,
         };
 
-        fmt::trace!("frame {:#04x} not ready yet ({:?})", idx, was);
+        fmt::trace!("frame index {} not ready yet ({:?})", frame_idx, was);
 
         match was {
             FrameState::Sendable | FrameState::Sending | FrameState::Sent | FrameState::RxBusy => {
@@ -197,6 +203,8 @@ impl<'sto> Drop for ReceiveFrameFut<'sto> {
     fn drop(&mut self) {
         if let Some(r) = self.frame.take() {
             fmt::debug!("Dropping in-flight future, possibly caused by timeout");
+
+            r.release_pdu_claims();
 
             // Make frame available for reuse if this future is dropped.
             unsafe { FrameElement::set_state(r.frame, FrameState::None) };

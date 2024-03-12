@@ -3,7 +3,7 @@ use crate::{
     fmt,
     pdu_loop::{frame_element::FrameState, PduResponse},
 };
-use core::{marker::PhantomData, ops::Deref, ptr::NonNull};
+use core::{marker::PhantomData, ops::Deref, ptr::NonNull, sync::atomic::AtomicU16};
 
 /// A frame element where response data has been received from the EtherCAT network.
 ///
@@ -12,6 +12,7 @@ use core::{marker::PhantomData, ops::Deref, ptr::NonNull};
 #[derive(Debug)]
 pub struct ReceivedFrame<'sto> {
     pub(in crate::pdu_loop::frame_element) inner: FrameBox<'sto>,
+    pub(in crate::pdu_loop::frame_element) pdu_states: &'sto [AtomicU16],
 }
 
 impl<'sto> ReceivedFrame<'sto> {
@@ -61,7 +62,9 @@ impl<'sto> ReceivedFrame<'sto> {
 
 impl<'sto> Drop for ReceivedFrame<'sto> {
     fn drop(&mut self) {
-        fmt::trace!("Drop frame {:#04x}", self.frame().index);
+        fmt::trace!("Drop frame index {}", unsafe { self.inner.frame_index() });
+
+        self.inner.release_pdu_claims();
 
         unsafe {
             // Invariant: the frame can only be in `RxProcessing` at this point, so if this swap

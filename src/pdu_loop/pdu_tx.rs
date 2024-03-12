@@ -26,7 +26,7 @@ impl<'sto> PduTx<'sto> {
             let frame = unsafe { NonNull::new_unchecked(self.storage.frame_at_index(idx)) };
 
             let sending = if let Some(frame) = unsafe { FrameElement::claim_sending(frame) } {
-                SendableFrame::new(FrameBox::new(frame))
+                SendableFrame::new(FrameBox::new(frame, self.storage.pdu_states))
             } else {
                 continue;
             };

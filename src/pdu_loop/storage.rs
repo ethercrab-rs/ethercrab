@@ -1,4 +1,4 @@
-use super::{pdu_rx::PduRx, pdu_tx::PduTx};
+use super::{pdu_rx::PduRx, pdu_tx::PduTx, PDU_UNUSED_SENTINEL};
 use crate::{
     command::Command,
     error::{Error, PduError},
@@ -20,7 +20,6 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU16, AtomicU8, Ordering},
 };
 
-const PDU_UNUSED_SENTINEL: u16 = u16::MAX;
 const PDU_SLOTS: usize = 256;
 /// Smallest frame size with a data payload of 0 length
 const MIN_DATA: usize = FrameBox::ethernet_buf_len(&PduFlags::const_default());
@@ -140,7 +139,7 @@ pub(in crate::pdu_loop) struct PduStorageRef<'sto> {
     pub frame_data_len: usize,
     frame_idx: &'sto AtomicU8,
     pdu_idx: &'sto AtomicU8,
-    pdu_states: &'sto [AtomicU16],
+    pub pdu_states: &'sto [AtomicU16],
     pub tx_waker: &'sto AtomicWaker,
     _lifetime: PhantomData<&'sto ()>,
 }
@@ -171,7 +170,7 @@ impl<'sto> PduStorageRef<'sto> {
             // same frame.
             let frame =
                 unsafe { NonNull::new_unchecked(self.frame_at_index(usize::from(frame_idx))) };
-            let frame = unsafe { FrameElement::claim_created(frame) };
+            let frame = unsafe { FrameElement::claim_created(frame, frame_idx) };
 
             if let Ok(f) = frame {
                 break (f, frame_idx);
@@ -208,26 +207,40 @@ impl<'sto> PduStorageRef<'sto> {
             // TODO: Better error to explain that the requested PDU is already in flight
             .expect("In use!");
 
-        let inner = FrameBox::init(frame, command, pdu_idx, data_length, self.frame_data_len)?;
+        let inner = FrameBox::init(
+            frame,
+            &self.pdu_states,
+            command,
+            pdu_idx,
+            data_length,
+            self.frame_data_len,
+        )?;
 
-        Ok(CreatedFrame { inner })
+        Ok(CreatedFrame {
+            inner,
+            pdu_states: &self.pdu_states,
+        })
     }
 
     /// Updates state from SENDING -> RX_BUSY
-    pub(in crate::pdu_loop) fn claim_receiving(&self, idx: u8) -> Option<ReceivingFrame<'sto>> {
-        let idx = usize::from(idx);
+    pub(in crate::pdu_loop) fn claim_receiving(
+        &self,
+        frame_idx: u8,
+    ) -> Option<ReceivingFrame<'sto>> {
+        let frame_idx = usize::from(frame_idx);
 
-        if idx >= self.num_frames {
+        if frame_idx >= self.num_frames {
             return None;
         }
 
-        fmt::trace!("--> Claim receiving {:#04x}", idx);
+        fmt::trace!("--> Claim receiving frame index {}", frame_idx);
 
-        let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(idx)) };
+        let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(frame_idx)) };
         let frame = unsafe { FrameElement::claim_receiving(frame)? };
 
         Some(ReceivingFrame {
-            inner: FrameBox::new(frame),
+            inner: FrameBox::new(frame, &self.pdu_states),
+            pdu_states: &self.pdu_states,
         })
     }
 

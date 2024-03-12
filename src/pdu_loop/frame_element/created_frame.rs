@@ -1,4 +1,5 @@
 use super::{receiving_frame::ReceiveFrameFut, FrameBox, FrameElement, FrameState};
+use core::sync::atomic::AtomicU16;
 
 /// A frame in a freshly allocated state.
 ///
@@ -7,6 +8,7 @@ use super::{receiving_frame::ReceiveFrameFut, FrameBox, FrameElement, FrameState
 #[derive(Debug)]
 pub struct CreatedFrame<'sto> {
     pub inner: FrameBox<'sto>,
+    pub pdu_states: &'sto [AtomicU16],
 }
 
 impl<'sto> CreatedFrame<'sto> {
@@ -22,6 +24,7 @@ impl<'sto> CreatedFrame<'sto> {
 
         ReceiveFrameFut {
             frame: Some(self.inner),
+            pdu_states: self.pdu_states,
         }
     }
 

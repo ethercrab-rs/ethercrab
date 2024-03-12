@@ -11,12 +11,12 @@ use core::{
     fmt::Debug,
     marker::PhantomData,
     ptr::{addr_of, addr_of_mut, NonNull},
-    sync::atomic::Ordering,
+    sync::atomic::{AtomicU16, Ordering},
     task::Waker,
 };
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
-use super::frame_header::EthercatFrameHeader;
+use super::{frame_header::EthercatFrameHeader, PDU_UNUSED_SENTINEL};
 
 pub mod created_frame;
 pub mod received_frame;
@@ -98,6 +98,8 @@ pub struct FrameElement<const N: usize> {
     /// element.
     // TODO: Subset of fields.
     pub frame: PduFrame,
+    /// Ethernet frame index. Has nothing to do with PDU header index field.
+    pub index: u8,
     status: AtomicFrameState,
     pub ethernet_frame: [u8; N],
 }
@@ -108,6 +110,7 @@ impl<const N: usize> Default for FrameElement<N> {
             frame: Default::default(),
             status: AtomicFrameState::new(FrameState::None),
             ethernet_frame: [0; N],
+            index: 0,
         }
     }
 }
@@ -164,6 +167,7 @@ impl<const N: usize> FrameElement<N> {
     /// currently in the NONE state.
     pub unsafe fn claim_created(
         this: NonNull<FrameElement<N>>,
+        frame_index: u8,
     ) -> Result<NonNull<FrameElement<N>>, PduError> {
         // SAFETY: We atomically ensure the frame is currently available to use which guarantees no
         // other thread could take it from under our feet.
@@ -171,7 +175,7 @@ impl<const N: usize> FrameElement<N> {
         // It is imperative that we check the existing state when claiming a frame as created. It
         // matters slightly less for all other state transitions because once we have a created
         // frame nothing else is able to take it unless it is put back into the `None` state.
-        Self::swap_state(this, FrameState::None, FrameState::Created).map_err(|e| {
+        let this = Self::swap_state(this, FrameState::None, FrameState::Created).map_err(|e| {
             fmt::debug!(
                 "Failed to claim frame: status is {:?}, expected {:?}",
                 e,
@@ -179,7 +183,11 @@ impl<const N: usize> FrameElement<N> {
             );
 
             PduError::SwapState
-        })
+        })?;
+
+        (*addr_of_mut!((*this.as_ptr()).index)) = frame_index;
+
+        Ok(this)
     }
 
     pub unsafe fn claim_sending(
@@ -209,6 +217,7 @@ pub struct FrameBox<'sto> {
     // NOTE: Only pub for tests
     pub(in crate::pdu_loop) frame: NonNull<FrameElement<0>>,
     _lifetime: PhantomData<&'sto mut FrameElement<0>>,
+    pdu_states: &'sto [AtomicU16],
 }
 
 impl<'sto> Debug for FrameBox<'sto> {
@@ -227,9 +236,13 @@ impl<'sto> Debug for FrameBox<'sto> {
 
 impl<'sto> FrameBox<'sto> {
     /// Wrap a [`FrameElement`] pointer in a `FrameBox` without modifying the underlying data.
-    pub(crate) fn new(frame: NonNull<FrameElement<0>>) -> FrameBox<'sto> {
+    pub(crate) fn new(
+        frame: NonNull<FrameElement<0>>,
+        pdu_states: &'sto [AtomicU16],
+    ) -> FrameBox<'sto> {
         Self {
             frame,
+            pdu_states,
             _lifetime: PhantomData,
         }
     }
@@ -238,6 +251,7 @@ impl<'sto> FrameBox<'sto> {
     /// well as zero out data payload.
     pub(crate) fn init(
         frame: NonNull<FrameElement<0>>,
+        pdu_states: &'sto [AtomicU16],
         command: Command,
         idx_u8: u8,
         data_length: u16,
@@ -296,6 +310,7 @@ impl<'sto> FrameBox<'sto> {
 
         Ok(Self {
             frame,
+            pdu_states,
             _lifetime: PhantomData,
         })
     }
@@ -316,6 +331,10 @@ impl<'sto> FrameBox<'sto> {
 
     unsafe fn frame(&self) -> &PduFrame {
         unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
+    }
+
+    unsafe fn frame_index(&self) -> u8 {
+        unsafe { *addr_of!((*self.frame.as_ptr()).index) }
     }
 
     /// Payload length of frame
@@ -355,5 +374,22 @@ impl<'sto> FrameBox<'sto> {
             ptr.as_ptr(),
             Self::ethernet_buf_len(&self.frame().flags),
         ))
+    }
+
+    pub(crate) fn release_pdu_claims(&self) {
+        let frame_index = u16::from(unsafe { self.frame_index() });
+
+        fmt::trace!("Releasing PDUs from frame index {}", frame_index);
+
+        for state in self.pdu_states {
+            state
+                .compare_exchange(
+                    frame_index,
+                    PDU_UNUSED_SENTINEL,
+                    Ordering::Release,
+                    Ordering::Relaxed,
+                )
+                .ok();
+        }
     }
 }

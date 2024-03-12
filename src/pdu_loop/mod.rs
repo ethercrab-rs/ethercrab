@@ -27,6 +27,8 @@ pub use frame_header::EthercatFrameHeader;
 #[cfg(feature = "__internals")]
 pub use pdu_header::PduHeader;
 
+const PDU_UNUSED_SENTINEL: u16 = u16::MAX;
+
 pub type PduResponse<T> = (T, u16);
 
 pub trait CheckWorkingCounter<T> {
