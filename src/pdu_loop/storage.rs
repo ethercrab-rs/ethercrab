@@ -281,8 +281,6 @@ mod tests {
             .push_pdu::<()>(Command::Nop, (), Some(LEN as u16), false)
             .unwrap();
 
-        let frame = frame.finish();
-
         let pdu_start = EthernetFrame::<&[u8]>::header_len()
             + EthercatFrameHeader::header_len()
             + PduHeader::PACKED_LEN;

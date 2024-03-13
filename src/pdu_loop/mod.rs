@@ -122,7 +122,6 @@ mod tests {
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
-    // NOTE: Async required as tokio timers are used internally
     #[test]
     fn timed_out_frame_is_reallocatable() {
         // One 16 byte frame
@@ -176,8 +175,6 @@ mod tests {
         let _handle = frame
             .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
             .expect("Push");
-
-        let frame = frame.finish();
 
         assert_eq!(
             frame.buf(),
@@ -314,8 +311,6 @@ mod tests {
         let _handle = frame
             .push_pdu::<()>(Command::fpwr(0x6789, 0x1234).into(), data, None, false)
             .expect("Push second PDU");
-
-        let frame = frame.finish();
 
         // ---
 

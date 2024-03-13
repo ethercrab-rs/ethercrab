@@ -53,7 +53,6 @@ impl<'sto> ReceivedFrame<'sto> {
         let working_counter =
             u16::unpack_from_slice(&this_pdu[(PduHeader::PACKED_LEN + payload_len)..])?;
 
-        // self.refcount.fetch_add(1, Ordering::Acquire);
         FrameElement::<0>::inc_refcount(self.inner.frame);
 
         if pdu_header.index != handle.pdu_idx {
@@ -84,8 +83,6 @@ impl<'sto> ReceivedFrame<'sto> {
             data_start: payload_ptr,
             len: payload_len,
             frame: self.inner.frame,
-            // frame: &self,
-            // frame: self.inner.clone(),
             pdu_marker: unsafe {
                 let base_ptr = self.inner.pdu_states.as_ptr();
 
@@ -137,7 +134,7 @@ pub struct ReceivedPdu<'sto, T> {
     frame: NonNull<FrameElement<0>>,
     data_start: NonNull<u8>,
     len: usize,
-    pub working_counter: u16,
+    pub(crate) working_counter: u16,
     _ty: PhantomData<T>,
     _storage: PhantomData<&'sto ()>,
     pdu_idx: u8,

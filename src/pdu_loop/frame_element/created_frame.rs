@@ -28,27 +28,17 @@ impl<'sto> CreatedFrame<'sto> {
     ///
     /// This method returns a future that should be fulfilled when a response to the sent frame is
     /// received.
-    pub fn mark_sendable(self) -> ReceiveFrameFut<'sto> {
-        let self_ = self.finish();
-
-        unsafe {
-            FrameElement::set_state(self_.inner.frame, FrameState::Sendable);
-        }
-
-        ReceiveFrameFut {
-            frame: Some(self_.inner),
-        }
-    }
-
-    /// Write EtherCAT header with length based on how much data has been submitted.
-    ///
-    /// No more PDUs can be written once the header has been set.
-    // NOTE: Pub only for tests
-    pub(in crate::pdu_loop) fn finish(mut self) -> Self {
+    pub fn mark_sendable(mut self) -> ReceiveFrameFut<'sto> {
         EthercatFrameHeader::pdu(self.inner.pdu_payload_len() as u16)
             .pack_to_slice_unchecked(unsafe { self.inner.ecat_frame_header_mut() });
 
-        self
+        unsafe {
+            FrameElement::set_state(self.inner.frame, FrameState::Sendable);
+        }
+
+        ReceiveFrameFut {
+            frame: Some(self.inner),
+        }
     }
 
     /// Get entire frame buffer. Only really useful for assertions in tests.

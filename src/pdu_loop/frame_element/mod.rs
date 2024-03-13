@@ -462,10 +462,6 @@ impl<'sto> FrameBox<'sto> {
         unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += len };
     }
 
-    // fn refcount(&self) -> u8 {
-    //     unsafe { &*addr_of!((&*self.frame.as_ptr()).refcount) }.load(Ordering::Acquire)
-    // }
-
     fn reserve_pdu_marker(
         &self,
         frame_index: u8,

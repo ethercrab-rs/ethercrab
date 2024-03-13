@@ -71,33 +71,6 @@ impl<'sto> PduRx<'sto> {
         // `i` now contains the EtherCAT frame payload, consisting of one or more PDUs including
         // their headers and payloads.
 
-        // // Only support a single PDU per frame for now
-        // let pdu_header = PduHeader::unpack_from_slice(i)?;
-
-        // // PDU has its own EtherCAT index. This needs mapping back to the original frame.
-        // // TODO: Put this in a method that checks for sentinel. Should also take a `&PduHeader` for
-        // // more type safety.
-        // let frame_index = self.storage.pdu_states[usize::from(pdu_header.index)].frame_index();
-
-        // fmt::trace!("Received frame index {}", frame_index);
-
-        // let (data, working_counter) = pdu_header.data_wkc(i).map_err(|e| {
-        //     fmt::error!("Could not get frame data/wkc: {}", e);
-
-        //     e
-        // })?;
-
-        // let command = pdu_header.command()?;
-
-        // let PduHeader {
-        //     index: pdu_idx,
-        //     flags,
-        //     irq,
-        //     ..
-        // } = pdu_header;
-
-        // fmt::trace!("--> Received PDU {:#04x}, WKC {}", pdu_idx, working_counter,);
-
         // First two bytes of a PDU header is command code and PDU index.
         let (_command_code, pdu_idx) = <(u8, u8)>::unpack_from_slice(i)?;
 
@@ -118,28 +91,6 @@ impl<'sto> PduRx<'sto> {
             .storage
             .claim_receiving(frame_index)
             .ok_or(PduError::InvalidIndex(frame_index))?;
-
-        // TODO: Validate received PDU against what was sent. (command, PDU index, maybe length?).
-
-        // if frame.index() != index {
-        //     return Err(Error::Pdu(PduError::Validation(
-        //         PduValidationError::IndexMismatch {
-        //             sent: frame.index(),
-        //             received: index,
-        //         },
-        //     )));
-        // }
-
-        // // Check for weird bugs where a slave might return a different command than the one sent for
-        // // this PDU index.
-        // if command.code() != frame.command().code() {
-        //     return Err(Error::Pdu(PduError::Validation(
-        //         PduValidationError::CommandMismatch {
-        //             sent: command,
-        //             received: frame.command(),
-        //         },
-        //     )));
-        // }
 
         let frame_data = frame.buf_mut();
 
