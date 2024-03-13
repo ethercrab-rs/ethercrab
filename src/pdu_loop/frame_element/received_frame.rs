@@ -3,7 +3,6 @@ use crate::{
     error::{Error, PduError},
     fmt,
     pdu_loop::{frame_element::FrameState, pdu_header::PduHeader, PDU_SLOTS},
-    Command,
 };
 use core::{alloc::Layout, cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
@@ -65,13 +64,12 @@ impl<'sto> ReceivedFrame<'sto> {
             return Err(Error::Pdu(PduError::InvalidIndex(pdu_header.index)));
         }
 
-        let response_command =
-            Command::parse_code_data(pdu_header.command_code, pdu_header.command_raw)?;
-
-        if response_command != handle.command {
+        if pdu_header.command_code != handle.command.code() {
             fmt::error!(
-                "PDU {:#04x} response has incorrect command",
-                pdu_header.index
+                "PDU {:#04x} response has incorrect command received {:#04x}, expected {:#04x}",
+                pdu_header.index,
+                pdu_header.command_code,
+                handle.command.code()
             );
 
             return Err(Error::Pdu(PduError::Decode));
