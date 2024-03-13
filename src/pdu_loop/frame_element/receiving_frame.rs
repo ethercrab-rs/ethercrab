@@ -1,4 +1,4 @@
-use super::{received_frame::ReceivedFrame, FrameBox, PduMarker};
+use super::{received_frame::ReceivedFrame, FrameBox};
 use crate::{
     error::{Error, PduError},
     fmt,
@@ -12,7 +12,7 @@ use core::{future::Future, task::Poll};
 #[derive(Debug)]
 pub struct ReceivingFrame<'sto> {
     pub inner: FrameBox<'sto>,
-    pub pdu_states: &'sto [PduMarker],
+    // pub pdu_states: &'sto [PduMarker],
 }
 
 impl<'sto> ReceivingFrame<'sto> {

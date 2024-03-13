@@ -179,7 +179,7 @@ mod tests {
 
         let pdu_idx = AtomicU8::new(0);
 
-        let pdu_states: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut pdu_states: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
         pdu_states[0].init();
 
         let frames = UnsafeCell::new([FrameElement {
@@ -197,7 +197,7 @@ mod tests {
 
         let frame_box = FrameBox::new(
             unsafe { NonNull::new_unchecked(frame_ptr) },
-            &pdu_states,
+            unsafe { NonNull::new_unchecked(pdu_states.as_mut_ptr()) },
             &pdu_idx,
             BUF_LEN,
         );
@@ -221,7 +221,7 @@ mod tests {
 
         let pdu_idx = AtomicU8::new(0);
 
-        let pdu_states: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut pdu_states: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
         pdu_states[0].init();
 
         let frames = UnsafeCell::new([FrameElement {
@@ -239,7 +239,7 @@ mod tests {
 
         let frame_box = FrameBox::new(
             unsafe { NonNull::new_unchecked(frame_ptr) },
-            &pdu_states,
+            unsafe { NonNull::new_unchecked(pdu_states.as_mut_ptr()) },
             &pdu_idx,
             BUF_LEN,
         );

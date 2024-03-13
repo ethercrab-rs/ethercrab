@@ -2,9 +2,9 @@ use super::{created_frame::PduResponseHandle, FrameBox, FrameElement, PduMarker}
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::{frame_element::FrameState, pdu_header::PduHeader},
+    pdu_loop::{frame_element::FrameState, pdu_header::PduHeader, PDU_SLOTS},
 };
-use core::{cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
+use core::{alloc::Layout, cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// A frame element where response data has been received from the EtherCAT network.
@@ -193,10 +193,22 @@ impl<'sto> ReceivedFrame<'sto> {
             // frame: &self,
             // frame: self.inner.clone(),
             pdu_marker: unsafe {
-                #[allow(trivial_casts)]
-                NonNull::new_unchecked(
-                    &self.inner.pdu_states[usize::from(pdu_header.index)] as *const _ as *mut _,
-                )
+                // #[allow(trivial_casts)]
+                // NonNull::new_unchecked(
+                //     &self.inner.pdu_states[usize::from(pdu_header.index)] as *const _ as *mut _,
+                // )
+
+                let base_ptr = self.inner.pdu_states.as_ptr();
+
+                let layout = fmt::unwrap!(Layout::array::<PduMarker>(PDU_SLOTS));
+
+                let stride = layout.size() / PDU_SLOTS;
+
+                let this_marker = base_ptr.byte_add(usize::from(pdu_header.index) * stride);
+
+                NonNull::new_unchecked(this_marker as *mut PduMarker)
+
+                // todo!()
             },
             working_counter,
             _ty: PhantomData,
@@ -351,9 +363,9 @@ impl<'sto, T> Drop for ReceivedPdu<'sto, T> {
     }
 }
 
-// // SAFETY: This is ok because we respect the lifetime of the underlying data by carrying the 'sto
-// // lifetime.
-// unsafe impl<'sto, T> Send for ReceivedPdu<'sto, T> {}
+// SAFETY: This is ok because we respect the lifetime of the underlying data by carrying the 'sto
+// lifetime.
+unsafe impl<'sto, T> Send for ReceivedPdu<'sto, T> {}
 
 impl<'sto, T> Deref for ReceivedPdu<'sto, T> {
     type Target = [u8];

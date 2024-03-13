@@ -25,6 +25,8 @@ pub use pdu_header::PduHeader;
 /// equal it.
 const PDU_UNUSED_SENTINEL: u16 = u16::MAX;
 
+const PDU_SLOTS: usize = 256;
+
 pub type PduResponse<T> = (T, u16);
 
 pub trait CheckWorkingCounter<T> {
@@ -209,17 +211,18 @@ impl<'sto> PduLoop<'sto> {
 
 #[cfg(test)]
 mod tests {
-    use super::{storage::PduStorage, *};
     use crate::{
-        error::PduError,
-        pdu_loop::frame_element::{sendable_frame::SendableFrame, FrameElement, FrameState},
+        error::{Error, PduError},
+        fmt,
+        pdu_loop::frame_element::{
+            created_frame::CreatedFrame, sendable_frame::SendableFrame, FrameElement, FrameState,
+        },
         timer_factory::IntoTimeout,
-        Command, Reads,
+        Command, PduStorage, Reads,
     };
     use core::{future::poll_fn, ops::Deref, pin::pin, task::Poll, time::Duration};
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
-    use tests::frame_element::created_frame::CreatedFrame;
 
     #[tokio::test]
     async fn timed_out_frame_is_reallocatable() {
@@ -309,6 +312,7 @@ mod tests {
 
         let data = [0xaau8, 0xbb, 0xcc, 0xdd];
 
+        // Using poll_fn so we can manually poll the frame future multiple times
         let poller = poll_fn(|ctx| {
             let mut written_packet = Vec::new();
             written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
@@ -377,7 +381,9 @@ mod tests {
             Poll::Ready(())
         });
 
-        smol::block_on(poller);
+        // Using `cassette` otherwise miri complains about a memory leak inside whichever other
+        // `block_on` or `.await` we use.
+        cassette::block_on(poller);
     }
 
     #[test]
@@ -433,147 +439,153 @@ mod tests {
         );
     }
 
-    // #[test]
-    // // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
-    // #[cfg_attr(miri, ignore)]
-    // fn receive_frame() {
-    //     // let _ = env_logger::builder().is_test(true).try_init();
+    #[test]
+    fn receive_frame() {
+        let _ = env_logger::builder().is_test(true).try_init();
 
-    //     let ethernet_packet = [
-    //         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
-    //         0x12, 0x10, 0x10, 0x10, 0x10, 0x10, // Return to master address
-    //         0x88, 0xa4, // EtherCAT ethertype
-    //         0x10, 0x10, // EtherCAT frame header: type PDU, length 4 (plus header)
-    //         0x05, // Command: FPWR
-    //         0x00, // Frame index 0
-    //         0x89, 0x67, // Slave address,
-    //         0x34, 0x12, // Register address
-    //         0x04, 0x00, // Flags, 4 byte length
-    //         0x00, 0x00, // IRQ
-    //         0xdd, 0xcc, 0xbb, 0xaa, // Our payload, LE
-    //         0x00, 0x00, // Working counter
-    //     ];
+        let ethernet_packet = [
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
+            0x12, 0x10, 0x10, 0x10, 0x10, 0x10, // Return to master address
+            0x88, 0xa4, // EtherCAT ethertype
+            0x10, 0x10, // EtherCAT frame header: type PDU, length 4 (plus header)
+            0x05, // Command: FPWR
+            0x00, // Frame index 0
+            0x89, 0x67, // Slave address,
+            0x34, 0x12, // Register address
+            0x04, 0x00, // Flags, 4 byte length
+            0x00, 0x00, // IRQ
+            0xdd, 0xcc, 0xbb, 0xaa, // Our payload, LE
+            0x00, 0x00, // Working counter
+        ];
 
-    //     // 1 frame, up to 128 bytes payload
-    //     let storage = PduStorage::<1, 128>::new();
+        // 1 frame, up to 128 bytes payload
+        let storage = PduStorage::<1, 128>::new();
 
-    //     let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
+        let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
 
-    //     let data = 0xAABBCCDDu32;
-    //     let data_bytes = data.to_le_bytes();
+        let data = 0xAABBCCDDu32;
+        let data_bytes = data.to_le_bytes();
 
-    //     let poller = poll_fn(|ctx| {
-    //         let mut frame_fut = pin!(
-    //             pdu_loop
-    //                 .pdu_send(Command::fpwr(0x6789, 0x1234).into(), &data_bytes, None)
-    //                 .unwrap()
-    //                 .0
-    //         );
+        let poller = poll_fn(|ctx| {
+            let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
-    //         // Poll future up to first await point. This gets the frame ready and marks it as
-    //         // sendable so TX can pick it up, but we don't want to wait for the response so we won't
-    //         // poll it again.
-    //         assert!(
-    //             matches!(frame_fut.as_mut().poll(ctx), Poll::Pending),
-    //             "frame fut should be pending"
-    //         );
+            let handle = frame
+                .push_pdu::<()>(
+                    Command::fpwr(0x6789, 0x1234).into(),
+                    &data_bytes,
+                    None,
+                    false,
+                )
+                .expect("Push PDU");
 
-    //         let frame = tx.next_sendable_frame().expect("need a frame");
+            let mut frame_fut = pin!(frame.mark_sendable());
 
-    //         frame.send_blocking(|bytes| Ok(bytes.len())).expect("send");
+            // Poll future up to first await point. This gets the frame ready and marks it as
+            // sendable so TX can pick it up, but we don't want to wait for the response so we won't
+            // poll it again.
+            assert!(
+                matches!(frame_fut.as_mut().poll(ctx), Poll::Pending),
+                "frame fut should be pending"
+            );
 
-    //         // ---
+            let frame = tx.next_sendable_frame().expect("need a frame");
 
-    //         let result = rx.receive_frame(&ethernet_packet);
+            frame.send_blocking(|bytes| Ok(bytes.len())).expect("send");
 
-    //         assert_eq!(result, Ok(()));
+            // ---
 
-    //         // The frame has received a response at this point so should be ready to get the data
-    //         // from
-    //         match frame_fut.poll(ctx) {
-    //             Poll::Ready(Ok(frame)) => {
-    //                 assert_eq!(frame.data.deref(), &data_bytes);
-    //             }
-    //             Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
-    //             Poll::Pending => panic!("frame future still pending"),
-    //         }
+            let result = rx.receive_frame(&ethernet_packet);
 
-    //         // We should only ever be going through this loop once as the number of individual
-    //         // `poll()` calls is calculated.
-    //         Poll::Ready(())
-    //     });
+            assert_eq!(result, Ok(()));
 
-    //     smol::block_on(poller);
-    // }
+            // The frame has received a response at this point so should be ready to get the data
+            // from
+            match frame_fut.poll(ctx) {
+                Poll::Ready(Ok(frame)) => {
+                    assert_eq!(frame.take(handle).unwrap().deref(), &data_bytes);
+                }
+                Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
+                Poll::Pending => panic!("frame future still pending"),
+            }
 
-    // // Test the whole TX/RX loop with multiple threads
-    // #[tokio::test]
-    // async fn parallel() {
-    //     let _ = env_logger::builder().is_test(true).try_init();
-    //     env_logger::try_init().ok();
+            // We should only ever be going through this loop once as the number of individual
+            // `poll()` calls is calculated.
+            Poll::Ready(())
+        });
 
-    //     static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
-    //     let (mut tx, mut rx, pdu_loop) = STORAGE.try_split().unwrap();
+        cassette::block_on(poller);
+    }
 
-    //     let tx_rx_task = async move {
-    //         let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    // Test the whole TX/RX loop with multiple threads
+    #[tokio::test]
+    async fn parallel() {
+        let _ = env_logger::builder().is_test(true).try_init();
+        env_logger::try_init().ok();
 
-    //         let tx_task = async {
-    //             fmt::info!("Spawn TX task");
+        static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
+        let (mut tx, mut rx, pdu_loop) = STORAGE.try_split().unwrap();
 
-    //             loop {
-    //                 while let Some(frame) = tx.next_sendable_frame() {
-    //                     frame
-    //                         .send_blocking(|bytes| {
-    //                             s.send(bytes.to_vec()).unwrap();
+        let tx_rx_task = async move {
+            let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
-    //                             Ok(bytes.len())
-    //                         })
-    //                         .unwrap();
-    //                 }
+            let tx_task = async {
+                fmt::info!("Spawn TX task");
 
-    //                 futures_lite::future::yield_now().await;
-    //             }
-    //         };
+                loop {
+                    while let Some(frame) = tx.next_sendable_frame() {
+                        frame
+                            .send_blocking(|bytes| {
+                                s.send(bytes.to_vec()).unwrap();
 
-    //         let rx_task = async {
-    //             fmt::info!("Spawn RX task");
+                                Ok(bytes.len())
+                            })
+                            .unwrap();
+                    }
 
-    //             while let Some(ethernet_frame) = r.recv().await {
-    //                 fmt::trace!("RX task received packet");
+                    futures_lite::future::yield_now().await;
+                }
+            };
 
-    //                 // Munge fake sent frame into a fake received frame
-    //                 let ethernet_frame = {
-    //                     let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
-    //                     frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
-    //                     frame.into_inner()
-    //                 };
+            let rx_task = async {
+                fmt::info!("Spawn RX task");
 
-    //                 rx.receive_frame(&ethernet_frame).expect("RX");
-    //             }
-    //         };
+                while let Some(ethernet_frame) = r.recv().await {
+                    fmt::trace!("RX task received packet");
 
-    //         futures_lite::future::race(tx_task, rx_task).await;
-    //     };
+                    // Munge fake sent frame into a fake received frame
+                    let ethernet_frame = {
+                        let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
+                        frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+                        frame.into_inner()
+                    };
 
-    //     tokio::spawn(tx_rx_task);
+                    rx.receive_frame(&ethernet_frame).expect("RX");
+                }
+            };
 
-    //     for i in 0..32 {
-    //         let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
+            futures_lite::future::race(tx_task, rx_task).await;
+        };
 
-    //         fmt::info!("Send PDU {i}");
+        tokio::spawn(tx_rx_task);
 
-    //         let result = pdu_loop
-    //             .pdu_send(Command::fpwr(0x1000, 0x980).into(), data, None)
-    //             .unwrap()
-    //             .0
-    //             .await
-    //             .unwrap()
-    //             .data;
+        for i in 0..32 {
+            let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
 
-    //         assert_eq!(&*result, &data);
-    //     }
+            fmt::info!("Send PDU {i}");
 
-    //     fmt::info!("Sent all PDUs");
-    // }
+            let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
+
+            let handle = frame
+                .push_pdu::<()>(Command::fpwr(0x1000, 0x980).into(), data, None, false)
+                .expect("Push PDU");
+
+            let result = frame.mark_sendable().await.expect("Future");
+
+            let received_data = result.take(handle).expect("Take");
+
+            assert_eq!(&*received_data, &data);
+        }
+
+        fmt::info!("Sent all PDUs");
+    }
 }

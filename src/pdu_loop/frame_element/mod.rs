@@ -3,7 +3,7 @@ use crate::{
     command::Command,
     error::{Error, PduError},
     fmt,
-    pdu_loop::pdu_flags::PduFlags,
+    pdu_loop::{pdu_flags::PduFlags, PDU_SLOTS},
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use atomic_waker::AtomicWaker;
@@ -338,7 +338,7 @@ pub struct FrameBox<'sto> {
     // NOTE: Only pub for tests
     pub(in crate::pdu_loop) frame: NonNull<FrameElement<0>>,
     _lifetime: PhantomData<&'sto mut FrameElement<0>>,
-    pdu_states: &'sto [PduMarker],
+    pdu_states: NonNull<PduMarker>,
     pdu_idx: &'sto AtomicU8,
     max_len: usize,
 }
@@ -361,7 +361,7 @@ impl<'sto> FrameBox<'sto> {
     /// Wrap a [`FrameElement`] pointer in a `FrameBox` without modifying the underlying data.
     pub(crate) fn new(
         frame: NonNull<FrameElement<0>>,
-        pdu_states: &'sto [PduMarker],
+        pdu_states: NonNull<PduMarker>,
         pdu_idx: &'sto AtomicU8,
         max_len: usize,
     ) -> FrameBox<'sto> {
@@ -378,7 +378,7 @@ impl<'sto> FrameBox<'sto> {
     /// well as zero out data payload.
     pub(crate) fn init(
         frame: NonNull<FrameElement<0>>,
-        pdu_states: &'sto [PduMarker],
+        pdu_states: NonNull<PduMarker>,
         // command: Command,
         // pdu_idx: u8,
         // data_length: u16,
@@ -527,7 +527,10 @@ impl<'sto> FrameBox<'sto> {
 
         fmt::trace!("Releasing PDUs from frame index {}", frame_index);
 
-        for state in self.pdu_states {
+        let states: &[PduMarker] =
+            unsafe { core::slice::from_raw_parts(self.pdu_states.as_ptr() as *const _, PDU_SLOTS) };
+
+        for state in states {
             state.release_for_frame(frame_index).ok();
         }
     }
@@ -552,7 +555,10 @@ impl<'sto> FrameBox<'sto> {
     ) -> Result<u8, PduError> {
         let pdu_idx = self.next_pdu_idx();
 
-        self.pdu_states[usize::from(pdu_idx)].reserve(frame_index, command, flags)?;
+        let states: &[PduMarker] =
+            unsafe { core::slice::from_raw_parts(self.pdu_states.as_ptr() as *const _, PDU_SLOTS) };
+
+        states[usize::from(pdu_idx)].reserve(frame_index, command, flags)?;
 
         Ok(pdu_idx)
     }

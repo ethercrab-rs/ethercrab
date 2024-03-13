@@ -1,5 +1,6 @@
 use super::{
     frame_element::PduMarker, frame_header::EthercatFrameHeader, pdu_rx::PduRx, pdu_tx::PduTx,
+    PDU_SLOTS,
 };
 use crate::{
     error::{Error, PduError},
@@ -24,7 +25,6 @@ use core::{
 use ethercrab_wire::EtherCrabWireSized;
 use smoltcp::wire::EthernetFrame;
 
-const PDU_SLOTS: usize = 256;
 /// Smallest frame size with a data payload of 0 length
 const MIN_DATA: usize = EthernetFrame::<&[u8]>::buffer_len(
     EthercatFrameHeader::header_len()
@@ -42,7 +42,7 @@ const MIN_DATA: usize = EthernetFrame::<&[u8]>::buffer_len(
 pub struct PduStorage<const N: usize, const DATA: usize> {
     frames: UnsafeCell<MaybeUninit<[FrameElement<DATA>; N]>>,
     /// Maps PDUs to the frame that is holding their TX/RX data.
-    pdu_states: [PduMarker; PDU_SLOTS],
+    pdu_states: UnsafeCell<[PduMarker; PDU_SLOTS]>,
     frame_idx: AtomicU8,
     pdu_idx: AtomicU8,
     is_split: AtomicBool,
@@ -92,8 +92,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 
         // MSRV: When `array::from_fn` is const-stabilised
         // let pdu_states = array::from_fn(|_| AtomicU16::new(PDU_UNUSED_SENTINEL))
-        // SAFETY: `AtomicU16` has the same underlying representation as `u16`
-        let pdu_states = unsafe { MaybeUninit::zeroed().assume_init() };
+        let pdu_states = UnsafeCell::new(unsafe { MaybeUninit::zeroed().assume_init() });
 
         Self {
             frames,
@@ -128,7 +127,8 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 
     fn as_ref(&self) -> PduStorageRef {
         // Initialise all PDU markers as available
-        self.pdu_states.iter().for_each(|marker| marker.init());
+        let markers: &[PduMarker] = unsafe { &*self.pdu_states.get() };
+        markers.iter().for_each(|marker| marker.init());
 
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
@@ -137,7 +137,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             frame_data_len: DATA,
             frame_idx: &self.frame_idx,
             pdu_idx: &self.pdu_idx,
-            pdu_states: &self.pdu_states,
+            pdu_states: unsafe { NonNull::new_unchecked(self.pdu_states.get().cast()) },
             tx_waker: &self.tx_waker,
             _lifetime: PhantomData,
         }
@@ -153,7 +153,7 @@ pub(crate) struct PduStorageRef<'sto> {
     pub frame_data_len: usize,
     frame_idx: &'sto AtomicU8,
     pub pdu_idx: &'sto AtomicU8,
-    pub pdu_states: &'sto [PduMarker],
+    pub pdu_states: NonNull<PduMarker>,
     pub tx_waker: &'sto AtomicWaker,
     _lifetime: PhantomData<&'sto ()>,
 }
@@ -246,7 +246,7 @@ impl<'sto> PduStorageRef<'sto> {
 
         Some(ReceivingFrame {
             inner: FrameBox::new(frame, self.pdu_states, self.pdu_idx, self.frame_data_len),
-            pdu_states: self.pdu_states,
+            // pdu_states: self.pdu_states,
         })
     }
 
@@ -260,6 +260,12 @@ impl<'sto> PduStorageRef<'sto> {
         self.frames
             .as_ptr()
             .byte_add(idx * self.frame_element_stride)
+    }
+
+    pub(crate) unsafe fn marker_at_index(&self, idx: usize) -> &PduMarker {
+        let stride = fmt::unwrap!(Layout::array::<PduMarker>(PDU_SLOTS)).size() / PDU_SLOTS;
+
+        &*self.pdu_states.as_ptr().byte_add(idx * stride)
     }
 }
 

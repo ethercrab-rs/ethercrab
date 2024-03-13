@@ -83,7 +83,6 @@ thread-priority = "0.16.0"
 ta = "0.5.0"
 cassette = "0.2.5"
 
-
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 core_affinity = "0.8.1"
 
