@@ -134,33 +134,33 @@ impl core::fmt::Display for Command {
 
             Command::Read(read) => match read {
                 Reads::Aprd { address, register } => {
-                    write!(f, "APRD(addr {}, reg {})", address, register)
+                    write!(f, "APRD(addr {:#06x}, reg {:#06x})", address, register)
                 }
                 Reads::Fprd { address, register } => {
-                    write!(f, "FPRD(addr {}, reg {})", address, register)
+                    write!(f, "FPRD(addr {:#06x}, reg {:#06x})", address, register)
                 }
                 Reads::Brd { address, register } => {
-                    write!(f, "BRD(addr {}, reg {})", address, register)
+                    write!(f, "BRD(addr {:#06x}, reg {:#06x})", address, register)
                 }
-                Reads::Lrd { address } => write!(f, "LRD(addr {})", address),
+                Reads::Lrd { address } => write!(f, "LRD(addr {:#08x})", address),
                 Reads::Frmw { address, register } => {
-                    write!(f, "FRMW(addr {}, reg {})", address, register)
+                    write!(f, "FRMW(addr {:#06x}, reg {:#06x})", address, register)
                 }
             },
 
             Command::Write(write) => match write {
                 Writes::Bwr { address, register } => {
-                    write!(f, "BWR(addr {}, reg {})", address, register)
+                    write!(f, "BWR(addr {:#06x}, reg {:#06x})", address, register)
                 }
                 Writes::Apwr { address, register } => {
-                    write!(f, "APWR(addr {}, reg {})", address, register)
+                    write!(f, "APWR(addr {:#06x}, reg {:#06x})", address, register)
                 }
                 Writes::Fpwr { address, register } => {
-                    write!(f, "FPWR(addr {}, reg {})", address, register)
+                    write!(f, "FPWR(addr {:#06x}, reg {:#06x})", address, register)
                 }
 
-                Writes::Lwr { address } => write!(f, "LWR(addr {})", address),
-                Writes::Lrw { address } => write!(f, "LRW(addr {})", address),
+                Writes::Lwr { address } => write!(f, "LWR(addr {:#08x})", address),
+                Writes::Lrw { address } => write!(f, "LRW(addr {:#08x})", address),
             },
         }
     }
