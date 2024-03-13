@@ -3,7 +3,7 @@ use core::ops::Deref;
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::{PduResponse, ReceivedPdu},
+    pdu_loop::ReceivedPdu,
     timer_factory::IntoTimeout,
     Client,
 };
@@ -176,7 +176,7 @@ impl WrappedWrite {
         client: &'client Client<'client>,
         value: &'buf mut [u8],
         read_back_len: usize,
-    ) -> Result<PduResponse<&'buf [u8]>, Error> {
+    ) -> Result<(&'buf [u8], u16), Error> {
         assert!(
             value.len() <= client.max_frame_data(),
             "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
