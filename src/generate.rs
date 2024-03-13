@@ -27,8 +27,8 @@ mod tests {
         let mut buf = [0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
         assert_eq!(skip(10, &mut buf), &[10]);
-        // assert_eq!(skip(11, &mut buf), &[]);
-        // assert_eq!(skip(12, &mut buf), &[]);
+        assert_eq!(skip(11, &mut buf), &[]);
+        assert_eq!(skip(12, &mut buf), &[]);
     }
 
     #[test]

@@ -165,22 +165,21 @@ pub struct FrameElement<const N: usize> {
     /// Ethernet frame index. Has nothing to do with PDU header index field.
     frame_index: u8,
     status: AtomicFrameState,
-    pub waker: AtomicWaker,
-    pub pdu_payload_len: usize,
+    waker: AtomicWaker,
+    pdu_payload_len: usize,
     /// The number of PDU handles held by this frame.
     ///
     /// Used to drop the whole frame only when all PDUs have been consumed from it.
-    pub refcount: AtomicU8,
+    refcount: AtomicU8,
 
     // MUST be the last element otherwise pointer arithmetic doesn't work for
     // `NonNull<FrameElement<0>>`.
-    pub ethernet_frame: [u8; N],
+    ethernet_frame: [u8; N],
 }
 
 impl<const N: usize> Default for FrameElement<N> {
     fn default() -> Self {
         Self {
-            // frame: Default::default(),
             status: AtomicFrameState::new(FrameState::None),
             ethernet_frame: [0; N],
             frame_index: 0,
@@ -322,7 +321,7 @@ impl<'sto> Debug for FrameBox<'sto> {
             .field("state", unsafe {
                 &(*addr_of!((*self.frame.as_ptr()).status))
             })
-            .field("frame_index", &unsafe { self.frame_index() })
+            .field("frame_index", &self.frame_index())
             .field("data_hex", &format_args!("{:02x?}", data))
             .finish()
     }
@@ -400,8 +399,8 @@ impl<'sto> FrameBox<'sto> {
         }
     }
 
-    unsafe fn frame_index(&self) -> u8 {
-        unsafe { *addr_of!((*self.frame.as_ptr()).frame_index) }
+    fn frame_index(&self) -> u8 {
+        FrameElement::<0>::frame_index(self.frame)
     }
 
     /// Get EtherCAT frame header buffer.
@@ -443,7 +442,7 @@ impl<'sto> FrameBox<'sto> {
     }
 
     pub(crate) fn release_pdu_claims(&self) {
-        let frame_index = u16::from(unsafe { self.frame_index() });
+        let frame_index = u16::from(self.frame_index());
 
         fmt::trace!("Releasing PDUs from frame index {}", frame_index);
 

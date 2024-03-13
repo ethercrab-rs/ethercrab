@@ -110,9 +110,10 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
         // No PDU results where `take()`n so we have to free the frame here, instead of relying on
         // `ReceivedPdu::drop`.
         if self.unread.get() {
-            fmt::trace!("Frame index {} was untouched, freeing", unsafe {
+            fmt::trace!(
+                "Frame index {} was untouched, freeing",
                 self.inner.frame_index()
-            });
+            );
 
             self.inner.release_pdu_claims();
 

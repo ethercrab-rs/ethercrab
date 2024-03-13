@@ -97,7 +97,7 @@ impl<'sto> ReceivingFrame<'sto> {
 
     /// Ethernet frame index.
     pub fn frame_index(&self) -> u8 {
-        unsafe { self.inner.frame_index() }
+        self.inner.frame_index()
     }
 }
 
@@ -132,7 +132,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         unsafe { rxin.replace_waker(cx.waker()) };
 
-        let frame_idx = unsafe { rxin.frame_index() };
+        let frame_idx = rxin.frame_index();
 
         // RxDone is set by mark_received when the incoming packet has been parsed and stored
         let swappy = unsafe {

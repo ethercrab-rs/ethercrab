@@ -91,11 +91,6 @@ impl<'sto> CreatedFrame<'sto> {
         // Comprises PDU header, body, working counter
         let buf_range = consumed..(consumed + alloc_size);
 
-        // // NOTE: Not using extended length to write payload into. The extended length just reserves
-        // // space for incoming data from e.g. an (OOOOIIII) PDI.
-        // let payload_range = (self.consumed + PduHeader::PACKED_LEN)
-        //     ..(self.consumed + PduHeader::PACKED_LEN + data.packed_len());
-
         // Establish mapping between this PDU index and the Ethernet frame it's being put in
         let pdu_idx = self
             .inner
@@ -104,7 +99,7 @@ impl<'sto> CreatedFrame<'sto> {
         fmt::trace!(
             "Write PDU {:#04x} into frame index {} ({}, {} bytes at {:?})",
             pdu_idx,
-            unsafe { self.inner.frame_index() },
+            self.inner.frame_index(),
             command,
             data_length_usize,
             buf_range
@@ -139,7 +134,7 @@ impl<'sto> CreatedFrame<'sto> {
     }
 
     pub fn frame_index(&self) -> u8 {
-        unsafe { self.inner.frame_index() }
+        self.inner.frame_index()
     }
 }
 
@@ -168,48 +163,6 @@ mod tests {
     use crate::pdu_loop::frame_element::{AtomicFrameState, PduMarker};
     use atomic_waker::AtomicWaker;
     use core::{cell::UnsafeCell, mem::MaybeUninit, ptr::NonNull, sync::atomic::AtomicU8};
-
-    #[test]
-    fn push_single() {
-        let _ = env_logger::builder().is_test(true).try_init();
-
-        const BUF_LEN: usize = 128;
-
-        let pdu_idx = AtomicU8::new(0);
-
-        let mut pdu_states: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
-        pdu_states[0].init();
-
-        let frames = UnsafeCell::new([FrameElement {
-            frame_index: 0xab,
-            status: AtomicFrameState::new(FrameState::Created),
-            waker: AtomicWaker::default(),
-            ethernet_frame: [0u8; BUF_LEN],
-            pdu_payload_len: 0,
-            refcount: AtomicU8::new(0),
-        }]);
-
-        // Only one element, and it's the first one, so we don't have to do any pointer arithmetic -
-        // just point to the beginning of the array.
-        let frame_ptr = frames.get().cast();
-
-        let frame_box = FrameBox::new(
-            unsafe { NonNull::new_unchecked(frame_ptr) },
-            unsafe { NonNull::new_unchecked(pdu_states.as_mut_ptr()) },
-            &pdu_idx,
-            BUF_LEN,
-        );
-
-        let mut created = CreatedFrame::new(frame_box);
-
-        let data = 0xAABBCCDDu32;
-
-        let _handle = created
-            .push_pdu::<u32>(Command::fpwr(0x1000, 0x0918).into(), data, None, false)
-            .expect("Push 1");
-
-        dbg!(&created);
-    }
 
     #[test]
     fn too_long() {

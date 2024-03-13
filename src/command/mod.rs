@@ -142,7 +142,7 @@ impl core::fmt::Display for Command {
                 Reads::Brd { address, register } => {
                     write!(f, "BRD(addr {:#06x}, reg {:#06x})", address, register)
                 }
-                Reads::Lrd { address } => write!(f, "LRD(addr {:#08x})", address),
+                Reads::Lrd { address } => write!(f, "LRD(addr {:#010x})", address),
                 Reads::Frmw { address, register } => {
                     write!(f, "FRMW(addr {:#06x}, reg {:#06x})", address, register)
                 }
@@ -159,8 +159,8 @@ impl core::fmt::Display for Command {
                     write!(f, "FPWR(addr {:#06x}, reg {:#06x})", address, register)
                 }
 
-                Writes::Lwr { address } => write!(f, "LWR(addr {:#08x})", address),
-                Writes::Lrw { address } => write!(f, "LRW(addr {:#08x})", address),
+                Writes::Lwr { address } => write!(f, "LWR(addr {:#010x})", address),
+                Writes::Lrw { address } => write!(f, "LRW(addr {:#010x})", address),
             },
         }
     }
