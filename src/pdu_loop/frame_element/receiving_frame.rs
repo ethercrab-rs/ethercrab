@@ -20,14 +20,7 @@ impl<'sto> ReceivingFrame<'sto> {
     ///
     /// This method may only be called once the frame response (header and data) has been validated
     /// and stored in the frame element.
-    pub fn mark_received(
-        &self,
-        // flags: PduFlags,
-        // irq: u16,
-        // working_counter: u16,
-    ) -> Result<(), PduError> {
-        // unsafe { self.set_metadata(flags, irq, working_counter) };
-
+    pub fn mark_received(&self) -> Result<(), PduError> {
         // Frame state must be updated BEFORE the waker is awoken so the future impl returns
         // `Poll::Ready`. The future will poll, see the `FrameState` as RxDone and return
         // Poll::Ready.

@@ -143,7 +143,7 @@ impl WrappedWrite {
         len_override: Option<u16>,
     ) -> Result<ReceivedPdu<'client, ()>, Error> {
         for _ in 0..client.config.retry_behaviour.loop_counts() {
-            let mut frame = client.pdu_loop.storage.alloc_frame()?;
+            let mut frame = client.pdu_loop.alloc_frame()?;
             let frame_idx = frame.frame_index();
 
             let handle = frame.push_pdu::<()>(self.command.into(), &value, len_override, false)?;

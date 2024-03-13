@@ -42,7 +42,7 @@ const MIN_DATA: usize = EthernetFrame::<&[u8]>::buffer_len(
 pub struct PduStorage<const N: usize, const DATA: usize> {
     frames: UnsafeCell<MaybeUninit<[FrameElement<DATA>; N]>>,
     /// Maps PDUs to the frame that is holding their TX/RX data.
-    pdu_states: UnsafeCell<[PduMarker; PDU_SLOTS]>,
+    pdu_markers: UnsafeCell<[PduMarker; PDU_SLOTS]>,
     frame_idx: AtomicU8,
     pdu_idx: AtomicU8,
     is_split: AtomicBool,
@@ -98,7 +98,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             frames,
             frame_idx: AtomicU8::new(0),
             pdu_idx: AtomicU8::new(0),
-            pdu_states,
+            pdu_markers: pdu_states,
             is_split: AtomicBool::new(false),
             tx_waker: AtomicWaker::new(),
         }
@@ -127,7 +127,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 
     fn as_ref(&self) -> PduStorageRef {
         // Initialise all PDU markers as available
-        let markers: &[PduMarker] = unsafe { &*self.pdu_states.get() };
+        let markers: &[PduMarker] = unsafe { &*self.pdu_markers.get() };
         markers.iter().for_each(|marker| marker.init());
 
         PduStorageRef {
@@ -137,7 +137,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             frame_data_len: DATA,
             frame_idx: &self.frame_idx,
             pdu_idx: &self.pdu_idx,
-            pdu_states: unsafe { NonNull::new_unchecked(self.pdu_states.get().cast()) },
+            pdu_markers: unsafe { NonNull::new_unchecked(self.pdu_markers.get().cast()) },
             tx_waker: &self.tx_waker,
             _lifetime: PhantomData,
         }
@@ -153,24 +153,14 @@ pub(crate) struct PduStorageRef<'sto> {
     pub frame_data_len: usize,
     frame_idx: &'sto AtomicU8,
     pub pdu_idx: &'sto AtomicU8,
-    pub pdu_states: NonNull<PduMarker>,
+    pub pdu_markers: NonNull<PduMarker>,
     pub tx_waker: &'sto AtomicWaker,
     _lifetime: PhantomData<&'sto ()>,
 }
 
 impl<'sto> PduStorageRef<'sto> {
     /// Allocate a PDU frame with the given command and data length.
-    pub(crate) fn alloc_frame(
-        &self,
-        // command: Command,
-        // data_length: u16,
-    ) -> Result<CreatedFrame<'sto>, Error> {
-        // let data_length_usize = usize::from(data_length);
-
-        // if data_length_usize > self.frame_data_len {
-        //     return Err(PduError::TooLong.into());
-        // }
-
+    pub(in crate::pdu_loop) fn alloc_frame(&self) -> Result<CreatedFrame<'sto>, Error> {
         let mut search = 0;
 
         // Find next frame that is not currently in use.
@@ -208,22 +198,7 @@ impl<'sto> PduStorageRef<'sto> {
             }
         };
 
-        // // Establish mapping between this PDU index and the Ethernet frame it's being put in
-        // self.pdu_states[usize::from(pdu_idx)]
-        //     // TODO: More follows for multiple frames
-        //     .reserve(frame_idx, command, PduFlags::with_len(data_length))
-        //     // TODO: Better error to explain that the requested PDU is already in flight
-        //     .expect("In use!");
-
-        let inner = FrameBox::init(
-            frame,
-            self.pdu_states,
-            // command,
-            // pdu_idx,
-            // data_length,
-            self.pdu_idx,
-            self.frame_data_len,
-        )?;
+        let inner = FrameBox::init(frame, self.pdu_markers, self.pdu_idx, self.frame_data_len)?;
 
         Ok(CreatedFrame::new(inner))
     }
@@ -245,8 +220,7 @@ impl<'sto> PduStorageRef<'sto> {
         let frame = unsafe { FrameElement::claim_receiving(frame)? };
 
         Some(ReceivingFrame {
-            inner: FrameBox::new(frame, self.pdu_states, self.pdu_idx, self.frame_data_len),
-            // pdu_states: self.pdu_states,
+            inner: FrameBox::new(frame, self.pdu_markers, self.pdu_idx, self.frame_data_len),
         })
     }
 
@@ -265,7 +239,7 @@ impl<'sto> PduStorageRef<'sto> {
     pub(crate) unsafe fn marker_at_index(&self, idx: usize) -> &PduMarker {
         let stride = fmt::unwrap!(Layout::array::<PduMarker>(PDU_SLOTS)).size() / PDU_SLOTS;
 
-        &*self.pdu_states.as_ptr().byte_add(idx * stride)
+        &*self.pdu_markers.as_ptr().byte_add(idx * stride)
     }
 }
 

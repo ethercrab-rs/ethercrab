@@ -126,16 +126,6 @@ impl PduMarker {
             .is_ok());
     }
 
-    // fn release(&self) {
-    //     fmt::trace!(
-    //         "Release PDU marker {:#04x}",
-    //         self.frame_index.load(Ordering::Relaxed)
-    //     );
-
-    //     self.frame_index
-    //         .store(PDU_UNUSED_SENTINEL, Ordering::Release);
-    // }
-
     /// Reset this marker to unused if it belongs to the given frame index.
     fn release_for_frame(&self, frame_index: u16) -> Result<u16, u16> {
         self.frame_index.compare_exchange(
@@ -147,51 +137,31 @@ impl PduMarker {
     }
 }
 
-// // DELETEME
-// #[derive(Debug, Default)]
-// pub struct PduFrame {
-//     pub index: u8,
-//     pub command: Command,
-//     pub flags: PduFlags,
-//     pub irq: u16,
-//     pub working_counter: u16,
-// }
-
-// impl PduFrame {
-//     /// EtherCAT PDU header length (index, command, etc)
-//     const fn header_len() -> usize {
-//         10
-//     }
-// }
-
 /// An individual frame state, PDU header config, and data buffer.
 ///
 /// # A frame's journey
 ///
-/// The following flowchart describes a `FrameElement`'s state changes during its use:
-///
-/// <img alt="A flowchart showing the different state transitions of FrameElement" src="https://mermaid.ink/svg/pako:eNqdUztv2zAQ_isHTgngtLuGDLVadGkQ2E7bQYBxEc82YYoU-LBsJPnvPVLMy_JULaR05PfS3ZNorSRRiY22Q7tDF2BVNwb4-eGwo2XAQFV1Zw3Bzc3tcyNQa9uuN6l4dd00Jh8D5cHYAejY6ujVgfQJrrYRHZpAJOHxBBhsp1rwCfAa8IBK46MmCBZaxlRmC0lKI54_Mc8d8Sqnkkohq-ptHzW_wX39wChdh0bOQGLA_wBrRDb3pUO3X3syMsnMVlc_v9_x8gf3BKu_oK3tz-Uuy_kpxWslc5TbkOA92AM5MBQG6_ZTuJTMZbhUGRUvCp6jljh9D9nCLCfroZdx7Y7Zwlyj6koZ0JcLDHRuZHH8Fv1pyjt-L7S_UStOWVnztXe2Je_H39j1mgIx3eIVPkNUVc60iJRZUA5zlDPw1k111Nx7l3TU7z05gsQQXSKdf2gnTsDkzoye2KzvreFN6owp0f2bhUt079VC-omG-18mPYMKu9HOm3uSxbx0tmfPZ7xptMRMdOQ6VJIn8SmxNyLsiEFExVvJqTWiMS98DmOwy5NpRRVcpJmIPZuhWuGWMUW1Qe35K0kVrPs1jnae8Jd_545fZQ" style="background: white; max-height: 800px" />
-///
-/// Source (MermaidJS):
-///
-/// ```mermaid
-/// flowchart TD
-///    FrameState::None -->|"alloc_frame()\nFrame is now exclusively (guaranteed by atomic state) available to calling code"| FrameState::Created
-///    FrameState::Created -->|populate PDU command, data| FrameState::Created
-///    FrameState::Created -->|"frame.mark_sendable()\nTHEN\nWake TX loop"| FrameState::Sendable
-///    FrameState::Sendable -->|TX loop sends over network| FrameState::Sending
-///    FrameState::Sending -->|"RX loop receives frame, calls pdu_rx()\nClaims frame as receiving"| FrameState::RxBusy
-///    FrameState::RxBusy -->|"Validation/processing complete\nReceivingFrame::mark_received()\nWake frame waker"| FrameState::RxDone
-///    FrameState::RxDone -->|"Wake future\nCalling code can now use response data"| FrameState::RxProcessing
-///    FrameState::RxProcessing -->|"Calling code is done with frame\nReceivedFrame::drop()"| FrameState::None
-///    ```
+/// TODO: Update this journey! The current docs are out of date!
+// The following flowchart describes a `FrameElement`'s state changes during its use:
+//
+// <img alt="A flowchart showing the different state transitions of FrameElement" src="https://mermaid.ink/svg/pako:eNqdUztv2zAQ_isHTgngtLuGDLVadGkQ2E7bQYBxEc82YYoU-LBsJPnvPVLMy_JULaR05PfS3ZNorSRRiY22Q7tDF2BVNwb4-eGwo2XAQFV1Zw3Bzc3tcyNQa9uuN6l4dd00Jh8D5cHYAejY6ujVgfQJrrYRHZpAJOHxBBhsp1rwCfAa8IBK46MmCBZaxlRmC0lKI54_Mc8d8Sqnkkohq-ptHzW_wX39wChdh0bOQGLA_wBrRDb3pUO3X3syMsnMVlc_v9_x8gf3BKu_oK3tz-Uuy_kpxWslc5TbkOA92AM5MBQG6_ZTuJTMZbhUGRUvCp6jljh9D9nCLCfroZdx7Y7Zwlyj6koZ0JcLDHRuZHH8Fv1pyjt-L7S_UStOWVnztXe2Je_H39j1mgIx3eIVPkNUVc60iJRZUA5zlDPw1k111Nx7l3TU7z05gsQQXSKdf2gnTsDkzoye2KzvreFN6owp0f2bhUt079VC-omG-18mPYMKu9HOm3uSxbx0tmfPZ7xptMRMdOQ6VJIn8SmxNyLsiEFExVvJqTWiMS98DmOwy5NpRRVcpJmIPZuhWuGWMUW1Qe35K0kVrPs1jnae8Jd_545fZQ" style="background: white; max-height: 800px" />
+//
+// Source (MermaidJS):
+//
+// ```mermaid
+// flowchart TD
+//    FrameState::None -->|"alloc_frame()\nFrame is now exclusively (guaranteed by atomic state) available to calling code"| FrameState::Created
+//    FrameState::Created -->|populate PDU command, data| FrameState::Created
+//    FrameState::Created -->|"frame.mark_sendable()\nTHEN\nWake TX loop"| FrameState::Sendable
+//    FrameState::Sendable -->|TX loop sends over network| FrameState::Sending
+//    FrameState::Sending -->|"RX loop receives frame, calls pdu_rx()\nClaims frame as receiving"| FrameState::RxBusy
+//    FrameState::RxBusy -->|"Validation/processing complete\nReceivingFrame::mark_received()\nWake frame waker"| FrameState::RxDone
+//    FrameState::RxDone -->|"Wake future\nCalling code can now use response data"| FrameState::RxProcessing
+//    FrameState::RxProcessing -->|"Calling code is done with frame\nReceivedFrame::drop()"| FrameState::None
+//    ```
 #[derive(Debug)]
 #[repr(C)]
 pub struct FrameElement<const N: usize> {
-    /// A copy of the PDU header written into the buffer used to match received frames to this
-    /// element.
-    // DELETEME
-    // pub frame: PduFrame,
     /// Ethernet frame index. Has nothing to do with PDU header index field.
     frame_index: u8,
     status: AtomicFrameState,
@@ -380,32 +350,13 @@ impl<'sto> FrameBox<'sto> {
     pub(crate) fn init(
         frame: NonNull<FrameElement<0>>,
         pdu_states: NonNull<PduMarker>,
-        // command: Command,
-        // pdu_idx: u8,
-        // data_length: u16,
+
         pdu_idx: &'sto AtomicU8,
         max_len: usize,
     ) -> Result<FrameBox<'sto>, Error> {
-        // let flags = PduFlags::with_len(data_length);
-
         unsafe {
-            // addr_of_mut!((*frame.as_ptr()).frame).write(PduFrame {
-            //     index: pdu_idx,
-            //     command,
-            //     flags,
-            //     irq: 0,
-            //     working_counter: 0,
-            // });
-
             addr_of_mut!((*frame.as_ptr()).waker).write(AtomicWaker::new());
         }
-
-        // // Only single PDU for now
-        // let frame_length = Self::ethernet_buf_len(&flags);
-
-        // if frame_length > max_len {
-        //     return Err(PduError::TooLong.into());
-        // }
 
         let mut ethernet_frame = unsafe {
             let buf = core::slice::from_raw_parts_mut(
@@ -420,23 +371,7 @@ impl<'sto> FrameBox<'sto> {
         ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
         ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
 
-        let buf = ethernet_frame.payload_mut();
-
-        // TODO: This gets populated when we mark frame as sendable
-        // EtherCAT frame header (one per Ethernet frame, regardless of PDU count)
-        // let header = EthercatFrameHeader::pdu(PduHeader::PACKED_LEN as u16 + data_length + 2);
-        // let buf = write_packed(header, buf);
-
-        // TODO: Init PDU header and length in `CreatedFrame` or whatever
-        // // PDU follows. Only supports one PDU per EtherCAT frame for now.
-        // let buf = write_packed(command.code(), buf);
-        // let buf = write_packed(pdu_idx, buf);
-        // let buf = write_packed(command, buf);
-        // let buf = write_packed(flags, buf);
-        // // IRQ
-        // let buf = write_packed(0u16, buf);
-
-        buf.fill(0);
+        ethernet_frame.payload_mut().fill(0);
 
         Ok(Self {
             max_len,
@@ -465,25 +400,9 @@ impl<'sto> FrameBox<'sto> {
         }
     }
 
-    // unsafe fn frame(&self) -> &PduFrame {
-    //     unsafe { &*addr_of!((*self.frame.as_ptr()).frame) }
-    // }
-
     unsafe fn frame_index(&self) -> u8 {
         unsafe { *addr_of!((*self.frame.as_ptr()).frame_index) }
     }
-
-    // /// Payload length of frame
-    // unsafe fn buf_len(&self) -> usize {
-    //     usize::from(self.frame().flags.len())
-    // }
-
-    // unsafe fn frame_and_buf(&self) -> (&PduFrame, &[u8]) {
-    //     let buf_ptr = unsafe { addr_of!((*self.frame.as_ptr()).ethernet_frame).cast::<u8>() };
-    //     let buf = unsafe { core::slice::from_raw_parts(buf_ptr, self.buf_len()) };
-    //     let frame = unsafe { &*addr_of!((*self.frame.as_ptr()).frame) };
-    //     (frame, buf)
-    // }
 
     /// Get EtherCAT frame header buffer.
     unsafe fn ecat_frame_header_mut(&mut self) -> &mut [u8] {

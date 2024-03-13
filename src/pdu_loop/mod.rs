@@ -7,6 +7,7 @@ mod pdu_tx;
 // NOTE: Pub so doc links work
 pub mod storage;
 
+use self::frame_element::created_frame::CreatedFrame;
 use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
 pub use frame_element::received_frame::ReceivedPdu;
 pub use frame_element::sendable_frame::SendableFrame;
@@ -58,35 +59,35 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 
 /// The core EtherCrab network communications driver.
 ///
-/// This item orchestrates queuing, sending and receiving responses to individual PDUs. It uses a
-/// fixed length list of frame slots which are cycled through sequentially to ensure each PDU packet
-/// has a unique ID (by using the slot index).
-///
-/// Use [`PduTx`] and [`PduRx`] to integrate EtherCrab into network drivers.
-///
-/// # High level overview
-///
-/// <img alt="High level overview of the PDU loop send/receive process" style="background: white" src="https://mermaid.ink/svg/pako:eNplkcFuwjAMhl8lyrkT9x64jOsmBEzqoRcrcUtEm2SJA0KId5_dFmlbc3GUfP79235oEyzqWmf8LugN7hz0CcbWKz4REjnjInhSBoZBQVbvHJ3vleStqf3uSyAJQwhxDZyaQyPEqdnwhc4Jwa6pT6RbSJf5Y6r8tt2Kaq2O6C0XH0fwdmOBYIakojCizxBBj6rjRrBSN7ggv08xzfTkQvCl0CIbwVyQFAVl8eoM5pleoF_6BzTorrgk_NOcbO4hZVQJcww-v0x0hUrCv4alOxGcQSXzuIuDklFXesQ0grO8oIektZrOOGKra75a4Anp1j-Zg0LhePdG15QKVrpEHs1rmbruYGATGq2jkD7mjU-Lf_4AMq-oMQ" />
-///
-/// Source (MermaidJS)
-///
-/// ```mermaid
-/// sequenceDiagram
-///     participant call as Calling code
-///     participant PDU as PDU loop
-///     participant TXRX as TX/RX thread
-///     participant Network
-///     call ->> PDU: Send command/data
-///     PDU ->> TXRX: Stage frame, wake TX waker
-///     TXRX ->> Network: Send packet to devices
-///     Network ->> TXRX: Receive packet
-///     TXRX ->> PDU: Parse response, wake future
-///     PDU ->> call: Response ready to use
-/// ```
+/// TODO: Update the following docs. The current text is out of date.
+// This item orchestrates queuing, sending and receiving responses to individual PDUs. It uses a
+// fixed length list of frame slots which are cycled through sequentially to ensure each PDU packet
+// has a unique ID (by using the slot index).
+//
+// Use [`PduTx`] and [`PduRx`] to integrate EtherCrab into network drivers.
+//
+// # High level overview
+//
+// <img alt="High level overview of the PDU loop send/receive process" style="background: white" src="https://mermaid.ink/svg/pako:eNplkcFuwjAMhl8lyrkT9x64jOsmBEzqoRcrcUtEm2SJA0KId5_dFmlbc3GUfP79235oEyzqWmf8LugN7hz0CcbWKz4REjnjInhSBoZBQVbvHJ3vleStqf3uSyAJQwhxDZyaQyPEqdnwhc4Jwa6pT6RbSJf5Y6r8tt2Kaq2O6C0XH0fwdmOBYIakojCizxBBj6rjRrBSN7ggv08xzfTkQvCl0CIbwVyQFAVl8eoM5pleoF_6BzTorrgk_NOcbO4hZVQJcww-v0x0hUrCv4alOxGcQSXzuIuDklFXesQ0grO8oIektZrOOGKra75a4Anp1j-Zg0LhePdG15QKVrpEHs1rmbruYGATGq2jkD7mjU-Lf_4AMq-oMQ" />
+//
+// Source (MermaidJS)
+//
+// ```mermaid
+// sequenceDiagram
+//     participant call as Calling code
+//     participant PDU as PDU loop
+//     participant TXRX as TX/RX thread
+//     participant Network
+//     call ->> PDU: Send command/data
+//     PDU ->> TXRX: Stage frame, wake TX waker
+//     TXRX ->> Network: Send packet to devices
+//     Network ->> TXRX: Receive packet
+//     TXRX ->> PDU: Parse response, wake future
+//     PDU ->> call: Response ready to use
+// ```
 #[derive(Debug)]
 pub struct PduLoop<'sto> {
-    // TODO: Un-pub
-    pub(crate) storage: PduStorageRef<'sto>,
+    storage: PduStorageRef<'sto>,
 }
 
 impl<'sto> PduLoop<'sto> {
@@ -130,83 +131,9 @@ impl<'sto> PduLoop<'sto> {
         Ok(())
     }
 
-    // /// Send data to and read data back from the slave devices.
-    // ///
-    // /// This method allows overriding the minimum data length of the payload.
-    // ///
-    // /// Returns the frame future that can be `.await`ed for a response, and the EtherCAT frame
-    // /// index.
-    // ///
-    // /// The PDU data length will be the larger of the payload data length and the length override
-    // /// (if provided). If a larger **response** than the sent data is desired, set the expected
-    // /// response length in `len_override`.
-    // ///
-    // /// This is useful for e.g. sending a 10 byte PDI with 4 output bytes and 6 input bytes. In this
-    // /// case, `data` will be a slice of length `4` containing the outputs to send, and
-    // /// `len_override` will be `Some(10)`. This makes the latter 6 bytes available for writing the
-    // /// PDU response into.
-    // // NOTE: Should be `pub(crate)` but the benchmarks need this internal method so we'll just hide
-    // // it instead.
-    // #[doc(hidden)]
-    // pub fn pdu_send(
-    //     &self,
-    //     command: Command,
-    //     data: impl EtherCrabWireWrite,
-    //     len_override: Option<u16>,
-    // ) -> Result<
-    //     (
-    //         impl core::future::Future<Output = Result<ReceivedFrame<'_>, Error>>,
-    //         u8,
-    //     ),
-    //     Error,
-    // > {
-    //     let mut frame = self.storage.alloc_frame()?;
-    //     let frame_idx = frame.frame_index();
-
-    //     let handle = frame.push_pdu::<()>(command, data, len_override, false)?;
-
-    //     Ok((
-    //         async move {
-    //             let response = frame.mark_sendable().await?;
-
-    //             response.take(handle)
-    //         },
-    //         frame_idx,
-    //     ))
-
-    //     // Done
-
-    //     // ---
-
-    //     // // Length of data to populate in the send buffer
-    //     // let send_data_len = data.packed_len() as u16;
-
-    //     // // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
-    //     // // inputs in the remaining buffer.
-    //     // let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
-
-    //     // let mut frame = self.storage.alloc_frame()?;
-
-    //     // let handle = frame.push_pdu(command, data, len_override, false)?;
-
-    //     // // let frame_idx = frame.frame_index();
-
-    //     // // let payload = frame
-    //     // //     .buf_mut()
-    //     // //     .get_mut(0..usize::from(send_data_len))
-    //     // //     .ok_or(Error::Pdu(PduError::TooLong))?;
-
-    //     // // // SAFETY: We ensure the payload length is at least the length of the packed input data
-    //     // // // above, as well as the data to be written is not longer than the payload buffer.
-    //     // // data.pack_to_slice_unchecked(payload);
-
-    //     // let frame = frame.mark_sendable();
-
-    //     // self.wake_sender();
-
-    //     // todo!()
-    //     // // Ok((frame, frame_idx))
-    // }
+    pub(crate) fn alloc_frame(&self) -> Result<CreatedFrame<'sto>, Error> {
+        self.storage.alloc_frame()
+    }
 }
 
 #[cfg(test)]
