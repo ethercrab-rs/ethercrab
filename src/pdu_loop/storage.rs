@@ -213,11 +213,11 @@ impl<'sto> PduStorageRef<'sto> {
 
         let inner = FrameBox::init(
             frame,
-            &self.pdu_states,
+            self.pdu_states,
             // command,
             // pdu_idx,
             // data_length,
-            &self.pdu_idx,
+            self.pdu_idx,
             self.frame_data_len,
         )?;
 
@@ -241,8 +241,8 @@ impl<'sto> PduStorageRef<'sto> {
         let frame = unsafe { FrameElement::claim_receiving(frame)? };
 
         Some(ReceivingFrame {
-            inner: FrameBox::new(frame, &self.pdu_states, self.pdu_idx, self.frame_data_len),
-            pdu_states: &self.pdu_states,
+            inner: FrameBox::new(frame, self.pdu_states, self.pdu_idx, self.frame_data_len),
+            pdu_states: self.pdu_states,
         })
     }
 

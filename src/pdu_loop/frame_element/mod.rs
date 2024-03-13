@@ -537,7 +537,7 @@ impl<'sto> FrameBox<'sto> {
     }
 
     pub(in crate::pdu_loop) fn add_pdu_payload_len(&mut self, len: usize) {
-        unsafe { *addr_of_mut!((&mut *self.frame.as_ptr()).pdu_payload_len) += len };
+        unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += len };
     }
 
     // fn refcount(&self) -> u8 {

@@ -142,7 +142,7 @@ impl<'sto> PduRx<'sto> {
 
         let frame_data = frame.buf_mut();
 
-        frame_data[0..usize::from(i.len())].copy_from_slice(i);
+        frame_data[0..i.len()].copy_from_slice(i);
 
         frame.mark_received()?;
 
