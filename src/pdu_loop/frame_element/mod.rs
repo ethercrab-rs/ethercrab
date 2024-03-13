@@ -8,6 +8,7 @@ use crate::{
 };
 use atomic_waker::AtomicWaker;
 use core::{
+    alloc::Layout,
     cell::Cell,
     fmt::Debug,
     marker::PhantomData,
@@ -555,10 +556,23 @@ impl<'sto> FrameBox<'sto> {
     ) -> Result<u8, PduError> {
         let pdu_idx = self.next_pdu_idx();
 
-        let states: &[PduMarker] =
-            unsafe { core::slice::from_raw_parts(self.pdu_states.as_ptr() as *const _, PDU_SLOTS) };
+        // Sanity check. PDU_SLOTS is currently 256 which is fine, but if that changes, this assert
+        // should catch the logic bug.
+        assert!(usize::from(pdu_idx) < PDU_SLOTS);
 
-        states[usize::from(pdu_idx)].reserve(frame_index, command, flags)?;
+        let marker = unsafe {
+            let base_ptr = self.pdu_states.as_ptr() as *const PduMarker;
+
+            let layout = fmt::unwrap!(Layout::array::<PduMarker>(PDU_SLOTS));
+
+            let stride = layout.size() / PDU_SLOTS;
+
+            let this_marker = base_ptr.byte_add(usize::from(pdu_idx) * stride);
+
+            &*this_marker
+        };
+
+        marker.reserve(frame_index, command, flags)?;
 
         Ok(pdu_idx)
     }

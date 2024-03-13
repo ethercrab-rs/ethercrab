@@ -224,8 +224,9 @@ mod tests {
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
-    #[tokio::test]
-    async fn timed_out_frame_is_reallocatable() {
+    // NOTE: Async required as tokio timers are used internally
+    #[test]
+    fn timed_out_frame_is_reallocatable() {
         // One 16 byte frame
         static STORAGE: PduStorage<1, { PduStorage::element_size(32) }> = PduStorage::new();
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
@@ -247,7 +248,7 @@ mod tests {
 
         let fut = frame.mark_sendable();
 
-        let res = fut.timeout(Duration::from_secs(0)).await;
+        let res = cassette::block_on(fut.timeout(Duration::from_secs(0)));
 
         // Just make sure the read timed out
         assert_eq!(res.unwrap_err(), Error::Timeout);

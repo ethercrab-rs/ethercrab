@@ -193,11 +193,6 @@ impl<'sto> ReceivedFrame<'sto> {
             // frame: &self,
             // frame: self.inner.clone(),
             pdu_marker: unsafe {
-                // #[allow(trivial_casts)]
-                // NonNull::new_unchecked(
-                //     &self.inner.pdu_states[usize::from(pdu_header.index)] as *const _ as *mut _,
-                // )
-
                 let base_ptr = self.inner.pdu_states.as_ptr();
 
                 let layout = fmt::unwrap!(Layout::array::<PduMarker>(PDU_SLOTS));
@@ -207,8 +202,6 @@ impl<'sto> ReceivedFrame<'sto> {
                 let this_marker = base_ptr.byte_add(usize::from(pdu_header.index) * stride);
 
                 NonNull::new_unchecked(this_marker as *mut PduMarker)
-
-                // todo!()
             },
             working_counter,
             _ty: PhantomData,
