@@ -11,7 +11,7 @@ Primarily used by `ethercrab`.
 
 ### Added
 
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) Add support for encoding/decoding
+- [#183](https://github.com/ethercrab-rs/ethercrab/pull/183) Add support for encoding/decoding
   tuples up to 16 items long.
 
 ## [0.1.2] - 2024-02-03
