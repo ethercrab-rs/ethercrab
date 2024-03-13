@@ -84,7 +84,7 @@ impl<'sto> ReceivedFrame<'sto> {
             pdu_marker: unsafe {
                 let base_ptr = self.inner.pdu_states.as_ptr();
 
-                let layout = fmt::unwrap!(Layout::array::<PduMarker>(PDU_SLOTS));
+                let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
 
                 let stride = layout.size() / PDU_SLOTS;
 

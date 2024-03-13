@@ -477,7 +477,7 @@ impl<'sto> FrameBox<'sto> {
         let marker = unsafe {
             let base_ptr = self.pdu_states.as_ptr() as *const PduMarker;
 
-            let layout = fmt::unwrap!(Layout::array::<PduMarker>(PDU_SLOTS));
+            let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
 
             let stride = layout.size() / PDU_SLOTS;
 

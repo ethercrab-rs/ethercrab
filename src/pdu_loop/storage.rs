@@ -132,7 +132,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
-            frame_element_stride: fmt::unwrap!(Layout::array::<FrameElement<DATA>>(N)).size() / N,
+            frame_element_stride: Layout::array::<FrameElement<DATA>>(N).unwrap().size() / N,
             num_frames: N,
             frame_data_len: DATA,
             frame_idx: &self.frame_idx,
@@ -237,7 +237,7 @@ impl<'sto> PduStorageRef<'sto> {
     }
 
     pub(crate) unsafe fn marker_at_index(&self, idx: usize) -> &PduMarker {
-        let stride = fmt::unwrap!(Layout::array::<PduMarker>(PDU_SLOTS)).size() / PDU_SLOTS;
+        let stride = Layout::array::<PduMarker>(PDU_SLOTS).unwrap().size() / PDU_SLOTS;
 
         &*self.pdu_markers.as_ptr().byte_add(idx * stride)
     }
