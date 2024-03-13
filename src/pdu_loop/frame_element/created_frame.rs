@@ -6,7 +6,7 @@ use crate::{
     pdu_loop::{frame_header::EthercatFrameHeader, pdu_flags::PduFlags, pdu_header::PduHeader},
     Command,
 };
-use core::{marker::PhantomData, ops::Range};
+use core::marker::PhantomData;
 use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite};
 
 /// A frame in a freshly allocated state.
@@ -96,15 +96,18 @@ impl<'sto> CreatedFrame<'sto> {
         // let payload_range = (self.consumed + PduHeader::PACKED_LEN)
         //     ..(self.consumed + PduHeader::PACKED_LEN + data.packed_len());
 
-        let pdu_idx = self.inner.next_pdu_idx();
+        // Establish mapping between this PDU index and the Ethernet frame it's being put in
+        let pdu_idx = self
+            .inner
+            .reserve_pdu_marker(self.frame_index(), command, flags)?;
 
         fmt::trace!(
-            "Alloc {:?} ({} bytes, {} byte payload) for PDU {:#04x} header and data in frame index {}",
-            buf_range,
-            alloc_size,
-            data_length_usize,
+            "Write PDU {:#04x} into frame index {} ({}, {} bytes at {:?})",
             pdu_idx,
-            unsafe { self.inner.frame_index() }
+            unsafe { self.inner.frame_index() },
+            command,
+            data_length_usize,
+            buf_range
         );
 
         let pdu_buf = unsafe { self.inner.pdu_buf_mut() }
@@ -125,19 +128,13 @@ impl<'sto> CreatedFrame<'sto> {
         // Next two bytes are working counter, but they are always zero on send (and the buffer is
         // zero-initialised) so there's nothing to do.
 
-        // Establish mapping between this PDU index and the Ethernet frame it's being put in
-        let _marker = self.inner.pdu_states[usize::from(pdu_idx)]
-            .reserve(self.frame_index(), command, flags)
-            // TODO: Better error to explain that the requested PDU is already in flight
-            .expect("In use!");
-
         self.inner.add_pdu_payload_len(alloc_size);
 
-        // TODO: Store expected command and stuff too? Maybe better to validate that
-        // elsewhere. Not sure where.
         Ok(PduResponseHandle {
             _ty: PhantomData,
-            buf_range,
+            buf_start: buf_range.start,
+            // TODO: Store expected command
+            pdu_idx,
         })
     }
 
@@ -158,7 +155,9 @@ unsafe impl<'sto> Send for CreatedFrame<'sto> {}
 #[derive(Debug)]
 pub struct PduResponseHandle<T> {
     _ty: PhantomData<T>,
-    pub buf_range: Range<usize>,
+    /// Offset relative to end of EtherCAT header.
+    pub buf_start: usize,
+    pub pdu_idx: u8,
 }
 
 impl<T> PduResponseHandle<T> {
@@ -189,6 +188,7 @@ mod tests {
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
             pdu_payload_len: 0,
+            refcount: AtomicU8::new(0),
         }]);
 
         // Only one element, and it's the first one, so we don't have to do any pointer arithmetic -
@@ -206,7 +206,7 @@ mod tests {
 
         let data = 0xAABBCCDDu32;
 
-        let handle = created
+        let _handle = created
             .push_pdu::<u32>(Command::fpwr(0x1000, 0x0918).into(), data, None, false)
             .expect("Push 1");
 
@@ -230,6 +230,7 @@ mod tests {
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
             pdu_payload_len: 0,
+            refcount: AtomicU8::new(0),
         }]);
 
         // Only one element, and it's the first one, so we don't have to do any pointer arithmetic -

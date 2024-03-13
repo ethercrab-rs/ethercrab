@@ -9,13 +9,11 @@ pub mod storage;
 
 use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
 use ethercrab_wire::EtherCrabWireWrite;
-pub use frame_element::received_frame::RxFrameDataBuf;
+pub use frame_element::received_frame::{ReceivedFrame, ReceivedPdu};
 pub use frame_element::sendable_frame::SendableFrame;
 pub use pdu_rx::PduRx;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
-
-use self::frame_element::received_frame::{ReceivedFrame, ReceivedPdu};
 
 #[cfg(feature = "__internals")]
 pub use frame_header::EthercatFrameHeader;
@@ -232,6 +230,8 @@ mod tests {
     //     // One 16 byte frame
     //     static STORAGE: PduStorage<1, { PduStorage::element_size(32) }> = PduStorage::new();
     //     let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
+
+    //     // TODO: Make sure we reserve at least one PDU, otherwise the refcount drop logic isn't exercised.
 
     //     let send_result = pdu_loop
     //         .pdu_send(

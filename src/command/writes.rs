@@ -1,7 +1,9 @@
+use core::ops::Deref;
+
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
+    pdu_loop::{PduResponse, ReceivedPdu},
     timer_factory::IntoTimeout,
     Client,
 };
@@ -126,7 +128,7 @@ impl WrappedWrite {
         self,
         client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
-    ) -> Result<RxFrameDataBuf<'data>, Error>
+    ) -> Result<ReceivedPdu<'data, ()>, Error>
     where
         'client: 'data,
     {
@@ -139,7 +141,7 @@ impl WrappedWrite {
         client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-    ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
+    ) -> Result<ReceivedPdu<'client, ()>, Error> {
         for _ in 0..client.config.retry_behaviour.loop_counts() {
             let mut frame = client.pdu_loop.storage.alloc_frame()?;
             let frame_idx = frame.frame_index();
@@ -151,7 +153,7 @@ impl WrappedWrite {
             client.pdu_loop.wake_sender();
 
             match frame.timeout(client.timeouts.pdu).await {
-                Ok(result) => return result.take(handle).map(|rx| (rx.data, rx.working_counter)),
+                Ok(result) => return result.take(handle),
                 Err(Error::Timeout) => {
                     fmt::error!("Frame index {} timed out", frame_idx);
 
@@ -182,9 +184,13 @@ impl WrappedWrite {
             client.max_frame_data()
         );
 
-        let (data, wkc) = self
+        let res = self
             .common(client, value.as_ref(), self.len_override)
             .await?;
+
+        let data = res.deref();
+
+        let wkc = res.working_counter;
 
         if data.len() != value.len() {
             fmt::error!(

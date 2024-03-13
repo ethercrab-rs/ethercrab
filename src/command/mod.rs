@@ -3,11 +3,7 @@
 mod reads;
 mod writes;
 
-use crate::{
-    error::{Error, PduError},
-    fmt,
-};
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
+use ethercrab_wire::EtherCrabWireWrite;
 
 pub use reads::{Reads, WrappedRead};
 pub use writes::{WrappedWrite, Writes};

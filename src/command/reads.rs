@@ -1,10 +1,4 @@
-use crate::{
-    error::Error,
-    fmt,
-    pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
-    timer_factory::IntoTimeout,
-    Client,
-};
+use crate::{error::Error, fmt, pdu_loop::ReceivedPdu, timer_factory::IntoTimeout, Client};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// Read commands that send no data.
@@ -91,11 +85,14 @@ impl WrappedRead {
     }
 
     // Some manual monomorphisation
-    async fn common<'client>(
+    async fn common<'client, 'frame>(
         &self,
         client: &'client Client<'client>,
         len: u16,
-    ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
+    ) -> Result<ReceivedPdu<'client, ()>, Error>
+    where
+        'client: 'frame,
+    {
         for _ in 0..client.config.retry_behaviour.loop_counts() {
             let mut frame = client.pdu_loop.storage.alloc_frame()?;
             let frame_idx = frame.frame_index();
@@ -107,12 +104,9 @@ impl WrappedRead {
             client.pdu_loop.wake_sender();
 
             match frame.timeout(client.timeouts.pdu).await {
-                Ok(result) => return result.take(handle).map(|rx| (rx.data, rx.working_counter)),
+                Ok(result) => return result.take(handle),
                 Err(Error::Timeout) => {
                     fmt::error!("Frame index {} timed out", frame_idx);
-
-                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
-                    // state to `None`, ready for reuse.
                 }
                 Err(e) => return Err(e),
             }
@@ -137,7 +131,7 @@ impl WrappedRead {
         self,
         client: &'client Client<'client>,
         len: u16,
-    ) -> Result<RxFrameDataBuf<'client>, Error> {
+    ) -> Result<ReceivedPdu<'client, ()>, Error> {
         self.common(client, len).await?.maybe_wkc(self.wkc)
     }
 
@@ -157,6 +151,6 @@ impl WrappedRead {
     {
         self.common(client, T::PACKED_LEN as u16)
             .await
-            .map(|(_data, wkc)| wkc)
+            .map(|res| res.working_counter)
     }
 }

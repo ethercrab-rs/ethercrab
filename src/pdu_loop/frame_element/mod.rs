@@ -86,7 +86,7 @@ impl PduMarker {
         frame_idx: u8,
         command: Command,
         flags: PduFlags,
-    ) -> Result<&Self, PduError> {
+    ) -> Result<(), PduError> {
         // Try to reserve the frame by switching the flag state from unused to the frame
         if let Err(bad_state) = self.frame_index.compare_exchange(
             PDU_UNUSED_SENTINEL,
@@ -95,9 +95,10 @@ impl PduMarker {
             Ordering::Relaxed,
         ) {
             fmt::error!(
-                "Bad PDU marker state: {}, expecting sentinel {}",
+                "Bad PDU marker state: points to existing frame index {}, expecting sentinel {}, new frame index {}",
                 bad_state,
-                PDU_UNUSED_SENTINEL
+                PDU_UNUSED_SENTINEL,
+                frame_idx
             );
 
             // TODO: Maybe a unique error variant here?
@@ -106,13 +107,20 @@ impl PduMarker {
 
         self.inner.replace(PduMarkerInner { command, flags });
 
-        Ok(self)
+        Ok(())
     }
 
     pub fn frame_index(&self) -> u8 {
         let raw = self.frame_index.load(Ordering::Relaxed);
 
         assert_ne!(raw, PDU_UNUSED_SENTINEL);
+
+        raw as u8
+    }
+
+    // DELETEME
+    pub fn frame_index_unchecked(&self) -> u8 {
+        let raw = self.frame_index.load(Ordering::Relaxed);
 
         raw as u8
     }
@@ -124,18 +132,24 @@ impl PduMarker {
             .is_ok());
     }
 
+    // fn release(&self) {
+    //     fmt::trace!(
+    //         "Release PDU marker {:#04x}",
+    //         self.frame_index.load(Ordering::Relaxed)
+    //     );
+
+    //     self.frame_index
+    //         .store(PDU_UNUSED_SENTINEL, Ordering::Release);
+    // }
+
     /// Reset this marker to unused if it belongs to the given frame index.
-    ///
-    /// This method is a no-op if the frame indices don't match.
-    fn release(&self, frame_index: u16) {
-        self.frame_index
-            .compare_exchange(
-                frame_index,
-                PDU_UNUSED_SENTINEL,
-                Ordering::Release,
-                Ordering::Relaxed,
-            )
-            .ok();
+    fn release_for_frame(&self, frame_index: u16) -> Result<u16, u16> {
+        self.frame_index.compare_exchange(
+            frame_index,
+            PDU_UNUSED_SENTINEL,
+            Ordering::Release,
+            Ordering::Relaxed,
+        )
     }
 }
 
@@ -185,11 +199,14 @@ pub struct FrameElement<const N: usize> {
     // DELETEME
     // pub frame: PduFrame,
     /// Ethernet frame index. Has nothing to do with PDU header index field.
-    // TODO: Can we move this into `FrameBox`? Is it needed at all beyond debug logging?
-    pub frame_index: u8,
+    frame_index: u8,
     status: AtomicFrameState,
     pub waker: AtomicWaker,
     pub pdu_payload_len: usize,
+    /// The number of PDU handles held by this frame.
+    ///
+    /// Used to drop the whole frame only when all PDUs have been consumed from it.
+    pub refcount: AtomicU8,
 
     // MUST be the last element otherwise pointer arithmetic doesn't work for
     // `NonNull<FrameElement<0>>`.
@@ -204,6 +221,7 @@ impl<const N: usize> Default for FrameElement<N> {
             ethernet_frame: [0; N],
             frame_index: 0,
             pdu_payload_len: 0,
+            refcount: AtomicU8::new(0),
             waker: AtomicWaker::default(),
         }
     }
@@ -282,6 +300,7 @@ impl<const N: usize> FrameElement<N> {
 
         (*addr_of_mut!((*this.as_ptr()).frame_index)) = frame_index;
         (*addr_of_mut!((*this.as_ptr()).pdu_payload_len)) = 0;
+        (*addr_of_mut!((*this.as_ptr()).refcount)).store(0, Ordering::Release);
 
         Ok(this)
     }
@@ -306,9 +325,22 @@ impl<const N: usize> FrameElement<N> {
             })
             .ok()
     }
+
+    fn inc_refcount(this: NonNull<FrameElement<0>>) -> u8 {
+        unsafe { &*addr_of!((*this.as_ptr()).refcount) }.fetch_add(1, Ordering::Acquire)
+    }
+
+    fn dec_refcount(this: NonNull<FrameElement<0>>) -> u8 {
+        unsafe { &*addr_of!((*this.as_ptr()).refcount) }.fetch_sub(1, Ordering::Release)
+    }
+
+    fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
+        unsafe { *addr_of!((*this.as_ptr()).frame_index) }
+    }
 }
 
 /// Frame data common to all typestates.
+#[derive(Copy, Clone)]
 pub struct FrameBox<'sto> {
     // NOTE: Only pub for tests
     pub(in crate::pdu_loop) frame: NonNull<FrameElement<0>>,
@@ -503,7 +535,7 @@ impl<'sto> FrameBox<'sto> {
         fmt::trace!("Releasing PDUs from frame index {}", frame_index);
 
         for state in self.pdu_states {
-            state.release(frame_index);
+            state.release_for_frame(frame_index).ok();
         }
     }
 
@@ -513,5 +545,22 @@ impl<'sto> FrameBox<'sto> {
 
     pub(in crate::pdu_loop) fn add_pdu_payload_len(&mut self, len: usize) {
         unsafe { *addr_of_mut!((&mut *self.frame.as_ptr()).pdu_payload_len) += len };
+    }
+
+    // fn refcount(&self) -> u8 {
+    //     unsafe { &*addr_of!((&*self.frame.as_ptr()).refcount) }.load(Ordering::Acquire)
+    // }
+
+    fn reserve_pdu_marker(
+        &self,
+        frame_index: u8,
+        command: Command,
+        flags: PduFlags,
+    ) -> Result<u8, PduError> {
+        let pdu_idx = self.next_pdu_idx();
+
+        self.pdu_states[usize::from(pdu_idx)].reserve(frame_index, command, flags)?;
+
+        Ok(pdu_idx)
     }
 }
