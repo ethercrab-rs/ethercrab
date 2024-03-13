@@ -133,8 +133,8 @@ impl<'sto> CreatedFrame<'sto> {
         Ok(PduResponseHandle {
             _ty: PhantomData,
             buf_start: buf_range.start,
-            // TODO: Store expected command
             pdu_idx,
+            command,
         })
     }
 
@@ -157,11 +157,9 @@ pub struct PduResponseHandle<T> {
     _ty: PhantomData<T>,
     /// Offset relative to end of EtherCAT header.
     pub buf_start: usize,
+    /// PDU index and command used to validate response match
     pub pdu_idx: u8,
-}
-
-impl<T> PduResponseHandle<T> {
-    //
+    pub command: Command,
 }
 
 #[cfg(test)]
