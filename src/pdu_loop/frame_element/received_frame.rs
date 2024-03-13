@@ -201,7 +201,7 @@ impl<'sto> ReceivedFrame<'sto> {
 
                 let this_marker = base_ptr.byte_add(usize::from(pdu_header.index) * stride);
 
-                NonNull::new_unchecked(this_marker as *mut PduMarker)
+                NonNull::new_unchecked(this_marker)
             },
             working_counter,
             _ty: PhantomData,
