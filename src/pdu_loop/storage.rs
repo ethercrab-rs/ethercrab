@@ -14,6 +14,7 @@ use crate::{
 };
 use atomic_waker::AtomicWaker;
 use core::{
+    alloc::Layout,
     cell::UnsafeCell,
     marker::PhantomData,
     mem::MaybeUninit,
@@ -320,8 +321,9 @@ mod tests {
         let _ = env_logger::builder().is_test(true).try_init();
 
         const NUM_FRAMES: usize = 16;
+        const DATA: usize = PduStorage::element_size(128);
 
-        let storage: PduStorage<NUM_FRAMES, { PduStorage::element_size(128) }> = PduStorage::new();
+        let storage: PduStorage<NUM_FRAMES, DATA> = PduStorage::new();
         let s = storage.as_ref();
 
         for _ in 0..NUM_FRAMES {

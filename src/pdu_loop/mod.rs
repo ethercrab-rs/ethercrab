@@ -211,47 +211,54 @@ impl<'sto> PduLoop<'sto> {
 mod tests {
     use super::{storage::PduStorage, *};
     use crate::{
+        error::PduError,
         pdu_loop::frame_element::{sendable_frame::SendableFrame, FrameElement, FrameState},
-        Command,
+        timer_factory::IntoTimeout,
+        Command, Reads,
     };
     use core::{future::poll_fn, ops::Deref, pin::pin, task::Poll, time::Duration};
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
+    use tests::frame_element::created_frame::CreatedFrame;
 
-    // #[tokio::test]
-    // // MIRI doesn't like this test as it leaks memory
-    // #[cfg_attr(miri, ignore)]
-    // async fn timed_out_frame_is_reallocatable() {
-    //     // One 16 byte frame
-    //     static STORAGE: PduStorage<1, { PduStorage::element_size(32) }> = PduStorage::new();
-    //     let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
+    #[tokio::test]
+    async fn timed_out_frame_is_reallocatable() {
+        // One 16 byte frame
+        static STORAGE: PduStorage<1, { PduStorage::element_size(32) }> = PduStorage::new();
+        let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
 
-    //     // TODO: Make sure we reserve at least one PDU, otherwise the refcount drop logic isn't exercised.
+        let mut frame = pdu_loop.storage.alloc_frame().expect("Alloc");
 
-    //     let send_result = pdu_loop
-    //         .pdu_send(
-    //             Reads::Brd {
-    //                 address: 0,
-    //                 register: 0,
-    //             }
-    //             .into(),
-    //             (),
-    //             Some(16),
-    //         )
-    //         .unwrap()
-    //         .0
-    //         .timeout(Duration::from_secs(0))
-    //         .await;
+        frame
+            .push_pdu::<()>(
+                Reads::Brd {
+                    address: 0,
+                    register: 0,
+                }
+                .into(),
+                (),
+                Some(16),
+                false,
+            )
+            .expect("Push PDU");
 
-    //     // Just make sure the read timed out
-    //     assert_eq!(send_result.unwrap_err(), Error::Timeout);
+        let fut = frame.mark_sendable();
 
-    //     // We should be able to reuse the frame slot now
-    //     assert!(matches!(
-    //         pdu_loop.storage.alloc_frame(),
-    //         Ok(CreatedFrame { .. })
-    //     ));
-    // }
+        let res = fut.timeout(Duration::from_secs(0)).await;
+
+        // Just make sure the read timed out
+        assert_eq!(res.unwrap_err(), Error::Timeout);
+
+        let frame = pdu_loop.storage.alloc_frame();
+
+        // We should be able to reuse the frame slot now
+        assert!(matches!(frame, Ok(CreatedFrame { .. })));
+
+        // Only one slot so a next alloc should fail
+        let f2 = pdu_loop.storage.alloc_frame();
+
+        assert_eq!(f2.unwrap_err(), PduError::SwapState.into());
+    }
 
     #[test]
     fn write_frame() {
@@ -289,88 +296,89 @@ mod tests {
         );
     }
 
-    // #[test]
-    // // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
-    // #[cfg_attr(miri, ignore)]
-    // fn single_frame_round_trip() {
-    //     let _ = env_logger::builder().is_test(true).try_init();
+    #[test]
+    fn single_frame_round_trip() {
+        let _ = env_logger::builder().is_test(true).try_init();
 
-    //     const FRAME_OVERHEAD: usize = 28;
+        const FRAME_OVERHEAD: usize = 28;
 
-    //     // 1 frame, up to 128 bytes payload
-    //     let storage = PduStorage::<1, 128>::new();
+        // 1 frame, up to 128 bytes payload
+        let storage = PduStorage::<1, 128>::new();
 
-    //     let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
+        let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
 
-    //     let data = [0xaau8, 0xbb, 0xcc, 0xdd];
+        let data = [0xaau8, 0xbb, 0xcc, 0xdd];
 
-    //     let poller = poll_fn(|ctx| {
-    //         let mut written_packet = Vec::new();
-    //         written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
+        let poller = poll_fn(|ctx| {
+            let mut written_packet = Vec::new();
+            written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
-    //         let mut frame_fut = pin!(
-    //             pdu_loop
-    //                 .pdu_send(Command::fpwr(0x5678, 0x1234).into(), &data, None)
-    //                 .expect("pdu_send()")
-    //                 .0
-    //         );
+            let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 
-    //         // Poll future up to first await point. This gets the frame ready and marks it as
-    //         // sendable so TX can pick it up, but we don't want to wait for the response so we won't
-    //         // poll it again.
-    //         assert!(
-    //             matches!(frame_fut.as_mut().poll(ctx), Poll::Pending),
-    //             "frame fut should be pending"
-    //         );
+            let handle = frame
+                .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), &data, None, false)
+                .expect("Push PDU");
 
-    //         let frame = tx.next_sendable_frame().expect("need a frame");
+            let mut frame_fut = pin!(frame.mark_sendable());
 
-    //         let send_fut = pin!(async move {
-    //             frame
-    //                 .send_blocking(|bytes| {
-    //                     written_packet.copy_from_slice(bytes);
+            // Poll future up to first await point. This gets the frame ready and marks it as
+            // sendable so TX can pick it up, but we don't want to wait for the response so we won't
+            // poll it again.
+            assert!(
+                matches!(frame_fut.as_mut().poll(ctx), Poll::Pending),
+                "frame fut should be pending"
+            );
 
-    //                     Ok(bytes.len())
-    //                 })
-    //                 .expect("send");
+            let frame = tx.next_sendable_frame().expect("need a frame");
 
-    //             // Munge fake sent frame into a fake received frame
-    //             {
-    //                 let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
-    //                 frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
-    //                 frame.into_inner()
-    //             }
-    //         });
+            let send_fut = pin!(async move {
+                frame
+                    .send_blocking(|bytes| {
+                        written_packet.copy_from_slice(bytes);
 
-    //         let Poll::Ready(written_packet) = send_fut.poll(ctx) else {
-    //             panic!("no send")
-    //         };
+                        Ok(bytes.len())
+                    })
+                    .expect("send");
 
-    //         assert_eq!(written_packet.len(), FRAME_OVERHEAD + data.len());
+                // Munge fake sent frame into a fake received frame
+                {
+                    let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
+                    frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+                    frame.into_inner()
+                }
+            });
 
-    //         // ---
+            let Poll::Ready(written_packet) = send_fut.poll(ctx) else {
+                panic!("no send")
+            };
 
-    //         let result = rx.receive_frame(&written_packet);
+            assert_eq!(written_packet.len(), FRAME_OVERHEAD + data.len());
 
-    //         assert_eq!(result, Ok(()));
+            // ---
 
-    //         // The frame has received a response at this point so should be ready to get the data
-    //         // from
-    //         match frame_fut.poll(ctx) {
-    //             Poll::Ready(Ok(frame)) => {
-    //                 assert_eq!(frame.data.deref(), &data);
-    //             }
-    //             Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
-    //             Poll::Pending => panic!("frame future still pending"),
-    //         }
+            let result = rx.receive_frame(&written_packet);
 
-    //         // We should only ever be going through this loop once as the number of individual
-    //         // `poll()` calls is calculated.
-    //         Poll::Ready(())
-    //     });
+            assert_eq!(result, Ok(()));
 
-    //     smol::block_on(poller);
-    // }
+            // The frame has received a response at this point so should be ready to get the data
+            // from
+            match frame_fut.poll(ctx) {
+                Poll::Ready(Ok(frame)) => {
+                    let response = frame.take(handle).expect("Handle");
+
+                    assert_eq!(response.deref(), &data);
+                }
+                Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
+                Poll::Pending => panic!("frame future still pending"),
+            }
+
+            // We should only ever be going through this loop once as the number of individual
+            // `poll()` calls is calculated.
+            Poll::Ready(())
+        });
+
+        smol::block_on(poller);
+    }
 
     #[test]
     fn write_multiple_frame() {
