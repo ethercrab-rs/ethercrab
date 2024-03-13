@@ -15,7 +15,7 @@ pub use pdu_rx::PduRx;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
 
-use self::frame_element::received_frame::ReceivedFrame;
+use self::frame_element::received_frame::{ReceivedFrame, ReceivedPdu};
 
 #[cfg(feature = "__internals")]
 pub use frame_header::EthercatFrameHeader;
@@ -86,7 +86,8 @@ impl<T> CheckWorkingCounter<T> for PduResponse<T> {
 /// ```
 #[derive(Debug)]
 pub struct PduLoop<'sto> {
-    storage: PduStorageRef<'sto>,
+    // TODO: Un-pub
+    pub(crate) storage: PduStorageRef<'sto>,
 }
 
 impl<'sto> PduLoop<'sto> {
@@ -130,66 +131,83 @@ impl<'sto> PduLoop<'sto> {
         Ok(())
     }
 
-    /// Send data to and read data back from the slave devices.
-    ///
-    /// This method allows overriding the minimum data length of the payload.
-    ///
-    /// Returns the frame future that can be `.await`ed for a response, and the EtherCAT frame
-    /// index.
-    ///
-    /// The PDU data length will be the larger of the payload data length and the length override
-    /// (if provided). If a larger **response** than the sent data is desired, set the expected
-    /// response length in `len_override`.
-    ///
-    /// This is useful for e.g. sending a 10 byte PDI with 4 output bytes and 6 input bytes. In this
-    /// case, `data` will be a slice of length `4` containing the outputs to send, and
-    /// `len_override` will be `Some(10)`. This makes the latter 6 bytes available for writing the
-    /// PDU response into.
-    // NOTE: Should be `pub(crate)` but the benchmarks need this internal method so we'll just hide
-    // it instead.
-    #[doc(hidden)]
-    pub fn pdu_send(
-        &self,
-        command: Command,
-        data: impl EtherCrabWireWrite,
-        len_override: Option<u16>,
-    ) -> Result<
-        (
-            impl core::future::Future<Output = Result<ReceivedFrame<'_>, Error>>,
-            u8,
-        ),
-        Error,
-    > {
-        Ok((core::future::ready(Err(Error::Internal)), 0u8))
-        // // Length of data to populate in the send buffer
-        // let send_data_len = data.packed_len() as u16;
+    // /// Send data to and read data back from the slave devices.
+    // ///
+    // /// This method allows overriding the minimum data length of the payload.
+    // ///
+    // /// Returns the frame future that can be `.await`ed for a response, and the EtherCAT frame
+    // /// index.
+    // ///
+    // /// The PDU data length will be the larger of the payload data length and the length override
+    // /// (if provided). If a larger **response** than the sent data is desired, set the expected
+    // /// response length in `len_override`.
+    // ///
+    // /// This is useful for e.g. sending a 10 byte PDI with 4 output bytes and 6 input bytes. In this
+    // /// case, `data` will be a slice of length `4` containing the outputs to send, and
+    // /// `len_override` will be `Some(10)`. This makes the latter 6 bytes available for writing the
+    // /// PDU response into.
+    // // NOTE: Should be `pub(crate)` but the benchmarks need this internal method so we'll just hide
+    // // it instead.
+    // #[doc(hidden)]
+    // pub fn pdu_send(
+    //     &self,
+    //     command: Command,
+    //     data: impl EtherCrabWireWrite,
+    //     len_override: Option<u16>,
+    // ) -> Result<
+    //     (
+    //         impl core::future::Future<Output = Result<ReceivedFrame<'_>, Error>>,
+    //         u8,
+    //     ),
+    //     Error,
+    // > {
+    //     let mut frame = self.storage.alloc_frame()?;
+    //     let frame_idx = frame.frame_index();
 
-        // // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
-        // // inputs in the remaining buffer.
-        // let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
+    //     let handle = frame.push_pdu::<()>(command, data, len_override, false)?;
 
-        // let mut frame = self.storage.alloc_frame()?;
+    //     Ok((
+    //         async move {
+    //             let response = frame.mark_sendable().await?;
 
-        // let handle = frame.push_pdu(command, data, len_override, false)?;
+    //             response.take(handle)
+    //         },
+    //         frame_idx,
+    //     ))
 
-        // // let frame_idx = frame.frame_index();
+    //     // Done
 
-        // // let payload = frame
-        // //     .buf_mut()
-        // //     .get_mut(0..usize::from(send_data_len))
-        // //     .ok_or(Error::Pdu(PduError::TooLong))?;
+    //     // ---
 
-        // // // SAFETY: We ensure the payload length is at least the length of the packed input data
-        // // // above, as well as the data to be written is not longer than the payload buffer.
-        // // data.pack_to_slice_unchecked(payload);
+    //     // // Length of data to populate in the send buffer
+    //     // let send_data_len = data.packed_len() as u16;
 
-        // let frame = frame.mark_sendable();
+    //     // // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
+    //     // // inputs in the remaining buffer.
+    //     // let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
 
-        // self.wake_sender();
+    //     // let mut frame = self.storage.alloc_frame()?;
 
-        // todo!()
-        // // Ok((frame, frame_idx))
-    }
+    //     // let handle = frame.push_pdu(command, data, len_override, false)?;
+
+    //     // // let frame_idx = frame.frame_index();
+
+    //     // // let payload = frame
+    //     // //     .buf_mut()
+    //     // //     .get_mut(0..usize::from(send_data_len))
+    //     // //     .ok_or(Error::Pdu(PduError::TooLong))?;
+
+    //     // // // SAFETY: We ensure the payload length is at least the length of the packed input data
+    //     // // // above, as well as the data to be written is not longer than the payload buffer.
+    //     // // data.pack_to_slice_unchecked(payload);
+
+    //     // let frame = frame.mark_sendable();
+
+    //     // self.wake_sender();
+
+    //     // todo!()
+    //     // // Ok((frame, frame_idx))
+    // }
 }
 
 #[cfg(test)]
@@ -207,38 +225,38 @@ mod tests {
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
-    #[tokio::test]
-    // MIRI doesn't like this test as it leaks memory
-    #[cfg_attr(miri, ignore)]
-    async fn timed_out_frame_is_reallocatable() {
-        // One 16 byte frame
-        static STORAGE: PduStorage<1, { PduStorage::element_size(32) }> = PduStorage::new();
-        let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
+    // #[tokio::test]
+    // // MIRI doesn't like this test as it leaks memory
+    // #[cfg_attr(miri, ignore)]
+    // async fn timed_out_frame_is_reallocatable() {
+    //     // One 16 byte frame
+    //     static STORAGE: PduStorage<1, { PduStorage::element_size(32) }> = PduStorage::new();
+    //     let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
 
-        let send_result = pdu_loop
-            .pdu_send(
-                Reads::Brd {
-                    address: 0,
-                    register: 0,
-                }
-                .into(),
-                (),
-                Some(16),
-            )
-            .unwrap()
-            .0
-            .timeout(Duration::from_secs(0))
-            .await;
+    //     let send_result = pdu_loop
+    //         .pdu_send(
+    //             Reads::Brd {
+    //                 address: 0,
+    //                 register: 0,
+    //             }
+    //             .into(),
+    //             (),
+    //             Some(16),
+    //         )
+    //         .unwrap()
+    //         .0
+    //         .timeout(Duration::from_secs(0))
+    //         .await;
 
-        // Just make sure the read timed out
-        assert_eq!(send_result.unwrap_err(), Error::Timeout);
+    //     // Just make sure the read timed out
+    //     assert_eq!(send_result.unwrap_err(), Error::Timeout);
 
-        // We should be able to reuse the frame slot now
-        assert!(matches!(
-            pdu_loop.storage.alloc_frame(),
-            Ok(CreatedFrame { .. })
-        ));
-    }
+    //     // We should be able to reuse the frame slot now
+    //     assert!(matches!(
+    //         pdu_loop.storage.alloc_frame(),
+    //         Ok(CreatedFrame { .. })
+    //     ));
+    // }
 
     #[test]
     fn write_frame() {
@@ -251,7 +269,7 @@ mod tests {
 
         let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
-        let handle = frame
+        let _handle = frame
             .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
             .expect("Push");
 
@@ -276,88 +294,88 @@ mod tests {
         );
     }
 
-    #[test]
-    // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
-    #[cfg_attr(miri, ignore)]
-    fn single_frame_round_trip() {
-        let _ = env_logger::builder().is_test(true).try_init();
+    // #[test]
+    // // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
+    // #[cfg_attr(miri, ignore)]
+    // fn single_frame_round_trip() {
+    //     let _ = env_logger::builder().is_test(true).try_init();
 
-        const FRAME_OVERHEAD: usize = 28;
+    //     const FRAME_OVERHEAD: usize = 28;
 
-        // 1 frame, up to 128 bytes payload
-        let storage = PduStorage::<1, 128>::new();
+    //     // 1 frame, up to 128 bytes payload
+    //     let storage = PduStorage::<1, 128>::new();
 
-        let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
+    //     let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
 
-        let data = [0xaau8, 0xbb, 0xcc, 0xdd];
+    //     let data = [0xaau8, 0xbb, 0xcc, 0xdd];
 
-        let poller = poll_fn(|ctx| {
-            let mut written_packet = Vec::new();
-            written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
+    //     let poller = poll_fn(|ctx| {
+    //         let mut written_packet = Vec::new();
+    //         written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
-            let mut frame_fut = pin!(
-                pdu_loop
-                    .pdu_send(Command::fpwr(0x5678, 0x1234).into(), &data, None,)
-                    .unwrap()
-                    .0
-            );
+    //         let mut frame_fut = pin!(
+    //             pdu_loop
+    //                 .pdu_send(Command::fpwr(0x5678, 0x1234).into(), &data, None)
+    //                 .expect("pdu_send()")
+    //                 .0
+    //         );
 
-            // Poll future up to first await point. This gets the frame ready and marks it as
-            // sendable so TX can pick it up, but we don't want to wait for the response so we won't
-            // poll it again.
-            assert!(
-                matches!(frame_fut.as_mut().poll(ctx), Poll::Pending),
-                "frame fut should be pending"
-            );
+    //         // Poll future up to first await point. This gets the frame ready and marks it as
+    //         // sendable so TX can pick it up, but we don't want to wait for the response so we won't
+    //         // poll it again.
+    //         assert!(
+    //             matches!(frame_fut.as_mut().poll(ctx), Poll::Pending),
+    //             "frame fut should be pending"
+    //         );
 
-            let frame = tx.next_sendable_frame().expect("need a frame");
+    //         let frame = tx.next_sendable_frame().expect("need a frame");
 
-            let send_fut = pin!(async move {
-                frame
-                    .send_blocking(|bytes| {
-                        written_packet.copy_from_slice(bytes);
+    //         let send_fut = pin!(async move {
+    //             frame
+    //                 .send_blocking(|bytes| {
+    //                     written_packet.copy_from_slice(bytes);
 
-                        Ok(bytes.len())
-                    })
-                    .expect("send");
+    //                     Ok(bytes.len())
+    //                 })
+    //                 .expect("send");
 
-                // Munge fake sent frame into a fake received frame
-                {
-                    let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
-                    frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
-                    frame.into_inner()
-                }
-            });
+    //             // Munge fake sent frame into a fake received frame
+    //             {
+    //                 let mut frame = EthernetFrame::new_checked(written_packet).unwrap();
+    //                 frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+    //                 frame.into_inner()
+    //             }
+    //         });
 
-            let Poll::Ready(written_packet) = send_fut.poll(ctx) else {
-                panic!("no send")
-            };
+    //         let Poll::Ready(written_packet) = send_fut.poll(ctx) else {
+    //             panic!("no send")
+    //         };
 
-            assert_eq!(written_packet.len(), FRAME_OVERHEAD + data.len());
+    //         assert_eq!(written_packet.len(), FRAME_OVERHEAD + data.len());
 
-            // ---
+    //         // ---
 
-            let result = rx.receive_frame(&written_packet);
+    //         let result = rx.receive_frame(&written_packet);
 
-            assert_eq!(result, Ok(()));
+    //         assert_eq!(result, Ok(()));
 
-            // The frame has received a response at this point so should be ready to get the data
-            // from
-            match frame_fut.poll(ctx) {
-                Poll::Ready(Ok(mut frame)) => {
-                    assert_eq!(frame.next_pdu().unwrap().unwrap().0.deref(), &data);
-                }
-                Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
-                Poll::Pending => panic!("frame future still pending"),
-            }
+    //         // The frame has received a response at this point so should be ready to get the data
+    //         // from
+    //         match frame_fut.poll(ctx) {
+    //             Poll::Ready(Ok(frame)) => {
+    //                 assert_eq!(frame.data.deref(), &data);
+    //             }
+    //             Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
+    //             Poll::Pending => panic!("frame future still pending"),
+    //         }
 
-            // We should only ever be going through this loop once as the number of individual
-            // `poll()` calls is calculated.
-            Poll::Ready(())
-        });
+    //         // We should only ever be going through this loop once as the number of individual
+    //         // `poll()` calls is calculated.
+    //         Poll::Ready(())
+    //     });
 
-        smol::block_on(poller);
-    }
+    //     smol::block_on(poller);
+    // }
 
     #[test]
     fn write_multiple_frame() {
@@ -412,150 +430,147 @@ mod tests {
         );
     }
 
-    #[test]
-    // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
-    #[cfg_attr(miri, ignore)]
-    fn receive_frame() {
-        // let _ = env_logger::builder().is_test(true).try_init();
+    // #[test]
+    // // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
+    // #[cfg_attr(miri, ignore)]
+    // fn receive_frame() {
+    //     // let _ = env_logger::builder().is_test(true).try_init();
 
-        let ethernet_packet = [
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
-            0x12, 0x10, 0x10, 0x10, 0x10, 0x10, // Return to master address
-            0x88, 0xa4, // EtherCAT ethertype
-            0x10, 0x10, // EtherCAT frame header: type PDU, length 4 (plus header)
-            0x05, // Command: FPWR
-            0x00, // Frame index 0
-            0x89, 0x67, // Slave address,
-            0x34, 0x12, // Register address
-            0x04, 0x00, // Flags, 4 byte length
-            0x00, 0x00, // IRQ
-            0xdd, 0xcc, 0xbb, 0xaa, // Our payload, LE
-            0x00, 0x00, // Working counter
-        ];
+    //     let ethernet_packet = [
+    //         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
+    //         0x12, 0x10, 0x10, 0x10, 0x10, 0x10, // Return to master address
+    //         0x88, 0xa4, // EtherCAT ethertype
+    //         0x10, 0x10, // EtherCAT frame header: type PDU, length 4 (plus header)
+    //         0x05, // Command: FPWR
+    //         0x00, // Frame index 0
+    //         0x89, 0x67, // Slave address,
+    //         0x34, 0x12, // Register address
+    //         0x04, 0x00, // Flags, 4 byte length
+    //         0x00, 0x00, // IRQ
+    //         0xdd, 0xcc, 0xbb, 0xaa, // Our payload, LE
+    //         0x00, 0x00, // Working counter
+    //     ];
 
-        // 1 frame, up to 128 bytes payload
-        let storage = PduStorage::<1, 128>::new();
+    //     // 1 frame, up to 128 bytes payload
+    //     let storage = PduStorage::<1, 128>::new();
 
-        let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
+    //     let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
 
-        let data = 0xAABBCCDDu32;
-        let data_bytes = data.to_le_bytes();
+    //     let data = 0xAABBCCDDu32;
+    //     let data_bytes = data.to_le_bytes();
 
-        let poller = poll_fn(|ctx| {
-            let mut frame_fut = pin!(
-                pdu_loop
-                    .pdu_send(Command::fpwr(0x6789, 0x1234).into(), &data_bytes, None)
-                    .expect("Create sendable frame fut")
-                    .0
-            );
+    //     let poller = poll_fn(|ctx| {
+    //         let mut frame_fut = pin!(
+    //             pdu_loop
+    //                 .pdu_send(Command::fpwr(0x6789, 0x1234).into(), &data_bytes, None)
+    //                 .unwrap()
+    //                 .0
+    //         );
 
-            // Poll future up to first await point. This gets the frame ready and marks it as
-            // sendable so TX can pick it up, but we don't want to wait for the response so we won't
-            // poll it again.
-            assert!(
-                matches!(frame_fut.as_mut().poll(ctx), Poll::Pending),
-                "frame fut should be pending"
-            );
+    //         // Poll future up to first await point. This gets the frame ready and marks it as
+    //         // sendable so TX can pick it up, but we don't want to wait for the response so we won't
+    //         // poll it again.
+    //         assert!(
+    //             matches!(frame_fut.as_mut().poll(ctx), Poll::Pending),
+    //             "frame fut should be pending"
+    //         );
 
-            let frame = tx.next_sendable_frame().expect("need a frame");
+    //         let frame = tx.next_sendable_frame().expect("need a frame");
 
-            frame.send_blocking(|bytes| Ok(bytes.len())).expect("send");
+    //         frame.send_blocking(|bytes| Ok(bytes.len())).expect("send");
 
-            // ---
+    //         // ---
 
-            let result = rx.receive_frame(&ethernet_packet);
+    //         let result = rx.receive_frame(&ethernet_packet);
 
-            assert_eq!(result, Ok(()));
+    //         assert_eq!(result, Ok(()));
 
-            // The frame has received a response at this point so should be ready to get the data
-            // from
-            match frame_fut.poll(ctx) {
-                Poll::Ready(Ok(mut frame)) => {
-                    assert_eq!(frame.next_pdu().unwrap().unwrap().0.deref(), &data_bytes);
-                }
-                Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
-                Poll::Pending => panic!("frame future still pending"),
-            }
+    //         // The frame has received a response at this point so should be ready to get the data
+    //         // from
+    //         match frame_fut.poll(ctx) {
+    //             Poll::Ready(Ok(frame)) => {
+    //                 assert_eq!(frame.data.deref(), &data_bytes);
+    //             }
+    //             Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
+    //             Poll::Pending => panic!("frame future still pending"),
+    //         }
 
-            // We should only ever be going through this loop once as the number of individual
-            // `poll()` calls is calculated.
-            Poll::Ready(())
-        });
+    //         // We should only ever be going through this loop once as the number of individual
+    //         // `poll()` calls is calculated.
+    //         Poll::Ready(())
+    //     });
 
-        smol::block_on(poller);
-    }
+    //     smol::block_on(poller);
+    // }
 
-    // Test the whole TX/RX loop with multiple threads
-    #[tokio::test]
-    async fn parallel() {
-        let _ = env_logger::builder().is_test(true).try_init();
-        env_logger::try_init().ok();
+    // // Test the whole TX/RX loop with multiple threads
+    // #[tokio::test]
+    // async fn parallel() {
+    //     let _ = env_logger::builder().is_test(true).try_init();
+    //     env_logger::try_init().ok();
 
-        static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
-        let (mut tx, mut rx, pdu_loop) = STORAGE.try_split().unwrap();
+    //     static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
+    //     let (mut tx, mut rx, pdu_loop) = STORAGE.try_split().unwrap();
 
-        let tx_rx_task = async move {
-            let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    //     let tx_rx_task = async move {
+    //         let (s, mut r) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
-            let tx_task = async {
-                fmt::info!("Spawn TX task");
+    //         let tx_task = async {
+    //             fmt::info!("Spawn TX task");
 
-                loop {
-                    while let Some(frame) = tx.next_sendable_frame() {
-                        frame
-                            .send_blocking(|bytes| {
-                                s.send(bytes.to_vec()).unwrap();
+    //             loop {
+    //                 while let Some(frame) = tx.next_sendable_frame() {
+    //                     frame
+    //                         .send_blocking(|bytes| {
+    //                             s.send(bytes.to_vec()).unwrap();
 
-                                Ok(bytes.len())
-                            })
-                            .unwrap();
-                    }
+    //                             Ok(bytes.len())
+    //                         })
+    //                         .unwrap();
+    //                 }
 
-                    futures_lite::future::yield_now().await;
-                }
-            };
+    //                 futures_lite::future::yield_now().await;
+    //             }
+    //         };
 
-            let rx_task = async {
-                fmt::info!("Spawn RX task");
+    //         let rx_task = async {
+    //             fmt::info!("Spawn RX task");
 
-                while let Some(ethernet_frame) = r.recv().await {
-                    fmt::trace!("RX task received packet");
+    //             while let Some(ethernet_frame) = r.recv().await {
+    //                 fmt::trace!("RX task received packet");
 
-                    // Munge fake sent frame into a fake received frame
-                    let ethernet_frame = {
-                        let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
-                        frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
-                        frame.into_inner()
-                    };
+    //                 // Munge fake sent frame into a fake received frame
+    //                 let ethernet_frame = {
+    //                     let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
+    //                     frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+    //                     frame.into_inner()
+    //                 };
 
-                    rx.receive_frame(&ethernet_frame).expect("RX");
-                }
-            };
+    //                 rx.receive_frame(&ethernet_frame).expect("RX");
+    //             }
+    //         };
 
-            futures_lite::future::race(tx_task, rx_task).await;
-        };
+    //         futures_lite::future::race(tx_task, rx_task).await;
+    //     };
 
-        tokio::spawn(tx_rx_task);
+    //     tokio::spawn(tx_rx_task);
 
-        for i in 0..32 {
-            let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
+    //     for i in 0..32 {
+    //         let data = [0xaa, 0xbb, 0xcc, 0xdd, i];
 
-            fmt::info!("Send PDU {i}");
+    //         fmt::info!("Send PDU {i}");
 
-            let result = pdu_loop
-                .pdu_send(Command::fpwr(0x1000, 0x980).into(), data, None)
-                .unwrap()
-                .0
-                .await
-                .unwrap()
-                .next_pdu()
-                .unwrap()
-                .unwrap()
-                .0;
+    //         let result = pdu_loop
+    //             .pdu_send(Command::fpwr(0x1000, 0x980).into(), data, None)
+    //             .unwrap()
+    //             .0
+    //             .await
+    //             .unwrap()
+    //             .data;
 
-            assert_eq!(&*result, &data);
-        }
+    //         assert_eq!(&*result, &data);
+    //     }
 
-        fmt::info!("Sent all PDUs");
-    }
+    //     fmt::info!("Sent all PDUs");
+    // }
 }

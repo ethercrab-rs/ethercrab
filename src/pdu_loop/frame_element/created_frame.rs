@@ -1,9 +1,6 @@
-use super::{
-    received_frame::ReceivedFrame, receiving_frame::ReceiveFrameFut, FrameBox, FrameElement,
-    FrameState,
-};
+use super::{receiving_frame::ReceiveFrameFut, FrameBox, FrameElement, FrameState};
 use crate::{
-    error::{Error, PduError},
+    error::PduError,
     fmt,
     generate::write_packed,
     pdu_loop::{frame_header::EthercatFrameHeader, pdu_flags::PduFlags, pdu_header::PduHeader},
@@ -18,14 +15,12 @@ use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite};
 /// [`alloc_frame`](crate::pdu_loop::storage::PduStorageRef::alloc_frame).
 #[derive(Debug)]
 pub struct CreatedFrame<'sto> {
-    // NOTE: These are only pub for tests
     inner: FrameBox<'sto>,
-    consumed: usize,
 }
 
 impl<'sto> CreatedFrame<'sto> {
     pub(crate) fn new(inner: FrameBox<'sto>) -> CreatedFrame<'sto> {
-        Self { inner, consumed: 0 }
+        Self { inner }
     }
 
     /// The frame has been initialised, filled with a data payload (if required), and is now ready
@@ -50,7 +45,7 @@ impl<'sto> CreatedFrame<'sto> {
     /// No more PDUs can be written once the header has been set.
     // NOTE: Pub only for tests
     pub(in crate::pdu_loop) fn finish(mut self) -> Self {
-        EthercatFrameHeader::pdu(self.consumed as u16)
+        EthercatFrameHeader::pdu(self.inner.pdu_payload_len() as u16)
             .pack_to_slice_unchecked(unsafe { self.inner.ecat_frame_header_mut() });
 
         self
@@ -63,8 +58,8 @@ impl<'sto> CreatedFrame<'sto> {
 
         let b = unsafe { self.inner.ethernet_frame() };
 
-        let len =
-            EthernetFrame::<&[u8]>::buffer_len(self.consumed) + EthercatFrameHeader::PACKED_LEN;
+        let len = EthernetFrame::<&[u8]>::buffer_len(self.inner.pdu_payload_len())
+            + EthercatFrameHeader::PACKED_LEN;
 
         &b.into_inner()[0..len]
     }
@@ -91,8 +86,10 @@ impl<'sto> CreatedFrame<'sto> {
         // actually write it)
         let alloc_size = data_length_usize + PduHeader::PACKED_LEN + 2;
 
+        let consumed = self.inner.pdu_payload_len();
+
         // Comprises PDU header, body, working counter
-        let buf_range = self.consumed..(self.consumed + alloc_size);
+        let buf_range = consumed..(consumed + alloc_size);
 
         // // NOTE: Not using extended length to write payload into. The extended length just reserves
         // // space for incoming data from e.g. an (OOOOIIII) PDI.
@@ -134,7 +131,7 @@ impl<'sto> CreatedFrame<'sto> {
             // TODO: Better error to explain that the requested PDU is already in flight
             .expect("In use!");
 
-        self.consumed += alloc_size;
+        self.inner.add_pdu_payload_len(alloc_size);
 
         // TODO: Store expected command and stuff too? Maybe better to validate that
         // elsewhere. Not sure where.
@@ -161,7 +158,7 @@ unsafe impl<'sto> Send for CreatedFrame<'sto> {}
 #[derive(Debug)]
 pub struct PduResponseHandle<T> {
     _ty: PhantomData<T>,
-    buf_range: Range<usize>,
+    pub buf_range: Range<usize>,
 }
 
 impl<T> PduResponseHandle<T> {
@@ -191,6 +188,7 @@ mod tests {
             status: AtomicFrameState::new(FrameState::Created),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
         }]);
 
         // Only one element, and it's the first one, so we don't have to do any pointer arithmetic -
@@ -231,6 +229,7 @@ mod tests {
             status: AtomicFrameState::new(FrameState::Created),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
         }]);
 
         // Only one element, and it's the first one, so we don't have to do any pointer arithmetic -

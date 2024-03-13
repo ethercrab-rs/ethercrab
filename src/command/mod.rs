@@ -256,60 +256,60 @@ impl Command {
         }
     }
 
-    pub(crate) fn parse_code_data(code: u8, data: [u8; 4]) -> Result<Command, Error> {
-        match code {
-            NOP => Ok(Command::Nop),
+    // pub(crate) fn parse_code_data(code: u8, data: [u8; 4]) -> Result<Command, Error> {
+    //     match code {
+    //         NOP => Ok(Command::Nop),
 
-            // Reads
-            APRD => {
-                let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
-                Ok(Command::Read(Reads::Aprd { address, register }))
-            }
-            FPRD => {
-                let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
-                Ok(Command::Read(Reads::Fprd { address, register }))
-            }
-            BRD => {
-                let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
-                Ok(Command::Read(Reads::Brd { address, register }))
-            }
-            FRMW => {
-                let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
-                Ok(Command::Read(Reads::Frmw { address, register }))
-            }
-            LRD => Ok(Command::Read(Reads::Lrd {
-                address: u32::from_le_bytes(data),
-            })),
+    //         // Reads
+    //         APRD => {
+    //             let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
+    //             Ok(Command::Read(Reads::Aprd { address, register }))
+    //         }
+    //         FPRD => {
+    //             let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
+    //             Ok(Command::Read(Reads::Fprd { address, register }))
+    //         }
+    //         BRD => {
+    //             let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
+    //             Ok(Command::Read(Reads::Brd { address, register }))
+    //         }
+    //         FRMW => {
+    //             let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
+    //             Ok(Command::Read(Reads::Frmw { address, register }))
+    //         }
+    //         LRD => Ok(Command::Read(Reads::Lrd {
+    //             address: u32::from_le_bytes(data),
+    //         })),
 
-            // Writes
-            BWR => {
-                let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
-                Ok(Command::Write(Writes::Bwr { address, register }))
-            }
-            APWR => {
-                let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
-                Ok(Command::Write(Writes::Apwr { address, register }))
-            }
-            FPWR => {
-                let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
-                Ok(Command::Write(Writes::Fpwr { address, register }))
-            }
-            LWR => Ok(Command::Write(Writes::Lwr {
-                address: u32::from_le_bytes(data),
-            })),
+    //         // Writes
+    //         BWR => {
+    //             let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
+    //             Ok(Command::Write(Writes::Bwr { address, register }))
+    //         }
+    //         APWR => {
+    //             let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
+    //             Ok(Command::Write(Writes::Apwr { address, register }))
+    //         }
+    //         FPWR => {
+    //             let [address, register] = <[u16; 2]>::unpack_from_slice(&data)?;
+    //             Ok(Command::Write(Writes::Fpwr { address, register }))
+    //         }
+    //         LWR => Ok(Command::Write(Writes::Lwr {
+    //             address: u32::from_le_bytes(data),
+    //         })),
 
-            LRW => Ok(Command::Write(Writes::Lrw {
-                address: u32::from_le_bytes(data),
-            })),
+    //         LRW => Ok(Command::Write(Writes::Lrw {
+    //             address: u32::from_le_bytes(data),
+    //         })),
 
-            // Write-reads
-            other => {
-                fmt::error!("Invalid command code {:#02x}", other);
+    //         // Write-reads
+    //         other => {
+    //             fmt::error!("Invalid command code {:#02x}", other);
 
-                Err(Error::Pdu(PduError::Decode))
-            }
-        }
-    }
+    //             Err(Error::Pdu(PduError::Decode))
+    //         }
+    //     }
+    // }
 }
 
 impl From<Reads> for Command {

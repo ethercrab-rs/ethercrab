@@ -143,7 +143,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 }
 
 #[derive(Debug, Clone)]
-pub(in crate::pdu_loop) struct PduStorageRef<'sto> {
+pub(crate) struct PduStorageRef<'sto> {
     pub frames: NonNull<FrameElement<0>>,
     pub num_frames: usize,
     pub frame_data_len: usize,
@@ -156,7 +156,7 @@ pub(in crate::pdu_loop) struct PduStorageRef<'sto> {
 
 impl<'sto> PduStorageRef<'sto> {
     /// Allocate a PDU frame with the given command and data length.
-    pub(in crate::pdu_loop) fn alloc_frame(
+    pub(crate) fn alloc_frame(
         &self,
         // command: Command,
         // data_length: u16,

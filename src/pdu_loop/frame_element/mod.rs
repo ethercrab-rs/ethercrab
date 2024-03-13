@@ -1,9 +1,8 @@
-use super::{frame_header::EthercatFrameHeader, pdu_header::PduHeader, PDU_UNUSED_SENTINEL};
+use super::{frame_header::EthercatFrameHeader, PDU_UNUSED_SENTINEL};
 use crate::{
     command::Command,
     error::{Error, PduError},
     fmt,
-    generate::write_packed,
     pdu_loop::pdu_flags::PduFlags,
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
@@ -190,6 +189,7 @@ pub struct FrameElement<const N: usize> {
     pub frame_index: u8,
     status: AtomicFrameState,
     pub waker: AtomicWaker,
+    pub pdu_payload_len: usize,
 
     // MUST be the last element otherwise pointer arithmetic doesn't work for
     // `NonNull<FrameElement<0>>`.
@@ -203,6 +203,7 @@ impl<const N: usize> Default for FrameElement<N> {
             status: AtomicFrameState::new(FrameState::None),
             ethernet_frame: [0; N],
             frame_index: 0,
+            pdu_payload_len: 0,
             waker: AtomicWaker::default(),
         }
     }
@@ -280,6 +281,7 @@ impl<const N: usize> FrameElement<N> {
         })?;
 
         (*addr_of_mut!((*this.as_ptr()).frame_index)) = frame_index;
+        (*addr_of_mut!((*this.as_ptr()).pdu_payload_len)) = 0;
 
         Ok(this)
     }
@@ -503,5 +505,13 @@ impl<'sto> FrameBox<'sto> {
         for state in self.pdu_states {
             state.release(frame_index);
         }
+    }
+
+    pub(in crate::pdu_loop) fn pdu_payload_len(&self) -> usize {
+        unsafe { *addr_of!((*self.frame.as_ptr()).pdu_payload_len) }
+    }
+
+    pub(in crate::pdu_loop) fn add_pdu_payload_len(&mut self, len: usize) {
+        unsafe { *addr_of_mut!((&mut *self.frame.as_ptr()).pdu_payload_len) += len };
     }
 }

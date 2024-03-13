@@ -2,8 +2,13 @@ use super::FrameBox;
 use crate::{
     error::Error,
     fmt,
-    pdu_loop::frame_element::{FrameElement, FrameState},
+    pdu_loop::{
+        frame_element::{FrameElement, FrameState},
+        frame_header::EthercatFrameHeader,
+    },
 };
+use ethercrab_wire::EtherCrabWireSized;
+use smoltcp::wire::EthernetFrame;
 
 /// An EtherCAT frame that is ready to be sent over the network.
 ///
@@ -79,7 +84,13 @@ impl<'sto> SendableFrame<'sto> {
 
     // NOTE: Only pub for tests
     pub(crate) fn as_bytes(&self) -> &[u8] {
-        unsafe { self.inner.ethernet_frame() }.into_inner()
+        let frame = unsafe { self.inner.ethernet_frame() }.into_inner();
+
+        let len = EthernetFrame::<&[u8]>::buffer_len(
+            EthercatFrameHeader::PACKED_LEN + self.inner.pdu_payload_len(),
+        );
+
+        &frame[0..len]
     }
 
     /// Get the Ethernet frame length of this frame.

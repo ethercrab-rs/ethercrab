@@ -1,8 +1,8 @@
-use super::{FrameBox, FrameElement};
+use super::{created_frame::PduResponseHandle, FrameBox, FrameElement};
 use crate::{
     error::Error,
     fmt,
-    pdu_loop::{frame_element::FrameState, pdu_header::PduHeader, PduResponse},
+    pdu_loop::{frame_element::FrameState, pdu_header::PduHeader},
 };
 use core::{marker::PhantomData, ops::Deref, ptr::NonNull};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
@@ -14,16 +14,16 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 #[derive(Debug)]
 pub struct ReceivedFrame<'sto> {
     pub(in crate::pdu_loop::frame_element) inner: FrameBox<'sto>,
-    offset: usize,
-    more_follows: bool,
+    // offset: usize,
+    // more_follows: bool,
 }
 
 impl<'sto> ReceivedFrame<'sto> {
     pub fn new(inner: FrameBox<'sto>) -> ReceivedFrame<'sto> {
         Self {
             inner,
-            offset: 0,
-            more_follows: true,
+            // offset: 0,
+            // more_follows: true,
         }
     }
 
@@ -58,86 +58,124 @@ impl<'sto> ReceivedFrame<'sto> {
     //     }
     // }
 
-    #[deprecated(note = "Need to use PDU handles to extract PDU out of raw buffer")]
-    pub(crate) fn next_pdu(&mut self) -> Result<Option<PduResponse<RxFrameDataBuf<'sto>>>, Error> {
-        // TODO: Validate PDU header against what was sent. Uh how???? lmao
+    // #[deprecated(note = "Need to use PDU handles to extract PDU out of raw buffer")]
+    // pub(crate) fn next_pdu(&mut self) -> Result<Option<PduResponse<RxFrameDataBuf<'sto>>>, Error> {
+    //     // TODO: Validate PDU header against what was sent. Uh how???? lmao
 
-        if !self.more_follows {
-            return Ok(None);
-        }
+    //     if !self.more_follows {
+    //         return Ok(None);
+    //     }
 
-        // Make sure buffer is at least large enough to hold a PDU header
-        if self.inner.max_len - self.offset < PduHeader::PACKED_LEN {
-            fmt::trace!(
-                "Not enough space for PDU header: need {}, got {}",
-                PduHeader::PACKED_LEN,
-                self.inner.max_len - self.offset
-            );
+    //     // Make sure buffer is at least large enough to hold a PDU header
+    //     if self.inner.max_len - self.offset < PduHeader::PACKED_LEN {
+    //         fmt::trace!(
+    //             "Not enough space for PDU header: need {}, got {}",
+    //             PduHeader::PACKED_LEN,
+    //             self.inner.max_len - self.offset
+    //         );
 
-            return Err(Error::ReceiveFrame);
-        }
+    //         return Err(Error::ReceiveFrame);
+    //     }
 
-        let pdu_ptr = unsafe {
-            FrameElement::ethercat_payload_ptr(self.inner.frame)
-                .as_ptr()
-                .byte_add(self.offset)
-                .cast_const()
-        };
+    //     let pdu_ptr = unsafe {
+    //         FrameElement::ethercat_payload_ptr(self.inner.frame)
+    //             .as_ptr()
+    //             .byte_add(self.offset)
+    //             .cast_const()
+    //     };
 
-        let header_buf = unsafe { core::slice::from_raw_parts(pdu_ptr, PduHeader::PACKED_LEN) };
+    //     let header_buf = unsafe { core::slice::from_raw_parts(pdu_ptr, PduHeader::PACKED_LEN) };
 
-        let header = PduHeader::unpack_from_slice(header_buf)?;
+    //     let header = PduHeader::unpack_from_slice(header_buf)?;
 
-        self.more_follows = header.flags.more_follows;
+    //     self.more_follows = header.flags.more_follows;
 
-        let payload_len = usize::from(header.flags.len());
+    //     let payload_len = usize::from(header.flags.len());
 
-        let remaining = self.inner.max_len - self.offset - PduHeader::PACKED_LEN;
+    //     let remaining = self.inner.max_len - self.offset - PduHeader::PACKED_LEN;
 
-        // Buffer must be large enough to hold PDU payload and working counter
-        if remaining < (payload_len + 2) {
-            fmt::error!(
-                "Not enough space for PDU payload: need {}, got {}",
-                payload_len + 2,
-                remaining
-            );
+    //     // Buffer must be large enough to hold PDU payload and working counter
+    //     if remaining < (payload_len + 2) {
+    //         fmt::error!(
+    //             "Not enough space for PDU payload: need {}, got {}",
+    //             payload_len + 2,
+    //             remaining
+    //         );
 
-            return Err(Error::ReceiveFrame);
-        }
+    //         return Err(Error::ReceiveFrame);
+    //     }
+
+    //     let payload_ptr = unsafe {
+    //         NonNull::new_unchecked(
+    //             FrameElement::ethercat_payload_ptr(self.inner.frame)
+    //                 .as_ptr()
+    //                 .byte_add(self.offset + PduHeader::PACKED_LEN),
+    //         )
+    //     };
+
+    //     let working_counter = {
+    //         let buf = unsafe {
+    //             core::slice::from_raw_parts(
+    //                 FrameElement::ethercat_payload_ptr(self.inner.frame)
+    //                     .as_ptr()
+    //                     .byte_add(self.offset + PduHeader::PACKED_LEN + payload_len)
+    //                     .cast_const(),
+    //                 u16::PACKED_LEN,
+    //             )
+    //         };
+
+    //         u16::unpack_from_slice(buf)?
+    //     };
+
+    //     // Add 2 for working counter
+    //     self.offset += PduHeader::PACKED_LEN + payload_len + 2;
+
+    //     Ok(Some((
+    //         RxFrameDataBuf {
+    //             _lt: PhantomData,
+    //             data_start: payload_ptr,
+    //             len: payload_len,
+    //         },
+    //         working_counter,
+    //     )))
+    // }
+
+    pub(crate) fn take<T>(
+        &self,
+        handle: PduResponseHandle<T>,
+    ) -> Result<ReceivedPdu<'sto, T>, Error> {
+        // TODO: Doesn't need to be a range, just a start
+        // Offset relative to end of EtherCAT header
+        let pdu_start_offset = handle.buf_range.start;
+
+        let this_pdu = &unsafe { self.inner.pdu_buf() }[pdu_start_offset..];
+
+        let pdu_header = PduHeader::unpack_from_slice(this_pdu)?;
+
+        // let payload = rest.split_at(usize::from(pdu_header.flags.len()));
+
+        let payload_len = usize::from(pdu_header.flags.len());
 
         let payload_ptr = unsafe {
             NonNull::new_unchecked(
                 FrameElement::ethercat_payload_ptr(self.inner.frame)
                     .as_ptr()
-                    .byte_add(self.offset + PduHeader::PACKED_LEN),
+                    .byte_add(pdu_start_offset + PduHeader::PACKED_LEN),
             )
         };
 
-        let working_counter = {
-            let buf = unsafe {
-                core::slice::from_raw_parts(
-                    FrameElement::ethercat_payload_ptr(self.inner.frame)
-                        .as_ptr()
-                        .byte_add(self.offset + PduHeader::PACKED_LEN + payload_len)
-                        .cast_const(),
-                    u16::PACKED_LEN,
-                )
-            };
+        let working_counter =
+            u16::unpack_from_slice(&this_pdu[(PduHeader::PACKED_LEN + payload_len)..])?;
 
-            u16::unpack_from_slice(buf)?
-        };
-
-        // Add 2 for working counter
-        self.offset += PduHeader::PACKED_LEN + payload_len + 2;
-
-        Ok(Some((
-            RxFrameDataBuf {
+        Ok(ReceivedPdu {
+            data: RxFrameDataBuf {
                 _lt: PhantomData,
                 data_start: payload_ptr,
                 len: payload_len,
             },
             working_counter,
-        )))
+            _ty: PhantomData,
+        })
     }
 
     // fn frame(&self) -> &PduFrame {
@@ -164,6 +202,13 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
             ));
         }
     }
+}
+
+#[derive(Debug)]
+pub struct ReceivedPdu<'sto, T> {
+    pub data: RxFrameDataBuf<'sto>,
+    pub working_counter: u16,
+    _ty: PhantomData<T>,
 }
 
 pub struct RxFrameDataBuf<'sto> {

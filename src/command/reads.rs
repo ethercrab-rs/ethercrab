@@ -97,15 +97,19 @@ impl WrappedRead {
         len: u16,
     ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
         for _ in 0..client.config.retry_behaviour.loop_counts() {
-            let (frame, frame_idx) =
-                client
-                    .pdu_loop
-                    .pdu_send(self.command.into(), (), Some(len))?;
+            let mut frame = client.pdu_loop.storage.alloc_frame()?;
+            let frame_idx = frame.frame_index();
+
+            let handle = frame.push_pdu::<()>(self.command.into(), (), Some(len), false)?;
+
+            let frame = frame.mark_sendable();
+
+            client.pdu_loop.wake_sender();
 
             match frame.timeout(client.timeouts.pdu).await {
-                Ok(mut result) => return Ok(result.next_pdu()?.unwrap()),
+                Ok(result) => return result.take(handle).map(|rx| (rx.data, rx.working_counter)),
                 Err(Error::Timeout) => {
-                    fmt::error!("Frame {:#04x} timed out", frame_idx);
+                    fmt::error!("Frame index {} timed out", frame_idx);
 
                     // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
                     // state to `None`, ready for reuse.

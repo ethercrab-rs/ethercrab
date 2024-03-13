@@ -54,10 +54,10 @@ impl PduHeader {
         Ok((data, wkc))
     }
 
-    /// Create a [`Command`] from the raw data in this header.
-    pub fn command(&self) -> Result<Command, Error> {
-        Command::parse_code_data(self.command_code, self.command_raw)
-    }
+    // /// Create a [`Command`] from the raw data in this header.
+    // pub fn command(&self) -> Result<Command, Error> {
+    //     Command::parse_code_data(self.command_code, self.command_raw)
+    // }
 
     /// A hacked equality check used for replay tests only.
     ///
