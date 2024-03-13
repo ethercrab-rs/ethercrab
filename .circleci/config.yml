@@ -10,7 +10,7 @@ target_steps_std: &target_steps_std
     # For docs gen
     - run: rustup target add x86_64-unknown-linux-gnu || true
     - run: |
-        binaries=( "cargo-deadlinks" "cargo-readme" "just", "cargo-nextest" )
+        binaries=( "cargo-deadlinks" "cargo-readme" "just" "cargo-nextest" )
 
         for binary in "${binaries[@]}"
         do
