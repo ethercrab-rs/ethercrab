@@ -131,6 +131,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
+            frame_element_stride: fmt::unwrap!(Layout::array::<FrameElement<DATA>>(N)).size() / N,
             num_frames: N,
             frame_data_len: DATA,
             frame_idx: &self.frame_idx,
@@ -144,7 +145,9 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PduStorageRef<'sto> {
-    pub frames: NonNull<FrameElement<0>>,
+    frames: NonNull<FrameElement<0>>,
+    /// Stride in bytes used to calculate frame element index pointer offsets.
+    frame_element_stride: usize,
     pub num_frames: usize,
     pub frame_data_len: usize,
     frame_idx: &'sto AtomicU8,
@@ -253,14 +256,9 @@ impl<'sto> PduStorageRef<'sto> {
     /// If the given index is greater than the value in `PduStorage::N`, this will return garbage
     /// data off the end of the frame element buffer.
     pub(in crate::pdu_loop) unsafe fn frame_at_index(&self, idx: usize) -> *mut FrameElement<0> {
-        let align = core::mem::align_of::<FrameElement<0>>();
-        let size = core::mem::size_of::<FrameElement<0>>() + self.frame_data_len;
-
-        let stride = core::alloc::Layout::from_size_align_unchecked(size, align)
-            .pad_to_align()
-            .size();
-
-        self.frames.as_ptr().byte_add(idx * stride)
+        self.frames
+            .as_ptr()
+            .byte_add(idx * self.frame_element_stride)
     }
 }
 
