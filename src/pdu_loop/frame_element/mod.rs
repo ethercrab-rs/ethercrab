@@ -118,13 +118,6 @@ impl PduMarker {
         raw as u8
     }
 
-    // DELETEME
-    pub fn frame_index_unchecked(&self) -> u8 {
-        let raw = self.frame_index.load(Ordering::Relaxed);
-
-        raw as u8
-    }
-
     pub fn init(&self) {
         assert!(self
             .frame_index
