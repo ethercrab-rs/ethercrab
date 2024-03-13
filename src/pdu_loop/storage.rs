@@ -174,7 +174,7 @@ impl<'sto> PduStorageRef<'sto> {
 
         // Find next frame that is not currently in use.
         let frame = loop {
-            let frame_idx = self.frame_idx.fetch_sub(1, Ordering::Relaxed) % self.num_frames as u8;
+            let frame_idx = self.frame_idx.fetch_add(1, Ordering::Relaxed) % self.num_frames as u8;
 
             fmt::trace!("Try to allocate frame {}", frame_idx);
 
