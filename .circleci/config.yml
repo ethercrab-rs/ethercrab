@@ -10,7 +10,7 @@ target_steps_std: &target_steps_std
     # For docs gen
     - run: rustup target add x86_64-unknown-linux-gnu || true
     - run: |
-        binaries=( "cargo-deadlinks" "cargo-readme" "just" "cargo-nextest" )
+        binaries=( "cargo-deadlinks" "cargo-readme" "just" )
 
         for binary in "${binaries[@]}"
         do
@@ -51,6 +51,19 @@ miri_steps: &miri_steps
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
     - run: rustup toolchain add nightly-2024-03-08 --target $TARGET --component miri
+    - run: |
+        binaries=( "cargo-nextest" )
+
+        for binary in "${binaries[@]}"
+        do
+          echo "Checking for $binary"
+          if ! type "$binary" > /dev/null; then
+            echo "--> $binary is not installed. Installing..."
+            cargo install "$binary" --target x86_64-unknown-linux-gnu --locked
+          else
+            echo "--> $binary already installed"
+          fi
+        done
     - run: |
         export MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation"
 
