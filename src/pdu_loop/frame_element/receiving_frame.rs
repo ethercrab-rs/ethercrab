@@ -105,6 +105,25 @@ pub struct ReceiveFrameFut<'sto> {
     pub(in crate::pdu_loop::frame_element) frame: Option<FrameBox<'sto>>,
 }
 
+impl<'sto> ReceiveFrameFut<'sto> {
+    /// Get entire frame buffer. Only really useful for assertions in tests.
+    #[cfg(test)]
+    pub fn buf(&self) -> &[u8] {
+        use crate::pdu_loop::frame_header::EthercatFrameHeader;
+        use ethercrab_wire::EtherCrabWireSized;
+        use smoltcp::wire::EthernetFrame;
+
+        let frame = self.frame.as_ref().unwrap();
+
+        let b = unsafe { frame.ethernet_frame() };
+
+        let len = EthernetFrame::<&[u8]>::buffer_len(frame.pdu_payload_len())
+            + EthercatFrameHeader::PACKED_LEN;
+
+        &b.into_inner()[0..len]
+    }
+}
+
 // SAFETY: This unsafe impl is required due to `FrameBox` containing a `NonNull`, however this impl
 // is ok because FrameBox also holds the lifetime `'sto` of the backing store, which is where the
 // `NonNull<FrameElement>` comes from.

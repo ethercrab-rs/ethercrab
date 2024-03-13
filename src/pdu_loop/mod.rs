@@ -112,9 +112,7 @@ mod tests {
     use crate::{
         error::{Error, PduError},
         fmt,
-        pdu_loop::frame_element::{
-            created_frame::CreatedFrame, sendable_frame::SendableFrame, FrameElement, FrameState,
-        },
+        pdu_loop::frame_element::created_frame::CreatedFrame,
         timer_factory::IntoTimeout,
         Command, PduStorage, Reads,
     };
@@ -175,6 +173,8 @@ mod tests {
         let _handle = frame
             .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
             .expect("Push");
+
+        let frame = frame.mark_sendable();
 
         assert_eq!(
             frame.buf(),
@@ -297,10 +297,8 @@ mod tests {
             .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
             .expect("Push PDU");
 
-        let frame = SendableFrame::new(frame.inner());
-
-        // Manually reset frame state so it can be reused.
-        unsafe { FrameElement::set_state(frame.inner.frame, FrameState::None) };
+        // Drop frame future to reset its state to `FrameState::None`
+        drop(frame.mark_sendable());
 
         // ---
 
@@ -311,6 +309,8 @@ mod tests {
         let _handle = frame
             .push_pdu::<()>(Command::fpwr(0x6789, 0x1234).into(), data, None, false)
             .expect("Push second PDU");
+
+        let frame = frame.mark_sendable();
 
         // ---
 

@@ -41,24 +41,6 @@ impl<'sto> CreatedFrame<'sto> {
         }
     }
 
-    /// Get entire frame buffer. Only really useful for assertions in tests.
-    #[cfg(test)]
-    pub fn buf(&self) -> &[u8] {
-        use smoltcp::wire::EthernetFrame;
-
-        let b = unsafe { self.inner.ethernet_frame() };
-
-        let len = EthernetFrame::<&[u8]>::buffer_len(self.inner.pdu_payload_len())
-            + EthercatFrameHeader::PACKED_LEN;
-
-        &b.into_inner()[0..len]
-    }
-
-    #[cfg(test)]
-    pub(in crate::pdu_loop) fn inner(self) -> FrameBox<'sto> {
-        self.inner
-    }
-
     pub fn push_pdu<RX>(
         &mut self,
         command: Command,

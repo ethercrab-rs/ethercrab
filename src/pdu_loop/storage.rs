@@ -249,10 +249,7 @@ unsafe impl<'sto> Sync for PduStorageRef<'sto> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        pdu_loop::{frame_element::FrameState, pdu_header::PduHeader},
-        Command,
-    };
+    use crate::{pdu_loop::pdu_header::PduHeader, Command};
 
     #[test]
     fn zeroed_data() {
@@ -270,8 +267,8 @@ mod tests {
             )
             .unwrap();
 
-        // Manually reset frame state so it can be reused.
-        unsafe { FrameElement::set_state(frame.inner().frame, FrameState::None) };
+        // Drop frame future to reset its state to `FrameState::None`
+        drop(frame.mark_sendable());
 
         let mut frame = s.alloc_frame().unwrap();
 
@@ -284,6 +281,8 @@ mod tests {
         let pdu_start = EthernetFrame::<&[u8]>::header_len()
             + EthercatFrameHeader::header_len()
             + PduHeader::PACKED_LEN;
+
+        let frame = frame.mark_sendable();
 
         // 10 byte PDU header, 8 byte payload, 2 byte WKC
         assert_eq!(
