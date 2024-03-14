@@ -1,3 +1,33 @@
+# Optimising PDU reservation
+
+Problem
+
+- Must not be able to reuse a PDU index already in flight. Really bad data corruption could occur
+  even when checking command code, etc. E.g. Cyclic LRW is same command code over and over again and
+  would corrupt silently if PDU indices aren't reserved.
+
+Solutions
+
+- Current one: Array of `AtomicU16`
+  - Memory inefficient
+  - Slow to free reserved PDUs
+- Possible: head and tail `AtomicU8`
+  - Before reserving a new PDU index, check if tail has reached head. If it has, error out - we're
+    sending stuff too fast, or not releasing it fast enough on the other end.
+  - Each frame keeps the index of the first PDU pushed into it. This is unique
+  - Isn't this a performance issue as it requires earlier PDUs to be freed before newer ones are?
+    Yes it is. Frames can (although usually don't tbf) arrive in any order.
+  - What happens if PDU indices within a single frame are not contiguous?
+- Possible: store an array of PDU indices in each frame element
+  - This is all internal, so I have control over how many items to have per element.
+  - Find frame by first PDU in list as usual
+  - How do we make this as small as possible in memory? `[u8; N]` can't represent unused state.
+    `heapless::Vec` would work but it contains a `usize` which is a little large. If we have 4
+    frames, `usize + [u8; 4]` is the same as `[u16; 4]` on 32 bit.
+  - We already have a refcount, so we could just do `[u8; N]`.
+  - On RX, have to loop through frames to find one with first PDU index equal to what was received.
+    Bummer.
+
 # Multiple PDUs per frame (again)
 
 - One waker per frame
