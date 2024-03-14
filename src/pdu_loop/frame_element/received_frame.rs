@@ -183,17 +183,17 @@ impl<'sto, T> Drop for ReceivedPdu<'sto, T> {
             .release_for_frame(frame_idx)
             .expect("Release");
 
-        let refcount = FrameElement::<0>::dec_refcount(self.frame);
+        let old = FrameElement::<0>::dec_refcount(self.frame);
 
         fmt::trace!(
-            "Drop received PDU marker {:#04x}, points to frame index {}, refcount is now {}",
+            "Drop received PDU marker {:#04x}, points to frame index {}, prev refcount {}",
             self.pdu_idx,
             frame_idx,
-            refcount
+            old
         );
 
         // We've just dropped the last handle to the backing store. It can now be released.
-        if refcount == 0 {
+        if old == 1 {
             fmt::trace!(
                 "All PDU handles dropped, freeing frame element {}",
                 FrameElement::<0>::frame_index(self.frame)
@@ -218,7 +218,6 @@ impl<'sto, T> Drop for ReceivedPdu<'sto, T> {
 // SAFETY: This is ok because we respect the lifetime of the underlying data by carrying the 'sto
 // lifetime.
 unsafe impl<'sto, T> Send for ReceivedPdu<'sto, T> {}
-// NOTE: `ReceivedPdu` MUST NEVER BE `Sync` as the underlying refcount is a `u8`.
 
 impl<'sto, T> Deref for ReceivedPdu<'sto, T> {
     type Target = [u8];

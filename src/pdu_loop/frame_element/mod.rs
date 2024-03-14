@@ -173,7 +173,7 @@ pub struct FrameElement<const N: usize> {
     /// The number of PDU handles held by this frame.
     ///
     /// Used to drop the whole frame only when all PDUs have been consumed from it.
-    refcount: u8,
+    refcount: AtomicU8,
 
     // MUST be the last element otherwise pointer arithmetic doesn't work for
     // `NonNull<FrameElement<0>>`.
@@ -187,7 +187,7 @@ impl<const N: usize> Default for FrameElement<N> {
             ethernet_frame: [0; N],
             frame_index: 0,
             pdu_payload_len: 0,
-            refcount: 0,
+            refcount: AtomicU8::new(0),
             waker: AtomicWaker::default(),
         }
     }
@@ -266,7 +266,7 @@ impl<const N: usize> FrameElement<N> {
 
         (*addr_of_mut!((*this.as_ptr()).frame_index)) = frame_index;
         (*addr_of_mut!((*this.as_ptr()).pdu_payload_len)) = 0;
-        (*addr_of_mut!((*this.as_ptr()).refcount)) = 0;
+        (*addr_of_mut!((*this.as_ptr()).refcount)).store(0, Ordering::Release);
 
         Ok(this)
     }
@@ -293,23 +293,11 @@ impl<const N: usize> FrameElement<N> {
     }
 
     fn inc_refcount(this: NonNull<FrameElement<0>>) -> u8 {
-        let count = unsafe { &mut *addr_of_mut!((*this.as_ptr()).refcount) };
-
-        let new = count.saturating_add(1);
-
-        *count = new;
-
-        new
+        unsafe { &*addr_of!((*this.as_ptr()).refcount) }.fetch_add(1, Ordering::Acquire)
     }
 
     fn dec_refcount(this: NonNull<FrameElement<0>>) -> u8 {
-        let count = unsafe { &mut *addr_of_mut!((*this.as_ptr()).refcount) };
-
-        let new = count.saturating_sub(1);
-
-        *count = new;
-
-        new
+        unsafe { &*addr_of!((*this.as_ptr()).refcount) }.fetch_sub(1, Ordering::Release)
     }
 
     fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
