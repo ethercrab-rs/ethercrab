@@ -127,13 +127,16 @@ impl PduMarker {
     }
 
     /// Reset this marker to unused if it belongs to the given frame index.
-    fn release_for_frame(&self, frame_index: u16) -> Result<u16, u16> {
-        self.frame_index.compare_exchange(
-            frame_index,
-            PDU_UNUSED_SENTINEL,
-            Ordering::Release,
-            Ordering::Relaxed,
-        )
+    fn release_for_frame(&self, frame_index: u16) -> Result<(), ()> {
+        // This is much more performant than `compare_exchange`, even though it's a bit messier :(
+        if self.frame_index.load(Ordering::Relaxed) == frame_index {
+            self.frame_index
+                .store(PDU_UNUSED_SENTINEL, Ordering::Release);
+
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 }
 
