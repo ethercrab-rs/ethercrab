@@ -838,6 +838,18 @@ sudo apt install linux-perf
 
 RUSTFLAGS="-C force-frame-pointers=yes" cargo build --example <example name> --profile profiling
 
+# <https://stackoverflow.com/a/36263349>
+# To get kernel symbols in the perf output
+echo 0 | sudo tee /proc/sys/kernel/kptr_restrict
+# OR
+sudo sysctl -w kernel.kptr_restrict=0
+
+# Read current value
+sudo sysctl kernel.kptr_restrict
+
+# This should show non-zero addresses now. Will show zeros without sudo.
+sudo cat /proc/kallsyms
+
 # Might need sudo sysctl kernel.perf_event_paranoid=-1
 # Might need sudo sysctl kernel.perf_event_mlock_kb=2048
 sudo setcap cap_net_raw=pe ./target/profiling/examples/<example name>
@@ -845,6 +857,10 @@ sudo perf record --call-graph=dwarf -g ./target/profiling/examples/<example name
 
 # Ctrl + C when you're done
 
+# Must use sudo to get kernel symbols
+sudo perf report -i perf.data
+
+# This won't show kernel symbols (possibly only when over SSH?)
 sudo chown $USER perf.data
 samply load perf.data
 
