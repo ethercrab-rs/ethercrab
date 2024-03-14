@@ -114,16 +114,16 @@ impl PduMarker {
     }
 
     /// Reset this marker to unused if it belongs to the given frame index.
-    fn release_for_frame(&self, frame_index: u16) -> Result<(), ()> {
+    fn release_for_frame(&self, frame_index: u16) {
         // This is much more performant than `compare_exchange`, even though it's a bit messier :(
         if self.frame_index.load(Ordering::Relaxed) == frame_index {
-            self.frame_index
-                .store(PDU_UNUSED_SENTINEL, Ordering::Release);
-
-            Ok(())
-        } else {
-            Err(())
+            self.release();
         }
+    }
+
+    fn release(&self) {
+        self.frame_index
+            .store(PDU_UNUSED_SENTINEL, Ordering::Release);
     }
 }
 
@@ -160,7 +160,10 @@ pub struct FrameElement<const N: usize> {
     /// The number of PDU handles held by this frame.
     ///
     /// Used to drop the whole frame only when all PDUs have been consumed from it.
-    refcount: AtomicU8,
+    marker_count: AtomicU8,
+
+    /// Number of PDUs inserted into this frame element
+    pdu_count: AtomicU8,
 
     // MUST be the last element otherwise pointer arithmetic doesn't work for
     // `NonNull<FrameElement<0>>`.
@@ -174,7 +177,8 @@ impl<const N: usize> Default for FrameElement<N> {
             ethernet_frame: [0; N],
             frame_index: 0,
             pdu_payload_len: 0,
-            refcount: AtomicU8::new(0),
+            marker_count: AtomicU8::new(0),
+            pdu_count: AtomicU8::new(0),
             waker: AtomicWaker::default(),
         }
     }
@@ -253,7 +257,8 @@ impl<const N: usize> FrameElement<N> {
 
         (*addr_of_mut!((*this.as_ptr()).frame_index)) = frame_index;
         (*addr_of_mut!((*this.as_ptr()).pdu_payload_len)) = 0;
-        (*addr_of_mut!((*this.as_ptr()).refcount)).store(0, Ordering::Release);
+        (*addr_of_mut!((*this.as_ptr()).marker_count)).store(0, Ordering::Release);
+        (*addr_of_mut!((*this.as_ptr()).pdu_count)).store(0, Ordering::Release);
 
         Ok(this)
     }
@@ -280,11 +285,19 @@ impl<const N: usize> FrameElement<N> {
     }
 
     fn inc_refcount(this: NonNull<FrameElement<0>>) -> u8 {
-        unsafe { &*addr_of!((*this.as_ptr()).refcount) }.fetch_add(1, Ordering::Acquire)
+        unsafe { &*addr_of!((*this.as_ptr()).marker_count) }.fetch_add(1, Ordering::Acquire)
     }
 
     fn dec_refcount(this: NonNull<FrameElement<0>>) -> u8 {
-        unsafe { &*addr_of!((*this.as_ptr()).refcount) }.fetch_sub(1, Ordering::Release)
+        unsafe { &*addr_of!((*this.as_ptr()).marker_count) }.fetch_sub(1, Ordering::Release)
+    }
+
+    fn inc_pdu_count(this: NonNull<FrameElement<0>>) -> u8 {
+        unsafe { &*addr_of!((*this.as_ptr()).pdu_count) }.fetch_add(1, Ordering::Acquire)
+    }
+
+    fn pdu_count(this: NonNull<FrameElement<0>>) -> u8 {
+        unsafe { &*addr_of!((*this.as_ptr()).pdu_count) }.load(Ordering::Relaxed)
     }
 
     fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
@@ -439,9 +452,13 @@ impl<'sto> FrameBox<'sto> {
         let states: &[PduMarker] =
             unsafe { core::slice::from_raw_parts(self.pdu_states.as_ptr() as *const _, PDU_SLOTS) };
 
-        for state in states {
-            state.release_for_frame(frame_index).ok();
-        }
+        states
+            .iter()
+            .filter(|marker| marker.frame_index.load(Ordering::Relaxed) == frame_index)
+            .take(usize::from(FrameElement::<0>::pdu_count(self.frame)))
+            .for_each(|marker| {
+                marker.release();
+            });
     }
 
     pub(in crate::pdu_loop) fn pdu_payload_len(&self) -> usize {

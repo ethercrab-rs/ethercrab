@@ -179,9 +179,7 @@ impl<'sto, T> Drop for ReceivedPdu<'sto, T> {
     fn drop(&mut self) {
         let frame_idx = u16::from(FrameElement::<0>::frame_index(self.frame));
 
-        unsafe { self.pdu_marker.as_mut() }
-            .release_for_frame(frame_idx)
-            .expect("Release");
+        unsafe { self.pdu_marker.as_mut() }.release_for_frame(frame_idx);
 
         let old = FrameElement::<0>::dec_refcount(self.frame);
 
