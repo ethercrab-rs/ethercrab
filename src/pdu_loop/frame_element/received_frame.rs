@@ -64,12 +64,12 @@ impl<'sto> ReceivedFrame<'sto> {
             return Err(Error::Pdu(PduError::InvalidIndex(pdu_header.index)));
         }
 
-        if pdu_header.command_code != handle.command.code() {
+        if pdu_header.command_code != handle.command_code {
             fmt::error!(
                 "PDU {:#04x} response has incorrect command received {:#04x}, expected {:#04x}",
                 pdu_header.index,
                 pdu_header.command_code,
-                handle.command.code()
+                handle.command_code
             );
 
             return Err(Error::Pdu(PduError::Decode));

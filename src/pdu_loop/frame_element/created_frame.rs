@@ -64,9 +64,7 @@ impl<'sto> CreatedFrame<'sto> {
         let buf_range = consumed..(consumed + alloc_size);
 
         // Establish mapping between this PDU index and the Ethernet frame it's being put in
-        let pdu_idx = self
-            .inner
-            .reserve_pdu_marker(self.frame_index(), command, flags)?;
+        let pdu_idx = self.inner.reserve_pdu_marker(self.frame_index())?;
 
         fmt::trace!(
             "Write PDU {:#04x} into frame index {} ({}, {} bytes at {:?})",
@@ -101,7 +99,7 @@ impl<'sto> CreatedFrame<'sto> {
             _ty: PhantomData,
             buf_start: buf_range.start,
             pdu_idx,
-            command,
+            command_code: command.code(),
         })
     }
 
@@ -126,7 +124,7 @@ pub struct PduResponseHandle<T> {
     pub buf_start: usize,
     /// PDU index and command used to validate response match
     pub pdu_idx: u8,
-    pub command: Command,
+    pub command_code: u8,
 }
 
 #[cfg(test)]

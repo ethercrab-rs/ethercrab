@@ -1,6 +1,5 @@
 use super::{frame_header::EthercatFrameHeader, PDU_UNUSED_SENTINEL};
 use crate::{
-    command::Command,
     error::{Error, PduError},
     fmt,
     pdu_loop::{pdu_flags::PduFlags, PDU_SLOTS},
@@ -9,7 +8,6 @@ use crate::{
 use atomic_waker::AtomicWaker;
 use core::{
     alloc::Layout,
-    cell::Cell,
     fmt::Debug,
     marker::PhantomData,
     ptr::{addr_of, addr_of_mut, NonNull},
@@ -60,16 +58,12 @@ pub struct PduMarker {
     ///
     /// The marker value is defined by [`PDU_UNUSED_SENTINEL`].
     frame_index: AtomicU16,
-
-    // NOTE: Not keeping PDU index as this is implicit to the PDU -> frame mapping array. No sense
-    // in duplicating information.
-    inner: Cell<PduMarkerInner>,
 }
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct PduMarkerInner {
     // Keep so we can check received PDU against this one
-    pub command: Command,
+    pub command_code: u8,
     // Keep so we can check received PDU against this one
     pub flags: PduFlags,
     // Always sent as zero plus we never check or use it currently
@@ -82,12 +76,7 @@ impl PduMarker {
     /// Try to reserve this PDU for use in a TX/RX.
     ///
     /// If the given index is already reserved, an error will be returned.
-    pub fn reserve(
-        &self,
-        frame_idx: u8,
-        command: Command,
-        flags: PduFlags,
-    ) -> Result<(), PduError> {
+    pub fn reserve(&self, frame_idx: u8) -> Result<(), PduError> {
         // Try to reserve the frame by switching the flag state from unused to the frame
         if let Err(bad_state) = self.frame_index.compare_exchange(
             PDU_UNUSED_SENTINEL,
@@ -105,8 +94,6 @@ impl PduMarker {
             // TODO: Maybe a unique error variant here?
             return Err(PduError::InvalidFrameState);
         }
-
-        self.inner.replace(PduMarkerInner { command, flags });
 
         Ok(())
     }
@@ -465,12 +452,7 @@ impl<'sto> FrameBox<'sto> {
         unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += len };
     }
 
-    fn reserve_pdu_marker(
-        &self,
-        frame_index: u8,
-        command: Command,
-        flags: PduFlags,
-    ) -> Result<u8, PduError> {
+    fn reserve_pdu_marker(&self, frame_index: u8) -> Result<u8, PduError> {
         let pdu_idx = self.next_pdu_idx();
 
         // Sanity check. PDU_SLOTS is currently 256 which is fine, but if that changes, this assert
@@ -489,7 +471,7 @@ impl<'sto> FrameBox<'sto> {
             &*this_marker
         };
 
-        marker.reserve(frame_index, command, flags)?;
+        marker.reserve(frame_index)?;
 
         Ok(pdu_idx)
     }

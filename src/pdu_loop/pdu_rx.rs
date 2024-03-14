@@ -57,11 +57,12 @@ impl<'sto> PduRx<'sto> {
             e
         })?;
 
+        // Skip EtherCAT header and get PDU(s) payload
         let i = i
-            // Strip EtherCAT frame header...
-            .get(EthercatFrameHeader::PACKED_LEN..)
-            // ...then take as much as we're supposed to
-            .and_then(|i| i.get(0..usize::from(frame_header.payload_len)))
+            .get(
+                EthercatFrameHeader::PACKED_LEN
+                    ..(EthercatFrameHeader::PACKED_LEN + usize::from(frame_header.payload_len)),
+            )
             .ok_or_else(|| {
                 fmt::error!("Received frame is too short");
 
