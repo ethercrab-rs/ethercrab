@@ -71,8 +71,8 @@ impl<'sto> PduRx<'sto> {
         // `i` now contains the EtherCAT frame payload, consisting of one or more PDUs including
         // their headers and payloads.
 
-        // First two bytes of a PDU header is command code and PDU index.
-        let (_command_code, pdu_idx) = <(u8, u8)>::unpack_from_slice(i)?;
+        // Second byte of first PDU header is the index
+        let pdu_idx = i[1];
 
         // We're assuming all PDUs in the returned frame have the same frame index, so we can just
         // use the first one.
