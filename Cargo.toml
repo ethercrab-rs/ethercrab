@@ -27,7 +27,6 @@ atomic_enum = "0.3.0"
 atomic_refcell = "0.1.13"
 bitflags = "2.4.1"
 defmt = { version = "0.3.5", optional = true }
-embassy-futures = "0.1.0"
 embassy-time = "0.3.0"
 embedded-io-async = { version = "0.6.0", default-features = false }
 futures-lite = { version = "2.0.0", default-features = false }

@@ -528,7 +528,7 @@ mod tests {
                 }
             };
 
-            embassy_futures::select::select(tx_task, rx_task).await;
+            futures_lite::future::race(tx_task, rx_task).await;
         };
 
         tokio::spawn(tx_rx_task);
