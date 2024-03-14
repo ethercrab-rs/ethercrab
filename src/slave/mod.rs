@@ -749,12 +749,7 @@ impl<'a, S> SlaveRef<'a, S> {
             .read(RegisterAddress::AlStatusCode)
             .receive::<AlStatusCode>(self.client);
 
-        let (status, code) = embassy_futures::join::join(self.state(), code).await;
-
-        let status = status?;
-        let code = code?;
-
-        Ok((status, code))
+        futures_lite::future::try_zip(self.state(), code).await
     }
 
     fn eeprom(&self) -> SlaveEeprom<DeviceEeprom> {
