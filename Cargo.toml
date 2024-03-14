@@ -138,10 +138,6 @@ required-features = ["std", "__internals"]
 name = "pdu_loop"
 harness = false
 
-[[bench]]
-name = "loopback"
-harness = false
-
 [profile.profiling]
 inherits = "release"
 debug = true
