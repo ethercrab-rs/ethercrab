@@ -27,12 +27,6 @@ linux-test *args:
     # We've now setcap'd everything so we should be able to run this again without perm issues
     cargo test --features '__internals' {{args}}
 
-linux-bench *args:
-     cargo bench --features __internals {{args}}
-     sudo echo
-     fd . --type executable ./target/release/deps -x sudo setcap cap_net_raw=pe
-     cargo bench --features __internals {{args}}
-
 _generate-readme path:
      cargo readme --project-root "{{path}}" --template README.tpl --output README.md
      # Remove unprocessed doc links

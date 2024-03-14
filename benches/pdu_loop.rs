@@ -1,5 +1,9 @@
+use core::future::poll_fn;
+use core::task::Poll;
 use criterion::{criterion_group, criterion_main, Bencher, Criterion, Throughput};
-use ethercrab::{Command, PduStorage};
+use ethercrab::{Client, ClientConfig, Command, PduStorage, Timeouts};
+use futures_lite::FutureExt;
+use std::pin::pin;
 
 const DATA: [u8; 8] = [0x11u8, 0x22, 0x33, 0x44, 0xaa, 0xbb, 0xcc, 0xdd];
 
@@ -11,37 +15,40 @@ fn do_bench(b: &mut Bencher) {
 
     let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
 
-    let mut written_packet = Vec::new();
-    written_packet.resize(FRAME_OVERHEAD + DATA.len(), 0);
+    let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+
+    let mut written_packet = [0u8; { FRAME_OVERHEAD + DATA.len() }];
 
     b.iter(|| {
         //  --- Prepare frame
 
-        let frame_fut = pdu_loop
-            .pdu_send(Command::fpwr(0x5678, 0x1234).into(), &DATA, None)
-            .unwrap()
-            .0;
+        let mut frame_fut = pin!(Command::fpwr(0x5678, 0x1234).send_receive::<()>(&client, &DATA));
 
-        // --- Send frame
+        let frame_fut = poll_fn(|ctx| {
+            let _ = frame_fut.poll(ctx);
 
-        let send_fut = async {
-            let frame = tx.next_sendable_frame().unwrap();
+            // --- Send frame
 
-            frame
-                .send_blocking(|bytes| {
-                    written_packet.copy_from_slice(bytes);
+            if let Some(frame) = tx.next_sendable_frame() {
+                frame
+                    .send_blocking(|bytes| {
+                        written_packet.copy_from_slice(bytes);
 
-                    Ok(bytes.len())
-                })
-                .unwrap();
-        };
+                        Ok(bytes.len())
+                    })
+                    .expect("TX");
 
-        let _ =
-            futures_lite::future::block_on(embassy_futures::select::select(frame_fut, send_fut));
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        });
+
+        let _ = cassette::block_on(frame_fut);
 
         // --- Receive frame
 
-        let _ = rx.receive_frame(&written_packet);
+        let _ = rx.receive_frame(&written_packet).expect("RX");
     })
 }
 
