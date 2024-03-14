@@ -855,6 +855,9 @@ sudo cat /proc/kallsyms
 sudo setcap cap_net_raw=pe ./target/profiling/examples/<example name>
 sudo perf record --call-graph=dwarf -g ./target/profiling/examples/<example name> <example args>
 
+# To record benchmarks
+sudo perf record --call-graph=dwarf -g -o bench.data ./target/release/deps/pdu_loop-597b19205907e408 --baseline master --bench
+
 # Ctrl + C when you're done
 
 # Must use sudo to get kernel symbols
