@@ -160,10 +160,10 @@ pub struct FrameElement<const N: usize> {
     /// The number of PDU handles held by this frame.
     ///
     /// Used to drop the whole frame only when all PDUs have been consumed from it.
-    marker_count: AtomicU8,
+    marker_count: u8,
 
     /// Number of PDUs inserted into this frame element
-    pdu_count: AtomicU8,
+    pdu_count: u8,
 
     // MUST be the last element otherwise pointer arithmetic doesn't work for
     // `NonNull<FrameElement<0>>`.
@@ -177,8 +177,8 @@ impl<const N: usize> Default for FrameElement<N> {
             ethernet_frame: [0; N],
             frame_index: 0,
             pdu_payload_len: 0,
-            marker_count: AtomicU8::new(0),
-            pdu_count: AtomicU8::new(0),
+            marker_count: 0,
+            pdu_count: 0,
             waker: AtomicWaker::default(),
         }
     }
@@ -257,8 +257,8 @@ impl<const N: usize> FrameElement<N> {
 
         (*addr_of_mut!((*this.as_ptr()).frame_index)) = frame_index;
         (*addr_of_mut!((*this.as_ptr()).pdu_payload_len)) = 0;
-        (*addr_of_mut!((*this.as_ptr()).marker_count)).store(0, Ordering::Release);
-        (*addr_of_mut!((*this.as_ptr()).pdu_count)).store(0, Ordering::Release);
+        (*addr_of_mut!((*this.as_ptr()).marker_count)) = 0;
+        (*addr_of_mut!((*this.as_ptr()).pdu_count)) = 0;
 
         Ok(this)
     }
@@ -284,20 +284,28 @@ impl<const N: usize> FrameElement<N> {
             .ok()
     }
 
-    fn inc_refcount(this: NonNull<FrameElement<0>>) -> u8 {
-        unsafe { &*addr_of!((*this.as_ptr()).marker_count) }.fetch_add(1, Ordering::Acquire)
+    fn inc_refcount(this: NonNull<FrameElement<0>>) {
+        let value = unsafe { &mut *addr_of_mut!((*this.as_ptr()).marker_count) };
+
+        *value += 1;
     }
 
     fn dec_refcount(this: NonNull<FrameElement<0>>) -> u8 {
-        unsafe { &*addr_of!((*this.as_ptr()).marker_count) }.fetch_sub(1, Ordering::Release)
+        let value = unsafe { &mut *addr_of_mut!((*this.as_ptr()).marker_count) };
+
+        *value -= 1;
+
+        *value
     }
 
-    fn inc_pdu_count(this: NonNull<FrameElement<0>>) -> u8 {
-        unsafe { &*addr_of!((*this.as_ptr()).pdu_count) }.fetch_add(1, Ordering::Acquire)
+    fn inc_pdu_count(this: NonNull<FrameElement<0>>) {
+        let value = unsafe { &mut *addr_of_mut!((*this.as_ptr()).pdu_count) };
+
+        *value += 1;
     }
 
     fn pdu_count(this: NonNull<FrameElement<0>>) -> u8 {
-        unsafe { &*addr_of!((*this.as_ptr()).pdu_count) }.load(Ordering::Relaxed)
+        unsafe { *addr_of!((*this.as_ptr()).pdu_count) }
     }
 
     fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {

@@ -152,8 +152,8 @@ mod tests {
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
             pdu_payload_len: 0,
-            marker_count: AtomicU8::new(0),
-            pdu_count: AtomicU8::new(0),
+            marker_count: 0,
+            pdu_count: 0,
         }]);
 
         // Only one element, and it's the first one, so we don't have to do any pointer arithmetic -

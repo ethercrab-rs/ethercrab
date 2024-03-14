@@ -181,17 +181,17 @@ impl<'sto, T> Drop for ReceivedPdu<'sto, T> {
 
         unsafe { self.pdu_marker.as_mut() }.release_for_frame(frame_idx);
 
-        let old = FrameElement::<0>::dec_refcount(self.frame);
+        let count = FrameElement::<0>::dec_refcount(self.frame);
 
         fmt::trace!(
-            "Drop received PDU marker {:#04x}, points to frame index {}, prev refcount {}",
+            "Drop received PDU marker {:#04x}, points to frame index {}, refcount {}",
             self.pdu_idx,
             frame_idx,
-            old
+            count
         );
 
         // We've just dropped the last handle to the backing store. It can now be released.
-        if old == 1 {
+        if count == 0 {
             fmt::trace!(
                 "All PDU handles dropped, freeing frame element {}",
                 FrameElement::<0>::frame_index(self.frame)
