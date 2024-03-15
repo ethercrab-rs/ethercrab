@@ -8,7 +8,7 @@ readme = "README.md"
 repository = "https://github.com/ethercrab-rs/ethercrab"
 documentation = "https://docs.rs/ethercrab-wire"
 description = "On-the-wire tools for the EtherCrab crate"
-keywords = ["no-std", "ethercat", "ethercrab"]
+keywords = ["ethercat", "ethercrab", "beckhoff", "automation", "fieldbus"]
 resolver = "2"
 rust-version = "1.75"
 
