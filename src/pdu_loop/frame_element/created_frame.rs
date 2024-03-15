@@ -7,7 +7,7 @@ use crate::{
     Command,
 };
 use core::marker::PhantomData;
-use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite};
+use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized};
 
 /// A frame in a freshly allocated state.
 ///
@@ -79,13 +79,15 @@ impl<'sto> CreatedFrame<'sto> {
             .get_mut(buf_range.clone())
             .ok_or(PduError::TooLong)?;
 
-        // PDU header
-        let pdu_buf = write_packed(command.code(), pdu_buf);
-        let pdu_buf = write_packed(pdu_idx, pdu_buf);
-        let pdu_buf = write_packed(command, pdu_buf);
-        let pdu_buf = write_packed(flags, pdu_buf);
-        // IRQ
-        let pdu_buf = write_packed(0u16, pdu_buf);
+        let header = PduHeader {
+            command_code: command.code(),
+            index: pdu_idx,
+            command_raw: command.pack(),
+            flags,
+            irq: 0,
+        };
+
+        let pdu_buf = write_packed(header, pdu_buf);
 
         // Payload
         let _pdu_buf = write_packed(data, pdu_buf);

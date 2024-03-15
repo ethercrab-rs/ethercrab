@@ -3,7 +3,7 @@
 mod reads;
 mod writes;
 
-use ethercrab_wire::EtherCrabWireWrite;
+use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized};
 
 pub use reads::{Reads, WrappedRead};
 pub use writes::{WrappedWrite, Writes};
@@ -90,6 +90,40 @@ pub enum Command {
 
     /// Write commands.
     Write(Writes),
+}
+
+impl EtherCrabWireSized for Command {
+    const PACKED_LEN: usize = 4;
+
+    type Buffer = [u8; Self::PACKED_LEN];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; Self::PACKED_LEN]
+    }
+}
+
+impl EtherCrabWireWriteSized for Command {
+    fn pack(&self) -> Self::Buffer {
+        match *self {
+            Command::Nop => Self::buffer(),
+
+            Command::Read(Reads::Aprd { address, register })
+            | Command::Read(Reads::Brd { address, register })
+            | Command::Read(Reads::Fprd { address, register })
+            | Command::Read(Reads::Frmw { address, register })
+            | Command::Write(Writes::Apwr { address, register })
+            | Command::Write(Writes::Fpwr { address, register })
+            | Command::Write(Writes::Bwr { address, register }) => {
+                let address = address.to_le_bytes();
+                let register = register.to_le_bytes();
+
+                [address[0], address[1], register[0], register[1]]
+            }
+            Command::Read(Reads::Lrd { address })
+            | Command::Write(Writes::Lwr { address })
+            | Command::Write(Writes::Lrw { address }) => address.to_le_bytes(),
+        }
+    }
 }
 
 impl EtherCrabWireWrite for Command {

@@ -1,7 +1,7 @@
 use crate::pdu_loop::pdu_flags::PduFlags;
 
 /// A single PDU header, command, index, flags and IRQ.
-#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 10)]
 pub struct PduHeader {
     /// Raw command  code.
