@@ -18,12 +18,16 @@ pub struct PduFlags {
 }
 
 impl PduFlags {
-    pub const fn with_len(len: u16) -> Self {
+    pub const fn new(data_len: u16, more_follows: bool) -> PduFlags {
         Self {
-            length: len,
+            length: data_len,
+            more_follows,
             circulated: false,
-            more_follows: false,
         }
+    }
+
+    pub const fn with_len(len: u16) -> Self {
+        Self::new(len, false)
     }
 
     pub const fn len(self) -> u16 {

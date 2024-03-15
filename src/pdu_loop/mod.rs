@@ -7,82 +7,55 @@ mod pdu_tx;
 // NOTE: Pub so doc links work
 pub mod storage;
 
-use crate::{
-    command::Command,
-    error::{Error, PduError},
-    pdu_loop::storage::PduStorageRef,
-};
-
-use ethercrab_wire::EtherCrabWireWrite;
-pub use frame_element::received_frame::RxFrameDataBuf;
+use self::frame_element::created_frame::CreatedFrame;
+use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
+pub use frame_element::received_frame::ReceivedPdu;
 pub use frame_element::sendable_frame::SendableFrame;
 pub use pdu_rx::PduRx;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
-
-use self::frame_element::received_frame::ReceivedFrame;
 
 #[cfg(feature = "__internals")]
 pub use frame_header::EthercatFrameHeader;
 #[cfg(feature = "__internals")]
 pub use pdu_header::PduHeader;
 
-pub type PduResponse<T> = (T, u16);
+/// Unused PDU marker.
+///
+/// The value this is set to should be larger than `u8::MAX` to ensure no valid frame index can
+/// equal it.
+const PDU_UNUSED_SENTINEL: u16 = u16::MAX;
 
-pub trait CheckWorkingCounter<T> {
-    fn wkc(self, expected: u16) -> Result<T, Error>;
-
-    /// Ignores working counter if it is `None`.
-    fn maybe_wkc(self, expected: Option<u16>) -> Result<T, Error>;
-}
-
-impl<T> CheckWorkingCounter<T> for PduResponse<T> {
-    fn wkc(self, expected: u16) -> Result<T, Error> {
-        if self.1 == expected {
-            Ok(self.0)
-        } else {
-            Err(Error::WorkingCounter {
-                expected,
-                received: self.1,
-            })
-        }
-    }
-
-    fn maybe_wkc(self, expected: Option<u16>) -> Result<T, Error> {
-        match expected {
-            Some(expected) => self.wkc(expected),
-            None => Ok(self.0),
-        }
-    }
-}
+const PDU_SLOTS: usize = 256;
 
 /// The core EtherCrab network communications driver.
 ///
-/// This item orchestrates queuing, sending and receiving responses to individual PDUs. It uses a
-/// fixed length list of frame slots which are cycled through sequentially to ensure each PDU packet
-/// has a unique ID (by using the slot index).
-///
-/// Use [`PduTx`] and [`PduRx`] to integrate EtherCrab into network drivers.
-///
-/// # High level overview
-///
-/// <img alt="High level overview of the PDU loop send/receive process" style="background: white" src="https://mermaid.ink/svg/pako:eNplkcFuwjAMhl8lyrkT9x64jOsmBEzqoRcrcUtEm2SJA0KId5_dFmlbc3GUfP79235oEyzqWmf8LugN7hz0CcbWKz4REjnjInhSBoZBQVbvHJ3vleStqf3uSyAJQwhxDZyaQyPEqdnwhc4Jwa6pT6RbSJf5Y6r8tt2Kaq2O6C0XH0fwdmOBYIakojCizxBBj6rjRrBSN7ggv08xzfTkQvCl0CIbwVyQFAVl8eoM5pleoF_6BzTorrgk_NOcbO4hZVQJcww-v0x0hUrCv4alOxGcQSXzuIuDklFXesQ0grO8oIektZrOOGKra75a4Anp1j-Zg0LhePdG15QKVrpEHs1rmbruYGATGq2jkD7mjU-Lf_4AMq-oMQ" />
-///
-/// Source (MermaidJS)
-///
-/// ```mermaid
-/// sequenceDiagram
-///     participant call as Calling code
-///     participant PDU as PDU loop
-///     participant TXRX as TX/RX thread
-///     participant Network
-///     call ->> PDU: Send command/data
-///     PDU ->> TXRX: Stage frame, wake TX waker
-///     TXRX ->> Network: Send packet to devices
-///     Network ->> TXRX: Receive packet
-///     TXRX ->> PDU: Parse response, wake future
-///     PDU ->> call: Response ready to use
-/// ```
+/// TODO: Update the following docs. The current text is out of date.
+// This item orchestrates queuing, sending and receiving responses to individual PDUs. It uses a
+// fixed length list of frame slots which are cycled through sequentially to ensure each PDU packet
+// has a unique ID (by using the slot index).
+//
+// Use [`PduTx`] and [`PduRx`] to integrate EtherCrab into network drivers.
+//
+// # High level overview
+//
+// <img alt="High level overview of the PDU loop send/receive process" style="background: white" src="https://mermaid.ink/svg/pako:eNplkcFuwjAMhl8lyrkT9x64jOsmBEzqoRcrcUtEm2SJA0KId5_dFmlbc3GUfP79235oEyzqWmf8LugN7hz0CcbWKz4REjnjInhSBoZBQVbvHJ3vleStqf3uSyAJQwhxDZyaQyPEqdnwhc4Jwa6pT6RbSJf5Y6r8tt2Kaq2O6C0XH0fwdmOBYIakojCizxBBj6rjRrBSN7ggv08xzfTkQvCl0CIbwVyQFAVl8eoM5pleoF_6BzTorrgk_NOcbO4hZVQJcww-v0x0hUrCv4alOxGcQSXzuIuDklFXesQ0grO8oIektZrOOGKra75a4Anp1j-Zg0LhePdG15QKVrpEHs1rmbruYGATGq2jkD7mjU-Lf_4AMq-oMQ" />
+//
+// Source (MermaidJS)
+//
+// ```mermaid
+// sequenceDiagram
+//     participant call as Calling code
+//     participant PDU as PDU loop
+//     participant TXRX as TX/RX thread
+//     participant Network
+//     call ->> PDU: Send command/data
+//     PDU ->> TXRX: Stage frame, wake TX waker
+//     TXRX ->> Network: Send packet to devices
+//     Network ->> TXRX: Receive packet
+//     TXRX ->> PDU: Parse response, wake future
+//     PDU ->> call: Response ready to use
+// ```
 #[derive(Debug)]
 pub struct PduLoop<'sto> {
     storage: PduStorageRef<'sto>,
@@ -110,101 +83,53 @@ impl<'sto> PduLoop<'sto> {
         &self,
         register: u16,
         payload_length: u16,
-    ) -> Result<ReceivedFrame<'_>, Error> {
-        let frame = self
-            .storage
-            .alloc_frame(Command::bwr(register).into(), payload_length)?;
+    ) -> Result<(), Error> {
+        let mut frame = self.storage.alloc_frame()?;
+
+        frame.push_pdu::<()>(
+            Command::bwr(register).into(),
+            (),
+            Some(payload_length),
+            false,
+        )?;
 
         let frame = frame.mark_sendable();
 
         self.wake_sender();
 
-        frame.await
+        frame.await?;
+
+        Ok(())
     }
 
-    /// Send data to and read data back from the slave devices.
-    ///
-    /// This method allows overriding the minimum data length of the payload.
-    ///
-    /// Returns the frame future that can be `.await`ed for a response, and the EtherCAT frame
-    /// index.
-    ///
-    /// The PDU data length will be the larger of the payload data length and the length override
-    /// (if provided). If a larger **response** than the sent data is desired, set the expected
-    /// response length in `len_override`.
-    ///
-    /// This is useful for e.g. sending a 10 byte PDI with 4 output bytes and 6 input bytes. In this
-    /// case, `data` will be a slice of length `4` containing the outputs to send, and
-    /// `len_override` will be `Some(10)`. This makes the latter 6 bytes available for writing the
-    /// PDU response into.
-    // NOTE: Should be `pub(crate)` but the benchmarks need this internal method so we'll just hide
-    // it instead.
-    #[doc(hidden)]
-    pub fn pdu_send(
-        &self,
-        command: Command,
-        data: impl EtherCrabWireWrite,
-        len_override: Option<u16>,
-    ) -> Result<
-        (
-            impl core::future::Future<Output = Result<ReceivedFrame<'_>, Error>>,
-            u8,
-        ),
-        Error,
-    > {
-        // Length of data to populate in the send buffer
-        let send_data_len = data.packed_len() as u16;
-
-        // The length in the header can be set longer to e.g. send PDI outputs, then get PDI
-        // inputs in the remaining buffer.
-        let total_payload_len: u16 = len_override.unwrap_or(send_data_len).max(send_data_len);
-
-        let mut frame = self.storage.alloc_frame(command, total_payload_len)?;
-
-        let frame_idx = frame.index();
-
-        let payload = frame
-            .buf_mut()
-            .get_mut(0..usize::from(send_data_len))
-            .ok_or(Error::Pdu(PduError::TooLong))?;
-
-        // SAFETY: We ensure the payload length is at least the length of the packed input data
-        // above, as well as the data to be written is not longer than the payload buffer.
-        data.pack_to_slice_unchecked(payload);
-
-        let frame = frame.mark_sendable();
-
-        self.wake_sender();
-
-        Ok((frame, frame_idx))
+    pub(crate) fn alloc_frame(&self) -> Result<CreatedFrame<'sto>, Error> {
+        self.storage.alloc_frame()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{storage::PduStorage, *};
     use crate::{
+        error::{Error, PduError},
         fmt,
-        pdu_loop::frame_element::{
-            created_frame::CreatedFrame, sendable_frame::SendableFrame, FrameElement, FrameState,
-        },
+        pdu_loop::frame_element::created_frame::CreatedFrame,
         timer_factory::IntoTimeout,
-        Command, Reads,
+        Command, PduStorage, Reads,
     };
     use core::{future::poll_fn, ops::Deref, pin::pin, task::Poll, time::Duration};
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
-    #[tokio::test]
-    // MIRI doesn't like this test as it leaks memory
-    #[cfg_attr(miri, ignore)]
-    async fn timed_out_frame_is_reallocatable() {
+    #[test]
+    fn timed_out_frame_is_reallocatable() {
         // One 16 byte frame
         static STORAGE: PduStorage<1, { PduStorage::element_size(32) }> = PduStorage::new();
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
 
-        let send_result = pdu_loop
-            .pdu_send(
+        let mut frame = pdu_loop.storage.alloc_frame().expect("Alloc");
+
+        frame
+            .push_pdu::<()>(
                 Reads::Brd {
                     address: 0,
                     register: 0,
@@ -212,25 +137,26 @@ mod tests {
                 .into(),
                 (),
                 Some(16),
+                false,
             )
-            .unwrap()
-            .0
-            .timeout(Duration::from_secs(0))
-            .await;
+            .expect("Push PDU");
+
+        let fut = frame.mark_sendable();
+
+        let res = cassette::block_on(fut.timeout(Duration::from_secs(0)));
 
         // Just make sure the read timed out
-        assert_eq!(send_result.unwrap_err(), Error::Timeout);
+        assert_eq!(res.unwrap_err(), Error::Timeout);
+
+        let frame = pdu_loop.storage.alloc_frame();
 
         // We should be able to reuse the frame slot now
-        assert!(matches!(
-            pdu_loop.storage.alloc_frame(
-                Command::Read(Reads::Lrd {
-                    address: 0x1234_5678,
-                }),
-                16,
-            ),
-            Ok(CreatedFrame { .. })
-        ));
+        assert!(matches!(frame, Ok(CreatedFrame { .. })));
+
+        // Only one slot so a next alloc should fail
+        let f2 = pdu_loop.storage.alloc_frame();
+
+        assert_eq!(f2.unwrap_err(), PduError::SwapState.into());
     }
 
     #[test]
@@ -242,17 +168,16 @@ mod tests {
 
         let data = [0xaau8, 0xbb, 0xcc];
 
-        let mut frame = pdu_loop
-            .storage
-            .alloc_frame(Command::fpwr(0x5678, 0x1234).into(), data.len() as u16)
-            .unwrap();
+        let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
-        frame.buf_mut().copy_from_slice(&data);
+        let _handle = frame
+            .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
+            .expect("Push");
 
-        let frame = SendableFrame::new(frame.inner);
+        let frame = frame.mark_sendable();
 
         assert_eq!(
-            frame.as_bytes(),
+            frame.buf(),
             &[
                 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
                 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
@@ -271,8 +196,6 @@ mod tests {
     }
 
     #[test]
-    // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
-    #[cfg_attr(miri, ignore)]
     fn single_frame_round_trip() {
         let _ = env_logger::builder().is_test(true).try_init();
 
@@ -285,16 +208,18 @@ mod tests {
 
         let data = [0xaau8, 0xbb, 0xcc, 0xdd];
 
+        // Using poll_fn so we can manually poll the frame future multiple times
         let poller = poll_fn(|ctx| {
             let mut written_packet = Vec::new();
             written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
 
-            let mut frame_fut = pin!(
-                pdu_loop
-                    .pdu_send(Command::fpwr(0x5678, 0x1234).into(), &data, None,)
-                    .unwrap()
-                    .0
-            );
+            let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
+
+            let handle = frame
+                .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), &data, None, false)
+                .expect("Push PDU");
+
+            let mut frame_fut = pin!(frame.mark_sendable());
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -339,7 +264,9 @@ mod tests {
             // from
             match frame_fut.poll(ctx) {
                 Poll::Ready(Ok(frame)) => {
-                    assert_eq!(frame.into_data().0.deref(), &data);
+                    let response = frame.take(handle).expect("Handle");
+
+                    assert_eq!(response.deref(), &data);
                 }
                 Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
                 Poll::Pending => panic!("frame future still pending"),
@@ -350,7 +277,9 @@ mod tests {
             Poll::Ready(())
         });
 
-        smol::block_on(poller);
+        // Using `cassette` otherwise miri complains about a memory leak inside whichever other
+        // `block_on` or `.await` we use.
+        cassette::block_on(poller);
     }
 
     #[test]
@@ -362,42 +291,38 @@ mod tests {
 
         let data = [0xaau8, 0xbb, 0xcc];
 
-        let mut frame = pdu_loop
-            .storage
-            .alloc_frame(Command::fpwr(0x5678, 0x1234).into(), data.len() as u16)
-            .unwrap();
+        let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
-        frame.buf_mut().copy_from_slice(&data);
+        let _handle = frame
+            .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
+            .expect("Push PDU");
 
-        let frame = SendableFrame::new(frame.inner);
-
-        // Manually reset frame state so it can be reused.
-        unsafe { FrameElement::set_state(frame.inner.frame, FrameState::None) };
+        // Drop frame future to reset its state to `FrameState::None`
+        drop(frame.mark_sendable());
 
         // ---
 
         let data = [0xaau8, 0xbb];
 
-        let mut frame = pdu_loop
-            .storage
-            .alloc_frame(Command::fpwr(0x6789, 0x1234).into(), data.len() as u16)
-            .unwrap();
+        let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
-        frame.buf_mut().copy_from_slice(&data);
+        let _handle = frame
+            .push_pdu::<()>(Command::fpwr(0x6789, 0x1234).into(), data, None, false)
+            .expect("Push second PDU");
 
-        let frame = SendableFrame::new(frame.inner);
+        let frame = frame.mark_sendable();
 
         // ---
 
         assert_eq!(
-            frame.as_bytes(),
+            frame.buf(),
             &[
                 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
                 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, // Master address
                 0x88, 0xa4, // EtherCAT ethertype
                 0x0e, 0x10, // EtherCAT frame header: type PDU, length 2 (plus header)
                 0x05, // Command: FPWR
-                0x00, // Frame index 0
+                0x01, // Frame index 1 (first dropped frame used up index 0)
                 0x89, 0x67, // Slave address,
                 0x34, 0x12, // Register address
                 0x02, 0x00, // Flags, 2 byte length
@@ -409,10 +334,8 @@ mod tests {
     }
 
     #[test]
-    // MIRI fails this test with `unsupported operation: can't execute syscall with ID 291`.
-    #[cfg_attr(miri, ignore)]
     fn receive_frame() {
-        // let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder().is_test(true).try_init();
 
         let ethernet_packet = [
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
@@ -438,12 +361,18 @@ mod tests {
         let data_bytes = data.to_le_bytes();
 
         let poller = poll_fn(|ctx| {
-            let mut frame_fut = pin!(
-                pdu_loop
-                    .pdu_send(Command::fpwr(0x6789, 0x1234).into(), &data_bytes, None)
-                    .expect("Create sendable frame fut")
-                    .0
-            );
+            let mut frame = pdu_loop.storage.alloc_frame().unwrap();
+
+            let handle = frame
+                .push_pdu::<()>(
+                    Command::fpwr(0x6789, 0x1234).into(),
+                    &data_bytes,
+                    None,
+                    false,
+                )
+                .expect("Push PDU");
+
+            let mut frame_fut = pin!(frame.mark_sendable());
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -467,7 +396,7 @@ mod tests {
             // from
             match frame_fut.poll(ctx) {
                 Poll::Ready(Ok(frame)) => {
-                    assert_eq!(frame.into_data().0.deref(), &data_bytes);
+                    assert_eq!(frame.take(handle).unwrap().deref(), &data_bytes);
                 }
                 Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
                 Poll::Pending => panic!("frame future still pending"),
@@ -478,7 +407,7 @@ mod tests {
             Poll::Ready(())
         });
 
-        smol::block_on(poller);
+        cassette::block_on(poller);
     }
 
     // Test the whole TX/RX loop with multiple threads
@@ -538,16 +467,17 @@ mod tests {
 
             fmt::info!("Send PDU {i}");
 
-            let result = pdu_loop
-                .pdu_send(Command::fpwr(0x1000, 0x980).into(), data, None)
-                .unwrap()
-                .0
-                .await
-                .unwrap()
-                .wkc(0)
-                .unwrap();
+            let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 
-            assert_eq!(&*result, &data);
+            let handle = frame
+                .push_pdu::<()>(Command::fpwr(0x1000, 0x980).into(), data, None, false)
+                .expect("Push PDU");
+
+            let result = frame.mark_sendable().await.expect("Future");
+
+            let received_data = result.take(handle).expect("Take");
+
+            assert_eq!(&*received_data, &data);
         }
 
         fmt::info!("Sent all PDUs");

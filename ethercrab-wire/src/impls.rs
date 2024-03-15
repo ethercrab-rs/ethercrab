@@ -81,6 +81,73 @@ macro_rules! impl_primitive_wire_field {
     };
 }
 
+// Thank you `serde::Deserialize` :D
+macro_rules! impl_tuples {
+    ($($len:tt => ($($n:tt $name:ident)+))+) => {
+        $(
+            #[allow(non_snake_case)]
+            impl<$($name: EtherCrabWireReadSized),+> EtherCrabWireRead for ($($name,)+) {
+                #[allow(unused_assignments)]
+                fn unpack_from_slice(mut buf: &[u8]) -> Result<Self, WireError> {
+                    $(
+                        let $name = $name::unpack_from_slice(buf)?;
+
+                        if buf.len() > 0 {
+                            buf = &buf[$name::PACKED_LEN..];
+                        }
+                    )+
+
+                    Ok(($($name,)+))
+                }
+            }
+
+            #[allow(non_snake_case)]
+            impl<$($name: EtherCrabWireWrite),+> EtherCrabWireWrite for ($($name,)+) {
+                #[allow(unused_assignments)]
+                fn pack_to_slice_unchecked<'buf>(&self, orig: &'buf mut [u8]) -> &'buf [u8] {
+                    {
+                        let mut buf = &mut orig[..];
+
+                        $(
+                            let (chunk, rest) = buf.split_at_mut(self.$n.packed_len());
+                            let _packed = self.$n.pack_to_slice_unchecked(chunk);
+                            buf = rest;
+                        )+
+                    }
+
+                    &orig[0..self.packed_len()]
+                }
+
+                fn packed_len(&self) -> usize {
+                    0
+                    $(
+                        + self.$n.packed_len()
+                    )+
+                }
+            }
+        )+
+    }
+}
+
+impl_tuples! {
+    1  => (0 T0)
+    2  => (0 T0 1 T1)
+    3  => (0 T0 1 T1 2 T2)
+    4  => (0 T0 1 T1 2 T2 3 T3)
+    5  => (0 T0 1 T1 2 T2 3 T3 4 T4)
+    6  => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5)
+    7  => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6)
+    8  => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7)
+    9  => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8)
+    10 => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8 9 T9)
+    11 => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8 9 T9 10 T10)
+    12 => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8 9 T9 10 T10 11 T11)
+    13 => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8 9 T9 10 T10 11 T11 12 T12)
+    14 => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8 9 T9 10 T10 11 T11 12 T12 13 T13)
+    15 => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8 9 T9 10 T10 11 T11 12 T12 13 T13 14 T14)
+    16 => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8 9 T9 10 T10 11 T11 12 T12 13 T13 14 T14 15 T15)
+}
+
 impl_primitive_wire_field!(u8, 1);
 impl_primitive_wire_field!(u16, 2);
 impl_primitive_wire_field!(u32, 4);
@@ -323,5 +390,24 @@ mod tests {
 
         // In case there are noncompliant subdevices
         assert_eq!(bool::unpack_from_slice(&[0x01]), Ok(true));
+    }
+
+    #[test]
+    fn tuple_decode() {
+        let res = <(u32, u8)>::unpack_from_slice(&[0xaa, 0xbb, 0xcc, 0xdd, 0x99]);
+
+        assert_eq!(
+            res,
+            Ok((u32::from_le_bytes([0xaa, 0xbb, 0xcc, 0xdd]), 0x99))
+        )
+    }
+
+    #[test]
+    fn tuple_encode() {
+        let mut buf = [0u8; 32];
+
+        let written = (0xaabbccddu32, 0x99u8, 0x1234u16).pack_to_slice_unchecked(&mut buf);
+
+        assert_eq!(written, &[0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x34, 0x12]);
     }
 }

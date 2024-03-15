@@ -5,7 +5,7 @@ target_steps_std: &target_steps_std
   steps:
     - checkout
     - restore_cache:
-        key: v7-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # For docs gen
     - run: rustup target add x86_64-unknown-linux-gnu || true
@@ -17,7 +17,7 @@ target_steps_std: &target_steps_std
           echo "Checking for $binary"
           if ! type "$binary" > /dev/null; then
             echo "--> $binary is not installed. Installing..."
-            cargo install "$binary" --target x86_64-unknown-linux-gnu
+            cargo install "$binary" --target x86_64-unknown-linux-gnu --locked
           else
             echo "--> $binary already installed"
           fi
@@ -33,7 +33,7 @@ target_steps_std: &target_steps_std
     - run: cargo deadlinks --ignore-fragments
 
     - save_cache:
-        key: v7-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
@@ -47,17 +47,30 @@ miri_steps: &miri_steps
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
     - restore_cache:
-        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
     - run: rustup toolchain add nightly-2024-03-08 --target $TARGET --component miri
     - run: |
+        binaries=( "cargo-nextest" )
+
+        for binary in "${binaries[@]}"
+        do
+          echo "Checking for $binary"
+          if ! type "$binary" > /dev/null; then
+            echo "--> $binary is not installed. Installing..."
+            cargo install "$binary" --target x86_64-unknown-linux-gnu --locked
+          else
+            echo "--> $binary already installed"
+          fi
+        done
+    - run: |
         export MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation"
 
-        cargo +nightly-2024-03-08 miri test --features '__internals' --target $TARGET
+        cargo +nightly-2024-03-08 miri nextest run --features '__internals' --target $TARGET --test-threads=num-cpus
 
     - save_cache:
-        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
@@ -69,14 +82,14 @@ target_steps_no_std: &target_steps_no_std
   steps:
     - checkout
     - restore_cache:
-        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     - run: rustup target add $TARGET || true
     - run: cargo build --target $TARGET --no-default-features --release
     - run: cargo build --target $TARGET --no-default-features --release --features defmt
 
     - save_cache:
-        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
@@ -88,14 +101,14 @@ target_steps_embassy: &target_steps_embassy
   steps:
     - checkout
     - restore_cache:
-        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
     - run: |
         cd examples/embassy-stm32
 
         cargo build --release
 
     - save_cache:
-        key: v5-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
@@ -108,13 +121,13 @@ macos_steps: &macos_steps
   steps:
     - checkout
     - restore_cache:
-        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     - run: rustup target add $TARGET
     - run: cargo check --target $TARGET --release --examples
 
     - save_cache:
-        key: v4-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry

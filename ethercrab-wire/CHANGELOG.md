@@ -9,6 +9,11 @@ Primarily used by `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- [#183](https://github.com/ethercrab-rs/ethercrab/pull/183) Add support for encoding/decoding
+  tuples up to 16 items long.
+
 ## [0.1.2] - 2024-02-03
 
 ### Changed
@@ -25,9 +30,10 @@ Primarily used by `ethercrab`.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.2...HEAD
 
-[0.1.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.1...ethercrab-wire-v0.1.2
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.2...HEAD
+[0.1.2]:
+  https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.1...ethercrab-wire-v0.1.2
 [0.1.1]:
   https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.0...ethercrab-wire-v0.1.1
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/HEAD...ethercrab-wire-v0.1.0

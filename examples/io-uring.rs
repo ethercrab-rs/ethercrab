@@ -22,6 +22,7 @@ fn main() -> Result<(), ethercrab::error::Error> {
     };
     use std::{
         sync::Arc,
+        thread,
         time::{Duration, Instant},
     };
     use thread_priority::{
@@ -103,6 +104,9 @@ fn main() -> Result<(), ethercrab::error::Error> {
             tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
         })
         .unwrap();
+
+    // Wait for TX/RX loop to start
+    thread::sleep(Duration::from_millis(200));
 
     let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
 
