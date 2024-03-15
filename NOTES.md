@@ -860,6 +860,8 @@ impl Reads {
 
 To profile an example:
 
+## Linux
+
 ```bash
 # Ubuntu
 apt install linux-tools-common linux-tools-generic linux-tools-`uname -r`
@@ -901,3 +903,11 @@ samply load perf.data
 ssh -L 3000:localhost:3000 ethercrab
 # Otherwise symbols aren't loaded
 ```
+
+## macOS
+
+- Install XCode
+- [`sudo xcode-select -switch /Library/Developer/CommandLineTools`](https://apple.stackexchange.com/a/446563)
+- `cargo instruments --template 'CPU Profiler' --profile profiling --bench pdu_loop -- --bench --profile-time 5`
+
+Other templates can be listed with `xctrace list templates`

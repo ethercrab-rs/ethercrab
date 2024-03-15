@@ -188,6 +188,8 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 // crashing the program.
 impl<'sto> Drop for ReceiveFrameFut<'sto> {
     fn drop(&mut self) {
+        // Frame option is taken when future completes successfully, so this drop logic will only
+        // fire if the future is dropped before it completes.
         if let Some(r) = self.frame.take() {
             fmt::debug!("Dropping in-flight future, possibly caused by timeout");
 
