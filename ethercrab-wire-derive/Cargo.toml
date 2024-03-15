@@ -9,7 +9,7 @@ repository = "https://github.com/ethercrab-rs/ethercrab"
 documentation = "https://docs.rs/ethercrab-derive"
 description = "Derive macros for EtherCrab"
 resolver = "2"
-keywords = ["ethercat", "ethercrab"]
+keywords = ["ethercat", "ethercrab", "beckhoff", "automation", "fieldbus"]
 
 [lib]
 proc-macro = true
