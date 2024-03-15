@@ -1,7 +1,9 @@
+use core::ops::Deref;
+
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::{CheckWorkingCounter, PduResponse, RxFrameDataBuf},
+    pdu_loop::ReceivedPdu,
     timer_factory::IntoTimeout,
     Client,
 };
@@ -126,7 +128,7 @@ impl WrappedWrite {
         self,
         client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
-    ) -> Result<RxFrameDataBuf<'data>, Error>
+    ) -> Result<ReceivedPdu<'data, ()>, Error>
     where
         'client: 'data,
     {
@@ -139,17 +141,21 @@ impl WrappedWrite {
         client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-    ) -> Result<PduResponse<RxFrameDataBuf<'client>>, Error> {
+    ) -> Result<ReceivedPdu<'client, ()>, Error> {
         for _ in 0..client.config.retry_behaviour.loop_counts() {
-            let (frame, frame_idx) =
-                client
-                    .pdu_loop
-                    .pdu_send(self.command.into(), &value, len_override)?;
+            let mut frame = client.pdu_loop.alloc_frame()?;
+            let frame_idx = frame.frame_index();
+
+            let handle = frame.push_pdu::<()>(self.command.into(), &value, len_override, false)?;
+
+            let frame = frame.mark_sendable();
+
+            client.pdu_loop.wake_sender();
 
             match frame.timeout(client.timeouts.pdu).await {
-                Ok(result) => return Ok(result.into_data()),
+                Ok(result) => return result.take(handle),
                 Err(Error::Timeout) => {
-                    fmt::error!("Frame {:#04x} timed out", frame_idx);
+                    fmt::error!("Frame index {} timed out", frame_idx);
 
                     // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
                     // state to `None`, ready for reuse.
@@ -170,7 +176,7 @@ impl WrappedWrite {
         client: &'client Client<'client>,
         value: &'buf mut [u8],
         read_back_len: usize,
-    ) -> Result<PduResponse<&'buf [u8]>, Error> {
+    ) -> Result<(&'buf [u8], u16), Error> {
         assert!(
             value.len() <= client.max_frame_data(),
             "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
@@ -178,9 +184,13 @@ impl WrappedWrite {
             client.max_frame_data()
         );
 
-        let (data, wkc) = self
+        let res = self
             .common(client, value.as_ref(), self.len_override)
             .await?;
+
+        let data = res.deref();
+
+        let wkc = res.working_counter;
 
         if data.len() != value.len() {
             fmt::error!(

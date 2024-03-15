@@ -1,19 +1,10 @@
 use super::{received_frame::ReceivedFrame, FrameBox};
 use crate::{
-    command::Command,
     error::{Error, PduError},
     fmt,
-    pdu_loop::{
-        frame_element::{FrameElement, FrameState},
-        pdu_flags::PduFlags,
-    },
+    pdu_loop::frame_element::{FrameElement, FrameState},
 };
-
-use core::{
-    future::Future,
-    ptr::{addr_of_mut, NonNull},
-    task::Poll,
-};
+use core::{future::Future, task::Poll};
 
 /// A frame has been sent and is now waiting for a response from the network.
 ///
@@ -21,6 +12,7 @@ use core::{
 #[derive(Debug)]
 pub struct ReceivingFrame<'sto> {
     pub inner: FrameBox<'sto>,
+    // pub pdu_states: &'sto [PduMarker],
 }
 
 impl<'sto> ReceivingFrame<'sto> {
@@ -28,14 +20,7 @@ impl<'sto> ReceivingFrame<'sto> {
     ///
     /// This method may only be called once the frame response (header and data) has been validated
     /// and stored in the frame element.
-    pub fn mark_received(
-        &self,
-        flags: PduFlags,
-        irq: u16,
-        working_counter: u16,
-    ) -> Result<(), PduError> {
-        unsafe { self.set_metadata(flags, irq, working_counter) };
-
+    pub fn mark_received(&self) -> Result<(), PduError> {
         // Frame state must be updated BEFORE the waker is awoken so the future impl returns
         // `Poll::Ready`. The future will poll, see the `FrameState` as RxDone and return
         // Poll::Ready.
@@ -47,7 +32,7 @@ impl<'sto> ReceivingFrame<'sto> {
                 .map_err(|bad| {
                     fmt::error!(
                         "Failed to set frame {:#04x} state from RxBusy -> RxDone, got {:?}",
-                        self.index(),
+                        self.frame_index(),
                         bad
                     );
 
@@ -58,7 +43,7 @@ impl<'sto> ReceivingFrame<'sto> {
         // If the wake fails, release the receiving claim so the frame receive can possibly be
         // reattempted at a later time.
         if let Err(()) = unsafe { self.inner.wake() } {
-            fmt::trace!("Failed to wake frame {:#04x}: no waker", self.index());
+            fmt::trace!("Failed to wake frame {:#04x}: no waker", self.frame_index());
 
             unsafe {
                 // Restore frame state to `Sent`, which is what `PduStorageRef::claim_receiving`
@@ -89,7 +74,7 @@ impl<'sto> ReceivingFrame<'sto> {
                     Err(bad_state) => {
                         fmt::error!(
                             "Failed to set frame {:#04x} state from RxDone -> Sent, got {:?}",
-                            self.index(),
+                            self.frame_index(),
                             bad_state
                         );
 
@@ -106,29 +91,37 @@ impl<'sto> ReceivingFrame<'sto> {
         }
     }
 
-    unsafe fn set_metadata(&self, flags: PduFlags, irq: u16, working_counter: u16) {
-        let frame = NonNull::new_unchecked(addr_of_mut!((*self.inner.frame.as_ptr()).frame));
-
-        *addr_of_mut!((*frame.as_ptr()).flags) = flags;
-        *addr_of_mut!((*frame.as_ptr()).irq) = irq;
-        *addr_of_mut!((*frame.as_ptr()).working_counter) = working_counter;
-    }
-
     pub fn buf_mut(&mut self) -> &mut [u8] {
-        unsafe { self.inner.buf_mut() }
+        unsafe { self.inner.pdu_buf_mut() }
     }
 
-    pub fn index(&self) -> u8 {
-        unsafe { self.inner.frame() }.index
-    }
-
-    pub fn command(&self) -> Command {
-        unsafe { self.inner.frame() }.command
+    /// Ethernet frame index.
+    pub fn frame_index(&self) -> u8 {
+        self.inner.frame_index()
     }
 }
 
 pub struct ReceiveFrameFut<'sto> {
     pub(in crate::pdu_loop::frame_element) frame: Option<FrameBox<'sto>>,
+}
+
+impl<'sto> ReceiveFrameFut<'sto> {
+    /// Get entire frame buffer. Only really useful for assertions in tests.
+    #[cfg(test)]
+    pub fn buf(&self) -> &[u8] {
+        use crate::pdu_loop::frame_header::EthercatFrameHeader;
+        use ethercrab_wire::EtherCrabWireSized;
+        use smoltcp::wire::EthernetFrame;
+
+        let frame = self.frame.as_ref().unwrap();
+
+        let b = unsafe { frame.ethernet_frame() };
+
+        let len = EthernetFrame::<&[u8]>::buffer_len(frame.pdu_payload_len())
+            + EthercatFrameHeader::PACKED_LEN;
+
+        &b.into_inner()[0..len]
+    }
 }
 
 // SAFETY: This unsafe impl is required due to `FrameBox` containing a `NonNull`, however this impl
@@ -158,7 +151,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         unsafe { rxin.replace_waker(cx.waker()) };
 
-        let idx = unsafe { rxin.frame() }.index;
+        let frame_idx = rxin.frame_index();
 
         // RxDone is set by mark_received when the incoming packet has been parsed and stored
         let swappy = unsafe {
@@ -167,14 +160,14 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         let was = match swappy {
             Ok(_frame_element) => {
-                fmt::trace!("frame {:#04x} is ready", idx);
+                fmt::trace!("frame index {} is ready", frame_idx);
 
-                return Poll::Ready(Ok(ReceivedFrame { inner: rxin }));
+                return Poll::Ready(Ok(ReceivedFrame::new(rxin)));
             }
             Err(e) => e,
         };
 
-        fmt::trace!("frame {:#04x} not ready yet ({:?})", idx, was);
+        fmt::trace!("frame index {} not ready yet ({:?})", frame_idx, was);
 
         match was {
             FrameState::Sendable | FrameState::Sending | FrameState::Sent | FrameState::RxBusy => {
@@ -197,6 +190,8 @@ impl<'sto> Drop for ReceiveFrameFut<'sto> {
     fn drop(&mut self) {
         if let Some(r) = self.frame.take() {
             fmt::debug!("Dropping in-flight future, possibly caused by timeout");
+
+            r.release_pdu_claims();
 
             // Make frame available for reuse if this future is dropped.
             unsafe { FrameElement::set_state(r.frame, FrameState::None) };

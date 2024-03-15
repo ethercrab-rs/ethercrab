@@ -86,11 +86,7 @@ impl Future for DummyTxRxFut<'_> {
     fn poll(mut self: Pin<&mut Self>, ctx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
         self.tx.replace_waker(ctx.waker());
 
-        let mut buf = [0u8; 1536];
-
         while let Some(frame) = self.tx.next_sendable_frame() {
-            // let expected = self.next_line_is_send();
-
             let mut sent_preamble = None;
 
             frame

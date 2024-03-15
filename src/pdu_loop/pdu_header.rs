@@ -1,9 +1,4 @@
-use crate::{
-    command::Command,
-    error::{Error, PduError},
-    pdu_loop::pdu_flags::PduFlags,
-};
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
+use crate::pdu_loop::pdu_flags::PduFlags;
 
 /// A single PDU header, command, index, flags and IRQ.
 #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
@@ -33,32 +28,6 @@ pub struct PduHeader {
 }
 
 impl PduHeader {
-    /// Extract data and working counter from the given buffer.
-    ///
-    /// The buffer must contain the EtherCAT header this `PduHeader` instance was parsed from. It is
-    /// skipped over and the data after it returned.
-    pub fn data_wkc<'buf>(&self, buf: &'buf [u8]) -> Result<(&'buf [u8], u16), Error> {
-        // Jump past PDU header in the buffer
-        let header_offset = Self::PACKED_LEN;
-
-        // The length of the PDU data body. There are two bytes after this that hold the working
-        // counter, but are not counted as part of the PDU length from the header.
-        let data_end = header_offset + usize::from(self.flags.len());
-
-        let data = buf.get(header_offset..data_end).ok_or(PduError::Decode)?;
-        let wkc = buf
-            .get(data_end..)
-            .ok_or(Error::Pdu(PduError::Decode))
-            .and_then(|raw| Ok(u16::unpack_from_slice(raw)?))?;
-
-        Ok((data, wkc))
-    }
-
-    /// Create a [`Command`] from the raw data in this header.
-    pub fn command(&self) -> Result<Command, Error> {
-        Command::parse_code_data(self.command_code, self.command_raw)
-    }
-
     /// A hacked equality check used for replay tests only.
     ///
     /// It treats `command_raw` specially as this can change in responses.
@@ -109,6 +78,7 @@ impl PduHeader {
 mod tests {
     use super::*;
     use core::hash::{Hash, Hasher};
+    use ethercrab_wire::EtherCrabWireRead;
     use std::collections::{hash_map::DefaultHasher, HashMap};
 
     // These shouldn't be derived for general use, just for testing
@@ -148,19 +118,6 @@ mod tests {
                 irq: 0
             })
         );
-
-        let header = header.unwrap();
-
-        let (data, wkc) = header.data_wkc(&packet_bytes).expect("Data/wkc");
-
-        assert_eq!(
-            data,
-            &[
-                0x0a, 0xc9, 0x83, 0xcc, 0x9c, 0xcd, 0x83, 0xcc, 0x00, 0x00, 0x00, 0x00, 0x56, 0x65,
-                0x72, 0x6c
-            ]
-        );
-        assert_eq!(wkc, 1);
     }
 
     // Just a sanity check...

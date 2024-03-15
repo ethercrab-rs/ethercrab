@@ -1,9 +1,11 @@
-use super::{FrameBox, FrameElement, PduFrame};
+use super::{created_frame::PduResponseHandle, FrameBox, FrameElement, PduMarker};
 use crate::{
+    error::{Error, PduError},
     fmt,
-    pdu_loop::{frame_element::FrameState, PduResponse},
+    pdu_loop::{frame_element::FrameState, pdu_header::PduHeader, PDU_SLOTS},
 };
-use core::{marker::PhantomData, ops::Deref, ptr::NonNull};
+use core::{alloc::Layout, cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// A frame element where response data has been received from the EtherCAT network.
 ///
@@ -12,107 +14,131 @@ use core::{marker::PhantomData, ops::Deref, ptr::NonNull};
 #[derive(Debug)]
 pub struct ReceivedFrame<'sto> {
     pub(in crate::pdu_loop::frame_element) inner: FrameBox<'sto>,
+    /// Whether any PDU handles were `take()`n. If this is false, the frame was used in a send-only
+    /// capacity, and no [`ReceivedPdu`]s are held. This means `ReceivedFrame` must be responsible
+    /// for clearing all the PDU claims normally freed by `ReceivedPdu`'s drop impl.
+    unread: Cell<bool>,
 }
 
 impl<'sto> ReceivedFrame<'sto> {
-    pub(crate) fn working_counter(&self) -> u16 {
-        unsafe { self.inner.frame() }.working_counter
-    }
-
-    #[cfg(test)]
-    pub fn wkc(self, expected: u16) -> Result<RxFrameDataBuf<'sto>, crate::error::Error> {
-        let frame = self.frame();
-        let act_wc = frame.working_counter;
-
-        if act_wc == expected {
-            Ok(self.into_data_buf())
-        } else {
-            Err(crate::error::Error::WorkingCounter {
-                expected,
-                received: act_wc,
-            })
+    pub fn new(inner: FrameBox<'sto>) -> ReceivedFrame<'sto> {
+        Self {
+            inner,
+            unread: Cell::new(true),
         }
     }
 
-    /// Retrieve the frame's internal data and working counter without checking whether the working
-    /// counter has a valid value.
-    pub fn into_data(self) -> PduResponse<RxFrameDataBuf<'sto>> {
-        let wkc = self.working_counter();
+    pub(crate) fn take<'frame, T>(
+        &'sto self,
+        handle: PduResponseHandle<T>,
+    ) -> Result<ReceivedPdu<'frame, T>, Error> {
+        // Offset relative to end of EtherCAT header
+        let pdu_start_offset = handle.buf_start;
 
-        (self.into_data_buf(), wkc)
-    }
+        let this_pdu = &unsafe { self.inner.pdu_buf() }[pdu_start_offset..];
 
-    fn frame(&self) -> &PduFrame {
-        unsafe { self.inner.frame() }
-    }
+        let pdu_header = PduHeader::unpack_from_slice(this_pdu)?;
 
-    fn into_data_buf(self) -> RxFrameDataBuf<'sto> {
-        let len: usize = self.frame().flags.len().into();
+        let payload_len = usize::from(pdu_header.flags.len());
 
-        let sptr = unsafe { FrameElement::buf_ptr(self.inner.frame) };
+        let payload_ptr = unsafe {
+            NonNull::new_unchecked(
+                FrameElement::ethercat_payload_ptr(self.inner.frame)
+                    .as_ptr()
+                    .byte_add(pdu_start_offset + PduHeader::PACKED_LEN),
+            )
+        };
 
-        RxFrameDataBuf {
-            _lt: PhantomData,
-            data_start: sptr,
-            len,
+        let working_counter =
+            u16::unpack_from_slice(&this_pdu[(PduHeader::PACKED_LEN + payload_len)..])?;
+
+        FrameElement::<0>::inc_refcount(self.inner.frame);
+
+        if pdu_header.index != handle.pdu_idx {
+            fmt::error!(
+                "Expected PDU index {:#04x}, got {:#04x}",
+                handle.pdu_idx,
+                pdu_header.index
+            );
+
+            return Err(Error::Pdu(PduError::InvalidIndex(pdu_header.index)));
         }
+
+        if pdu_header.command_code != handle.command_code {
+            fmt::error!(
+                "PDU {:#04x} response has incorrect command received {:#04x}, expected {:#04x}",
+                pdu_header.index,
+                pdu_header.command_code,
+                handle.command_code
+            );
+
+            return Err(Error::Pdu(PduError::Decode));
+        }
+
+        self.unread.replace(false);
+
+        Ok(ReceivedPdu {
+            data_start: payload_ptr,
+            len: payload_len,
+            frame: self.inner.frame,
+            pdu_marker: unsafe {
+                let base_ptr = self.inner.pdu_states.as_ptr();
+
+                let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
+
+                let stride = layout.size() / PDU_SLOTS;
+
+                let this_marker = base_ptr.byte_add(usize::from(pdu_header.index) * stride);
+
+                NonNull::new_unchecked(this_marker)
+            },
+            working_counter,
+            _ty: PhantomData,
+            _storage: PhantomData,
+            pdu_idx: pdu_header.index,
+        })
     }
 }
 
 impl<'sto> Drop for ReceivedFrame<'sto> {
     fn drop(&mut self) {
-        fmt::trace!("Drop frame {:#04x}", self.frame().index);
+        // No PDU results where `take()`n so we have to free the frame here, instead of relying on
+        // `ReceivedPdu::drop`.
+        if self.unread.get() {
+            fmt::trace!(
+                "Frame index {} was untouched, freeing",
+                self.inner.frame_index()
+            );
 
-        unsafe {
-            // Invariant: the frame can only be in `RxProcessing` at this point, so if this swap
-            // fails there's either a logic bug, or we should panic anyway because the hardware
-            // failed.
-            fmt::unwrap!(FrameElement::swap_state(
-                self.inner.frame,
-                FrameState::RxProcessing,
-                FrameState::None
-            ));
+            self.inner.release_pdu_claims();
+
+            unsafe {
+                // Invariant: the frame can only be in `RxProcessing` at this point, so if this
+                // swap fails there's either a logic bug, or we should panic anyway because the
+                // hardware failed.
+                fmt::unwrap!(FrameElement::swap_state(
+                    self.inner.frame,
+                    FrameState::RxProcessing,
+                    FrameState::None
+                ));
+            }
         }
     }
 }
 
-pub struct RxFrameDataBuf<'sto> {
-    _lt: PhantomData<&'sto ()>,
+#[derive(Debug)]
+pub struct ReceivedPdu<'sto, T> {
+    pdu_marker: NonNull<PduMarker>,
+    frame: NonNull<FrameElement<0>>,
     data_start: NonNull<u8>,
     len: usize,
+    pub(crate) working_counter: u16,
+    _ty: PhantomData<T>,
+    _storage: PhantomData<&'sto ()>,
+    pdu_idx: u8,
 }
 
-impl<'sto> core::fmt::Debug for RxFrameDataBuf<'sto> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_list().entries(self.iter()).finish()
-    }
-}
-
-#[cfg(feature = "defmt")]
-impl<'sto> defmt::Format for RxFrameDataBuf<'sto> {
-    fn format(&self, f: defmt::Formatter) {
-        // Format as hexadecimal.
-        defmt::write!(f, "{:?}", self);
-    }
-}
-
-// SAFETY: This is ok because we respect the lifetime of the underlying data by carrying the 'sto
-// lifetime.
-unsafe impl<'sto> Send for RxFrameDataBuf<'sto> {}
-
-impl<'sto> Deref for RxFrameDataBuf<'sto> {
-    type Target = [u8];
-
-    // Temporally shorter borrow: This ref is the lifetime of RxFrameDataBuf, not 'sto. This is the
-    // magic.
-    fn deref(&self) -> &Self::Target {
-        let len = self.len();
-
-        unsafe { core::slice::from_raw_parts(self.data_start.as_ptr(), len) }
-    }
-}
-
-impl<'sto> RxFrameDataBuf<'sto> {
+impl<'sto, T> ReceivedPdu<'sto, T> {
     pub fn len(&self) -> usize {
         self.len
     }
@@ -121,5 +147,84 @@ impl<'sto> RxFrameDataBuf<'sto> {
         let ct = ct.min(self.len());
 
         self.data_start = unsafe { NonNull::new_unchecked(self.data_start.as_ptr().add(ct)) };
+    }
+
+    pub fn wkc(self, expected: u16) -> Result<Self, Error> {
+        if self.working_counter == expected {
+            Ok(self)
+        } else {
+            Err(Error::WorkingCounter {
+                expected,
+                received: self.working_counter,
+            })
+        }
+    }
+
+    pub fn maybe_wkc(self, expected: Option<u16>) -> Result<Self, Error> {
+        match expected {
+            Some(expected) => self.wkc(expected),
+            None => Ok(self),
+        }
+    }
+}
+
+// Free up PDU marker for reuse. The frame may still be in use by other PDU handles, so it is not
+// dropped here.
+//
+// The `ReceivedFrame` behind this `ReceivedPdu` can also be dropped, however it does not hold any
+// data referenced by `ReceivedPdu` - that is stored in the backing store. The backing store's
+// `FrameElement` must remain reserved until all `ReceivedPdu`s are dropped so as to not overwrite
+// any referenced data.
+impl<'sto, T> Drop for ReceivedPdu<'sto, T> {
+    fn drop(&mut self) {
+        let frame_idx = u16::from(FrameElement::<0>::frame_index(self.frame));
+
+        unsafe { self.pdu_marker.as_mut() }.release_for_frame(frame_idx);
+
+        let count = FrameElement::<0>::dec_refcount(self.frame);
+
+        fmt::trace!(
+            "Drop received PDU marker {:#04x}, points to frame index {}, refcount {}",
+            self.pdu_idx,
+            frame_idx,
+            count
+        );
+
+        // We've just dropped the last handle to the backing store. It can now be released.
+        if count == 0 {
+            fmt::trace!(
+                "All PDU handles dropped, freeing frame element {}",
+                FrameElement::<0>::frame_index(self.frame)
+            );
+
+            unsafe {
+                // Invariant: the frame can only be in `RxProcessing` at this point, so if this swap
+                // fails there's either a logic bug, or we should panic anyway because the hardware
+                // failed.
+                fmt::unwrap!(FrameElement::swap_state(
+                    self.frame,
+                    FrameState::RxProcessing,
+                    FrameState::None
+                ));
+            }
+        }
+
+        // dbg!(self.frame.refcount.fetch_sub(1, Ordering::Release));
+    }
+}
+
+// SAFETY: This is ok because we respect the lifetime of the underlying data by carrying the 'sto
+// lifetime.
+unsafe impl<'sto, T> Send for ReceivedPdu<'sto, T> {}
+
+impl<'sto, T> Deref for ReceivedPdu<'sto, T> {
+    type Target = [u8];
+
+    // Temporally shorter borrow: This ref is the lifetime of ReceivedPdu, not 'sto. This is the
+    // magic.
+    fn deref(&self) -> &Self::Target {
+        let len = self.len();
+
+        unsafe { core::slice::from_raw_parts(self.data_start.as_ptr(), len) }
     }
 }

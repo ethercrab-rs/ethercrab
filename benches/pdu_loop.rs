@@ -24,27 +24,21 @@ fn do_bench(b: &mut Bencher) {
 
         let mut frame_fut = pin!(Command::fpwr(0x5678, 0x1234).send_receive::<()>(&client, &DATA));
 
-        let frame_fut = poll_fn(|ctx| {
+        cassette::block_on(poll_fn(|ctx| {
             let _ = frame_fut.poll(ctx);
 
-            // --- Send frame
+            Poll::Ready(())
+        }));
 
-            if let Some(frame) = tx.next_sendable_frame() {
-                frame
-                    .send_blocking(|bytes| {
-                        written_packet.copy_from_slice(bytes);
+        let frame = tx.next_sendable_frame().expect("Next frame");
 
-                        Ok(bytes.len())
-                    })
-                    .expect("TX");
+        frame
+            .send_blocking(|bytes| {
+                written_packet.copy_from_slice(bytes);
 
-                Poll::Ready(())
-            } else {
-                Poll::Pending
-            }
-        });
-
-        let _ = cassette::block_on(frame_fut);
+                Ok(bytes.len())
+            })
+            .expect("TX");
 
         // --- Receive frame
 

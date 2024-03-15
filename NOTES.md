@@ -1,3 +1,107 @@
+# Optimising PDU reservation
+
+Problem
+
+- Must not be able to reuse a PDU index already in flight. Really bad data corruption could occur
+  even when checking command code, etc. E.g. Cyclic LRW is same command code over and over again and
+  would corrupt silently if PDU indices aren't reserved.
+
+Solutions
+
+- Current one: Array of `AtomicU16`
+  - Memory inefficient
+  - Slow to free reserved PDUs
+- Possible: head and tail `AtomicU8`
+  - Before reserving a new PDU index, check if tail has reached head. If it has, error out - we're
+    sending stuff too fast, or not releasing it fast enough on the other end.
+  - Each frame keeps the index of the first PDU pushed into it. This is unique
+  - Isn't this a performance issue as it requires earlier PDUs to be freed before newer ones are?
+    Yes it is. Frames can (although usually don't tbf) arrive in any order.
+  - What happens if PDU indices within a single frame are not contiguous?
+- Possible: store an array of PDU indices in each frame element
+  - This is all internal, so I have control over how many items to have per element.
+  - Find frame by first PDU in list as usual
+  - How do we make this as small as possible in memory? `[u8; N]` can't represent unused state.
+    `heapless::Vec` would work but it contains a `usize` which is a little large. If we have 4
+    frames, `usize + [u8; 4]` is the same as `[u16; 4]` on 32 bit.
+  - We already have a refcount, so we could just do `[u8; N]`.
+  - On RX, have to loop through frames to find one with first PDU index equal to what was received.
+    Bummer.
+
+# Multiple PDUs per frame (again)
+
+- One waker per frame
+- A frame is received from the network
+  - Multiple PDUs in the frame
+  - Write their responses back into the buffer in a loop
+  - When this is all done, all PDUs are ready to be used
+  - Wait on the FRAME, not any PDU. Should be pretty much the same code as today
+- This can be a safe but fragile API as it's just internal
+- Submit a PDU with (data, len override, more follows, etc whatever)
+
+  - Get back a range into the response frame to drag the data out of
+  - Range can also be used to get wkc (just `end.. (end+2)`).
+
+  ```rust
+  let mut frame = pdu_loop.allocate_frame();
+
+  let sub1 = frame.submit(Command::FRMW, 0u64, None, true);
+  let sub2 = frame.submit(Command::LRW, &pdi, None, false);
+
+  let result = frame.mark_sent().await;
+
+  let res1 = result.take(sub1);
+  let res2 = result.take(sub2);
+  ```
+
+- Don't need to store a refcount. If you want the frame data back you gotta `take()` it while
+  `result` is still around.
+
+- Same problem as before: multiple PDUs within the frame contain the index, but the receiving frame
+  itself (which holds the waker) has no way of matching up what was sent. This means that even with
+  a single waker, this is hard to fix.
+  - One possible solution would be to store a sum/hash/`Range<>` of the indices in the PDUs and
+    match against that, but that requires parsing the entire frame first.
+- Another same problem as before is making sure we only have one of each PDU index in flight.
+
+  Some solutions:
+
+  1. Keep an array of PDU statuses that index back to the in-flight frame.
+
+     - A map, essentially, where array index is PDU index, and the value in that cell is the frame
+       index
+     - Don't need to store anything else because we're staying with the single future per frame
+       thing
+     - Types
+       - `[u8; 256]`? How do we represent "available" state?
+       - `[u16; 256]`? A bit wasteful but we have a whole byte to play with for state bits. Only 512
+         bytes or a third the nomal MTU so not awful tbh...
+       - `[AtomicU16; 256]` for thread safety. Don't have to mess around with `mut`. `u16::MAX` can
+         be "not occupied" sentinel.
+     - When we try to reserve an index in `CreatedFrame::submit()`, if its slot is occupied, error
+       out - stuff is either too small or too fast.
+     - When a frame is received, we parse the first PDU header, look its index up in the array, and
+       match that through to the frame index, then `claim_receiving`.
+       - We should `assert` every PDU in that same frame after has the same frame index because it's
+         a logic bug if it isn't, but in prod we can assume they're the same.
+       - Can't have multiple receiving claims either, so it's ok to assume that all PDUs have the
+         same frame index.
+     - What happens to the index mappings when the backing frame is dropped due to
+       error/timeout/finished with result?
+       - Keep the frame's index in the `FrameElement`/`FrameBox`/whatever
+       - Loop through array, do a `compare_exchange(u16::from(this_frame.index), u16::MAX).ok()`. An
+         error means it's not our PDU, success means yay reset.
+
+  2. For the first PDU pushed into the frame, store its index in the
+     `FrameElement`/`FrameBox`/whatever. When parsing the frame back, we can match up based on that
+     expected index.
+
+     - Store command too for tighter matching?
+     - No way to check if index is already in flight :(
+       - Also no way to free them all on drop. I think solution 1. might have to be the way to go
+       - Actually what about a tail counter? Eugh then I have to do overflowy maths and stuff. Maybe
+         I cba.
+
 # Multi-frame design
 
 - Storage: Change from a list of PDUs to a list of Ethernet frames.
@@ -757,15 +861,43 @@ impl Reads {
 To profile an example:
 
 ```bash
-cargo build --example <example name> --profile profiling
+# Ubuntu
+apt install linux-tools-common linux-tools-generic linux-tools-`uname -r`
+# Debian
+sudo apt install linux-perf
+
+RUSTFLAGS="-C force-frame-pointers=yes" cargo build --example <example name> --profile profiling
+
+# <https://stackoverflow.com/a/36263349>
+# To get kernel symbols in the perf output
+echo 0 | sudo tee /proc/sys/kernel/kptr_restrict
+# OR
+sudo sysctl -w kernel.kptr_restrict=0
+
+# Read current value
+sudo sysctl kernel.kptr_restrict
+
+# This should show non-zero addresses now. Will show zeros without sudo.
+sudo cat /proc/kallsyms
 
 # Might need sudo sysctl kernel.perf_event_paranoid=-1
 # Might need sudo sysctl kernel.perf_event_mlock_kb=2048
 sudo setcap cap_net_raw=pe ./target/profiling/examples/<example name>
-sudo perf record ./target/profiling/examples/<example name> <example args>
+sudo perf record --call-graph=dwarf -g ./target/profiling/examples/<example name> <example args>
+
+# To record benchmarks
+sudo perf record --call-graph=dwarf -g -o bench.data ./target/release/deps/pdu_loop-597b19205907e408 --baseline master --bench
 
 # Ctrl + C when you're done
 
+# Must use sudo to get kernel symbols
+sudo perf report -i perf.data
+
+# This won't show kernel symbols (possibly only when over SSH?)
 sudo chown $USER perf.data
 samply load perf.data
+
+# Forward the port on a remote machine with
+ssh -L 3000:localhost:3000 ethercrab
+# Otherwise symbols aren't loaded
 ```
