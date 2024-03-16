@@ -11,7 +11,7 @@ use self::bpf::BpfDevice as RawSocketDesc;
 pub(in crate::std) use self::linux::RawSocketDesc;
 
 use crate::{
-    error::Error,
+    error::{Error, PduError},
     fmt,
     pdu_loop::{PduRx, PduTx},
 };
@@ -19,6 +19,7 @@ use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
 use futures_lite::{AsyncRead, AsyncWrite};
 use rustix::{fs::Timespec, time::ClockId};
+use std::thread;
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
@@ -83,10 +84,17 @@ impl Future for TxRxFut<'_> {
                     fmt::warn!("Received zero bytes");
                 }
 
-                if let Err(e) = self.rx.receive_frame(packet) {
-                    fmt::error!("Failed to receive frame: {}", e);
+                loop {
+                    match self.rx.receive_frame(packet) {
+                        // Wait for frame RX future waker to be registered
+                        Err(Error::Pdu(PduError::NoWaker)) => thread::yield_now(),
+                        Err(e) => {
+                            fmt::error!("Failed to receive frame: {}", e);
 
-                    return Poll::Ready(Err(Error::ReceiveFrame));
+                            return Poll::Ready(Err(Error::ReceiveFrame));
+                        }
+                        Ok(()) => break,
+                    }
                 }
             }
             Poll::Ready(Err(e)) => {
