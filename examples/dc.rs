@@ -11,7 +11,11 @@ use ethercrab::{
 };
 use futures_lite::StreamExt;
 use std::{
-    sync::Arc,
+    fs::File,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 use ta::indicators::ExponentialMovingAverage;
@@ -101,7 +105,7 @@ pub struct SupportedModes {
     dynamic: bool,
 }
 
-const TICK_INTERVAL: Duration = Duration::from_millis(25);
+const TICK_INTERVAL: Duration = Duration::from_millis(5);
 
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -130,6 +134,11 @@ fn main() -> Result<(), Error> {
     ));
 
     let mut tick_interval = smol::Timer::interval(TICK_INTERVAL);
+
+    let sync0_cycle_time = TICK_INTERVAL.as_nanos() as u64;
+    let sync1_cycle_time = TICK_INTERVAL.as_nanos() as u64;
+    // Example shift: data should be ready half way through interval
+    let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
 
     smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
     // thread_priority::ThreadBuilder::default()
@@ -240,10 +249,6 @@ fn main() -> Result<(), Error> {
                 };
 
                 log::info!("Device time {}", device_time);
-
-                let sync0_cycle_time = TICK_INTERVAL.as_nanos() as u64;
-                let sync1_cycle_time = TICK_INTERVAL.as_nanos() as u64;
-                let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
 
                 let true_cycle_time =
                     ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
@@ -472,9 +477,92 @@ fn main() -> Result<(), Error> {
 
         log::info!("OP");
 
+        // PI controller (no D term), max deviation is one whole cycle
+        let mut dc_pi = {
+            // TODO: cycle_shift
+            let cycle_start_offset = 0.0;
+
+            // Maximum deviation for PI loop. We can never get larger than the current offset, so set
+            // that as the limit.
+            let max_value = 1_000.0;
+
+            let mut pi = pid::Pid::<f32>::new(cycle_start_offset, max_value);
+
+            // Picking some random values to start with
+            pi.i(1000.0, max_value);
+
+            pi
+        };
+
+        #[derive(serde::Serialize)]
+        struct PiStat {
+            os_time: u64,
+            ecat_time: u64,
+            difference: i64,
+            offset: i64,
+            pi_out: i64,
+            compensated: i64,
+        }
+
+        let mut pi_stats = csv::Writer::from_writer(File::create("dc-pi.csv").expect("Open CSV"));
+
+        // TODO: Turn this into a sleep so `ethercat_now()` converges on DC time. This is just a
+        // number for now to test things out.
+        let mut offset = 0.0f32;
+
+        let term = Arc::new(AtomicBool::new(false));
+        signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
+            .expect("Register hook");
+
+        let mut print_tick = Instant::now();
+
         loop {
+            // Hook signal so we can write CSV data before exiting
+            if term.load(Ordering::Relaxed) {
+                log::info!("Exiting...");
+
+                pi_stats.flush().ok();
+
+                break Ok(());
+            }
+
             // Note this method is experimental and currently hidden from the crate docs.
-            group.tx_rx_sync_dc(&client).await.expect("TX/RX");
+            let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
+
+            if let Some(dc_time) = dc_time {
+                let os_time = ethercat_now();
+
+                let difference = (os_time as i64 - dc_time as i64) as f32;
+
+                let compensated = difference + offset;
+
+                let out = dc_pi.next_control_output(compensated).output;
+
+                offset += out;
+
+                let stat = PiStat {
+                    os_time,
+                    ecat_time: dc_time,
+                    difference: difference as i64,
+                    offset: offset as i64,
+                    pi_out: out as i64,
+                    compensated: compensated as i64,
+                };
+
+                if print_tick.elapsed() > Duration::from_secs(1) {
+                    print_tick = Instant::now();
+
+                    log::info!(
+                        "OS/ECAT time delta {:+08.0}, curr offset {:+08.0}, PI adjustment {:+08.0}, delta + offset = {}",
+                        stat.difference,
+                        stat.offset,
+                        stat.pi_out,
+                        stat.compensated
+                    );
+                }
+
+                pi_stats.serialize(stat).ok();
+            }
 
             for mut slave in group.iter(&client) {
                 let (_i, o) = slave.io_raw_mut();

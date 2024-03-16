@@ -1,3 +1,21 @@
+# Plotting DC/OS time sync
+
+```gnuplot
+set datafile separator ','
+# set xdata time # tells gnuplot the x axis is time data
+# set ylabel "First Y " # label for the Y axis
+set autoscale fix
+set key top right outside autotitle columnhead
+set xlabel 'OS time (ns)' # label for the X axis
+
+set y2tics # enable second axis
+set ytics nomirror # dont show the tics on that side
+set y2label "OS/ECAT delta" # label for second axis
+
+# plot './dc-pi.csv' using 1:3 title "Difference" with lines, '' using 1:4 title "Offset" with lines, '' using 1:5 title "PI out" with lines
+plot './dc-pi.csv' using 1:4 title "Offset" with lines, '' using 1:3 title "OS/ECAT delta" with lines axis x1y2
+```
+
 # Optimising PDU reservation
 
 Problem
