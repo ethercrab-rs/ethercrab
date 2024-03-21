@@ -3,7 +3,7 @@ use core::task::Poll;
 use criterion::{criterion_group, criterion_main, Bencher, Criterion, Throughput};
 use ethercrab::{Client, ClientConfig, Command, PduStorage, Timeouts};
 use futures_lite::FutureExt;
-use std::pin::pin;
+use std::{pin::pin, time::Duration};
 
 const DATA: [u8; 8] = [0x11u8, 0x22, 0x33, 0x44, 0xaa, 0xbb, 0xcc, 0xdd];
 
@@ -15,7 +15,14 @@ fn do_bench(b: &mut Bencher) {
 
     let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
 
-    let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    let client = Client::new(
+        pdu_loop,
+        Timeouts {
+            pdu: Duration::from_millis(1000),
+            ..Timeouts::default()
+        },
+        ClientConfig::default(),
+    );
 
     let mut written_packet = [0u8; { FRAME_OVERHEAD + DATA.len() }];
 
@@ -42,7 +49,14 @@ fn do_bench(b: &mut Bencher) {
 
         // --- Receive frame
 
+        // Turn master sent MAC into receiving MAC
+        written_packet[6] = 0x12;
+        // Bump working counter so we don't error out
+        written_packet[written_packet.len() - 2] = 1;
+
         let _ = rx.receive_frame(&written_packet).expect("RX");
+
+        let _ = cassette::block_on(frame_fut);
     })
 }
 
