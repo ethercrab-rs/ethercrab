@@ -602,11 +602,11 @@ where
 
             let data = received.take(pdu_handle)?;
 
-            if data.len() != self.len() {
+            if data.len() != self.pdi().len() {
                 fmt::error!(
                     "Data length {} does not match value length {}",
                     data.len(),
-                    self.len()
+                    self.pdi().len()
                 );
                 return Err(Error::Pdu(PduError::Decode));
             }
@@ -676,11 +676,11 @@ where
                 let dc = received.take(dc_handle)?;
                 let data = received.take(pdu_handle)?;
 
-                if data.len() != self.len() {
+                if data.len() != self.pdi().len() {
                     fmt::error!(
                         "Data length {} does not match value length {}",
                         data.len(),
-                        self.len()
+                        self.pdi().len()
                     );
                     return Err(Error::Pdu(PduError::Decode));
                 }
