@@ -171,6 +171,7 @@ impl WrappedWrite {
     ///
     /// This is pretty much only useful for group TX/RX which returns bytes like `IIIIOOOO`, where
     /// `I` is where the sub devices write their input data to.
+    #[deprecated]
     pub(crate) async fn send_receive_slice_mut<'buf, 'client>(
         self,
         client: &'client Client<'client>,
