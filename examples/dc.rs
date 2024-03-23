@@ -136,8 +136,9 @@ fn main() -> Result<(), Error> {
     let mut tick_interval = smol::Timer::interval(TICK_INTERVAL);
 
     let sync0_cycle_time = TICK_INTERVAL.as_nanos() as u64;
-    let sync1_cycle_time = TICK_INTERVAL.as_nanos() as u64;
-    // Example shift: data should be ready half way through interval
+    // SYNC1 is not currently supported. Leave this set to zero.
+    let sync1_cycle_time = 0;
+    // Example shift: data will be ready half way through cycle
     // let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
     let cycle_shift = 0;
 
@@ -383,8 +384,6 @@ fn main() -> Result<(), Error> {
             async {
                 for slave in group.iter(&client) {
                     if slave.dc_support().enhanced() {
-                        // log::info!("{} supports DC", slave.name());
-
                         // Disable cyclic op, ignore WKC
                         match slave
                             .register_write(RegisterAddress::DcSyncActive, 0u8)
@@ -406,6 +405,7 @@ fn main() -> Result<(), Error> {
 
                         log::info!("Device time {}", device_time);
 
+                        // TODO: Support SYNC1. Only SYNC0 has been tested at time of writing.
                         let true_cycle_time =
                             ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
 
@@ -480,14 +480,12 @@ fn main() -> Result<(), Error> {
             // TODO: cycle_shift
             let cycle_start_offset = 0.0;
 
-            // Maximum deviation for PI loop. We can never get larger than the current offset, so set
-            // that as the limit.
-            let max_value = 1_000.0;
+            let max_value = 10_000.0;
 
             let mut pi = pid::Pid::<f32>::new(cycle_start_offset, max_value);
 
             // Picking some random values to start with
-            pi.i(1000.0, max_value);
+            pi.i(100_000.0, max_value);
 
             pi
         };
@@ -515,6 +513,9 @@ fn main() -> Result<(), Error> {
         let mut print_tick = Instant::now();
 
         loop {
+            // Note this method is experimental and currently hidden from the crate docs.
+            let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
+
             // Hook signal so we can write CSV data before exiting
             if term.load(Ordering::Relaxed) {
                 log::info!("Exiting...");
@@ -523,9 +524,6 @@ fn main() -> Result<(), Error> {
 
                 break Ok(());
             }
-
-            // Note this method is experimental and currently hidden from the crate docs.
-            let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
             if let Some(dc_time) = dc_time {
                 let os_time = ethercat_now();
@@ -551,12 +549,18 @@ fn main() -> Result<(), Error> {
                     print_tick = Instant::now();
 
                     log::info!(
-                        "OS/ECAT time delta {:+08.0}, curr offset {:+08.0}, PI adjustment {:+08.0}, delta + offset = {}",
-                        stat.difference,
-                        stat.offset,
-                        stat.pi_out,
-                        stat.compensated
+                        "ECAT time mod cycle time {} ({})",
+                        dc_time % sync0_cycle_time,
+                        dc_time as f64 / sync0_cycle_time as f64
                     );
+
+                    // log::info!(
+                    //     "OS/ECAT time delta {:+08.0}, curr offset {:+08.0}, PI adj {:+08.0}, comp {}",
+                    //     stat.difference,
+                    //     stat.offset,
+                    //     stat.pi_out,
+                    //     stat.compensated
+                    // );
                 }
 
                 pi_stats.serialize(stat).ok();
