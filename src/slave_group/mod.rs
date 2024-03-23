@@ -10,7 +10,7 @@ mod iterator;
 
 use crate::{
     command::Command,
-    error::{Error, Item},
+    error::{Error, Item, PduError},
     fmt,
     pdi::PdiOffset,
     slave::{configuration::PdoDirection, pdi::SlavePdi, IoRanges, Slave, SlaveRef},
@@ -19,6 +19,7 @@ use crate::{
 };
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 use core::{cell::UnsafeCell, marker::PhantomData, slice, sync::atomic::AtomicUsize};
+use ethercrab_wire::EtherCrabWireRead;
 
 pub use self::group_id::GroupId;
 pub use self::handle::SlaveGroupHandle;
@@ -576,11 +577,49 @@ where
             self.read_pdi_len
         );
 
-        let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
-            .send_receive_slice_mut(client, self.pdi_mut(), self.read_pdi_len)
-            .await?;
+        assert!(
+            self.len() <= client.max_frame_data(),
+            "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
+            self.len(),
+            client.max_frame_data()
+        );
 
-        Ok(wkc)
+        for _ in 0..client.config.retry_behaviour.loop_counts() {
+            let mut frame = client.pdu_loop.alloc_frame()?;
+
+            let pdu_handle = frame.push_pdu::<&[u8]>(
+                Command::lrw(self.inner().pdi_start.start_address).into(),
+                self.pdi(),
+                None,
+                false,
+            )?;
+
+            let frame = frame.mark_sendable().timeout(client.timeouts.pdu);
+
+            client.pdu_loop.wake_sender();
+
+            let received = frame.await?;
+
+            let data = received.take(pdu_handle)?;
+
+            if data.len() != self.len() {
+                fmt::error!(
+                    "Data length {} does not match value length {}",
+                    data.len(),
+                    self.len()
+                );
+                return Err(Error::Pdu(PduError::Decode));
+            }
+
+            let wkc = data.working_counter;
+
+            // Copy received input data back into memory
+            self.pdi_mut()[0..self.read_pdi_len].copy_from_slice(&data[0..self.read_pdi_len]);
+
+            return Ok(wkc);
+        }
+
+        Err(Error::Timeout)
     }
 
     /// Drive the slave group's inputs and outputs and synchronise EtherCAT system time with `FRMW`.
@@ -596,6 +635,13 @@ where
         &self,
         client: &'sto Client<'sto>,
     ) -> Result<(u16, Option<u64>), Error> {
+        assert!(
+            self.len() <= client.max_frame_data(),
+            "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
+            self.len(),
+            client.max_frame_data()
+        );
+
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -604,25 +650,55 @@ where
         );
 
         if let Some(dc_ref) = client.dc_ref_address() {
-            let (time, (_res, wkc)) = futures_lite::future::try_zip(
-                Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into())
-                    .ignore_wkc()
-                    .receive::<u64>(client),
-                Command::lrw(self.inner().pdi_start.start_address).send_receive_slice_mut(
-                    client,
-                    self.pdi_mut(),
-                    self.read_pdi_len,
-                ),
-            )
-            .await?;
+            for _ in 0..client.config.retry_behaviour.loop_counts() {
+                let mut frame = client.pdu_loop.alloc_frame()?;
 
-            Ok((wkc, Some(time)))
+                let dc_handle = frame.push_pdu::<u64>(
+                    Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into()).into(),
+                    0u64,
+                    None,
+                    true,
+                )?;
+
+                let pdu_handle = frame.push_pdu::<&[u8]>(
+                    Command::lrw(self.inner().pdi_start.start_address).into(),
+                    self.pdi(),
+                    None,
+                    false,
+                )?;
+
+                let frame = frame.mark_sendable().timeout(client.timeouts.pdu);
+
+                client.pdu_loop.wake_sender();
+
+                let received = frame.await?;
+
+                let dc = received.take(dc_handle)?;
+                let data = received.take(pdu_handle)?;
+
+                if data.len() != self.len() {
+                    fmt::error!(
+                        "Data length {} does not match value length {}",
+                        data.len(),
+                        self.len()
+                    );
+                    return Err(Error::Pdu(PduError::Decode));
+                }
+
+                // Do this before PDI inputs copy so if it fails for some reason, we're not left
+                // with potentially bad data in memory.
+                let time = u64::unpack_from_slice(&dc)?;
+                let wkc = data.working_counter;
+
+                // Copy received input data back into memory
+                self.pdi_mut()[0..self.read_pdi_len].copy_from_slice(&data[0..self.read_pdi_len]);
+
+                return Ok((wkc, Some(time)));
+            }
+
+            Err(Error::Timeout)
         } else {
-            let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
-                .send_receive_slice_mut(client, self.pdi_mut(), self.read_pdi_len)
-                .await?;
-
-            Ok((wkc, None))
+            self.tx_rx(client).await.map(|wkc| (wkc, None))
         }
     }
 }
