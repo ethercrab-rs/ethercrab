@@ -577,11 +577,49 @@ where
             self.read_pdi_len
         );
 
-        let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
-            .send_receive_slice_mut(client, self.pdi_mut(), self.read_pdi_len)
-            .await?;
+        assert!(
+            self.len() <= client.max_frame_data(),
+            "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
+            self.len(),
+            client.max_frame_data()
+        );
 
-        Ok(wkc)
+        for _ in 0..client.config.retry_behaviour.loop_counts() {
+            let mut frame = client.pdu_loop.alloc_frame()?;
+
+            let pdu_handle = frame.push_pdu::<&[u8]>(
+                Command::lrw(self.inner().pdi_start.start_address).into(),
+                self.pdi(),
+                None,
+                false,
+            )?;
+
+            let frame = frame.mark_sendable().timeout(client.timeouts.pdu);
+
+            client.pdu_loop.wake_sender();
+
+            let received = frame.await?;
+
+            let data = received.take(pdu_handle)?;
+
+            if data.len() != self.len() {
+                fmt::error!(
+                    "Data length {} does not match value length {}",
+                    data.len(),
+                    self.len()
+                );
+                return Err(Error::Pdu(PduError::Decode));
+            }
+
+            let wkc = data.working_counter;
+
+            // Copy received input data back into memory
+            self.pdi_mut()[0..self.read_pdi_len].copy_from_slice(&data[0..self.read_pdi_len]);
+
+            return Ok(wkc);
+        }
+
+        Err(Error::Timeout)
     }
 
     /// Drive the slave group's inputs and outputs and synchronise EtherCAT system time with `FRMW`.
@@ -660,11 +698,7 @@ where
 
             Err(Error::Timeout)
         } else {
-            let (_res, wkc) = Command::lrw(self.inner().pdi_start.start_address)
-                .send_receive_slice_mut(client, self.pdi_mut(), self.read_pdi_len)
-                .await?;
-
-            Ok((wkc, None))
+            self.tx_rx(client).await.map(|wkc| (wkc, None))
         }
     }
 }

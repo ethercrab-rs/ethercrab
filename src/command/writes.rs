@@ -1,12 +1,4 @@
-use core::ops::Deref;
-
-use crate::{
-    error::{Error, PduError},
-    fmt,
-    pdu_loop::ReceivedPdu,
-    timer_factory::IntoTimeout,
-    Client,
-};
+use crate::{error::Error, fmt, pdu_loop::ReceivedPdu, timer_factory::IntoTimeout, Client};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 
 /// Write commands.
@@ -165,45 +157,5 @@ impl WrappedWrite {
         }
 
         Err(Error::Timeout)
-    }
-
-    /// Send a slice, reading `read_back_len` bytes into the beginning of the provided slice.
-    ///
-    /// This is pretty much only useful for group TX/RX which returns bytes like `IIIIOOOO`, where
-    /// `I` is where the sub devices write their input data to.
-    #[deprecated]
-    pub(crate) async fn send_receive_slice_mut<'buf, 'client>(
-        self,
-        client: &'client Client<'client>,
-        value: &'buf mut [u8],
-        read_back_len: usize,
-    ) -> Result<(&'buf [u8], u16), Error> {
-        assert!(
-            value.len() <= client.max_frame_data(),
-            "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
-            value.len(),
-            client.max_frame_data()
-        );
-
-        let res = self
-            .common(client, value.as_ref(), self.len_override)
-            .await?;
-
-        let data = res.deref();
-
-        let wkc = res.working_counter;
-
-        if data.len() != value.len() {
-            fmt::error!(
-                "Data length {} does not match value length {}",
-                data.len(),
-                value.len()
-            );
-            return Err(Error::Pdu(PduError::Decode));
-        }
-
-        value[0..read_back_len].copy_from_slice(&data[0..read_back_len]);
-
-        Ok((&*value, wkc))
     }
 }
