@@ -7,7 +7,7 @@ use env_logger::Env;
 use ethercrab::{
     error::Error,
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, RegisterAddress, Timeouts,
+    Client, ClientConfig, Command, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
@@ -202,138 +202,6 @@ fn main() -> Result<(), Error> {
             }
         }
 
-        for slave in group.iter(&client) {
-            if slave.name() == "LAN9252-EVB-HBI" {
-                // log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
-
-                let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
-                let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
-                let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
-                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
-                log::info!("Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
-
-                let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
-                let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
-                let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
-                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
-                log::info!("Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
-
-                let v = slave
-                    .register_read::<Lan9252Conf>(Lan9252Register::SyncLatchConfig as u16)
-                    .await
-                    .expect("LAN9252 SyncLatchConfig");
-
-                log::info!("LAN9252 config reg 0x0151: {:?}", v);
-            }
-
-            if slave.dc_support().enhanced() {
-                // log::info!("{} supports DC", slave.name());
-
-                // Disable cyclic op, ignore WKC
-                match slave
-                    .register_write(RegisterAddress::DcSyncActive, 0u8)
-                    .await
-                {
-                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                    Err(e) => return Err(e),
-                };
-
-                let device_time = match slave
-                    .register_read::<u64>(RegisterAddress::DcSystemTime)
-                    .await
-                {
-                    Ok(t) => t,
-                    // Ignore WKC, default to 0.
-                    Err(Error::WorkingCounter { .. }) => 0,
-                    Err(e) => return Err(e),
-                };
-
-                log::info!("Device time {}", device_time);
-
-                let true_cycle_time =
-                    ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
-
-                let first_pulse_delay = Duration::from_millis(100).as_nanos() as u64;
-
-                let t = (device_time + first_pulse_delay) / true_cycle_time * true_cycle_time
-                    + true_cycle_time
-                    + cycle_shift;
-
-                log::info!("Computed DC sync start time: {}", t);
-
-                match slave
-                    .register_write(RegisterAddress::DcSyncStartTime, t)
-                    .await
-                {
-                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                    Err(e) => return Err(e),
-                };
-
-                // Cycle time in nanoseconds
-                match slave
-                    .register_write(RegisterAddress::DcSync0CycleTime, sync0_cycle_time)
-                    .await
-                {
-                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                    Err(e) => return Err(e),
-                };
-
-                // slave
-                //     .register_write(RegisterAddress::DcSync1CycleTime, sync1_cycle_time)
-                //     .await
-                //     .expect("DcSync1CycleTime");
-
-                match slave
-                    .register_write(
-                        RegisterAddress::DcSyncActive,
-                        // CYCLIC_OP_ENABLE causes SM watchdog timeouts when going into OP
-                        SYNC0_ACTIVATE | CYCLIC_OP_ENABLE,
-                    )
-                    .await
-                {
-                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                    Err(e) => return Err(e),
-                };
-            }
-        }
-
-        // let client2 = client.clone();
-        // let expected_dc_wkc = group
-        //     .iter(&client)
-        //     .filter(|s| s.dc_support().enhanced())
-        //     .count() as u16
-        //     + {
-        //         // TODO: Use designated device, not just assume the first one is the DC reference
-        //         if group.slave(&client, 0).unwrap().dc_support().enhanced() {
-        //             0
-        //         }
-        //         // Reference clock doesn't support enhanced DC so we manually add to the expected WKC.
-        //         else {
-        //             1
-        //         }
-        //     };
-
-        // // Start continuous drift compensation in PRE-OP
-        // tokio::spawn(async move {
-        //     let mut sync_tick = tokio::time::interval(TICK_INTERVAL);
-        //     sync_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
-
-        //     loop {
-        //         // TODO: Find first DC slave instead of hardcoded address.
-        //         // Dynamic drift compensation. Assumes first device supports DC
-        //         let t = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
-        //             .wrap(&client2)
-        //             .with_wkc(expected_dc_wkc)
-        //             .receive::<u64>()
-        //             .await
-        //             .expect("Sync tick");
-
-        //         // dbg!(t);
-
-        //         sync_tick.tick().await;
-        //     }
-        // });
-
         log::info!("Group has {} slaves", group.len());
 
         let mut now = Instant::now();
@@ -350,6 +218,11 @@ fn main() -> Result<(), Error> {
 
         let mut group = group.into_pre_op_pdi(&client).await?;
 
+        // Repeatedly send group PDI and sync frame to align all SubDevice clocks. We use an
+        // exponential moving average of each SubDevice's deviation from the EtherCAT System Time
+        // (the time in the DC reference SubDevice) and take the maximum deviation. When that is
+        // below 100ns (arbitraily chosen value for this demo), we call the sync good enough and
+        // exit the loop.
         loop {
             // Note this method is experimental and currently hidden from the crate docs.
             group.tx_rx_sync_dc(&client).await.expect("TX/RX");
@@ -461,7 +334,135 @@ fn main() -> Result<(), Error> {
 
         log::info!("Sync done");
 
-        let group = group
+        // Now that clocks have synchronised, start cyclic operation by configuring SYNC0 start,
+        // cycle time, etc. We need to continue to synchronise the clocks throughout this, so we run
+        // a `FRMW` concurrently. if we don't, the clock in the second SubDevice will have drifted
+        // by the time the first SYNC0 pulse of the second subdevice fires.
+        //
+        // For my crappy LAN9252 dev boards, this drift can be something like 62us per 300ms which
+        // is silly, and defeats the purpose of DC in the first place.
+        //
+        // The DC clocks do eventually synchronise further down the line when we are sending FRMW
+        // regularly, so it's not the worst thing in the world, but still not great.
+        futures_lite::future::or(
+            async {
+                loop {
+                    // FIXME: Do this inside the group as this hacky fixed address makes for
+                    // terrible API. Using `group.tx_rx_sync_dc` is not possible due to mut/immut,
+                    // as well as being inefficient by sending the PDI which we don't care about at
+                    // the moment.
+                    Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
+                        .ignore_wkc()
+                        .receive::<u64>(&client).await?;
+
+                    tick_interval.next().await;
+                }
+            },
+            async {
+                for slave in group.iter(&client) {
+                    if slave.name() == "LAN9252-EVB-HBI" {
+                        // log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
+
+                        let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
+                        let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
+                        let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
+                        let supported_sync_modes =
+                            slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
+                        log::info!("Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+
+                        let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
+                        let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
+                        let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
+                        let supported_sync_modes =
+                            slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
+                        log::info!("Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+
+                        let v = slave
+                            .register_read::<Lan9252Conf>(Lan9252Register::SyncLatchConfig as u16)
+                            .await
+                            .expect("LAN9252 SyncLatchConfig");
+
+                        log::info!("LAN9252 config reg 0x0151: {:?}", v);
+                    }
+
+                    if slave.dc_support().enhanced() {
+                        // log::info!("{} supports DC", slave.name());
+
+                        // Disable cyclic op, ignore WKC
+                        match slave
+                            .register_write(RegisterAddress::DcSyncActive, 0u8)
+                            .await
+                        {
+                            Ok(_) | Err(Error::WorkingCounter { .. }) => (),
+                            Err(e) => return Err(e),
+                        };
+
+                        let device_time = match slave
+                            .register_read::<u64>(RegisterAddress::DcSystemTime)
+                            .await
+                        {
+                            Ok(t) => t,
+                            // Ignore WKC, default to 0.
+                            Err(Error::WorkingCounter { .. }) => 0,
+                            Err(e) => return Err(e),
+                        };
+
+                        log::info!("Device time {}", device_time);
+
+                        let true_cycle_time =
+                            ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
+
+                        let first_pulse_delay = Duration::from_millis(100).as_nanos() as u64;
+
+                        let t = (device_time + first_pulse_delay) / true_cycle_time
+                            * true_cycle_time
+                            + true_cycle_time
+                            + cycle_shift;
+
+                        log::info!("Computed DC sync start time: {}", t);
+
+                        match slave
+                            .register_write(RegisterAddress::DcSyncStartTime, t)
+                            .await
+                        {
+                            Ok(_) | Err(Error::WorkingCounter { .. }) => (),
+                            Err(e) => return Err(e),
+                        };
+
+                        // Cycle time in nanoseconds
+                        match slave
+                            .register_write(RegisterAddress::DcSync0CycleTime, sync0_cycle_time)
+                            .await
+                        {
+                            Ok(_) | Err(Error::WorkingCounter { .. }) => (),
+                            Err(e) => return Err(e),
+                        };
+
+                        // slave
+                        //     .register_write(RegisterAddress::DcSync1CycleTime, sync1_cycle_time)
+                        //     .await
+                        //     .expect("DcSync1CycleTime");
+
+                        match slave
+                            .register_write(
+                                RegisterAddress::DcSyncActive,
+                                // CYCLIC_OP_ENABLE causes SM watchdog timeouts when going into OP
+                                SYNC0_ACTIVATE | CYCLIC_OP_ENABLE,
+                            )
+                            .await
+                        {
+                            Ok(_) | Err(Error::WorkingCounter { .. }) => (),
+                            Err(e) => return Err(e),
+                        };
+                    }
+                }
+
+                Ok(())
+            },
+
+        ).await?;
+
+        let mut group = group
             .into_safe_op(&client)
             .await
             .expect("PRE-OP -> SAFE-OP");
@@ -473,9 +474,9 @@ fn main() -> Result<(), Error> {
         // Note this method is experimental and currently hidden from the crate docs.
         group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
-        let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
+        // let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
 
-        log::info!("OP");
+        // log::info!("OP");
 
         // PI controller (no D term), max deviation is one whole cycle
         let mut dc_pi = {
