@@ -138,7 +138,8 @@ fn main() -> Result<(), Error> {
     let sync0_cycle_time = TICK_INTERVAL.as_nanos() as u64;
     let sync1_cycle_time = TICK_INTERVAL.as_nanos() as u64;
     // Example shift: data should be ready half way through interval
-    let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
+    // let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
+    let cycle_shift = 0;
 
     smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
     // thread_priority::ThreadBuilder::default()
@@ -199,6 +200,26 @@ fn main() -> Result<(), Error> {
                     .sdo_write(0x1c32, 0x0a, TICK_INTERVAL.as_nanos() as u32)
                     .await
                     .expect("Set cycle time");
+
+                let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
+                let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
+                let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
+                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
+                log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+
+                let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
+                let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
+                let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
+                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
+                log::info!("--> Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+
+                let v = slave
+                    .register_read::<Lan9252Conf>(Lan9252Register::SyncLatchConfig as u16)
+                    .await
+                    .expect("LAN9252 SyncLatchConfig");
+
+                log::info!("--> LAN9252 config reg 0x0151:");
+                log::info!("----> {:?}", v);
             }
         }
 
@@ -353,38 +374,14 @@ fn main() -> Result<(), Error> {
                     // the moment.
                     Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
                         .ignore_wkc()
-                        .receive::<u64>(&client).await?;
+                        .receive::<u64>(&client)
+                        .await?;
 
                     tick_interval.next().await;
                 }
             },
             async {
                 for slave in group.iter(&client) {
-                    if slave.name() == "LAN9252-EVB-HBI" {
-                        // log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
-
-                        let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
-                        let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
-                        let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
-                        let supported_sync_modes =
-                            slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
-                        log::info!("Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
-
-                        let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
-                        let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
-                        let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
-                        let supported_sync_modes =
-                            slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
-                        log::info!("Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
-
-                        let v = slave
-                            .register_read::<Lan9252Conf>(Lan9252Register::SyncLatchConfig as u16)
-                            .await
-                            .expect("LAN9252 SyncLatchConfig");
-
-                        log::info!("LAN9252 config reg 0x0151: {:?}", v);
-                    }
-
                     if slave.dc_support().enhanced() {
                         // log::info!("{} supports DC", slave.name());
 
@@ -459,8 +456,8 @@ fn main() -> Result<(), Error> {
 
                 Ok(())
             },
-
-        ).await?;
+        )
+        .await?;
 
         let mut group = group
             .into_safe_op(&client)
