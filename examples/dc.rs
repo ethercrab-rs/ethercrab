@@ -3,6 +3,7 @@
 //! Please note this example uses experimental features and should not be used as a reference for
 //! other code. It is here (currently) primarily to help develop EtherCrab.
 
+use core_affinity::CoreId;
 use env_logger::Env;
 use ethercrab::{
     error::Error,
@@ -160,10 +161,6 @@ fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            // core_affinity::set_for_current(tx_rx_core)
-            //     .then_some(())
-            //     .expect("Set TX/RX thread core");
-
             // Blocking io_uring
             tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
         })
@@ -171,6 +168,11 @@ fn main() -> Result<(), Error> {
 
     // Wait for TX/RX loop to start
     thread::sleep(Duration::from_millis(200));
+
+    thread_priority::set_current_thread_priority(ThreadPriority::Crossplatform(
+        ThreadPriorityValue::try_from(48u8).unwrap(),
+    ))
+    .expect("Main thread prio");
 
     smol::block_on(async {
         let mut group = client
