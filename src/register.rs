@@ -180,7 +180,14 @@ pub enum RegisterAddress {
     /// DC system time difference, `u32`.
     DcSystemTimeDifference = 0x092C,
 
-    // TODO: 0x0980. Not sure what it is though. SOEM calls it DCCUC.
+    /// DC Cyclic Unit Control, `u8`.
+    ///
+    /// ETG1000.4 Table 61 - Distributed clock DLS-user parameter.
+    ///
+    /// AKA DCCUC. Documentation is very light, with ETG1000.4 only mentioning this as a "reserved"
+    /// field. Wireshark describes this register as "DC Cyclic Unit Control".
+    DcCyclicUnitControl = 0x0980,
+
     /// ETG1000.6 Table 27 - Distributed Clock sync parameter, `u8`.
     ///
     /// AKA ETG1000.4 Table 61 DC user P1.
