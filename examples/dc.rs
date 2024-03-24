@@ -6,7 +6,7 @@
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    std::{ethercat_now, tx_rx_task},
+    std::{ethercat_now, tx_rx_task, tx_rx_task_io_uring},
     Client, ClientConfig, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
@@ -17,10 +17,14 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    thread,
     time::{Duration, Instant},
 };
 use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
+use thread_priority::{
+    RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
+};
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -141,8 +145,32 @@ fn main() -> Result<(), Error> {
     let sync1_cycle_time = 0;
     // Example shift: data will be ready half way through cycle
     let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
+    // let cycle_shift = 0;
 
-    smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
+    // smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
+    thread_priority::ThreadBuilder::default()
+        .name("tx-rx-thread")
+        // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
+        // Check limits with `ulimit -Hr` or `ulimit -Sr`
+        .priority(ThreadPriority::Crossplatform(
+            ThreadPriorityValue::try_from(49u8).unwrap(),
+        ))
+        // NOTE: Requires a realtime kernel
+        .policy(ThreadSchedulePolicy::Realtime(
+            RealtimeThreadSchedulePolicy::Fifo,
+        ))
+        .spawn(move |_| {
+            // core_affinity::set_for_current(tx_rx_core)
+            //     .then_some(())
+            //     .expect("Set TX/RX thread core");
+
+            // Blocking io_uring
+            tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
+        })
+        .unwrap();
+
+    // Wait for TX/RX loop to start
+    thread::sleep(Duration::from_millis(200));
 
     smol::block_on(async {
         let mut group = client
@@ -221,6 +249,8 @@ fn main() -> Result<(), Error> {
 
         let mut group = group.into_pre_op_pdi(&client).await?;
 
+        log::info!("Waiting for SubDevices to align");
+
         // Repeatedly send group PDI and sync frame to align all SubDevice clocks. We use an
         // exponential moving average of each SubDevice's deviation from the EtherCAT System Time
         // (the time in the DC reference SubDevice) and take the maximum deviation. When that is
@@ -232,8 +262,6 @@ fn main() -> Result<(), Error> {
 
             if now.elapsed() >= Duration::from_millis(25) {
                 now = Instant::now();
-
-                log::debug!("Stat");
 
                 let mut row = Vec::with_capacity(group.len());
 
@@ -333,7 +361,7 @@ fn main() -> Result<(), Error> {
             tick_interval.next().await;
         }
 
-        log::info!("Sync done");
+        log::info!("Alignment done");
 
         // Now that clocks have synchronised, start cyclic operation by configuring SYNC0 start,
         // cycle time, etc. This should be quick enough that not much drift is observed during
@@ -430,23 +458,13 @@ fn main() -> Result<(), Error> {
 
         // log::info!("OP");
 
-        // PI controller (no D term), max deviation is one whole cycle
-        let mut dc_pi = {
-            let max_value = 10_000.0;
-
-            let mut pi = pid::Pid::<f32>::new(cycle_shift as f32, max_value);
-
-            // Picking some random values to start with
-            pi.i(20_000.0, max_value);
-
-            pi
-        };
-
         #[derive(serde::Serialize)]
         struct PiStat {
             ecat_time: u64,
-            cycle_start_offset: u64,
+            shift_time: f32,
+            extra_sleep_time: u64,
             pi_out: i64,
+            pi_offset: i64,
         }
 
         let mut pi_stats = csv::Writer::from_writer(File::create("dc-pi.csv").expect("Open CSV"));
@@ -457,54 +475,89 @@ fn main() -> Result<(), Error> {
 
         let mut print_tick = Instant::now();
 
+        // PI controller (no D term)
+        let mut dc_pi = {
+            let max_value = 10_000 as f32;
+
+            let mut pi = pid::Pid::<f32>::new(cycle_shift as f32, max_value);
+
+            pi.i(1000.0, max_value);
+
+            pi
+        };
+
+        let mut offset = 0.0 as f32;
+
         loop {
+            let now = current_time();
+
             // Note this method is experimental and currently hidden from the crate docs.
             let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
-            let now = current_time();
-
-            let sleep_until = if let Some(dc_time) = dc_time {
+            let this_cycle_delay = if let Some(dc_time) = dc_time {
                 // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
                 // time is rounded to a whole number of `sync0_cycle_time`-length cycles.
-                // TODO: Cycle shift
                 let cycle_start_offset = dc_time % sync0_cycle_time;
 
-                // Move offset value towards start of cycle
-                // TODO: Cycle shift
-                let change = dc_pi.next_control_output(cycle_start_offset as f32).output;
+                // Use the PI loop to try and converge the difference between the measured offset
+                // from the SYNC0 pulse and the `offset` value. This should result in a value
+                // near/around `cycle_shift`, which we can then add `sync0_cycle_time` to to
+                // calculate the next time we should send process data.
+                let change = dc_pi
+                    .next_control_output(cycle_start_offset as f32 + offset)
+                    .output;
 
-                // offset += change;
+                offset += change;
 
-                let remaining_time = sync0_cycle_time as i64 - cycle_start_offset as i64;
+                // let remaining_time = sync0_cycle_time as i64;
 
-                assert!(remaining_time >= 0, "Not enough cycle left");
+                // assert!(remaining_time >= 0, "Not enough cycle left");
 
-                // tick_interval.set_interval(Duration::from_nanos(remaining_time as u64));
+                // // tick_interval.set_interval(Duration::from_nanos(remaining_time as u64));
+
+                let time_to_next_iter = offset as u64 + sync0_cycle_time;
 
                 let stat = PiStat {
                     ecat_time: dc_time,
-                    cycle_start_offset,
                     pi_out: change as i64,
+                    pi_offset: offset as i64,
+                    // This value should hover around the cycle offset, at time of writing 2500us,
+                    // or half the 5ms cycle time.
+                    shift_time: (cycle_start_offset as f32 + offset) / 1000.0,
+                    extra_sleep_time: cycle_start_offset.saturating_sub(offset as u64),
                 };
+
+                // Sleep for an extra bit of time to align us with the desired cycle shift. E.g. if
+                // we're sending the frame at 200us offset from SYNC0 and we have a 500us offset,
+                // sleep for 300us to put is in the right spot. The loop delay below takes care of
+                // the cycle-cycle delay.
+                smol::Timer::after(Duration::from_nanos(
+                    cycle_start_offset.saturating_sub(offset as u64),
+                ))
+                .await;
 
                 if print_tick.elapsed() > Duration::from_secs(1) {
                     print_tick = Instant::now();
 
                     log::info!(
-                        "ECAT time mod cycle time {}, PI output {}, remaining time in this cycle {} ms",
-                        cycle_start_offset as f32 / 1000.0 / 1000.0,
+                        "Offset from start of cycle {}, PI output {}, offset {}, {} ms from cycle start, next tick in {:0.3} ms",
+                        cycle_start_offset,
                         change,
-                        // -offset as f32 / 1000.0 / 1000.0,
-                        remaining_time as f32 / 1000.0 / 1000.0,
+                        offset,
+                        (cycle_start_offset as f32 + offset) / 1000.0 / 1000.0,
+                        (time_to_next_iter as f32) / 1000.0/1000.0
                     );
                 }
 
                 // pi_stats.serialize(stat).ok();
 
-                add_nanos(now, remaining_time as u64)
+                // TODO
+                // add_nanos(now, sync0_cycle_time)
+
+                // Duration::from_nanos(dbg!(sync0_cycle_time as i64 + offset as i64) as u64)
+                (sync0_cycle_time as i64 + offset as i64) as u64
             } else {
-                // 5ms default
-                add_nanos(now, 5_000_000)
+                sync0_cycle_time
             };
 
             // Hook signal so we can write CSV data before exiting
@@ -516,15 +569,18 @@ fn main() -> Result<(), Error> {
                 break Ok(());
             }
 
-            for mut slave in group.iter(&client) {
-                let (_i, o) = slave.io_raw_mut();
+            // for mut slave in group.iter(&client) {
+            //     let (_i, o) = slave.io_raw_mut();
 
-                for byte in o.iter_mut() {
-                    *byte = byte.wrapping_add(1);
-                }
-            }
+            //     for byte in o.iter_mut() {
+            //         *byte = byte.wrapping_add(1);
+            //     }
+            // }
 
             // tick_interval.next().await;
+            // smol::Timer::at(this_cycle_delay).await;
+
+            let sleep_until = add_nanos(now, this_cycle_delay);
 
             clock_nanosleep_absolute(ClockId::Monotonic, &sleep_until).expect("Sleep");
         }
