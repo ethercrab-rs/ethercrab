@@ -461,7 +461,7 @@ fn main() -> Result<(), Error> {
         struct PiStat {
             ecat_time: u64,
             cycle_start_offset: u64,
-            next_iter_wait: i64,
+            next_iter_wait: u64,
         }
 
         let mut pi_stats = csv::Writer::from_writer(File::create("dc-pi.csv").expect("Open CSV"));
@@ -483,8 +483,7 @@ fn main() -> Result<(), Error> {
                 // time is rounded to a whole number of `sync0_cycle_time`-length cycles.
                 let cycle_start_offset = dc_time % sync0_cycle_time;
 
-                let time_to_next_iter =
-                    (sync0_cycle_time + (cycle_shift - cycle_start_offset)) as i64;
+                let time_to_next_iter = sync0_cycle_time + (cycle_shift - cycle_start_offset);
 
                 let stat = PiStat {
                     ecat_time: dc_time,
@@ -510,7 +509,7 @@ fn main() -> Result<(), Error> {
 
                 // Duration::from_nanos(dbg!(sync0_cycle_time as i64 + offset as i64) as u64)
                 // (sync0_cycle_time as i64 + offset as i64) as u64
-                time_to_next_iter as u64
+                time_to_next_iter
             } else {
                 sync0_cycle_time
             };
