@@ -148,23 +148,23 @@ fn main() -> Result<(), Error> {
     let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
     // let cycle_shift = 0;
 
-    // smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
-    thread_priority::ThreadBuilder::default()
-        .name("tx-rx-thread")
-        // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
-        // Check limits with `ulimit -Hr` or `ulimit -Sr`
-        .priority(ThreadPriority::Crossplatform(
-            ThreadPriorityValue::try_from(49u8).unwrap(),
-        ))
-        // NOTE: Requires a realtime kernel
-        .policy(ThreadSchedulePolicy::Realtime(
-            RealtimeThreadSchedulePolicy::Fifo,
-        ))
-        .spawn(move |_| {
-            // Blocking io_uring
-            tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
-        })
-        .unwrap();
+    smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
+    // thread_priority::ThreadBuilder::default()
+    //     .name("tx-rx-thread")
+    //     // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
+    //     // Check limits with `ulimit -Hr` or `ulimit -Sr`
+    //     .priority(ThreadPriority::Crossplatform(
+    //         ThreadPriorityValue::try_from(49u8).unwrap(),
+    //     ))
+    //     // NOTE: Requires a realtime kernel
+    //     .policy(ThreadSchedulePolicy::Realtime(
+    //         RealtimeThreadSchedulePolicy::Fifo,
+    //     ))
+    //     .spawn(move |_| {
+    //         // Blocking io_uring
+    //         tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
+    //     })
+    //     .unwrap();
 
     // Wait for TX/RX loop to start
     thread::sleep(Duration::from_millis(200));
