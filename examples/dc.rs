@@ -411,10 +411,12 @@ fn main() -> Result<(), Error> {
 
                         let first_pulse_delay = Duration::from_millis(100).as_nanos() as u64;
 
-                        let t = (device_time + first_pulse_delay) / true_cycle_time
-                            * true_cycle_time
-                            + true_cycle_time
-                            + cycle_shift;
+                        // Round first pulse delay to a whole number of cycles
+                        let t =
+                            (device_time + first_pulse_delay) / true_cycle_time * true_cycle_time;
+
+                        // Add one more cycle plus user-configured cycle shift
+                        let t = t + true_cycle_time + cycle_shift;
 
                         log::info!("Computed DC sync start time: {}", t);
 
