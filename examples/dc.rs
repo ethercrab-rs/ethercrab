@@ -357,109 +357,82 @@ fn main() -> Result<(), Error> {
         log::info!("Sync done");
 
         // Now that clocks have synchronised, start cyclic operation by configuring SYNC0 start,
-        // cycle time, etc. We need to continue to synchronise the clocks throughout this, so we run
-        // a `FRMW` concurrently. if we don't, the clock in the second SubDevice will have drifted
-        // by the time the first SYNC0 pulse of the second subdevice fires.
-        //
-        // For my crappy LAN9252 dev boards, this drift can be something like 62us per 300ms which
-        // is silly, and defeats the purpose of DC in the first place.
-        //
-        // The DC clocks do eventually synchronise further down the line when we are sending FRMW
-        // regularly, so it's not the worst thing in the world, but still not great.
-        futures_lite::future::or(
-            async {
-                loop {
-                    // FIXME: Do this inside the group as this hacky fixed address makes for
-                    // terrible API. Using `group.tx_rx_sync_dc` is not possible due to mut/immut,
-                    // as well as being inefficient by sending the PDI which we don't care about at
-                    // the moment.
-                    Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
-                        .ignore_wkc()
-                        .receive::<u64>(&client)
-                        .await?;
+        // cycle time, etc. This should be quick enough that not much drift is observed during
+        // config, however if it is, we should continue to send FRMW frames in parallel to this
+        // configuration. It must also be fast enough that all SubDevices are configured within the
+        // 100ms first start offset set below.
+        for slave in group.iter(&client) {
+            if slave.dc_support().enhanced() {
+                // Disable cyclic op, ignore WKC
+                match slave
+                    .register_write(RegisterAddress::DcSyncActive, 0u8)
+                    .await
+                {
+                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
+                    Err(e) => return Err(e),
+                };
 
-                    tick_interval.next().await;
-                }
-            },
-            async {
-                for slave in group.iter(&client) {
-                    if slave.dc_support().enhanced() {
-                        // Disable cyclic op, ignore WKC
-                        match slave
-                            .register_write(RegisterAddress::DcSyncActive, 0u8)
-                            .await
-                        {
-                            Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                            Err(e) => return Err(e),
-                        };
+                let device_time = match slave
+                    .register_read::<u64>(RegisterAddress::DcSystemTime)
+                    .await
+                {
+                    Ok(t) => t,
+                    // Ignore WKC, default to 0.
+                    Err(Error::WorkingCounter { .. }) => 0,
+                    Err(e) => return Err(e),
+                };
 
-                        let device_time = match slave
-                            .register_read::<u64>(RegisterAddress::DcSystemTime)
-                            .await
-                        {
-                            Ok(t) => t,
-                            // Ignore WKC, default to 0.
-                            Err(Error::WorkingCounter { .. }) => 0,
-                            Err(e) => return Err(e),
-                        };
+                log::info!("Device time {}", device_time);
 
-                        log::info!("Device time {}", device_time);
+                // TODO: Support SYNC1. Only SYNC0 has been tested at time of writing.
+                let true_cycle_time =
+                    ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
 
-                        // TODO: Support SYNC1. Only SYNC0 has been tested at time of writing.
-                        let true_cycle_time =
-                            ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
+                let first_pulse_delay = Duration::from_millis(100).as_nanos() as u64;
 
-                        let first_pulse_delay = Duration::from_millis(100).as_nanos() as u64;
+                // Round first pulse delay to a whole number of cycles
+                let t = (device_time + first_pulse_delay) / true_cycle_time * true_cycle_time;
 
-                        // Round first pulse delay to a whole number of cycles
-                        let t =
-                            (device_time + first_pulse_delay) / true_cycle_time * true_cycle_time;
+                // Add one more cycle plus user-configured cycle shift
+                let t = t + true_cycle_time + cycle_shift;
 
-                        // Add one more cycle plus user-configured cycle shift
-                        let t = t + true_cycle_time + cycle_shift;
+                log::info!("Computed DC sync start time: {}", t);
 
-                        log::info!("Computed DC sync start time: {}", t);
+                match slave
+                    .register_write(RegisterAddress::DcSyncStartTime, t)
+                    .await
+                {
+                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
+                    Err(e) => return Err(e),
+                };
 
-                        match slave
-                            .register_write(RegisterAddress::DcSyncStartTime, t)
-                            .await
-                        {
-                            Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                            Err(e) => return Err(e),
-                        };
+                // Cycle time in nanoseconds
+                match slave
+                    .register_write(RegisterAddress::DcSync0CycleTime, sync0_cycle_time)
+                    .await
+                {
+                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
+                    Err(e) => return Err(e),
+                };
 
-                        // Cycle time in nanoseconds
-                        match slave
-                            .register_write(RegisterAddress::DcSync0CycleTime, sync0_cycle_time)
-                            .await
-                        {
-                            Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                            Err(e) => return Err(e),
-                        };
+                // slave
+                //     .register_write(RegisterAddress::DcSync1CycleTime, sync1_cycle_time)
+                //     .await
+                //     .expect("DcSync1CycleTime");
 
-                        // slave
-                        //     .register_write(RegisterAddress::DcSync1CycleTime, sync1_cycle_time)
-                        //     .await
-                        //     .expect("DcSync1CycleTime");
-
-                        match slave
-                            .register_write(
-                                RegisterAddress::DcSyncActive,
-                                // CYCLIC_OP_ENABLE causes SM watchdog timeouts when going into OP
-                                SYNC0_ACTIVATE | CYCLIC_OP_ENABLE,
-                            )
-                            .await
-                        {
-                            Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                            Err(e) => return Err(e),
-                        };
-                    }
-                }
-
-                Ok(())
-            },
-        )
-        .await?;
+                match slave
+                    .register_write(
+                        RegisterAddress::DcSyncActive,
+                        // CYCLIC_OP_ENABLE causes SM watchdog timeouts when going into OP
+                        SYNC0_ACTIVATE | CYCLIC_OP_ENABLE,
+                    )
+                    .await
+                {
+                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
+                    Err(e) => return Err(e),
+                };
+            }
+        }
 
         let mut group = group
             .into_safe_op(&client)
@@ -551,7 +524,7 @@ fn main() -> Result<(), Error> {
                     print_tick = Instant::now();
 
                     log::info!(
-                        "ECAT time mod cycle time {} ({})",
+                        "ECAT time mod cycle time {} (divided {})",
                         dc_time % sync0_cycle_time,
                         dc_time as f64 / sync0_cycle_time as f64
                     );
