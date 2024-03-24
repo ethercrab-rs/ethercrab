@@ -7,7 +7,7 @@ use env_logger::Env;
 use ethercrab::{
     error::Error,
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, Command, PduStorage, RegisterAddress, Timeouts,
+    Client, ClientConfig, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
 use rustix::{fs::Timespec, thread::clock_nanosleep_absolute, time::ClockId};
@@ -21,7 +21,6 @@ use std::{
 };
 use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
-use timerfd::{SetTimeFlags, TimerFd, TimerState};
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -141,29 +140,9 @@ fn main() -> Result<(), Error> {
     // SYNC1 is not currently supported. Leave this set to zero.
     let sync1_cycle_time = 0;
     // Example shift: data will be ready half way through cycle
-    // let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
-    let cycle_shift = 0;
+    let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
 
     smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
-    // thread_priority::ThreadBuilder::default()
-    //     .name("tx-rx-thread")
-    //     // // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
-    //     // // Check limits with `ulimit -Hr` or `ulimit -Sr`
-    //     // .priority(ThreadPriority::Crossplatform(
-    //     //     ThreadPriorityValue::try_from(49u8).unwrap(),
-    //     // ))
-    //     // // NOTE: Requires a realtime kernel
-    //     // .policy(ThreadSchedulePolicy::Realtime(
-    //     //     RealtimeThreadSchedulePolicy::Fifo,
-    //     // ))
-    //     .spawn(move |_| {
-    //         core_affinity::set_for_current(CoreId { id: 0 })
-    //             .then_some(())
-    //             .expect("Set TX/RX thread core");
-
-    //         smol::block_on(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).unwrap();
-    //     })
-    //     .unwrap();
 
     smol::block_on(async {
         let mut group = client
@@ -465,18 +444,12 @@ fn main() -> Result<(), Error> {
 
         #[derive(serde::Serialize)]
         struct PiStat {
-            // os_time: u64,
             ecat_time: u64,
             cycle_start_offset: u64,
-            // difference: i64,
-            // offset: i64,
             pi_out: i64,
-            // compensated: i64,
         }
 
         let mut pi_stats = csv::Writer::from_writer(File::create("dc-pi.csv").expect("Open CSV"));
-
-        // let mut offset = 0f32;
 
         let term = Arc::new(AtomicBool::new(false));
         signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
@@ -491,12 +464,6 @@ fn main() -> Result<(), Error> {
             let now = current_time();
 
             let sleep_until = if let Some(dc_time) = dc_time {
-                // let os_time = ethercat_now();
-
-                // let difference = (os_time as i64 - dc_time as i64) as f32;
-
-                // let compensated = difference + offset;
-
                 // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
                 // time is rounded to a whole number of `sync0_cycle_time`-length cycles.
                 // TODO: Cycle shift
@@ -515,11 +482,8 @@ fn main() -> Result<(), Error> {
                 // tick_interval.set_interval(Duration::from_nanos(remaining_time as u64));
 
                 let stat = PiStat {
-                    // os_time,
                     ecat_time: dc_time,
-                    // difference: difference as i64,
                     cycle_start_offset,
-                    // offset: offset as i64,
                     pi_out: change as i64,
                 };
 
@@ -533,17 +497,9 @@ fn main() -> Result<(), Error> {
                         // -offset as f32 / 1000.0 / 1000.0,
                         remaining_time as f32 / 1000.0 / 1000.0,
                     );
-
-                    // log::info!(
-                    //     "OS/ECAT time delta {:+08.0}, curr offset {:+08.0}, PI adj {:+08.0}, comp {}",
-                    //     stat.difference,
-                    //     stat.offset,
-                    //     stat.pi_out,
-                    //     stat.compensated
-                    // );
                 }
 
-                pi_stats.serialize(stat).ok();
+                // pi_stats.serialize(stat).ok();
 
                 add_nanos(now, remaining_time as u64)
             } else {
@@ -560,15 +516,13 @@ fn main() -> Result<(), Error> {
                 break Ok(());
             }
 
-            // for mut slave in group.iter(&client) {
-            //     let (_i, o) = slave.io_raw_mut();
+            for mut slave in group.iter(&client) {
+                let (_i, o) = slave.io_raw_mut();
 
-            //     for byte in o.iter_mut() {
-            //         *byte = byte.wrapping_add(1);
-            //     }
-            // }
-
-            // tick_interval.set_after(Duration::from_millis(5));
+                for byte in o.iter_mut() {
+                    *byte = byte.wrapping_add(1);
+                }
+            }
 
             // tick_interval.next().await;
 
@@ -579,20 +533,12 @@ fn main() -> Result<(), Error> {
 
 /// Get the current monotonic system time in nanoseconds.
 pub fn current_time() -> Timespec {
-    // let Timespec { tv_sec, tv_nsec } = rustix::time::clock_gettime(ClockId::Monotonic);
-
-    // let t = (tv_sec * 1000 * 1000 * 1000 + tv_nsec) as u64;
-
-    // t
-
     rustix::time::clock_gettime(ClockId::Monotonic)
 }
 
 const NSEC_PER_SEC: i64 = 1_000_000_000;
 
 fn add_nanos(mut current: Timespec, add_nanos: u64) -> Timespec {
-    //    int64 sec, nsec;
-
     let add_nanos = add_nanos as i64;
 
     let mut nsec = add_nanos % NSEC_PER_SEC;
