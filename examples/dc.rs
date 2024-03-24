@@ -378,6 +378,15 @@ fn main() -> Result<(), Error> {
                     Err(e) => return Err(e),
                 };
 
+                // Write access to EtherCAT
+                match slave
+                    .register_write(RegisterAddress::DcCyclicUnitControl, 0u8)
+                    .await
+                {
+                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
+                    Err(e) => return Err(e),
+                };
+
                 let device_time = match slave
                     .register_read::<u64>(RegisterAddress::DcSystemTime)
                     .await
