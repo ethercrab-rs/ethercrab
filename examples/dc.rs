@@ -3,11 +3,10 @@
 //! Please note this example uses experimental features and should not be used as a reference for
 //! other code. It is here (currently) primarily to help develop EtherCrab.
 
-use core_affinity::CoreId;
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    std::{ethercat_now, tx_rx_task, tx_rx_task_io_uring},
+    std::{ethercat_now, tx_rx_task},
     Client, ClientConfig, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
@@ -23,9 +22,7 @@ use std::{
 };
 use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
-use thread_priority::{
-    RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
-};
+use thread_priority::{ThreadPriority, ThreadPriorityValue};
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -465,7 +462,6 @@ fn main() -> Result<(), Error> {
             ecat_time: u64,
             cycle_start_offset: u64,
             next_iter_wait: i64,
-            pi_out: i64,
         }
 
         let mut pi_stats = csv::Writer::from_writer(File::create("dc-pi.csv").expect("Open CSV"));
@@ -475,18 +471,6 @@ fn main() -> Result<(), Error> {
             .expect("Register hook");
 
         let mut print_tick = Instant::now();
-
-        // PI controller (no D term)
-        let mut dc_pi = {
-            // Nanoseconds
-            let max_value = 1_000_000 as f32;
-
-            let mut pi = pid::Pid::<f32>::new(cycle_shift as f32, max_value);
-
-            pi.i(1.5, max_value);
-
-            pi
-        };
 
         loop {
             let now = current_time();
@@ -499,44 +483,22 @@ fn main() -> Result<(), Error> {
                 // time is rounded to a whole number of `sync0_cycle_time`-length cycles.
                 let cycle_start_offset = dc_time % sync0_cycle_time;
 
-                // Use the PI loop to try and converge the difference between the measured offset
-                // from the SYNC0 pulse and the `offset` value. This should result in a value
-                // near/around `cycle_shift`, which we can then add `sync0_cycle_time` to to
-                // calculate the next time we should send process data.
-                let change = dc_pi.next_control_output(cycle_start_offset as f32).output;
-
-                // let remaining_time = sync0_cycle_time as i64;
-
-                // assert!(remaining_time >= 0, "Not enough cycle left");
-
-                // // tick_interval.set_interval(Duration::from_nanos(remaining_time as u64));
-
-                let time_to_next_iter = sync0_cycle_time as i64 + change as i64;
+                let time_to_next_iter =
+                    (sync0_cycle_time + (cycle_shift - cycle_start_offset)) as i64;
 
                 let stat = PiStat {
                     ecat_time: dc_time,
                     cycle_start_offset,
                     next_iter_wait: time_to_next_iter,
-                    pi_out: change as i64,
                 };
-
-                // // Sleep for an extra bit of time to align us with the desired cycle shift. E.g. if
-                // // we're sending the frame at 200us offset from SYNC0 and we have a 500us offset,
-                // // sleep for 300us to put is in the right spot. The loop delay below takes care of
-                // // the cycle-cycle delay.
-                // smol::Timer::after(Duration::from_nanos(
-                //     cycle_start_offset.saturating_sub(offset as u64),
-                // ))
-                // .await;
 
                 if print_tick.elapsed() > Duration::from_secs(1) {
                     print_tick = Instant::now();
 
                     log::info!(
-                        "Offset from start of cycle {} ({:0.2} ms), PI output {}, next tick in {:0.3} ms",
+                        "Offset from start of cycle {} ({:0.2} ms), next tick in {:0.3} ms",
                         cycle_start_offset,
-                        (cycle_start_offset as f32 ) / 1000.0 / 1000.0,
-                        change,
+                        (cycle_start_offset as f32) / 1000.0 / 1000.0,
                         (time_to_next_iter as f32) / 1000.0 / 1000.0
                     );
                 }
@@ -552,14 +514,6 @@ fn main() -> Result<(), Error> {
             } else {
                 sync0_cycle_time
             };
-
-            // for mut slave in group.iter(&client) {
-            //     let (_i, o) = slave.io_raw_mut();
-
-            //     for byte in o.iter_mut() {
-            //         *byte = byte.wrapping_add(1);
-            //     }
-            // }
 
             // tick_interval.next().await;
             // smol::Timer::at(this_cycle_delay).await;
