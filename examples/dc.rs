@@ -461,8 +461,10 @@ fn main() -> Result<(), Error> {
         #[derive(serde::Serialize)]
         struct PiStat {
             ecat_time: u64,
+            cycle_start_offset: u64,
+            next_iter_wait: i64,
             shift_time: f32,
-            extra_sleep_time: u64,
+            adjusted_wait: i64,
             pi_out: i64,
             pi_offset: i64,
         }
@@ -477,7 +479,7 @@ fn main() -> Result<(), Error> {
 
         // PI controller (no D term)
         let mut dc_pi = {
-            let max_value = 10_000 as f32;
+            let max_value = 50_000 as f32;
 
             let mut pi = pid::Pid::<f32>::new(cycle_shift as f32, max_value);
 
@@ -515,26 +517,28 @@ fn main() -> Result<(), Error> {
 
                 // // tick_interval.set_interval(Duration::from_nanos(remaining_time as u64));
 
-                let time_to_next_iter = offset as u64 + sync0_cycle_time;
+                let time_to_next_iter = sync0_cycle_time as i64 + offset as i64;
 
                 let stat = PiStat {
                     ecat_time: dc_time,
+                    cycle_start_offset,
                     pi_out: change as i64,
                     pi_offset: offset as i64,
                     // This value should hover around the cycle offset, at time of writing 2500us,
                     // or half the 5ms cycle time.
                     shift_time: (cycle_start_offset as f32 + offset) / 1000.0,
-                    extra_sleep_time: cycle_start_offset.saturating_sub(offset as u64),
+                    adjusted_wait: sync0_cycle_time as i64 + offset as i64,
+                    next_iter_wait: time_to_next_iter,
                 };
 
-                // Sleep for an extra bit of time to align us with the desired cycle shift. E.g. if
-                // we're sending the frame at 200us offset from SYNC0 and we have a 500us offset,
-                // sleep for 300us to put is in the right spot. The loop delay below takes care of
-                // the cycle-cycle delay.
-                smol::Timer::after(Duration::from_nanos(
-                    cycle_start_offset.saturating_sub(offset as u64),
-                ))
-                .await;
+                // // Sleep for an extra bit of time to align us with the desired cycle shift. E.g. if
+                // // we're sending the frame at 200us offset from SYNC0 and we have a 500us offset,
+                // // sleep for 300us to put is in the right spot. The loop delay below takes care of
+                // // the cycle-cycle delay.
+                // smol::Timer::after(Duration::from_nanos(
+                //     cycle_start_offset.saturating_sub(offset as u64),
+                // ))
+                // .await;
 
                 if print_tick.elapsed() > Duration::from_secs(1) {
                     print_tick = Instant::now();
@@ -549,25 +553,17 @@ fn main() -> Result<(), Error> {
                     );
                 }
 
-                // pi_stats.serialize(stat).ok();
+                pi_stats.serialize(stat).ok();
 
                 // TODO
                 // add_nanos(now, sync0_cycle_time)
 
                 // Duration::from_nanos(dbg!(sync0_cycle_time as i64 + offset as i64) as u64)
-                (sync0_cycle_time as i64 + offset as i64) as u64
+                // (sync0_cycle_time as i64 + offset as i64) as u64
+                time_to_next_iter as u64
             } else {
                 sync0_cycle_time
             };
-
-            // Hook signal so we can write CSV data before exiting
-            if term.load(Ordering::Relaxed) {
-                log::info!("Exiting...");
-
-                pi_stats.flush().ok();
-
-                break Ok(());
-            }
 
             // for mut slave in group.iter(&client) {
             //     let (_i, o) = slave.io_raw_mut();
@@ -582,7 +578,16 @@ fn main() -> Result<(), Error> {
 
             let sleep_until = add_nanos(now, this_cycle_delay);
 
-            clock_nanosleep_absolute(ClockId::Monotonic, &sleep_until).expect("Sleep");
+            clock_nanosleep_absolute(ClockId::Monotonic, &sleep_until).ok();
+
+            // Hook signal so we can write CSV data before exiting
+            if term.load(Ordering::Relaxed) {
+                log::info!("Exiting...");
+
+                pi_stats.flush().ok();
+
+                break Ok(());
+            }
         }
     })
 }
