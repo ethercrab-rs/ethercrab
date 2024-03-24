@@ -463,10 +463,7 @@ fn main() -> Result<(), Error> {
             ecat_time: u64,
             cycle_start_offset: u64,
             next_iter_wait: i64,
-            shift_time: f32,
-            adjusted_wait: i64,
             pi_out: i64,
-            pi_offset: i64,
         }
 
         let mut pi_stats = csv::Writer::from_writer(File::create("dc-pi.csv").expect("Open CSV"));
@@ -479,16 +476,15 @@ fn main() -> Result<(), Error> {
 
         // PI controller (no D term)
         let mut dc_pi = {
-            let max_value = 50_000 as f32;
+            // Nanoseconds
+            let max_value = 1_000_000 as f32;
 
             let mut pi = pid::Pid::<f32>::new(cycle_shift as f32, max_value);
 
-            pi.i(1000.0, max_value);
+            pi.i(1.5, max_value);
 
             pi
         };
-
-        let mut offset = 0.0 as f32;
 
         loop {
             let now = current_time();
@@ -505,11 +501,7 @@ fn main() -> Result<(), Error> {
                 // from the SYNC0 pulse and the `offset` value. This should result in a value
                 // near/around `cycle_shift`, which we can then add `sync0_cycle_time` to to
                 // calculate the next time we should send process data.
-                let change = dc_pi
-                    .next_control_output(cycle_start_offset as f32 + offset)
-                    .output;
-
-                offset += change;
+                let change = dc_pi.next_control_output(cycle_start_offset as f32).output;
 
                 // let remaining_time = sync0_cycle_time as i64;
 
@@ -517,18 +509,13 @@ fn main() -> Result<(), Error> {
 
                 // // tick_interval.set_interval(Duration::from_nanos(remaining_time as u64));
 
-                let time_to_next_iter = sync0_cycle_time as i64 + offset as i64;
+                let time_to_next_iter = sync0_cycle_time as i64 + change as i64;
 
                 let stat = PiStat {
                     ecat_time: dc_time,
                     cycle_start_offset,
-                    pi_out: change as i64,
-                    pi_offset: offset as i64,
-                    // This value should hover around the cycle offset, at time of writing 2500us,
-                    // or half the 5ms cycle time.
-                    shift_time: (cycle_start_offset as f32 + offset) / 1000.0,
-                    adjusted_wait: sync0_cycle_time as i64 + offset as i64,
                     next_iter_wait: time_to_next_iter,
+                    pi_out: change as i64,
                 };
 
                 // // Sleep for an extra bit of time to align us with the desired cycle shift. E.g. if
@@ -544,12 +531,11 @@ fn main() -> Result<(), Error> {
                     print_tick = Instant::now();
 
                     log::info!(
-                        "Offset from start of cycle {}, PI output {}, offset {}, {} ms from cycle start, next tick in {:0.3} ms",
+                        "Offset from start of cycle {} ({:0.2} ms), PI output {}, next tick in {:0.3} ms",
                         cycle_start_offset,
+                        (cycle_start_offset as f32 ) / 1000.0 / 1000.0,
                         change,
-                        offset,
-                        (cycle_start_offset as f32 + offset) / 1000.0 / 1000.0,
-                        (time_to_next_iter as f32) / 1000.0/1000.0
+                        (time_to_next_iter as f32) / 1000.0 / 1000.0
                     );
                 }
 
