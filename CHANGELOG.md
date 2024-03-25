@@ -74,6 +74,8 @@ An EtherCAT master written in Rust.
   `AlStatusCode::ApplicationControllerAvailable`
 - [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) CoE errors are not reported correctly
   from `sdo_read` and `sdo_write`.
+- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) `SlaveGroup<PreOp>::into_op` now
+  transitions through SAFE-OP instead of illegally transitioning straight into OP.
 
 ### Removed
 

@@ -249,12 +249,17 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         self.transition_to(client, SlaveState::SafeOp).await
     }
 
-    /// Transition all slave devices in the group from PRE-OP to SAFE-OP.
+    /// Transition all slave devices in the group from PRE-OP to SAFE-OP, then to OP.
+    ///
+    /// This is a convenience method that calls [`into_safe_op`](SlaveGroup::into_safe_op) then
+    /// [`into_op`](SlaveGroup::into_op).
     pub async fn into_op(
         self,
         client: &Client<'_>,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
-        self.transition_to(client, SlaveState::Op).await
+        let self_ = self.into_safe_op(client).await?;
+
+        self_.transition_to(client, SlaveState::Op).await
     }
 }
 
