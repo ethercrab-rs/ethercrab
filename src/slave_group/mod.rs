@@ -301,16 +301,6 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp>, Error> {
         self.transition_to(client, SlaveState::PreOp).await
     }
-}
-
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, Op> {
-    /// Transition all slave devices in the group from OP to SAFE-OP.
-    pub async fn into_safe_op(
-        self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
-        self.transition_to(client, SlaveState::SafeOp).await
-    }
 
     /// DELETEME
     pub async fn into_op_nowait(
@@ -339,6 +329,16 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
             inner: UnsafeCell::new(self.inner.into_inner()),
             _state: PhantomData,
         })
+    }
+}
+
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, Op> {
+    /// Transition all slave devices in the group from OP to SAFE-OP.
+    pub async fn into_safe_op(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
+        self.transition_to(client, SlaveState::SafeOp).await
     }
 }
 
