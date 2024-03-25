@@ -66,7 +66,7 @@ An EtherCAT master written in Rust.
   to a group's PDI whilst in `PRE-OP`.
 - [#180](https://github.com/ethercrab-rs/ethercrab/pull/#180) Add `ethercrab::std::ethercat_now`
   function to get the current time in nanoseconds from the EtherCAT epoch of 2000-01-01.
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/#TODO) Added `SlaveGroup` methods to
+- [#194](https://github.com/ethercrab-rs/ethercrab/pull/#194) Added `SlaveGroup` methods to
   facilitate graceful shutdown:
 
   - `SlaveGroup<Op>::into_safe_op`
@@ -82,7 +82,7 @@ An EtherCAT master written in Rust.
   `AlStatusCode::ApplicationControllerAvailable`
 - [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) CoE errors are not reported correctly
   from `sdo_read` and `sdo_write`.
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) `SlaveGroup<PreOp>::into_op` now
+- [#194](https://github.com/ethercrab-rs/ethercrab/pull/194) `SlaveGroup<PreOp>::into_op` now
   transitions through SAFE-OP instead of illegally transitioning straight into OP.
 
 ### Removed
