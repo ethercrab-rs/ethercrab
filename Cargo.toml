@@ -52,10 +52,7 @@ nix = { version = "0.28.0", features = ["net"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.149"
-rustix = { version = "0.38.21", default-features = false, features = [
-    "time",
-    "thread",
-] }
+rustix = { version = "0.38.21", default-features = false, features = ["time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = { version = "0.6.3", features = ["io_safety"] }
