@@ -1,7 +1,7 @@
 //! Test that mailboxes can be read/written. This test requires:
 //!
 //! - EK1100
-//! - EL6910
+//! - EL3004
 
 mod util;
 
@@ -15,7 +15,7 @@ const PDI_LEN: usize = 128;
 
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
-async fn replay_mailbox_el6910() -> Result<(), Error> {
+async fn replay_mailbox_el3004() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
@@ -31,7 +31,7 @@ async fn replay_mailbox_el6910() -> Result<(), Error> {
         },
     );
 
-    util::spawn_tx_rx("tests/replay-mailbox-el6910.pcapng", tx, rx);
+    util::spawn_tx_rx("tests/replay-mailbox-el3004.pcapng", tx, rx);
 
     // Read configurations from slave EEPROMs and configure devices.
     let mut group = client
@@ -44,8 +44,8 @@ async fn replay_mailbox_el6910() -> Result<(), Error> {
     for slave in group.iter(&client) {
         log::info!("--> Slave {}", slave.name());
 
-        if slave.name() == "EL6910" {
-            log::info!("--> Configuring EL6910");
+        if slave.name() == "EL3004" {
+            log::info!("--> Configuring EL3004");
 
             // Check we can read
             let fw_version = slave.sdo_read::<heapless::String<32>>(0x100a, 0).await?;
