@@ -112,8 +112,6 @@ fn main() -> Result<(), Error> {
 
         for slave in group.iter(&client) {
             if slave.name() == "LAN9252-EVB-HBI" {
-                // log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
-
                 // Sync mode 02 = SYNC0
                 slave
                     .sdo_write(0x1c32, 1, 2u16)
