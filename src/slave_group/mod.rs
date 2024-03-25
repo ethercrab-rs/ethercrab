@@ -308,7 +308,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     /// This allows the application process data loop to be started, so as to e.g. not time out
     /// watchdogs, or provide valid data to prevent DC sync errors.
     ///
-    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SlaveGroup::all_op) to
+    /// If the SubDevice status is not mapped to the PDI, use [`is_op`](SlaveGroup::is_op) to
     /// check if the group has reached OP state.
     pub async fn request_into_op(
         mut self,
