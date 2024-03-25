@@ -10,7 +10,6 @@ use ethercrab::{
     Client, ClientConfig, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
-use rustix::{fs::Timespec, thread::clock_nanosleep_absolute, time::ClockId};
 use std::{
     fs::File,
     sync::{
@@ -34,58 +33,7 @@ static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
 const CYCLIC_OP_ENABLE: u8 = 0b0000_0001;
 const SYNC0_ACTIVATE: u8 = 0b0000_0010;
-const SYNC1_ACTIVATE: u8 = 0b0000_0100;
-
-#[allow(unused)]
-mod lan9252 {
-    #[repr(u16)]
-    pub enum Lan9252Register {
-        /// 12.14.24 PDI CONTROL REGISTER.
-        ProcessDataInterface = 0x0140,
-        /// 12.14.29 SYNC/LATCH PDI CONFIGURATION REGISTER.
-        SyncLatchConfig = 0x0151,
-    }
-
-    #[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
-    #[repr(u8)]
-    pub enum SyncLatchDrivePolarity {
-        /// 00: Push-Pull Active Low.
-        PushPullActiveLow = 0b00,
-        /// 01: Open Drain (Active Low).
-        OpenDrainActiveLow = 0b01,
-        /// 10: Push-Pull Active High.
-        PushPullActiveHigh = 0b10,
-        /// 11: Open Source (Active High).
-        OpenSourceActiveHigh = 0b11,
-    }
-
-    /// LAN9252 12.14.29 SYNC/LATCH PDI CONFIGURATION REGISTER
-    #[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
-    #[wire(bytes = 1)]
-    pub struct Lan9252Conf {
-        #[wire(bits = 2)]
-        sync0_drive_polarity: SyncLatchDrivePolarity,
-
-        /// `true` = SYNC0 (output), `false` = `LATCH0` (input).
-        #[wire(bits = 1)]
-        sync0_latch0: bool,
-
-        #[wire(bits = 1)]
-        sync0_map: bool,
-
-        #[wire(bits = 2)]
-        sync1_drive_polarity: SyncLatchDrivePolarity,
-
-        /// `true` = SYNC1 (output), `false` = `LATCH1` (input).
-        #[wire(bits = 1)]
-        sync1_latch1: bool,
-
-        #[wire(bits = 1)]
-        sync1_map: bool,
-    }
-}
-
-use lan9252::*;
+// const SYNC1_ACTIVATE: u8 = 0b0000_0100;
 
 #[allow(unused)]
 #[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
@@ -204,14 +152,6 @@ fn main() -> Result<(), Error> {
                 let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
                 let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
                 log::info!("--> Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
-
-                let v = slave
-                    .register_read::<Lan9252Conf>(Lan9252Register::SyncLatchConfig as u16)
-                    .await
-                    .expect("LAN9252 SyncLatchConfig");
-
-                log::info!("--> LAN9252 config reg 0x0151:");
-                log::info!("----> {:?}", v);
             }
         }
 
