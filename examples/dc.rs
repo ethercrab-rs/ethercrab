@@ -453,16 +453,6 @@ fn main() -> Result<(), Error> {
 
         log::info!("SAFE-OP");
 
-        // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs
-        // are not present.
-        // Note this method is experimental and currently hidden from the crate docs.
-        group.tx_rx_sync_dc(&client).await.expect("TX/RX");
-
-        // FIXME: Make going into OP not error with a watchdog timeout
-        // let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
-
-        // log::info!("OP");
-
         #[derive(serde::Serialize)]
         struct PiStat {
             ecat_time: u64,
@@ -477,6 +467,10 @@ fn main() -> Result<(), Error> {
             .expect("Register hook");
 
         let mut print_tick = Instant::now();
+
+        let mut group = group.into_op_nowait(&client).await.expect("SAFE-OP -> OP");
+
+        log::info!("OP");
 
         loop {
             let now = current_time();
@@ -510,15 +504,18 @@ fn main() -> Result<(), Error> {
 
                 pi_stats.serialize(stat).ok();
 
-                // TODO
-                // add_nanos(now, sync0_cycle_time)
-
-                // Duration::from_nanos(dbg!(sync0_cycle_time as i64 + offset as i64) as u64)
-                // (sync0_cycle_time as i64 + offset as i64) as u64
                 time_to_next_iter
             } else {
                 sync0_cycle_time
             };
+
+            for mut slave in group.iter(&client) {
+                let (_i, o) = slave.io_raw_mut();
+
+                for byte in o.iter_mut() {
+                    *byte = byte.wrapping_add(1);
+                }
+            }
 
             // tick_interval.next().await;
             // smol::Timer::at(this_cycle_delay).await;

@@ -311,6 +311,35 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
         self.transition_to(client, SlaveState::SafeOp).await
     }
+
+    /// DELETEME
+    pub async fn into_op_nowait(
+        mut self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
+        // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
+        // SAFE-OP
+        for slave in self
+            .inner
+            .get_mut()
+            .slaves
+            .iter_mut()
+            .map(|slave| slave.get_mut())
+        {
+            SlaveRef::new(client, slave.configured_address, slave)
+                .request_slave_state_nowait(SlaveState::Op)
+                .await?;
+        }
+
+        Ok(SlaveGroup {
+            id: self.id,
+            pdi: self.pdi,
+            read_pdi_len: self.read_pdi_len,
+            pdi_len: self.pdi_len,
+            inner: UnsafeCell::new(self.inner.into_inner()),
+            _state: PhantomData,
+        })
+    }
 }
 
 unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Sync
