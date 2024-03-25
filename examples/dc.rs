@@ -428,8 +428,22 @@ fn main() -> Result<(), Error> {
 
                 process_stats.flush().ok();
 
-                break Ok(());
+                break;
             }
         }
+
+        let group = group.into_safe_op(&client).await.expect("OP -> SAFE-OP");
+
+        log::info!("OP -> SAFE-OP");
+
+        let group = group.into_pre_op(&client).await.expect("SAFE-OP -> PRE-OP");
+
+        log::info!("SAFE-OP -> PRE-OP");
+
+        let _group = group.into_init(&client).await.expect("PRE-OP -> INIT");
+
+        log::info!("PRE-OP -> INIT, shutdown complete");
+
+        Ok(())
     })
 }
