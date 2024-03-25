@@ -75,6 +75,9 @@ An EtherCAT master written in Rust.
 
   The `ek1100` example shows these methods in use.
 
+- [#195](https://github.com/ethercrab-rs/ethercrab/pull/#195) Add `Register::DcCyclicUnitControl`
+  (0x0980).
+
 ### Fixed
 
 - **(breaking)** (technically) [#143](https://github.com/ethercrab-rs/ethercrab/pull/143) Fix typo
