@@ -20,7 +20,13 @@ use ethercrab::{
     std::{ethercat_now, tx_rx_task},
     Client, ClientConfig, PduStorage, Timeouts,
 };
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tokio::time::MissedTickBehavior;
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
@@ -101,7 +107,18 @@ async fn main() -> Result<(), Error> {
     let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
     tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
+    let shutdown = Arc::new(AtomicBool::new(false));
+    signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown))
+        .expect("Register hook");
+
     loop {
+        // Graceful shutdown on Ctrl + C
+        if shutdown.load(Ordering::Relaxed) {
+            log::info!("Shutting down...");
+
+            break;
+        }
+
         group.tx_rx(&client).await.expect("TX/RX");
 
         // Increment every output byte for every slave device by one
@@ -115,4 +132,18 @@ async fn main() -> Result<(), Error> {
 
         tick_interval.tick().await;
     }
+
+    let group = group.into_safe_op(&client).await.expect("OP -> SAFE-OP");
+
+    log::info!("OP -> SAFE-OP");
+
+    let group = group.into_pre_op(&client).await.expect("SAFE-OP -> PRE-OP");
+
+    log::info!("SAFE-OP -> PRE-OP");
+
+    let _group = group.into_init(&client).await.expect("PRE-OP -> INIT");
+
+    log::info!("PRE-OP -> INIT, shutdown complete");
+
+    Ok(())
 }

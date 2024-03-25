@@ -28,6 +28,12 @@ pub use configurator::SlaveGroupRef;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 
+/// A typestate for [`SlaveGroup`] representing a group that is shut down.
+///
+/// This corresponds to the EtherCAT states INIT.
+#[derive(Copy, Clone, Debug)]
+pub struct Init;
+
 /// A typestate for [`SlaveGroup`] representing a group that is undergoing initialisation.
 ///
 /// This corresponds to the EtherCAT states INIT and PRE-OP.
@@ -238,6 +244,14 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         // SAFE-OP
         self_.transition_to(client, SlaveState::SafeOp).await
     }
+
+    /// Transition all slave devices in the group from PRE-OP to INIT.
+    pub async fn into_init(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Init>, Error> {
+        self.transition_to(client, SlaveState::Init).await
+    }
 }
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, PreOpPdi> {
@@ -261,6 +275,14 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
 
         self_.transition_to(client, SlaveState::Op).await
     }
+
+    /// Transition all slave devices in the group from PRE-OP to INIT.
+    pub async fn into_init(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Init>, Error> {
+        self.transition_to(client, SlaveState::Init).await
+    }
 }
 
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp> {
@@ -270,6 +292,24 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         client: &Client<'_>,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
         self.transition_to(client, SlaveState::Op).await
+    }
+
+    /// Transition all slave devices in the group from SAFE-OP to PRE-OP.
+    pub async fn into_pre_op(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp>, Error> {
+        self.transition_to(client, SlaveState::PreOp).await
+    }
+}
+
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_PDI, Op> {
+    /// Transition all slave devices in the group from OP to SAFE-OP.
+    pub async fn into_safe_op(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
+        self.transition_to(client, SlaveState::SafeOp).await
     }
 }
 

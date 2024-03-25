@@ -66,6 +66,14 @@ An EtherCAT master written in Rust.
   to a group's PDI whilst in `PRE-OP`.
 - [#180](https://github.com/ethercrab-rs/ethercrab/pull/#180) Add `ethercrab::std::ethercat_now`
   function to get the current time in nanoseconds from the EtherCAT epoch of 2000-01-01.
+- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/#TODO) Added `SlaveGroup` methods to
+  facilitate graceful shutdown:
+
+  - `SlaveGroup<Op>::into_safe_op`
+  - `SlaveGroup<SafeOp>::into_pre_op`
+  - `SlaveGroup<PreOp>::into_init`
+
+  The `ek1100` example shows these methods in use.
 
 ### Fixed
 
