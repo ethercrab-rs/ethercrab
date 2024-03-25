@@ -314,8 +314,6 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         mut self,
         client: &Client<'_>,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
-        // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
-        // SAFE-OP
         for slave in self
             .inner
             .get_mut()
