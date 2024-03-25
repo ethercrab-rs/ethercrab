@@ -378,7 +378,7 @@ fn main() -> Result<(), Error> {
         // Send PDI and check group state until all SubDevices enter OP state. At this point, we can
         // exit this loop and enter the main process data loop that does not have the state check
         // overhead present here.
-        while !group.is_op(&client).await? {
+        while !group.all_op(&client).await? {
             let now = Instant::now();
 
             // Note this method is experimental and currently hidden from the crate docs.

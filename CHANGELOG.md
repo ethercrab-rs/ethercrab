@@ -79,7 +79,7 @@ An EtherCAT master written in Rust.
   (0x0980).
 - [#193](https://github.com/ethercrab-rs/ethercrab/pull/#193) Add
   `SlaveGroup::<PreOp>::request_into_op` to request all SubDevices in a group transition to OP, but
-  does not wait for them to transition. Also add `SlaveGroup::<Op>::is_op` to check if all
+  does not wait for them to transition. Also add `SlaveGroup::<Op>::all_op` to check if all
   SubDevices in the group have reached OP state.
 
 ### Fixed
