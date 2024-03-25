@@ -301,8 +301,7 @@ fn main() -> Result<(), Error> {
                 log::info!("Device time {}", device_time);
 
                 // TODO: Support SYNC1. Only SYNC0 has been tested at time of writing.
-                let true_cycle_time =
-                    ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
+                let true_cycle_time = sync0_cycle_time;
 
                 let first_pulse_delay = Duration::from_millis(100).as_nanos() as u64;
 
@@ -336,7 +335,6 @@ fn main() -> Result<(), Error> {
                 match slave
                     .register_write(
                         RegisterAddress::DcSyncActive,
-                        // CYCLIC_OP_ENABLE causes SM watchdog timeouts when going into OP
                         SYNC0_ACTIVATE | CYCLIC_OP_ENABLE,
                     )
                     .await
@@ -374,12 +372,15 @@ fn main() -> Result<(), Error> {
 
         log::info!("OP");
 
+        // Main application process data cycle
         loop {
             let now = Instant::now();
 
             // Note this method is experimental and currently hidden from the crate docs.
             let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
+            // Calculate delay until next cycle TX/RX, taking into account the current DC time. This
+            // will position the TX/RX at `cycle_shift` in the SYNC0 cycle time.
             let this_cycle_delay = if let Some(dc_time) = dc_time {
                 // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
                 // time is rounded to a whole number of `sync0_cycle_time`-length cycles.
