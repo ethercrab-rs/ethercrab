@@ -17,3 +17,5 @@ Cargo.lock
 /examples/*.pcapng
 /npcap-sdk-*
 .vscode/
+# Debug output from examples
+*.csv

@@ -16,10 +16,12 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    thread,
     time::{Duration, Instant},
 };
 use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
+use thread_priority::{ThreadPriority, ThreadPriorityValue};
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -31,58 +33,7 @@ static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
 const CYCLIC_OP_ENABLE: u8 = 0b0000_0001;
 const SYNC0_ACTIVATE: u8 = 0b0000_0010;
-const SYNC1_ACTIVATE: u8 = 0b0000_0100;
-
-#[allow(unused)]
-mod lan9252 {
-    #[repr(u16)]
-    pub enum Lan9252Register {
-        /// 12.14.24 PDI CONTROL REGISTER.
-        ProcessDataInterface = 0x0140,
-        /// 12.14.29 SYNC/LATCH PDI CONFIGURATION REGISTER.
-        SyncLatchConfig = 0x0151,
-    }
-
-    #[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
-    #[repr(u8)]
-    pub enum SyncLatchDrivePolarity {
-        /// 00: Push-Pull Active Low.
-        PushPullActiveLow = 0b00,
-        /// 01: Open Drain (Active Low).
-        OpenDrainActiveLow = 0b01,
-        /// 10: Push-Pull Active High.
-        PushPullActiveHigh = 0b10,
-        /// 11: Open Source (Active High).
-        OpenSourceActiveHigh = 0b11,
-    }
-
-    /// LAN9252 12.14.29 SYNC/LATCH PDI CONFIGURATION REGISTER
-    #[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
-    #[wire(bytes = 1)]
-    pub struct Lan9252Conf {
-        #[wire(bits = 2)]
-        sync0_drive_polarity: SyncLatchDrivePolarity,
-
-        /// `true` = SYNC0 (output), `false` = `LATCH0` (input).
-        #[wire(bits = 1)]
-        sync0_latch0: bool,
-
-        #[wire(bits = 1)]
-        sync0_map: bool,
-
-        #[wire(bits = 2)]
-        sync1_drive_polarity: SyncLatchDrivePolarity,
-
-        /// `true` = SYNC1 (output), `false` = `LATCH1` (input).
-        #[wire(bits = 1)]
-        sync1_latch1: bool,
-
-        #[wire(bits = 1)]
-        sync1_map: bool,
-    }
-}
-
-use lan9252::*;
+// const SYNC1_ACTIVATE: u8 = 0b0000_0100;
 
 #[allow(unused)]
 #[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
@@ -136,30 +87,20 @@ fn main() -> Result<(), Error> {
     let mut tick_interval = smol::Timer::interval(TICK_INTERVAL);
 
     let sync0_cycle_time = TICK_INTERVAL.as_nanos() as u64;
-    let sync1_cycle_time = TICK_INTERVAL.as_nanos() as u64;
-    // Example shift: data should be ready half way through interval
+    // SYNC1 is not currently supported. Leave this set to zero.
+    // let sync1_cycle_time = 0;
+    // Example shift: data will be ready half way through cycle
     let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
 
     smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
-    // thread_priority::ThreadBuilder::default()
-    //     .name("tx-rx-thread")
-    //     // // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
-    //     // // Check limits with `ulimit -Hr` or `ulimit -Sr`
-    //     // .priority(ThreadPriority::Crossplatform(
-    //     //     ThreadPriorityValue::try_from(49u8).unwrap(),
-    //     // ))
-    //     // // NOTE: Requires a realtime kernel
-    //     // .policy(ThreadSchedulePolicy::Realtime(
-    //     //     RealtimeThreadSchedulePolicy::Fifo,
-    //     // ))
-    //     .spawn(move |_| {
-    //         core_affinity::set_for_current(CoreId { id: 0 })
-    //             .then_some(())
-    //             .expect("Set TX/RX thread core");
 
-    //         smol::block_on(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).unwrap();
-    //     })
-    //     .unwrap();
+    // Wait for TX/RX loop to start
+    thread::sleep(Duration::from_millis(200));
+
+    thread_priority::set_current_thread_priority(ThreadPriority::Crossplatform(
+        ThreadPriorityValue::try_from(48u8).unwrap(),
+    ))
+    .expect("Main thread prio");
 
     smol::block_on(async {
         let mut group = client
@@ -171,8 +112,6 @@ fn main() -> Result<(), Error> {
 
         for slave in group.iter(&client) {
             if slave.name() == "LAN9252-EVB-HBI" {
-                // log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
-
                 // Sync mode 02 = SYNC0
                 slave
                     .sdo_write(0x1c32, 1, 2u16)
@@ -199,39 +138,148 @@ fn main() -> Result<(), Error> {
                     .sdo_write(0x1c32, 0x0a, TICK_INTERVAL.as_nanos() as u32)
                     .await
                     .expect("Set cycle time");
-            }
-        }
-
-        for slave in group.iter(&client) {
-            if slave.name() == "LAN9252-EVB-HBI" {
-                // log::info!("Found LAN9252 in {:?} state", slave.status().await.ok());
 
                 let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
                 let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
                 let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
                 let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
-                log::info!("Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+                log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
 
                 let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
                 let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
                 let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
                 let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
-                log::info!("Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+                log::info!("--> Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+            }
+        }
 
-                let v = slave
-                    .register_read::<Lan9252Conf>(Lan9252Register::SyncLatchConfig as u16)
-                    .await
-                    .expect("LAN9252 SyncLatchConfig");
+        log::info!("Group has {} slaves", group.len());
 
-                log::info!("LAN9252 config reg 0x0151: {:?}", v);
+        let mut averages = Vec::new();
+
+        for _ in 0..group.len() {
+            averages.push(ExponentialMovingAverage::new(64).unwrap());
+        }
+
+        log::info!("Moving into PRE-OP with PDI");
+
+        let mut group = group.into_pre_op_pdi(&client).await?;
+
+        log::info!("Done. PDI available. Waiting for SubDevices to align");
+
+        let mut align_stats = {
+            let mut w = csv::Writer::from_writer(File::create("dc-align.csv").expect("Open CSV"));
+
+            w.write_field("t_ms").ok();
+
+            for s in group.iter(&client) {
+                w.write_field(format!("{:#06x}", s.configured_address()))
+                    .ok();
+                w.write_field(format!("{:#06x} EMA", s.configured_address()))
+                    .ok();
             }
 
-            if slave.dc_support().enhanced() {
-                // log::info!("{} supports DC", slave.name());
+            // Finish header
+            w.write_record(None::<&[u8]>).ok();
 
+            w
+        };
+
+        let mut now = Instant::now();
+        let start = Instant::now();
+
+        // Repeatedly send group PDI and sync frame to align all SubDevice clocks. We use an
+        // exponential moving average of each SubDevice's deviation from the EtherCAT System Time
+        // (the time in the DC reference SubDevice) and take the maximum deviation. When that is
+        // below 100ns (arbitraily chosen value for this demo), we call the sync good enough and
+        // exit the loop.
+        loop {
+            // Note this method is experimental and currently hidden from the crate docs.
+            group.tx_rx_sync_dc(&client).await.expect("TX/RX");
+
+            if now.elapsed() >= Duration::from_millis(25) {
+                now = Instant::now();
+
+                align_stats
+                    .write_field(start.elapsed().as_millis().to_string())
+                    .ok();
+
+                let mut max_deviation = 0;
+
+                for (s1, ema) in group.iter(&client).zip(averages.iter_mut()) {
+                    let diff = match s1
+                        .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+                        .await
+                        // The returned value is NOT in two's compliment, rather the upper bit
+                        // specifies whether the number in the remaining bits is odd or even, so we
+                        // convert the value to `i32` using that logic here.
+                        .map(|value| {
+                            let flag = 0b1u32 << 31;
+
+                            let less_than = value & flag > 0;
+
+                            let value = value & !flag;
+
+                            if less_than {
+                                -(value as i32)
+                            } else {
+                                value as i32
+                            }
+                        }) {
+                        Ok(diff) => diff,
+                        Err(Error::WorkingCounter { .. }) => 0,
+                        Err(e) => return Err(e),
+                    };
+
+                    let ema_next = ema.next(diff as f64);
+
+                    max_deviation = max_deviation.max(ema_next.abs() as u32);
+
+                    align_stats.write_field(diff.to_string()).ok();
+                    align_stats.write_field(ema_next.to_string()).ok();
+                }
+
+                // Finish row
+                align_stats.write_record(None::<&[u8]>).ok();
+
+                log::debug!("--> Max deviation {} ns", max_deviation);
+
+                // Less than 100ns max deviation as an example threshold.
+                // <https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585>
+                // mentions less than 100us as a good enough value as well.
+                if max_deviation < 100 {
+                    log::info!("Clocks settled after {} ms", start.elapsed().as_millis());
+
+                    break;
+                }
+            }
+
+            tick_interval.next().await;
+        }
+
+        align_stats.flush().ok();
+
+        log::info!("Alignment done");
+
+        // Now that clocks have synchronised, start cyclic operation by configuring SYNC0 start,
+        // cycle time, etc. This should be quick enough that not much drift is observed during
+        // config, and when `tx_rx_sync_dc` is called next (in a loop) it will resync the clocks.
+        // This code must also be fast enough that all SubDevices are configured within the 100ms
+        // first start offset set below.
+        for slave in group.iter(&client) {
+            if slave.dc_support().enhanced() {
                 // Disable cyclic op, ignore WKC
                 match slave
                     .register_write(RegisterAddress::DcSyncActive, 0u8)
+                    .await
+                {
+                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
+                    Err(e) => return Err(e),
+                };
+
+                // Write access to EtherCAT
+                match slave
+                    .register_write(RegisterAddress::DcCyclicUnitControl, 0u8)
                     .await
                 {
                     Ok(_) | Err(Error::WorkingCounter { .. }) => (),
@@ -250,14 +298,13 @@ fn main() -> Result<(), Error> {
 
                 log::info!("Device time {}", device_time);
 
-                let true_cycle_time =
-                    ((sync1_cycle_time / sync0_cycle_time) + 1) * sync0_cycle_time;
+                // TODO: Support SYNC1. Only SYNC0 has been tested at time of writing.
+                let true_cycle_time = sync0_cycle_time;
 
                 let first_pulse_delay = Duration::from_millis(100).as_nanos() as u64;
 
-                let t = (device_time + first_pulse_delay) / true_cycle_time * true_cycle_time
-                    + true_cycle_time
-                    + cycle_shift;
+                // Round first pulse time to a whole number of cycles
+                let t = (device_time + first_pulse_delay) / true_cycle_time * true_cycle_time;
 
                 log::info!("Computed DC sync start time: {}", t);
 
@@ -286,7 +333,6 @@ fn main() -> Result<(), Error> {
                 match slave
                     .register_write(
                         RegisterAddress::DcSyncActive,
-                        // CYCLIC_OP_ENABLE causes SM watchdog timeouts when going into OP
                         SYNC0_ACTIVATE | CYCLIC_OP_ENABLE,
                     )
                     .await
@@ -297,170 +343,6 @@ fn main() -> Result<(), Error> {
             }
         }
 
-        // let client2 = client.clone();
-        // let expected_dc_wkc = group
-        //     .iter(&client)
-        //     .filter(|s| s.dc_support().enhanced())
-        //     .count() as u16
-        //     + {
-        //         // TODO: Use designated device, not just assume the first one is the DC reference
-        //         if group.slave(&client, 0).unwrap().dc_support().enhanced() {
-        //             0
-        //         }
-        //         // Reference clock doesn't support enhanced DC so we manually add to the expected WKC.
-        //         else {
-        //             1
-        //         }
-        //     };
-
-        // // Start continuous drift compensation in PRE-OP
-        // tokio::spawn(async move {
-        //     let mut sync_tick = tokio::time::interval(TICK_INTERVAL);
-        //     sync_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
-
-        //     loop {
-        //         // TODO: Find first DC slave instead of hardcoded address.
-        //         // Dynamic drift compensation. Assumes first device supports DC
-        //         let t = Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())
-        //             .wrap(&client2)
-        //             .with_wkc(expected_dc_wkc)
-        //             .receive::<u64>()
-        //             .await
-        //             .expect("Sync tick");
-
-        //         // dbg!(t);
-
-        //         sync_tick.tick().await;
-        //     }
-        // });
-
-        log::info!("Group has {} slaves", group.len());
-
-        let mut now = Instant::now();
-        let start = Instant::now();
-        let mut headers = false;
-        // Compile time switch
-        let debug_csv = option_env!("ETHERCRAB_CSV");
-
-        let mut averages = Vec::new();
-
-        for _ in 0..group.len() {
-            averages.push(ExponentialMovingAverage::new(64).unwrap());
-        }
-
-        let mut group = group.into_pre_op_pdi(&client).await?;
-
-        loop {
-            // Note this method is experimental and currently hidden from the crate docs.
-            group.tx_rx_sync_dc(&client).await.expect("TX/RX");
-
-            if now.elapsed() >= Duration::from_millis(25) {
-                now = Instant::now();
-
-                log::debug!("Stat");
-
-                let mut row = Vec::with_capacity(group.len());
-
-                if debug_csv.is_some() && !headers {
-                    print!("t_ms");
-                }
-
-                for (s1, ema) in group.iter(&client).zip(averages.iter_mut()) {
-                    // let s1 = group.slave(&client, 1).unwrap();
-
-                    let diff = match s1
-                        .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
-                        .await
-                        .map(|value| {
-                            let flag = 0b1u32 << 31;
-
-                            let less_than = value & flag > 0;
-
-                            let value = value & !flag;
-
-                            if less_than {
-                                -(value as i32)
-                            } else {
-                                value as i32
-                            }
-                        }) {
-                        Ok(diff) => diff,
-                        Err(Error::WorkingCounter { .. }) => 0,
-                        Err(e) => return Err(e),
-                    };
-
-                    let ema_next = ema.next(diff as f64);
-
-                    row.push([diff as f64, ema_next]);
-
-                    log::debug!(
-                        "--> Sys time {} offs {}, diff {} (EMA {:0.3})",
-                        match s1.register_read::<u64>(RegisterAddress::DcSystemTime).await {
-                            Ok(diff) => diff,
-                            Err(Error::WorkingCounter { .. }) => 0,
-                            Err(e) => return Err(e),
-                        },
-                        match s1
-                            .register_read::<u64>(RegisterAddress::DcSystemTimeOffset)
-                            .await
-                        {
-                            Ok(diff) => diff,
-                            Err(Error::WorkingCounter { .. }) => 0,
-                            Err(e) => return Err(e),
-                        },
-                        diff,
-                        ema_next,
-                    );
-
-                    if debug_csv.is_some() && !headers {
-                        print!(
-                            ",{:#06x},{:#06x} EMA",
-                            s1.configured_address(),
-                            s1.configured_address()
-                        );
-                    }
-                }
-
-                if debug_csv.is_some() && !headers {
-                    println!();
-                }
-
-                if debug_csv.is_some() {
-                    println!(
-                        "{},{}",
-                        start.elapsed().as_millis(),
-                        row.iter()
-                            .flatten()
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                            .as_slice()
-                            .join(","),
-                    );
-                }
-
-                let max_deviation = row
-                    .iter()
-                    .map(|[_diff, diff_ema]| diff_ema.abs() as u32)
-                    .max()
-                    .unwrap_or(u32::MAX);
-
-                // Less than 100ns max deviation.
-                // <https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585>
-                // mentions less than 100us as a good enough value as well.
-                if max_deviation < 100 {
-                    log::info!("Clocks settled after {} ms", start.elapsed().as_millis());
-
-                    break;
-                }
-
-                headers = true;
-            }
-
-            tick_interval.next().await;
-        }
-
-        log::info!("Sync done");
-
         let group = group
             .into_safe_op(&client)
             .await
@@ -468,47 +350,15 @@ fn main() -> Result<(), Error> {
 
         log::info!("SAFE-OP");
 
-        // Provide valid outputs before transition. LAN9252 will timeout going into OP if outputs
-        // are not present.
-        // Note this method is experimental and currently hidden from the crate docs.
-        group.tx_rx_sync_dc(&client).await.expect("TX/RX");
-
-        let mut group = group.into_op(&client).await.expect("SAFE-OP -> OP");
-
-        log::info!("OP");
-
-        // PI controller (no D term), max deviation is one whole cycle
-        let mut dc_pi = {
-            // TODO: cycle_shift
-            let cycle_start_offset = 0.0;
-
-            // Maximum deviation for PI loop. We can never get larger than the current offset, so set
-            // that as the limit.
-            let max_value = 1_000.0;
-
-            let mut pi = pid::Pid::<f32>::new(cycle_start_offset, max_value);
-
-            // Picking some random values to start with
-            pi.i(1000.0, max_value);
-
-            pi
-        };
-
         #[derive(serde::Serialize)]
-        struct PiStat {
-            os_time: u64,
+        struct ProcessStat {
             ecat_time: u64,
-            difference: i64,
-            offset: i64,
-            pi_out: i64,
-            compensated: i64,
+            cycle_start_offset: u64,
+            next_iter_wait: u64,
         }
 
-        let mut pi_stats = csv::Writer::from_writer(File::create("dc-pi.csv").expect("Open CSV"));
-
-        // TODO: Turn this into a sleep so `ethercat_now()` converges on DC time. This is just a
-        // number for now to test things out.
-        let mut offset = 0.0f32;
+        let mut process_stats =
+            csv::Writer::from_writer(File::create("dc-pd.csv").expect("Open CSV"));
 
         let term = Arc::new(AtomicBool::new(false));
         signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
@@ -516,53 +366,85 @@ fn main() -> Result<(), Error> {
 
         let mut print_tick = Instant::now();
 
-        loop {
-            // Hook signal so we can write CSV data before exiting
-            if term.load(Ordering::Relaxed) {
-                log::info!("Exiting...");
+        // Request OP state without waiting for all SubDevices to reach it. Allows the immediate
+        // start of the process data cycle, which is required when DC sync is used, otherwise
+        // SubDevices never reach OP, most often timing out with a SyncManagerWatchdog error.
+        let mut group = group.request_into_op(&client).await.expect("SAFE-OP -> OP");
 
-                pi_stats.flush().ok();
+        log::info!("OP requested");
 
-                break Ok(());
-            }
+        let op_request = Instant::now();
+
+        // Send PDI and check group state until all SubDevices enter OP state. At this point, we can
+        // exit this loop and enter the main process data loop that does not have the state check
+        // overhead present here.
+        while !group.all_op(&client).await? {
+            let now = Instant::now();
 
             // Note this method is experimental and currently hidden from the crate docs.
             let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
 
-            if let Some(dc_time) = dc_time {
-                let os_time = ethercat_now();
+            // Calculate delay until next cycle TX/RX, taking into account the current DC time. This
+            // will position the TX/RX at `cycle_shift` in the SYNC0 cycle time.
+            let this_cycle_delay = if let Some(dc_time) = dc_time {
+                // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
+                // time is rounded to a whole number of `sync0_cycle_time`-length cycles.
+                let cycle_start_offset = dc_time % sync0_cycle_time;
 
-                let difference = (os_time as i64 - dc_time as i64) as f32;
+                let time_to_next_iter = sync0_cycle_time + (cycle_shift - cycle_start_offset);
 
-                let compensated = difference + offset;
+                time_to_next_iter
+            } else {
+                sync0_cycle_time
+            };
 
-                let out = dc_pi.next_control_output(compensated).output;
+            smol::Timer::at(now + Duration::from_nanos(this_cycle_delay)).await;
+        }
 
-                offset += out;
+        log::info!(
+            "All SubDevices entered OP in {} us",
+            op_request.elapsed().as_micros()
+        );
 
-                let stat = PiStat {
-                    os_time,
+        // Main application process data cycle
+        loop {
+            let now = Instant::now();
+
+            // Note this method is experimental and currently hidden from the crate docs.
+            let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
+
+            // Calculate delay until next cycle TX/RX, taking into account the current DC time. This
+            // will position the TX/RX at `cycle_shift` in the SYNC0 cycle time.
+            let this_cycle_delay = if let Some(dc_time) = dc_time {
+                // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
+                // time is rounded to a whole number of `sync0_cycle_time`-length cycles.
+                let cycle_start_offset = dc_time % sync0_cycle_time;
+
+                let time_to_next_iter = sync0_cycle_time + (cycle_shift - cycle_start_offset);
+
+                let stat = ProcessStat {
                     ecat_time: dc_time,
-                    difference: difference as i64,
-                    offset: offset as i64,
-                    pi_out: out as i64,
-                    compensated: compensated as i64,
+                    cycle_start_offset,
+                    next_iter_wait: time_to_next_iter,
                 };
 
                 if print_tick.elapsed() > Duration::from_secs(1) {
                     print_tick = Instant::now();
 
                     log::info!(
-                        "OS/ECAT time delta {:+08.0}, curr offset {:+08.0}, PI adjustment {:+08.0}, delta + offset = {}",
-                        stat.difference,
-                        stat.offset,
-                        stat.pi_out,
-                        stat.compensated
+                        "Offset from start of cycle {} ({:0.2} ms), next tick in {:0.3} ms",
+                        cycle_start_offset,
+                        (cycle_start_offset as f32) / 1000.0 / 1000.0,
+                        (time_to_next_iter as f32) / 1000.0 / 1000.0
                     );
                 }
 
-                pi_stats.serialize(stat).ok();
-            }
+                process_stats.serialize(stat).ok();
+
+                time_to_next_iter
+            } else {
+                sync0_cycle_time
+            };
 
             for mut slave in group.iter(&client) {
                 let (_i, o) = slave.io_raw_mut();
@@ -572,7 +454,30 @@ fn main() -> Result<(), Error> {
                 }
             }
 
-            tick_interval.next().await;
+            smol::Timer::at(now + Duration::from_nanos(this_cycle_delay)).await;
+
+            // Hook signal so we can write CSV data before exiting
+            if term.load(Ordering::Relaxed) {
+                log::info!("Exiting...");
+
+                process_stats.flush().ok();
+
+                break;
+            }
         }
+
+        let group = group.into_safe_op(&client).await.expect("OP -> SAFE-OP");
+
+        log::info!("OP -> SAFE-OP");
+
+        let group = group.into_pre_op(&client).await.expect("SAFE-OP -> PRE-OP");
+
+        log::info!("SAFE-OP -> PRE-OP");
+
+        let _group = group.into_init(&client).await.expect("PRE-OP -> INIT");
+
+        log::info!("PRE-OP -> INIT, shutdown complete");
+
+        Ok(())
     })
 }
