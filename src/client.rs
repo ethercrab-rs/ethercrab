@@ -87,6 +87,12 @@ impl<'sto> Client<'sto> {
         // Clear SMs. SM memory section is 0x7f bytes long - see ETG1000.4 Table 59
         self.blank_memory(RegisterAddress::Sm0, 0x7f).await?;
 
+        // Set DC control back to EtherCAT
+        self.blank_memory(
+            RegisterAddress::DcCyclicUnitControl,
+            core::mem::size_of::<u8>() as u16,
+        )
+        .await?;
         self.blank_memory(
             RegisterAddress::DcSystemTime,
             core::mem::size_of::<u64>() as u16,
