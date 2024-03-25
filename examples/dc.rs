@@ -143,25 +143,8 @@ fn main() -> Result<(), Error> {
     let sync1_cycle_time = 0;
     // Example shift: data will be ready half way through cycle
     let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
-    // let cycle_shift = 0;
 
     smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
-    // thread_priority::ThreadBuilder::default()
-    //     .name("tx-rx-thread")
-    //     // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
-    //     // Check limits with `ulimit -Hr` or `ulimit -Sr`
-    //     .priority(ThreadPriority::Crossplatform(
-    //         ThreadPriorityValue::try_from(49u8).unwrap(),
-    //     ))
-    //     // NOTE: Requires a realtime kernel
-    //     .policy(ThreadSchedulePolicy::Realtime(
-    //         RealtimeThreadSchedulePolicy::Fifo,
-    //     ))
-    //     .spawn(move |_| {
-    //         // Blocking io_uring
-    //         tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
-    //     })
-    //     .unwrap();
 
     // Wait for TX/RX loop to start
     thread::sleep(Duration::from_millis(200));
@@ -446,7 +429,7 @@ fn main() -> Result<(), Error> {
             }
         }
 
-        let mut group = group
+        let group = group
             .into_safe_op(&client)
             .await
             .expect("PRE-OP -> SAFE-OP");
@@ -473,7 +456,7 @@ fn main() -> Result<(), Error> {
         log::info!("OP");
 
         loop {
-            let now = current_time();
+            let now = Instant::now();
 
             // Note this method is experimental and currently hidden from the crate docs.
             let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
@@ -517,12 +500,7 @@ fn main() -> Result<(), Error> {
                 }
             }
 
-            // tick_interval.next().await;
-            // smol::Timer::at(this_cycle_delay).await;
-
-            let sleep_until = add_nanos(now, this_cycle_delay);
-
-            clock_nanosleep_absolute(ClockId::Monotonic, &sleep_until).ok();
+            smol::Timer::at(now + Duration::from_nanos(this_cycle_delay)).await;
 
             // Hook signal so we can write CSV data before exiting
             if term.load(Ordering::Relaxed) {
@@ -534,29 +512,4 @@ fn main() -> Result<(), Error> {
             }
         }
     })
-}
-
-/// Get the current monotonic system time in nanoseconds.
-pub fn current_time() -> Timespec {
-    rustix::time::clock_gettime(ClockId::Monotonic)
-}
-
-const NSEC_PER_SEC: i64 = 1_000_000_000;
-
-fn add_nanos(mut current: Timespec, add_nanos: u64) -> Timespec {
-    let add_nanos = add_nanos as i64;
-
-    let mut nsec = add_nanos % NSEC_PER_SEC;
-    let sec = (add_nanos - nsec) / NSEC_PER_SEC;
-
-    current.tv_sec += sec;
-    current.tv_nsec += nsec;
-
-    if current.tv_nsec >= NSEC_PER_SEC {
-        nsec = current.tv_nsec % NSEC_PER_SEC;
-        current.tv_sec += (current.tv_nsec - nsec) / NSEC_PER_SEC;
-        current.tv_nsec = nsec;
-    }
-
-    current
 }
