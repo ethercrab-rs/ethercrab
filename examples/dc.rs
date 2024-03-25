@@ -88,7 +88,7 @@ fn main() -> Result<(), Error> {
 
     let sync0_cycle_time = TICK_INTERVAL.as_nanos() as u64;
     // SYNC1 is not currently supported. Leave this set to zero.
-    let sync1_cycle_time = 0;
+    // let sync1_cycle_time = 0;
     // Example shift: data will be ready half way through cycle
     let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
 
@@ -366,9 +366,45 @@ fn main() -> Result<(), Error> {
 
         let mut print_tick = Instant::now();
 
-        let mut group = group.into_op_nowait(&client).await.expect("SAFE-OP -> OP");
+        // Request OP state without waiting for all SubDevices to reach it. Allows the immediate
+        // start of the process data cycle, which is required when DC sync is used, otherwise
+        // SubDevices never reach OP, most often timing out with a SyncManagerWatchdog error.
+        let mut group = group.request_into_op(&client).await.expect("SAFE-OP -> OP");
 
-        log::info!("OP");
+        log::info!("OP requested");
+
+        let op_request = Instant::now();
+
+        // Send PDI and check group state until all SubDevices enter OP state. At this point, we can
+        // exit this loop and enter the main process data loop that does not have the state check
+        // overhead present here.
+        while !group.is_op(&client).await? {
+            let now = Instant::now();
+
+            // Note this method is experimental and currently hidden from the crate docs.
+            let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
+
+            // Calculate delay until next cycle TX/RX, taking into account the current DC time. This
+            // will position the TX/RX at `cycle_shift` in the SYNC0 cycle time.
+            let this_cycle_delay = if let Some(dc_time) = dc_time {
+                // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
+                // time is rounded to a whole number of `sync0_cycle_time`-length cycles.
+                let cycle_start_offset = dc_time % sync0_cycle_time;
+
+                let time_to_next_iter = sync0_cycle_time + (cycle_shift - cycle_start_offset);
+
+                time_to_next_iter
+            } else {
+                sync0_cycle_time
+            };
+
+            smol::Timer::at(now + Duration::from_nanos(this_cycle_delay)).await;
+        }
+
+        log::info!(
+            "All SubDevices entered OP in {} us",
+            op_request.elapsed().as_micros()
+        );
 
         // Main application process data cycle
         loop {

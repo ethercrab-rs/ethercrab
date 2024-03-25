@@ -302,8 +302,15 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         self.transition_to(client, SlaveState::PreOp).await
     }
 
-    /// DELETEME
-    pub async fn into_op_nowait(
+    /// Like [`into_op`](SlaveGroup::into_op), however does not wait for all SubDevices to enter OP
+    /// state.
+    ///
+    /// This allows the application process data loop to be started, so as to e.g. not time out
+    /// watchdogs, or provide valid data to prevent DC sync errors.
+    ///
+    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SlaveGroup::all_op) to
+    /// check if the group has reached OP state.
+    pub async fn request_into_op(
         mut self,
         client: &Client<'_>,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op>, Error> {
@@ -339,6 +346,11 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         client: &Client<'_>,
     ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp>, Error> {
         self.transition_to(client, SlaveState::SafeOp).await
+    }
+
+    /// Returns true if all SubDevices in the group are in OP state
+    pub async fn is_op(&self, client: &Client<'_>) -> Result<bool, Error> {
+        self.is_state(client, SlaveState::Op).await
     }
 }
 
@@ -397,6 +409,26 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
         &all_buf[0..self.pdi_len]
     }
 
+    /// Check if all SubDevices in the group are the given desired state.
+    async fn is_state(
+        &self,
+        client: &Client<'_>,
+        desired_state: SlaveState,
+    ) -> Result<bool, Error> {
+        for slave in self.inner().slaves.iter().map(|slave| slave.borrow()) {
+            // TODO: Add a way to queue up a bunch of PDUs and send all at once
+            let slave_state = SlaveRef::new(client, slave.configured_address, slave)
+                .state()
+                .await?;
+
+            if slave_state != desired_state {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
+
     /// Wait for all slaves in this group to transition to the given state.
     async fn wait_for_state(
         &self,
@@ -405,20 +437,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
     ) -> Result<(), Error> {
         async {
             loop {
-                let mut all_transitioned = true;
-
-                for slave in self.inner().slaves.iter().map(|slave| slave.borrow()) {
-                    // TODO: Add a way to queue up a bunch of PDUs and send all at once
-                    let slave_state = SlaveRef::new(client, slave.configured_address, slave)
-                        .state()
-                        .await?;
-
-                    if slave_state != desired_state {
-                        all_transitioned = false;
-                    }
-                }
-
-                if all_transitioned {
+                if self.is_state(client, desired_state).await? {
                     break Ok(());
                 }
 
