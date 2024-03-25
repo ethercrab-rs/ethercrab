@@ -157,21 +157,38 @@ fn main() -> Result<(), Error> {
 
         log::info!("Group has {} slaves", group.len());
 
-        let mut now = Instant::now();
-        let start = Instant::now();
-        let mut headers = false;
-        // Compile time switch
-        let debug_csv = option_env!("ETHERCRAB_CSV");
-
         let mut averages = Vec::new();
 
         for _ in 0..group.len() {
             averages.push(ExponentialMovingAverage::new(64).unwrap());
         }
 
+        log::info!("Moving into PRE-OP with PDI");
+
         let mut group = group.into_pre_op_pdi(&client).await?;
 
-        log::info!("Waiting for SubDevices to align");
+        log::info!("Done. PDI available. Waiting for SubDevices to align");
+
+        let mut align_stats = {
+            let mut w = csv::Writer::from_writer(File::create("dc-align.csv").expect("Open CSV"));
+
+            w.write_field("t_ms").ok();
+
+            for s in group.iter(&client) {
+                w.write_field(format!("{:#06x}", s.configured_address()))
+                    .ok();
+                w.write_field(format!("{:#06x} EMA", s.configured_address()))
+                    .ok();
+            }
+
+            // Finish header
+            w.write_record(None::<&[u8]>).ok();
+
+            w
+        };
+
+        let mut now = Instant::now();
+        let start = Instant::now();
 
         // Repeatedly send group PDI and sync frame to align all SubDevice clocks. We use an
         // exponential moving average of each SubDevice's deviation from the EtherCAT System Time
@@ -185,16 +202,19 @@ fn main() -> Result<(), Error> {
             if now.elapsed() >= Duration::from_millis(25) {
                 now = Instant::now();
 
-                let mut row = Vec::with_capacity(group.len());
+                align_stats
+                    .write_field(start.elapsed().as_millis().to_string())
+                    .ok();
 
-                if debug_csv.is_some() && !headers {
-                    print!("t_ms");
-                }
+                let mut max_deviation = 0;
 
                 for (s1, ema) in group.iter(&client).zip(averages.iter_mut()) {
                     let diff = match s1
                         .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
                         .await
+                        // The returned value is NOT in two's compliment, rather the upper bit
+                        // specifies whether the number in the remaining bits is odd or even, so we
+                        // convert the value to `i32` using that logic here.
                         .map(|value| {
                             let flag = 0b1u32 << 31;
 
@@ -215,60 +235,18 @@ fn main() -> Result<(), Error> {
 
                     let ema_next = ema.next(diff as f64);
 
-                    row.push([diff as f64, ema_next]);
+                    max_deviation = max_deviation.max(ema_next.abs() as u32);
 
-                    log::debug!(
-                        "--> Sys time {} offs {}, diff {} (EMA {:0.3})",
-                        match s1.register_read::<u64>(RegisterAddress::DcSystemTime).await {
-                            Ok(diff) => diff,
-                            Err(Error::WorkingCounter { .. }) => 0,
-                            Err(e) => return Err(e),
-                        },
-                        match s1
-                            .register_read::<u64>(RegisterAddress::DcSystemTimeOffset)
-                            .await
-                        {
-                            Ok(diff) => diff,
-                            Err(Error::WorkingCounter { .. }) => 0,
-                            Err(e) => return Err(e),
-                        },
-                        diff,
-                        ema_next,
-                    );
-
-                    if debug_csv.is_some() && !headers {
-                        print!(
-                            ",{:#06x},{:#06x} EMA",
-                            s1.configured_address(),
-                            s1.configured_address()
-                        );
-                    }
+                    align_stats.write_field(diff.to_string()).ok();
+                    align_stats.write_field(ema_next.to_string()).ok();
                 }
 
-                if debug_csv.is_some() && !headers {
-                    println!();
-                }
+                // Finish row
+                align_stats.write_record(None::<&[u8]>).ok();
 
-                if debug_csv.is_some() {
-                    println!(
-                        "{},{}",
-                        start.elapsed().as_millis(),
-                        row.iter()
-                            .flatten()
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                            .as_slice()
-                            .join(","),
-                    );
-                }
+                log::debug!("--> Max deviation {} ns", max_deviation);
 
-                let max_deviation = row
-                    .iter()
-                    .map(|[_diff, diff_ema]| diff_ema.abs() as u32)
-                    .max()
-                    .unwrap_or(u32::MAX);
-
-                // Less than 100ns max deviation.
+                // Less than 100ns max deviation as an example threshold.
                 // <https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585>
                 // mentions less than 100us as a good enough value as well.
                 if max_deviation < 100 {
@@ -276,12 +254,12 @@ fn main() -> Result<(), Error> {
 
                     break;
                 }
-
-                headers = true;
             }
 
             tick_interval.next().await;
         }
+
+        align_stats.flush().ok();
 
         log::info!("Alignment done");
 
@@ -377,13 +355,14 @@ fn main() -> Result<(), Error> {
         log::info!("SAFE-OP");
 
         #[derive(serde::Serialize)]
-        struct PiStat {
+        struct ProcessStat {
             ecat_time: u64,
             cycle_start_offset: u64,
             next_iter_wait: u64,
         }
 
-        let mut pi_stats = csv::Writer::from_writer(File::create("dc-pi.csv").expect("Open CSV"));
+        let mut process_stats =
+            csv::Writer::from_writer(File::create("dc-pd.csv").expect("Open CSV"));
 
         let term = Arc::new(AtomicBool::new(false));
         signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
@@ -408,7 +387,7 @@ fn main() -> Result<(), Error> {
 
                 let time_to_next_iter = sync0_cycle_time + (cycle_shift - cycle_start_offset);
 
-                let stat = PiStat {
+                let stat = ProcessStat {
                     ecat_time: dc_time,
                     cycle_start_offset,
                     next_iter_wait: time_to_next_iter,
@@ -425,7 +404,7 @@ fn main() -> Result<(), Error> {
                     );
                 }
 
-                pi_stats.serialize(stat).ok();
+                process_stats.serialize(stat).ok();
 
                 time_to_next_iter
             } else {
@@ -446,7 +425,7 @@ fn main() -> Result<(), Error> {
             if term.load(Ordering::Relaxed) {
                 log::info!("Exiting...");
 
-                pi_stats.flush().ok();
+                process_stats.flush().ok();
 
                 break Ok(());
             }
