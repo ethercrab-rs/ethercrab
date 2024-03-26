@@ -191,11 +191,44 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroup<MAX_SLAVES, MAX_P
         Ok(())
     }
 
+    /// Borrow an individual slave device.
+    ///
+    /// Each slave device in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
+    /// single reference to it at any one time. Multiple different slaves can be borrowed
+    /// simultaneously, but multiple references to the same slave are not allowed.
+    ///
+    /// # Panics
+    ///
+    /// Borrowing a slave across a [`SlaveGroup::iter`](crate::SlaveGroup::iter) call will cause the
+    /// returned iterator to panic as it tries to borrow the slave a second time.
+    pub fn slave<'client, 'group>(
+        &'group self,
+        client: &'client Client<'client>,
+        index: usize,
+    ) -> Result<SlaveRef<'client, AtomicRefMut<'group, Slave>>, Error> {
+        let slave = self
+            .inner()
+            .slaves
+            .get(index)
+            .ok_or(Error::NotFound {
+                item: Item::Slave,
+                index: Some(index),
+            })?
+            .try_borrow_mut()
+            .map_err(|_e| {
+                fmt::error!("Slave index {} already borrowed", index);
+
+                Error::Borrow
+            })?;
+
+        Ok(SlaveRef::new(client, slave.configured_address, slave))
+    }
+
     /// Get an iterator over all slaves in this group.
     pub fn iter<'group, 'client>(
         &'group mut self,
         client: &'client Client<'client>,
-    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, Self> {
+    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, PreOp> {
         GroupSlaveIterator::new(client, self)
     }
 
@@ -483,17 +516,18 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MA
     }
 }
 
-/// Items common to all states ([`PreOp`], [`Op`], etc) on [`SlaveGroup`].
-///
-/// This trait is sealed and may not be implemented on types external to EtherCrab.
-#[sealed::sealed]
-pub trait SlaveGroupState {
-    /// The type of state returned with the [`SlaveGroup`] from the
-    /// [`slave`](SlaveGroupState::slave) method, e.g. [`SlavePdi`](crate::SlavePdi), etc.
-    type RefType<'group>
-    where
-        Self: 'group;
+#[doc(hidden)]
+pub trait HasPdi {}
 
+impl HasPdi for PreOpPdi {}
+impl HasPdi for SafeOp {}
+impl HasPdi for Op {}
+
+// Methods for any state where a PDI has been configured.
+impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MAX_PDI, S>
+where
+    S: HasPdi,
+{
     /// Borrow an individual slave device.
     ///
     /// Each slave device in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
@@ -504,75 +538,11 @@ pub trait SlaveGroupState {
     ///
     /// Borrowing a slave across a [`SlaveGroup::iter`](crate::SlaveGroup::iter) call will cause the
     /// returned iterator to panic as it tries to borrow the slave a second time.
-    fn slave<'client, 'group>(
+    pub fn slave<'client, 'group>(
         &'group self,
         client: &'client Client<'client>,
         index: usize,
-    ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error>;
-
-    /// Returns `true` if there are no slave devices in the group.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Get the number of slave devices in this group.
-    fn len(&self) -> usize;
-}
-
-#[sealed::sealed]
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize> SlaveGroupState
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp>
-{
-    type RefType<'group> = AtomicRefMut<'group, Slave>;
-
-    fn slave<'client, 'group>(
-        &'group self,
-        client: &'client Client<'client>,
-        index: usize,
-    ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error> {
-        let slave = self
-            .inner()
-            .slaves
-            .get(index)
-            .ok_or(Error::NotFound {
-                item: Item::Slave,
-                index: Some(index),
-            })?
-            .try_borrow_mut()
-            .map_err(|_e| {
-                fmt::error!("Slave index {} already borrowed", index);
-
-                Error::Borrow
-            })?;
-
-        Ok(SlaveRef::new(client, slave.configured_address, slave))
-    }
-
-    fn len(&self) -> usize {
-        self.len()
-    }
-}
-
-#[doc(hidden)]
-pub trait HasPdi {}
-
-impl HasPdi for PreOpPdi {}
-impl HasPdi for SafeOp {}
-impl HasPdi for Op {}
-
-#[sealed::sealed]
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroupState
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
-where
-    S: HasPdi,
-{
-    type RefType<'group> = SlavePdi<'group> where S: 'group;
-
-    fn slave<'client, 'group>(
-        &'group self,
-        client: &'client Client<'client>,
-        index: usize,
-    ) -> Result<SlaveRef<'client, Self::RefType<'group>>, Error> {
+    ) -> Result<SlaveRef<'client, SlavePdi<'group>>, Error> {
         let slave = self
             .inner()
             .slaves
@@ -636,21 +606,11 @@ where
         ))
     }
 
-    fn len(&self) -> usize {
-        self.len()
-    }
-}
-
-// Methods for any state where a PDI has been configured.
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MAX_PDI, S>
-where
-    S: HasPdi,
-{
     /// Get an iterator over all slaves in this group.
     pub fn iter<'group, 'client>(
         &'group mut self,
         client: &'client Client<'client>,
-    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, Self> {
+    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S> {
         GroupSlaveIterator::new(client, self)
     }
 

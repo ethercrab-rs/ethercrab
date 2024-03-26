@@ -99,6 +99,9 @@ An EtherCAT master written in Rust.
   instead.
 - **(breaking)** [#181](https://github.com/ethercrab-rs/ethercrab/pull/181) Remove async
   `SendableFrame::send`. Use `SendableFrame::send_blocking` instead.
+- [#197](https://github.com/ethercrab-rs/ethercrab/pull/197) Remove `SlaveGroupState` trait. It is
+  no longer required, but the same methods are available so migration should be as simple as just
+  removing the import.
 
 ## [0.3.7] - 2024-03-12
 

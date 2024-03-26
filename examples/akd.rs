@@ -4,7 +4,7 @@ use env_logger::Env;
 use ethercrab::{
     error::{Error, MailboxError},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, SlaveGroupState, Timeouts,
+    Client, ClientConfig, PduStorage, Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;

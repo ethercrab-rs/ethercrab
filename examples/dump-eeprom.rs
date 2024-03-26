@@ -10,7 +10,7 @@ use ethercrab::{
     error::Error,
     internals::{ChunkReader, DeviceEeprom},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, SlaveGroupState, Timeouts,
+    Client, ClientConfig, PduStorage, Timeouts,
 };
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
