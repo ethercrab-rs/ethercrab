@@ -94,6 +94,9 @@ pub enum Error {
 
     /// A subdevice produced an error.
     SubDevice(AlStatusCode),
+
+    /// A distributed clock error occurred.
+    DistributedClock(DistributedClockError),
 }
 
 #[cfg(feature = "std")]
@@ -151,6 +154,7 @@ impl core::fmt::Display for Error {
             ),
             Error::Wire(e) => write!(f, "wire encode/decode error: {}", e),
             Error::SubDevice(e) => write!(f, "subdevice error: {}", e),
+            Error::DistributedClock(e) => write!(f, "distributed clock: {}", e),
         }
     }
 }
@@ -225,6 +229,23 @@ impl core::fmt::Display for PduError {
             PduError::InvalidFrameState => f.write_str("invalid PDU frame state"),
             PduError::SwapState => f.write_str("failed to swap frame state"),
             PduError::NoWaker => f.write_str("response was received but this frame has no waker"),
+        }
+    }
+}
+
+/// CoE mailbox error.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub enum DistributedClockError {
+    /// No DC System Time reference SubDevice was found.
+    NoReference,
+}
+
+impl core::fmt::Display for DistributedClockError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::NoReference => f.write_str("No DC reference SubDevice found"),
         }
     }
 }
@@ -386,6 +407,12 @@ impl core::fmt::Display for PduValidationError {
 impl From<PduError> for Error {
     fn from(e: PduError) -> Self {
         Self::Pdu(e)
+    }
+}
+
+impl From<DistributedClockError> for Error {
+    fn from(e: DistributedClockError) -> Self {
+        Self::DistributedClock(e)
     }
 }
 
