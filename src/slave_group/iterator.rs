@@ -27,6 +27,7 @@ impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC>
     }
 }
 
+// Impl for SubDevices that don't have a PDI yet
 impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, DC> Iterator
     for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, PreOp, DC>
 where
@@ -51,6 +52,7 @@ where
     }
 }
 
+// Impl for SubDevices with PDI
 impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> Iterator
     for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S, DC>
 where

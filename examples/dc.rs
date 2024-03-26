@@ -306,20 +306,14 @@ fn main() -> Result<(), Error> {
             let now = Instant::now();
 
             // Note this method is experimental and currently hidden from the crate docs.
-            let (_wkc, dc_time) = group.tx_rx_dc(&client).await.expect("TX/RX");
+            let (
+                _wkc,
+                CycleInfo {
+                    next_cycle_wait, ..
+                },
+            ) = group.tx_rx_dc(&client).await.expect("TX/RX");
 
-            // Calculate delay until next cycle TX/RX, taking into account the current DC time. This
-            // will position the TX/RX at `cycle_shift` in the SYNC0 cycle time.
-            let this_cycle_delay = if let Some(CycleInfo {
-                next_cycle_wait, ..
-            }) = dc_time
-            {
-                next_cycle_wait
-            } else {
-                TICK_INTERVAL
-            };
-
-            smol::Timer::at(now + this_cycle_delay).await;
+            smol::Timer::at(now + next_cycle_wait).await;
         }
 
         log::info!(
@@ -332,44 +326,38 @@ fn main() -> Result<(), Error> {
             let now = Instant::now();
 
             // Note this method is experimental and currently hidden from the crate docs.
-            let (_wkc, cycle) = group.tx_rx_dc(&client).await.expect("TX/RX");
+            let (
+                _wkc,
+                CycleInfo {
+                    dc_system_time,
+                    next_cycle_wait,
+                    cycle_start_offset,
+                },
+            ) = group.tx_rx_dc(&client).await.expect("TX/RX");
 
-            // Calculate delay until next cycle TX/RX, taking into account the current DC time. This
-            // will position the TX/RX at `cycle_shift` in the SYNC0 cycle time.
-            let this_cycle_delay = if let Some(CycleInfo {
-                dc_system_time,
-                next_cycle_wait,
-                cycle_start_offset,
-            }) = cycle
+            // Debug logging
             {
-                // Debug logging
-                {
-                    let cycle_start_offset = cycle_start_offset.as_nanos() as u64;
+                let cycle_start_offset = cycle_start_offset.as_nanos() as u64;
 
-                    let stat = ProcessStat {
-                        ecat_time: dc_system_time,
-                        next_iter_wait: next_cycle_wait.as_nanos() as u64,
+                let stat = ProcessStat {
+                    ecat_time: dc_system_time,
+                    next_iter_wait: next_cycle_wait.as_nanos() as u64,
+                    cycle_start_offset,
+                };
+
+                if print_tick.elapsed() > Duration::from_secs(1) {
+                    print_tick = Instant::now();
+
+                    log::info!(
+                        "Offset from start of cycle {} ({:0.2} ms), next tick in {:0.3} ms",
                         cycle_start_offset,
-                    };
-
-                    if print_tick.elapsed() > Duration::from_secs(1) {
-                        print_tick = Instant::now();
-
-                        log::info!(
-                            "Offset from start of cycle {} ({:0.2} ms), next tick in {:0.3} ms",
-                            cycle_start_offset,
-                            (cycle_start_offset as f32) / 1000.0 / 1000.0,
-                            (next_cycle_wait.as_nanos() as f32) / 1000.0 / 1000.0
-                        );
-                    }
-
-                    process_stats.serialize(stat).ok();
+                        (cycle_start_offset as f32) / 1000.0 / 1000.0,
+                        (next_cycle_wait.as_nanos() as f32) / 1000.0 / 1000.0
+                    );
                 }
 
-                next_cycle_wait
-            } else {
-                TICK_INTERVAL
-            };
+                process_stats.serialize(stat).ok();
+            }
 
             for mut slave in group.iter(&client) {
                 let (_i, o) = slave.io_raw_mut();
@@ -379,7 +367,7 @@ fn main() -> Result<(), Error> {
                 }
             }
 
-            smol::Timer::at(now + this_cycle_delay).await;
+            smol::Timer::at(now + next_cycle_wait).await;
 
             // Hook signal so we can write CSV data before exiting
             if term.load(Ordering::Relaxed) {
