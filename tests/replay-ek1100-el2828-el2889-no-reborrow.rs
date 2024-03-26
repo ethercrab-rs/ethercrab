@@ -10,8 +10,7 @@
 mod util;
 
 use ethercrab::{
-    error::Error, slave_group, Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState,
-    Timeouts,
+    error::Error, slave_group, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
 };
 use std::{path::PathBuf, time::Duration};
 use tokio::time::MissedTickBehavior;

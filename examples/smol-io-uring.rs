@@ -18,7 +18,7 @@ fn main() -> Result<(), ethercrab::error::Error> {
     use ethercrab::{
         error::Error,
         std::{ethercat_now, tx_rx_task_io_uring},
-        Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState, Timeouts,
+        Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
     };
     use futures_lite::StreamExt;
     use std::{

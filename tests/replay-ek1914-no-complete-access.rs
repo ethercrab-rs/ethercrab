@@ -6,9 +6,7 @@
 
 mod util;
 
-use ethercrab::{
-    error::Error, Client, ClientConfig, PduStorage, RetryBehaviour, SlaveGroupState, Timeouts,
-};
+use ethercrab::{error::Error, Client, ClientConfig, PduStorage, RetryBehaviour, Timeouts};
 use std::{path::PathBuf, time::Duration};
 
 const MAX_SLAVES: usize = 16;

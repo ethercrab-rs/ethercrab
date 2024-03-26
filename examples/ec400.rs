@@ -12,7 +12,7 @@ use ethercrab::{
     ds402::{Ds402, Ds402Sm},
     error::Error,
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, SlaveGroupState, Timeouts,
+    Client, ClientConfig, PduStorage, Timeouts,
 };
 use std::{
     sync::{
