@@ -13,7 +13,7 @@ use ethercrab::{
     error::Error, slave_group, Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState,
     Timeouts,
 };
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 use tokio::time::MissedTickBehavior;
 
 const MAX_SLAVES: usize = 16;
@@ -28,7 +28,7 @@ struct Groups {
 
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
-async fn replay_no_reborrow() -> Result<(), Error> {
+async fn replay_ek1100_el2828_el2889_no_reborrow() -> Result<(), Error> {
     static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
@@ -42,7 +42,13 @@ async fn replay_no_reborrow() -> Result<(), Error> {
         },
     );
 
-    util::spawn_tx_rx("tests/replay-no-reborrow.pcapng", tx, rx);
+    let test_name = PathBuf::from(file!())
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+
+    util::spawn_tx_rx(&format!("tests/{test_name}.pcapng"), tx, rx);
 
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client
