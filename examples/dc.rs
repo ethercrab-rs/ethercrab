@@ -185,7 +185,6 @@ fn main() -> Result<(), Error> {
         // below 100ns (arbitraily chosen value for this demo), we call the sync good enough and
         // exit the loop.
         loop {
-            // Note this method is experimental and currently hidden from the crate docs.
             group.tx_rx_sync_system_time(&client).await.expect("TX/RX");
 
             if now.elapsed() >= Duration::from_millis(25) {
@@ -305,7 +304,6 @@ fn main() -> Result<(), Error> {
         while !group.all_op(&client).await? {
             let now = Instant::now();
 
-            // Note this method is experimental and currently hidden from the crate docs.
             let (
                 _wkc,
                 CycleInfo {
@@ -325,7 +323,6 @@ fn main() -> Result<(), Error> {
         loop {
             let now = Instant::now();
 
-            // Note this method is experimental and currently hidden from the crate docs.
             let (
                 _wkc,
                 CycleInfo {
