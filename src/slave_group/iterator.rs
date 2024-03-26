@@ -5,18 +5,19 @@ use atomic_refcell::AtomicRefMut;
 /// An iterator over all slaves in a group.
 ///
 /// Created by calling [`SlaveGroup::iter`](crate::slave_group::SlaveGroup::iter).
-pub struct GroupSlaveIterator<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S> {
-    group: &'group SlaveGroup<MAX_SLAVES, MAX_PDI, S>,
+pub struct GroupSlaveIterator<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC>
+{
+    group: &'group SlaveGroup<MAX_SLAVES, MAX_PDI, S, DC>,
     idx: usize,
     client: &'client Client<'client>,
 }
 
-impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S>
-    GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S>
+impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC>
+    GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S, DC>
 {
     pub(in crate::slave_group) fn new(
         client: &'client Client<'client>,
-        group: &'group SlaveGroup<MAX_SLAVES, MAX_PDI, S>,
+        group: &'group SlaveGroup<MAX_SLAVES, MAX_PDI, S, DC>,
     ) -> Self {
         Self {
             group,
@@ -26,8 +27,8 @@ impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S>
     }
 }
 
-impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize> Iterator
-    for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, PreOp>
+impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, DC> Iterator
+    for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, PreOp, DC>
 where
     'client: 'group,
 {
@@ -50,8 +51,8 @@ where
     }
 }
 
-impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S> Iterator
-    for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S>
+impl<'group, 'client, const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> Iterator
+    for GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S, DC>
 where
     'client: 'group,
     S: HasPdi,

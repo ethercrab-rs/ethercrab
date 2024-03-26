@@ -6,6 +6,7 @@
 use env_logger::Env;
 use ethercrab::{
     error::Error,
+    slave_group::{CycleInfo, DcConfiguration},
     std::{ethercat_now, tx_rx_task},
     Client, ClientConfig, PduStorage, RegisterAddress, Timeouts,
 };
@@ -30,10 +31,6 @@ const MAX_FRAMES: usize = 32;
 const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
-
-const CYCLIC_OP_ENABLE: u8 = 0b0000_0001;
-const SYNC0_ACTIVATE: u8 = 0b0000_0010;
-// const SYNC1_ACTIVATE: u8 = 0b0000_0100;
 
 #[allow(unused)]
 #[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
@@ -85,12 +82,6 @@ fn main() -> Result<(), Error> {
     ));
 
     let mut tick_interval = smol::Timer::interval(TICK_INTERVAL);
-
-    let sync0_cycle_time = TICK_INTERVAL.as_nanos() as u64;
-    // SYNC1 is not currently supported. Leave this set to zero.
-    // let sync1_cycle_time = 0;
-    // Example shift: data will be ready half way through cycle
-    let cycle_shift = (TICK_INTERVAL / 2).as_nanos() as u64;
 
     smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
@@ -195,7 +186,7 @@ fn main() -> Result<(), Error> {
         // exit the loop.
         loop {
             // Note this method is experimental and currently hidden from the crate docs.
-            group.tx_rx_sync_dc(&client).await.expect("TX/RX");
+            group.tx_rx_sync_system_time(&client).await.expect("TX/RX");
 
             if now.elapsed() >= Duration::from_millis(25) {
                 now = Instant::now();
@@ -261,87 +252,20 @@ fn main() -> Result<(), Error> {
 
         log::info!("Alignment done");
 
-        // Now that clocks have synchronised, start cyclic operation by configuring SYNC0 start,
-        // cycle time, etc. This should be quick enough that not much drift is observed during
-        // config, and when `tx_rx_sync_dc` is called next (in a loop) it will resync the clocks.
-        // This code must also be fast enough that all SubDevices are configured within the 100ms
-        // first start offset set below.
-        for slave in group.iter(&client) {
-            if slave.dc_support().enhanced() {
-                // Disable cyclic op, ignore WKC
-                match slave
-                    .register_write(RegisterAddress::DcSyncActive, 0u8)
-                    .await
-                {
-                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                    Err(e) => return Err(e),
-                };
-
-                // Write access to EtherCAT
-                match slave
-                    .register_write(RegisterAddress::DcCyclicUnitControl, 0u8)
-                    .await
-                {
-                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                    Err(e) => return Err(e),
-                };
-
-                let device_time = match slave
-                    .register_read::<u64>(RegisterAddress::DcSystemTime)
-                    .await
-                {
-                    Ok(t) => t,
-                    // Ignore WKC, default to 0.
-                    Err(Error::WorkingCounter { .. }) => 0,
-                    Err(e) => return Err(e),
-                };
-
-                log::info!("Device time {}", device_time);
-
-                // TODO: Support SYNC1. Only SYNC0 has been tested at time of writing.
-                let true_cycle_time = sync0_cycle_time;
-
-                let first_pulse_delay = Duration::from_millis(100).as_nanos() as u64;
-
-                // Round first pulse time to a whole number of cycles
-                let t = (device_time + first_pulse_delay) / true_cycle_time * true_cycle_time;
-
-                log::info!("Computed DC sync start time: {}", t);
-
-                match slave
-                    .register_write(RegisterAddress::DcSyncStartTime, t)
-                    .await
-                {
-                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                    Err(e) => return Err(e),
-                };
-
-                // Cycle time in nanoseconds
-                match slave
-                    .register_write(RegisterAddress::DcSync0CycleTime, sync0_cycle_time)
-                    .await
-                {
-                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                    Err(e) => return Err(e),
-                };
-
-                // slave
-                //     .register_write(RegisterAddress::DcSync1CycleTime, sync1_cycle_time)
-                //     .await
-                //     .expect("DcSync1CycleTime");
-
-                match slave
-                    .register_write(
-                        RegisterAddress::DcSyncActive,
-                        SYNC0_ACTIVATE | CYCLIC_OP_ENABLE,
-                    )
-                    .await
-                {
-                    Ok(_) | Err(Error::WorkingCounter { .. }) => (),
-                    Err(e) => return Err(e),
-                };
-            }
-        }
+        // SubDevice clocks are aligned. We can turn DC on now.
+        let group = group
+            .configure_dc_sync0(
+                &client,
+                DcConfiguration {
+                    // Start SYNC0 100ms in the future
+                    start_delay: Duration::from_millis(100),
+                    // SYNC0 period should be the same as the process data loop in most cases
+                    sync0_period: TICK_INTERVAL,
+                    // Send process data half way through cycle
+                    sync0_shift: TICK_INTERVAL / 2,
+                },
+            )
+            .await?;
 
         let group = group
             .into_safe_op(&client)
@@ -382,23 +306,20 @@ fn main() -> Result<(), Error> {
             let now = Instant::now();
 
             // Note this method is experimental and currently hidden from the crate docs.
-            let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
+            let (_wkc, dc_time) = group.tx_rx_dc(&client).await.expect("TX/RX");
 
             // Calculate delay until next cycle TX/RX, taking into account the current DC time. This
             // will position the TX/RX at `cycle_shift` in the SYNC0 cycle time.
-            let this_cycle_delay = if let Some(dc_time) = dc_time {
-                // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
-                // time is rounded to a whole number of `sync0_cycle_time`-length cycles.
-                let cycle_start_offset = dc_time % sync0_cycle_time;
-
-                let time_to_next_iter = sync0_cycle_time + (cycle_shift - cycle_start_offset);
-
-                time_to_next_iter
+            let this_cycle_delay = if let Some(CycleInfo {
+                next_cycle_wait, ..
+            }) = dc_time
+            {
+                next_cycle_wait
             } else {
-                sync0_cycle_time
+                TICK_INTERVAL
             };
 
-            smol::Timer::at(now + Duration::from_nanos(this_cycle_delay)).await;
+            smol::Timer::at(now + this_cycle_delay).await;
         }
 
         log::info!(
@@ -411,39 +332,43 @@ fn main() -> Result<(), Error> {
             let now = Instant::now();
 
             // Note this method is experimental and currently hidden from the crate docs.
-            let (_wkc, dc_time) = group.tx_rx_sync_dc(&client).await.expect("TX/RX");
+            let (_wkc, cycle) = group.tx_rx_dc(&client).await.expect("TX/RX");
 
             // Calculate delay until next cycle TX/RX, taking into account the current DC time. This
             // will position the TX/RX at `cycle_shift` in the SYNC0 cycle time.
-            let this_cycle_delay = if let Some(dc_time) = dc_time {
-                // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
-                // time is rounded to a whole number of `sync0_cycle_time`-length cycles.
-                let cycle_start_offset = dc_time % sync0_cycle_time;
+            let this_cycle_delay = if let Some(CycleInfo {
+                dc_system_time,
+                next_cycle_wait,
+                cycle_start_offset,
+            }) = cycle
+            {
+                // Debug logging
+                {
+                    let cycle_start_offset = cycle_start_offset.as_nanos() as u64;
 
-                let time_to_next_iter = sync0_cycle_time + (cycle_shift - cycle_start_offset);
-
-                let stat = ProcessStat {
-                    ecat_time: dc_time,
-                    cycle_start_offset,
-                    next_iter_wait: time_to_next_iter,
-                };
-
-                if print_tick.elapsed() > Duration::from_secs(1) {
-                    print_tick = Instant::now();
-
-                    log::info!(
-                        "Offset from start of cycle {} ({:0.2} ms), next tick in {:0.3} ms",
+                    let stat = ProcessStat {
+                        ecat_time: dc_system_time,
+                        next_iter_wait: next_cycle_wait.as_nanos() as u64,
                         cycle_start_offset,
-                        (cycle_start_offset as f32) / 1000.0 / 1000.0,
-                        (time_to_next_iter as f32) / 1000.0 / 1000.0
-                    );
+                    };
+
+                    if print_tick.elapsed() > Duration::from_secs(1) {
+                        print_tick = Instant::now();
+
+                        log::info!(
+                            "Offset from start of cycle {} ({:0.2} ms), next tick in {:0.3} ms",
+                            cycle_start_offset,
+                            (cycle_start_offset as f32) / 1000.0 / 1000.0,
+                            (next_cycle_wait.as_nanos() as f32) / 1000.0 / 1000.0
+                        );
+                    }
+
+                    process_stats.serialize(stat).ok();
                 }
 
-                process_stats.serialize(stat).ok();
-
-                time_to_next_iter
+                next_cycle_wait
             } else {
-                sync0_cycle_time
+                TICK_INTERVAL
             };
 
             for mut slave in group.iter(&client) {
@@ -454,7 +379,7 @@ fn main() -> Result<(), Error> {
                 }
             }
 
-            smol::Timer::at(now + Duration::from_nanos(this_cycle_delay)).await;
+            smol::Timer::at(now + this_cycle_delay).await;
 
             // Hook signal so we can write CSV data before exiting
             if term.load(Ordering::Relaxed) {
