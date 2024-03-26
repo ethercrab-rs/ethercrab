@@ -13,7 +13,7 @@ use ethercrab::{
     error::Error, slave_group, Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState,
     Timeouts,
 };
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 use tokio::time::MissedTickBehavior;
 
 const MAX_SLAVES: usize = 16;
@@ -48,7 +48,13 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
         },
     );
 
-    util::spawn_tx_rx("tests/replay-ek1100-el2828-el2889.pcapng", tx, rx);
+    let test_name = PathBuf::from(file!())
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+
+    util::spawn_tx_rx(&format!("tests/{test_name}.pcapng"), tx, rx);
 
     // Read configurations from slave EEPROMs and configure devices.
     let groups = client

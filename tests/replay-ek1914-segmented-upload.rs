@@ -5,9 +5,8 @@
 mod util;
 
 use env_logger::Env;
-use ethercrab::{
-    error::Error, Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState, Timeouts,
-};
+use ethercrab::{error::Error, Client, ClientConfig, PduStorage, SlaveGroupState, Timeouts};
+use std::path::PathBuf;
 
 const MAX_SLAVES: usize = 16;
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
@@ -16,7 +15,7 @@ const PDI_LEN: usize = 128;
 
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
-async fn replay_segmented_upload() -> Result<(), Error> {
+async fn replay_ek1914_segmented_upload() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
@@ -32,20 +31,21 @@ async fn replay_segmented_upload() -> Result<(), Error> {
         },
     );
 
-    util::spawn_tx_rx("tests/replay-segmented-upload.pcapng", tx, rx);
+    let test_name = PathBuf::from(file!())
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+
+    util::spawn_tx_rx(&format!("tests/{test_name}.pcapng"), tx, rx);
 
     // Read configurations from slave EEPROMs and configure devices.
     let group = client
-        .init::<32, SlaveGroup<MAX_SLAVES, PDI_LEN>>(
-            || 0,
-            |group, slave| {
-                assert_eq!(slave.name(), "EK1914");
-
-                Ok(group)
-            },
-        )
+        .init_single_group::<MAX_SLAVES, PDI_LEN>(|| 0)
         .await
         .expect("Init");
+
+    assert_eq!(group.slave(&client, 0)?.name(), "EK1914");
 
     let first = group.slave(&client, 0).expect("EK1914 must be first");
 
