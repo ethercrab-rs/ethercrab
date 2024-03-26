@@ -585,10 +585,18 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES
         desired_state: SlaveState,
     ) -> Result<bool, Error> {
         for slave in self.inner().slaves.iter().map(|slave| slave.borrow()) {
+            let s = SlaveRef::new(client, slave.configured_address, slave);
+
             // TODO: Add a way to queue up a bunch of PDUs and send all at once
-            let slave_state = SlaveRef::new(client, slave.configured_address, slave)
-                .state()
-                .await?;
+            let slave_state = s.state().await.map_err(|e| {
+                fmt::error!(
+                    "Failed to transition SubDevice {:#06x}: {}",
+                    s.configured_address(),
+                    e
+                );
+
+                e
+            })?;
 
             if slave_state != desired_state {
                 return Ok(false);
