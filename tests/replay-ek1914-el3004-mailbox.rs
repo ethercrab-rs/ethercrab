@@ -6,7 +6,7 @@
 mod util;
 
 use env_logger::Env;
-use ethercrab::{error::Error, Client, ClientConfig, PduStorage, SlaveGroupState, Timeouts};
+use ethercrab::{error::Error, Client, ClientConfig, PduStorage, Timeouts};
 use std::path::PathBuf;
 
 const MAX_SLAVES: usize = 16;

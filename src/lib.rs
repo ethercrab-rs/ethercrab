@@ -204,7 +204,7 @@ pub use ethercrab_wire::{
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::RegisterAddress;
 pub use slave::{Slave, SlaveIdentity, SlavePdi, SlaveRef};
-pub use slave_group::{GroupId, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle, SlaveGroupState};
+pub use slave_group::{GroupId, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle};
 pub use slave_state::SlaveState;
 pub use timer_factory::Timeouts;
 

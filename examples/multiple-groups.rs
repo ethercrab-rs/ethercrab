@@ -10,7 +10,7 @@ use env_logger::Env;
 use ethercrab::{
     error::Error,
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, SlaveGroup, SlaveGroupState, Timeouts,
+    Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
 };
 use std::{
     sync::Arc,
