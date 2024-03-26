@@ -375,7 +375,7 @@ where
                 .receive(client)
                 .await?;
 
-            log::debug!("--> Device time {} ns", device_time);
+            fmt::debug!("--> Device time {} ns", device_time);
 
             let sync0_period = sync0_period.as_nanos() as u64;
 
@@ -384,7 +384,7 @@ where
             // Round first pulse time to a whole number of cycles
             let start_time = (device_time + first_pulse_delay) / sync0_period * sync0_period;
 
-            log::debug!("--> Computed DC sync start time: {}", start_time);
+            fmt::debug!("--> Computed DC sync start time: {}", start_time);
 
             slave
                 .write(RegisterAddress::DcSyncStartTime)
