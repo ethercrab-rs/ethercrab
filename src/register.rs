@@ -279,6 +279,9 @@ pub enum PortType {
     Mii = 0x03,
 }
 
+/// Features supported by a SubDevice.
+///
+/// Described in ETG1000.4 Table 31 - DL information.
 #[derive(Default, Clone, Debug, PartialEq)]
 #[cfg_attr(not(test), derive(ethercrab_wire::EtherCrabWireRead))]
 #[cfg_attr(
@@ -292,6 +295,9 @@ pub struct SupportFlags {
     pub fmmu_supports_bit_ops: bool,
     #[wire(bits = 1)]
     pub reserved_register_support: bool,
+    /// This parameter is set to 1 if at least distributed clock receive times are supported.
+    ///
+    /// ETG1000.4 page 49
     #[wire(bits = 1)]
     pub dc_supported: bool,
     #[wire(bits = 1)]
@@ -306,13 +312,15 @@ pub struct SupportFlags {
     pub separate_fcs_error_handling: bool,
     /// Indicates whether registers `0x0981` - `0x0984` are usable.
     ///
-    /// ETG1000.4 Table 31 – DL information.
+    /// This parameter shall indicate that enhanced DC Sync Activation is available.
+    ///
+    /// ETG1000.4 Table 31 – DL information / ETG1000.4 page 49.
     #[wire(bits = 1)]
     pub enhanced_dc_sync: bool,
     #[wire(bits = 1)]
-    pub lrw_supported: bool,
+    pub lrw_not_supported: bool,
     #[wire(bits = 1)]
-    pub brw_aprw_fprw_supported: bool,
+    pub brw_aprw_fprw_not_supported: bool,
     #[wire(bits = 1, post_skip = 4)]
     pub special_fmmu: bool,
 }
@@ -403,5 +411,56 @@ mod tests {
 
             Ok(())
         });
+    }
+
+    #[test]
+    fn enhanced_dc_el2828() {
+        // EL2828 supports DC SYNC0
+        let input = [0xfcu8, 0x01];
+
+        let unpacked = SupportFlags::unpack_from_slice(&input).expect("Unpack");
+
+        pretty_assertions::assert_eq!(
+            unpacked,
+            SupportFlags {
+                fmmu_supports_bit_ops: false,
+                reserved_register_support: false,
+                dc_supported: true,
+                has_64bit_dc: true,
+                low_jitter: true,
+                ebus_enhanced_link_detection: true,
+                mii_enhanced_link_detection: true,
+                separate_fcs_error_handling: true,
+                enhanced_dc_sync: true,
+                lrw_not_supported: false,
+                brw_aprw_fprw_not_supported: false,
+                special_fmmu: false,
+            }
+        )
+    }
+
+    #[test]
+    fn enhanced_dc_festo_cmt() {
+        let input = [0x07u8, 0x04];
+
+        let unpacked = SupportFlags::unpack_from_slice(&input).expect("Unpack");
+
+        pretty_assertions::assert_eq!(
+            unpacked,
+            SupportFlags {
+                fmmu_supports_bit_ops: true,
+                reserved_register_support: true,
+                dc_supported: true,
+                has_64bit_dc: false,
+                low_jitter: false,
+                ebus_enhanced_link_detection: false,
+                mii_enhanced_link_detection: false,
+                separate_fcs_error_handling: false,
+                enhanced_dc_sync: false,
+                lrw_not_supported: false,
+                brw_aprw_fprw_not_supported: true,
+                special_fmmu: false,
+            }
+        )
     }
 }
