@@ -81,6 +81,11 @@ An EtherCAT master written in Rust.
   `SlaveGroup::<PreOp>::request_into_op` to request all SubDevices in a group transition to OP, but
   does not wait for them to transition. Also add `SlaveGroup::<Op>::all_op` to check if all
   SubDevices in the group have reached OP state.
+- [#198](https://github.com/ethercrab-rs/ethercrab/pull/#198) Add `Error::DistributedClock(_)` and
+  `DistributedClockError` error variant and type to communicate DC errors.
+- [#198](https://github.com/ethercrab-rs/ethercrab/pull/#198) Add
+  `SlaveGroup::tx_rx_sync_system_time` and `SlaveGroup::configure_dc_sync0` to support EtherCAT
+  Distributed Clocks.
 
 ### Fixed
 
