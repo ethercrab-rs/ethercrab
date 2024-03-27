@@ -929,3 +929,330 @@ ssh -L 3000:localhost:3000 ethercrab
 - `cargo instruments --template 'CPU Profiler' --profile profiling --bench pdu_loop -- --bench --profile-time 5`
 
 Other templates can be listed with `xctrace list templates`
+
+# Distributed clocks investigation
+
+- <https://infosys.beckhoff.com/english.php?content=../content/1033/ethercatsystem/2469122443.html#2470228491&id>
+- <https://wiki.bu.ost.ch/infoportal/embedded_systems/ethercat/understanding_ethercat/understanding_sync_with_dc>
+- The Reference Clock is the first DC-supporting subdevice, and is referred to as the _system time_.
+
+## Setup
+
+- Two LAN9252s
+- Oscilloscope attached to `IRQ` pin (also has `LATCH0` and `LATCH1` broken out).
+- `RUST_LOG=info,ethercrab::dc=debug just linux-example-release dc enp2s0`
+
+## Baseline
+
+Running `RUST_LOG=info,ethercrab::dc=debug just linux-example-release dc enp2s0` shows a measured
+delay of 720ns between slaves. The oscilloscope shows a mean of 725ns, min/max 705/745ns, std dev
+11.6ns so EtherCrab's measured value seems to work well.
+
+`LATCH0` and `LATCH1` give no outputs as the `dc` example hasn't configured anything yet. I think...
+
+## Master sync
+
+- A decent explanation: <https://www.acontis.com/en/dcm.html> discusses "DCM" (Distributed Clocks
+  Master Synchronization)
+- First DC slave can be used as reference, and the master syncs FROM it. Also the option to sync the
+  master _to_ the first slave.
+
+## SOEM `sync01()`
+
+- IRQ pins show network propagation delay as expected - around 700ns. This is even with sync0
+  enabled for the first slave.
+
+## Sync time
+
+- <https://download-edge.beckhoff.com/download/document/automation/twincat3/TF6225_TC3_EtherCAT_External_Sync_EN.pdf>
+
+  Shows roughly 30 second sync time in section 6.1.3.
+
+- Sending system time in static sync instead of 0 helps quite a lot
+
+## Using the MainDevice clock as the network reference is not a thing
+
+- Even with [DCM](https://www.acontis.com/en/dcm.html), this is just syncing with the first
+  DC-supporting MainDevice in the network.
+
+## Reset
+
+- <https://download.beckhoff.com/download/document/io/ethercat-development-products/ethercat_esc_datasheet_sec1_technology_2i3.pdf>
+  9.1.4
+
+  > Before starting drift compensation, the internal filters of the Time Control Loop must be reset.
+  > Their current status is typically unknown, and they can have negative impact on the settling
+  > time. The filters are reset by writing the Speed Counter Start value to the Speed Counter Start
+  > register (0x0930:0x0931). Writing the current value of the register again is sufficient to reset
+  > the filters
+
+## Showing dropped packets on Linux
+
+- `ip -s link show enp2s0`
+  <https://www.cyberciti.biz/faq/linux-show-dropped-packets-per-interface-command/>
+- Or `netstat -i`
+- Or `ethtool -S enp2s0`
+  <https://www.thegeekdiary.com/troubleshooting-slow-network-communication-or-connection-timeouts-in-linux/>
+- Or `cat /sys/class/net/enp2s0/statistics/rx_dropped` <https://serverfault.com/a/561132>
+- Setting:
+
+  ```
+  net.core.rmem_max = 12500000
+  net.core.wmem_max = 12500000
+  ```
+
+  greatly increases the number of `rx_errors` and `align_errors`.
+
+- Doesn't seem to be dependent on switching threads or executors. `smol::spawn`, `tokio::spawn` and
+  `smol::block_on` in a thread pinned to core 0 make no difference.
+- Wireshark shows the last packet not being received so I don't think it's my weird impl.
+- The lost packet appears eventually!
+
+  Logged with
+
+  ```bash
+  tshark --interface enp2s0 -f 'ether proto 0x88a4' -T fields -e frame.number -e frame.time_relative -e frame.time_delta -e eth.src -e frame.len -e ecat.idx -e ecat.cmd -e ecat.adp -e ecat.ado
+  ```
+
+  Nearly a minute later:
+
+  ```
+  212171  229.185843925   0.001081760     10:10:10:10:10:10       0x06    0x0e    0x1000  0x0910
+  212172  229.185851399   0.000007474     10:10:10:10:10:10       0x07    0x0c
+  212173  229.185881114   0.000029715     12:10:10:10:10:10       0x06    0x0e    0x1000  0x0910
+  212174  283.980272341   54.794391227    12:10:10:10:10:10       0x07    0x0c
+  ```
+
+  Another less drastic example:
+
+  ```
+  286913  792.417020063   0.001086499     10:10:10:10:10:10       0x19    0x0e    0x1000  0x0910
+  286914  792.417028279   0.000008216     10:10:10:10:10:10       0x1a    0x0c
+  286915  792.417051592   0.000023313     12:10:10:10:10:10       0x19    0x0e    0x1000  0x0910
+  286916  795.080750017   2.663698425     12:10:10:10:10:10       0x1a    0x0c
+  ```
+
+  12 seconds this time
+
+  ```
+  50367   15.443982363    0.002090013     10:10:10:10:10:10       0x00    0x0c
+  50368   15.443990028    0.000007665     10:10:10:10:10:10       0x1f    0x0e    0x1000  0x0910
+  50369   15.444012700    0.000022672     12:10:10:10:10:10       0x00    0x0c
+  50370   15.444020715    0.000008015     12:10:10:10:10:10       0x1f    0x0e    0x1000  0x0910
+  50371   15.446105098    0.002084383     10:10:10:10:10:10       0x01    0x0e    0x1000  0x0910
+  50372   15.446112552    0.000007454     10:10:10:10:10:10       0x02    0x0c
+  50373   15.446140353    0.000027801     12:10:10:10:10:10       0x01    0x0e    0x1000  0x0910
+  50374   27.842931439    12.396791086    12:10:10:10:10:10       0x02    0x0c
+  ```
+
+  ```
+  1705    0.852359273     0.002079843     10:10:10:10:10:10       36      0x09    0x0e    0x1000  0x0910
+  1706    0.852366577     0.000007304     10:10:10:10:10:10       28      0x0a    0x0c
+  1707    0.852395721     0.000029144     12:10:10:10:10:10       60      0x09    0x0e    0x1000  0x0910
+  1708    58.197952942    57.345557221    12:10:10:10:10:10       60      0x0a    0x0c
+  ```
+
+  New record: 2 minutes!
+
+  ```
+  39151   9.952622248     0.001104738     10:10:10:10:10:10       36      0x17    0x0e    0x1000  0x0910
+  39152   9.952626089     0.000003841     10:10:10:10:10:10       28      0x18    0x0c
+  39153   9.952637403     0.000011314     12:10:10:10:10:10       60      0x17    0x0e    0x1000  0x0910
+  39154   130.431369768   120.478732365   12:10:10:10:10:10       60      0x18    0x0c
+  ```
+
+  `cat /sys/class/net/enp2s0/statistics/rx_dropped` hasn't changed between running these tests. I
+  guess because it wasn't really dropped huh...
+
+  **Works fine on i210 in `moreports`**.
+
+- Allow receive of all packets, bad FCS or not: `sudo ethtool -K eth0 rx-fcs on rx-all on`
+  <https://stackoverflow.com/a/24175679/383609>. This allows Wireshark to capture all packets.
+  Packet size goes up by 4 bytes (32 bit CRC at end).
+
+  **Checksums seem fine; nothing changes if I do `sudo ethtool -K eth0 rx-fcs off rx-all on`.**
+
+- Kernel upgrade and a switch to Debian made no difference
+
+  Before:
+
+  ```
+  ❯ sudo ethtool -i enp2s0
+  driver: r8169
+  version: 5.15.0-1032-realtime
+  firmware-version: rtl8168h-2_0.0.2 02/26/15
+  expansion-rom-version:
+  bus-info: 0000:02:00.0
+  supports-statistics: yes
+  supports-test: no
+  supports-eeprom-access: no
+  supports-register-dump: yes
+  supports-priv-flags: no
+  ```
+
+  After:
+
+  ```
+  ❯ sudo ethtool -i enp2s0
+  driver: r8169
+  version: 6.1.0-18-rt-amd64
+  firmware-version: rtl8168h-2_0.0.2 02/26/15
+  expansion-rom-version:
+  bus-info: 0000:02:00.0
+  supports-statistics: yes
+  supports-test: no
+  supports-eeprom-access: no
+  supports-register-dump: yes
+  supports-priv-flags: no
+  ```
+
+## DC first pulse investigation
+
+- Two LAN9252
+- Oscilloscope to see relative SubDevice 1/2 SYNC0 pulses
+- Sipeed logic analyser to capture first pulse
+
+Initial results show that something is not right - the second SubDevice SYNC0 starts at 950ms,
+whereas the first SubDevice starts at 650ms. These values are due to 5% pre-trigger in PulseView.
+
+Second and third runs happens at 945ms. This doesn't correlate with power-on time of the second
+SubDevice, so it's not relative to that.
+
+`950 - 650 = 300` though, and the device times (in a subsequent run, so subject to a bit of clock
+drift) are
+
+- 2110377260481
+- 2110693458806
+
+With a delta of 316198325ns, or 316.1983ms. This is probably where the discrepancy is coming from.
+
+- **Theory:** We need to let the clocks synchronise and start sending FRMWs before we can set the
+  first SYNC0 start time.
+
+  **Result:** No change when moving the first pulse calculation after the clock sync.
+
+Something I did notice though is the first pulse of the second SubDevice is 26us before the nearest
+SYNC0 from the first SubDevice, which may just be clock drift, meaning we are actually aligned, just
+300ms later.
+
+- **Theory:** While we set up the first sync pulse, the FRMW isn't being sent, allowing the clocks
+  to drift. So, if we run the TX/RX concurrently with the setup, maybe the pulses will at least
+  align, even if the second SubDevice still starts 300ms later.
+
+  **Result:** Yes, the first sync pulse of the second SD is much closer to the nearest first if we
+  do `Command::frmw(0x1000, RegisterAddress::DcSystemTime.into())` with `futures_lite::future::or`,
+  so this checks out.
+
+Logging the time between each SYNC0 init, it turns out that configuring each slave takes 316ms,
+exactly the amount of time the second SubDevice's first SYNC0 pulse is delayed by. That explains the
+delay which is nice.
+
+The next question is to figure out when the process data loop should wait until, based on that first
+delay.
+
+I think the code as currently written does a modulo on the cycle time, so calculates the start time
+based on the DC System Time rounded to a multiple of the cycle time. This should mean we can just do
+modulo everywhere to figure out the offset in the cycle. This holds AS LONG AS the SYNC1 cycle time
+is zero. I won't bother supporting SYNC1 for now.
+
+With a cycle shift of 0, the IRQ pin of the LAN9252 _seems_ to correlate with the value of
+`dc_time % sync0_cycle_time`.
+
+Trying to align the master cycle to exactly the start of the next cycle will mean the PI controller
+will never stabilise, as there's always the transmission delay.
+
+I'm getting 1ms std-dev on my oscope for a 5ms cycle on `ethercrab`.
+
+Messing around with the PI parameters makes a huge difference to stability.
+
+### Jitter improvements
+
+- Using `pollster::block_on` makes no difference to jitter over just using `smol`. I'm seeing +/-1ms
+  of jitter on a 5ms cycle. Not good enough. `cassette::block_on` makes no difference either, so
+  it's either in the PI loop or the timer.
+- Commenting out the stats gathering/printing/Ctrl+C hook also makes no difference to the jitter.
+- `sudo tuned-adm profile latency-performance`, `realtime`, `throughput-performance` makes no
+  difference to jitter.
+
+- Setting main thread prio helps quite a bit
+
+  ```rust
+  thread_priority::set_current_thread_priority(ThreadPriority::Crossplatform(
+      ThreadPriorityValue::try_from(48u8).unwrap(),
+  ))
+  .expect("Main thread prio");
+  ```
+
+  Using `90` doesn't make any difference and requires root, so 48 is fine.
+
+  The IRQ converges on SYNC0, but sometimes gets disturbed and takes a while to settle again.
+
+- Setting core affinity in code doesn't change anything.
+- Disabling HT with `noht` GRUB option doesn't work on `ethercrab` due to AMD-ness
+- Setting performance governor from `conservative` to `performance` doesn't help
+- Setting `processor.max_cstate=0` in grub makes no difference
+- Changing the `smol::block_on` that wraps the `dc` example to `pollster::block_on` or
+  `cassette::block_on` makes no difference.
+- Putting the PD loop in a FIFO/48 RT thread doesn't help
+- Clock tick tuning like [here](https://docs.kernel.org/timers/no_hz.html) setting GRUB options
+  `idle=mwait processor.max_cstate=0 intel_idle.max_cstate=0` sort of helps. Now down to +/-500us of
+  jitter.
+- Somewhat mercifully, using io_uring over `smol` does not actually help the jitter
+- `moreports` exhibits the same ~500us jitter. Maybe slightly more, but not significant.
+- A very quick test with `spin_sleep` makes things _even worse_.
+- Feeding an EMA into the PI loop makes things worse
+- **Solution found: Get rid of the PI loop and just naively calculate the next delay. ARGH!**
+
+  Thanks to Valentin for poking me to actually try this :)
+
+  This gives about 50us of jitter on `ethercrab`.
+
+### Modulo and rounding errors
+
+If the shift time is very close to the start or end of the cycle, it skips cycles. This is bad, so
+let's fix it.
+
+## Plotting `dc-pd.csv`
+
+```gnuplot
+set datafile separator ','
+# set xdata time # tells gnuplot the x axis is time data
+# set ylabel "First Y " # label for the Y axis
+set autoscale fix
+set key top right outside autotitle columnhead
+set xlabel 'ECAT time (ns)' # label for the X axis
+set format x "%.0f"
+set format y "%.0f"
+
+set ylabel "Value"
+
+plot './dc-pd.csv' using 1:2 title "Data" with lines # , '' using 1:3 title "PI out" with lines axis x1y2
+```
+
+## Wtf is `AssignActivate` in EtherCAT ESI?
+
+Finally,
+[some information](https://github.com/OpenEtherCATsociety/SOEM/issues/482#issuecomment-782878892)!:
+
+> You are almost there. In the ESI file the AssignActivate value is 0x0700. This means 0x00 has to
+> be written to ESC register 0x0980 and 0x07 to ESC register 0x0981. This will configure both SYNC0
+> and SYNC1. You only activate SYNC0.
+
+Uh but [also](https://github.com/OpenEtherCATsociety/SOEM/issues/635#issuecomment-1237534462):
+
+> Just if anyone is following this thread. Some drivers require to setup a special address to
+> activate Sync0 as the latching time, regardless of ec_dSync0 instuction.
+>
+> My particular driver is set up by calling
+>
+> `uint16 activate = 1; ec_SDOwrite(1, 0x0300, 0x00, true, sizeof(activate), &activate, EC_TIMEOUTRXM);`
+>
+> Most of the time, the object required to command Sync0 is specified on the xml file in
+> OpMode/Assignactivate: `<AssignActivate>#x0300</AssignActivate>`
+
+Note
+`int ec_SDOwrite(uint16 Slave, uint16 Index, uint8 SubIndex, boolean CA, int psize, const void *p, int Timeout)`
+
+**Yeah I figured it out:** `AssignActivate` is the bitmask for register 0x0981
+`RegisterAddress::DcSyncActive`. `0x0700` turns on SYNC1 AND SYNC0. `0x0300` turns on `SYNC0` only
+(both along with the DC sync enable bit).
