@@ -291,7 +291,7 @@ fn main() -> Result<(), Error> {
 
         // SubDevice clocks are aligned. We can turn DC on now.
         let group = group
-            .configure_dc_sync0(
+            .configure_dc_sync(
                 &client,
                 DcConfiguration {
                     // Start SYNC0 100ms in the future
