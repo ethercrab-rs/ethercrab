@@ -84,8 +84,8 @@ An EtherCAT master written in Rust.
 - [#198](https://github.com/ethercrab-rs/ethercrab/pull/#198) Add `Error::DistributedClock(_)` and
   `DistributedClockError` error variant and type to communicate DC errors.
 - [#198](https://github.com/ethercrab-rs/ethercrab/pull/#198) Add
-  `SlaveGroup::tx_rx_sync_system_time` and `SlaveGroup::configure_dc_sync0` to support EtherCAT
-  Distributed Clocks.
+  `SlaveGroup::tx_rx_sync_system_time`, `SlaveGroup::tx_rx_dc`, `SlaveRef::set_dc_sync` and
+  `SlaveGroup::configure_dc_sync` to support EtherCAT Distributed Clocks.
 
 ### Fixed
 
