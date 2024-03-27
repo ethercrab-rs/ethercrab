@@ -141,6 +141,44 @@ fn main() -> Result<(), Error> {
                 let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
                 let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
                 log::info!("--> Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+            } else if slave.name() == "EL4102" {
+                log::info!("Found EL4102");
+
+                // Sync mode 02 = SYNC0
+                slave
+                    .sdo_write(0x1c32, 1, 2u16)
+                    .await
+                    .expect("Set sync mode");
+
+                slave
+                    .sdo_write(0x1c32, 0x02, TICK_INTERVAL.as_nanos() as u32)
+                    .await
+                    .expect("Set cycle time");
+
+                // ETG1020 calc and copy time
+                let cal_and_copy_time = slave
+                    .sdo_read::<u16>(0x1c32, 6)
+                    .await
+                    .expect("Calc and copy time");
+
+                // Delay time
+                let delay_time = slave.sdo_read::<u16>(0x1c32, 9).await.expect("Delay time");
+
+                log::info!(
+                    "--> Calc time {} ns, delay time {} ns",
+                    cal_and_copy_time,
+                    delay_time,
+                );
+
+                let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
+                let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
+                let shift_time = slave.sdo_read::<u32>(0x1c32, 3).await?;
+                let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
+                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
+                // NOTE: For EL4102, SupportedModes.sync1 is false, but the ESI file specifies it,
+                // and the 4102 won't go into OP without setting up SYNC1 with the correct offset.
+                // Brilliant.
+                log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), shift {shift_time} ns, supported modes {supported_sync_modes:?}");
             }
         }
 
@@ -260,6 +298,8 @@ fn main() -> Result<(), Error> {
                     start_delay: Duration::from_millis(100),
                     // SYNC0 period should be the same as the process data loop in most cases
                     sync0_period: TICK_INTERVAL,
+                    // EL4102 ESI specifies SYNC1 with an offset of 100k ns
+                    sync1_period: Some(Duration::from_nanos(100_000)),
                     // Send process data half way through cycle
                     sync0_shift: TICK_INTERVAL / 2,
                 },

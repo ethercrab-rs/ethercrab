@@ -92,6 +92,7 @@ struct GroupInner<const MAX_SLAVES: usize> {
 
 const CYCLIC_OP_ENABLE: u8 = 0b0000_0001;
 const SYNC0_ACTIVATE: u8 = 0b0000_0010;
+const SYNC1_ACTIVATE: u8 = 0b0000_0100;
 
 /// Group distributed clock configuration.
 #[derive(Default, Debug, Copy, Clone)]
@@ -100,7 +101,18 @@ pub struct DcConfiguration {
     pub start_delay: Duration,
 
     /// SYNC0 cycle time.
+    ///
+    /// SubDevices with an `AssignActivate` value of `0x0300` in their ESI definition should set
+    /// this value.
     pub sync0_period: Duration,
+
+    /// SYNC1 cycle time.
+    ///
+    /// The SYNC1 pulse will only be enabled if this is `Some`.
+    ///
+    /// SubDevices with an `AssignActivate` value of `0x0700` in their ESI definition should set
+    /// this value as well as [`sync0_period`](DcConfiguration::sync0_period).
+    pub sync1_period: Option<Duration>,
 
     /// Shift time relative to SYNC0 pulse.
     pub sync0_shift: Duration,
@@ -333,6 +345,7 @@ where
         let DcConfiguration {
             start_delay,
             sync0_period,
+            sync1_period,
             sync0_shift,
         } = dc_conf;
 
@@ -348,7 +361,7 @@ where
         };
 
         for slave in
-            GroupSlaveIterator::new(&client, &self_).filter(|slave| slave.dc_support().enhanced())
+            GroupSlaveIterator::new(&client, &self_).filter(|slave| slave.dc_support().any())
         {
             fmt::debug!(
                 "--> SubDevice {:#06x} {} supports enhanced DC",
@@ -397,9 +410,20 @@ where
                 .send(client, sync0_period)
                 .await?;
 
+            let flags = if let Some(sync1_period) = sync1_period {
+                slave
+                    .write(RegisterAddress::DcSync1CycleTime)
+                    .send(client, sync1_period.as_nanos() as u64)
+                    .await?;
+
+                SYNC1_ACTIVATE | SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
+            } else {
+                SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
+            };
+
             slave
                 .write(RegisterAddress::DcSyncActive)
-                .send(client, SYNC0_ACTIVATE | CYCLIC_OP_ENABLE)
+                .send(client, flags)
                 .await?;
         }
 
@@ -946,6 +970,8 @@ where
     ///             start_delay: Duration::from_millis(100),
     ///             // SYNC0 period should be the same as the process data loop in most cases
     ///             sync0_period: cycle_time,
+    ///             // SYNC1 is disabled for this example.
+    ///             sync1_period: None,
     ///             // Send process data half way through cycle
     ///             sync0_shift: cycle_time / 2,
     ///         },
