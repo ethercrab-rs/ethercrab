@@ -1,4 +1,5 @@
 pub(crate) mod configuration;
+mod dc;
 mod eeprom;
 pub mod pdi;
 pub mod ports;
@@ -28,7 +29,7 @@ use crate::{
 use core::{
     any::type_name,
     fmt::{Debug, Write},
-    ops::Deref,
+    ops::{Deref, DerefMut},
     sync::atomic::{AtomicU8, Ordering},
 };
 use ethercrab_wire::{
@@ -40,6 +41,7 @@ pub use self::pdi::SlavePdi;
 pub use self::types::IoRanges;
 pub use self::types::SlaveIdentity;
 use self::{eeprom::SlaveEeprom, types::Mailbox};
+pub use dc::DcSync;
 
 /// Slave device metadata. See [`SlaveRef`] for richer behaviour.
 #[derive(Debug)]
@@ -80,6 +82,9 @@ pub struct Slave {
 
     /// The 1-7 cyclic counter used when working with mailbox requests.
     pub(crate) mailbox_counter: AtomicU8,
+
+    /// DC config.
+    pub(crate) dc_sync: DcSync,
 }
 
 // Only required for tests, also doesn't make much sense - consumers of EtherCrab should be
@@ -98,6 +103,7 @@ impl PartialEq for Slave {
             && self.index == other.index
             && self.parent_index == other.parent_index
             && self.propagation_delay == other.propagation_delay
+            && self.dc_sync == other.dc_sync
         // NOTE: No mailbox_counter
     }
 }
@@ -118,6 +124,7 @@ impl Clone for Slave {
             index: self.index,
             parent_index: self.parent_index,
             propagation_delay: self.propagation_delay,
+            dc_sync: self.dc_sync,
             mailbox_counter: AtomicU8::new(self.mailbox_counter.load(Ordering::Acquire)),
         }
     }
@@ -201,6 +208,7 @@ impl Slave {
             name,
             flags,
             ports,
+            dc_sync: DcSync::Disabled,
             // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
             mailbox_counter: AtomicU8::new(1),
         })
@@ -283,6 +291,19 @@ impl<'a> Clone for SlaveRef<'a, ()> {
 
 impl<'a, S> SlaveRef<'a, S>
 where
+    S: DerefMut<Target = Slave>,
+{
+    /// Set DC sync configuration for this SubDevice.
+    ///
+    /// Note that this will not configure the SubDevice itself, but sets the configuration to be
+    /// used by [`SlaveGroup::configure_dc_sync`](crate::SlaveGroup::configure_dc_sync).
+    pub fn set_dc_sync(&mut self, dc_sync: DcSync) {
+        self.state.dc_sync = dc_sync;
+    }
+}
+
+impl<'a, S> SlaveRef<'a, S>
+where
     S: Deref<Target = Slave>,
 {
     /// Get the human readable name of the slave device.
@@ -306,6 +327,10 @@ where
     /// Distributed Clock (DC) support.
     pub fn dc_support(&self) -> DcSupport {
         self.state.flags.dc_support()
+    }
+
+    pub(crate) fn dc_sync(&self) -> DcSync {
+        self.state.dc_sync
     }
 
     /// Return the current cyclic mailbox counter value, from 0-7.

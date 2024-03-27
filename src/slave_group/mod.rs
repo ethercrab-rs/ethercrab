@@ -15,7 +15,7 @@ use crate::{
     pdi::PdiOffset,
     slave::{configuration::PdoDirection, pdi::SlavePdi, IoRanges, Slave, SlaveRef},
     timer_factory::IntoTimeout,
-    Client, RegisterAddress, SlaveState,
+    Client, DcSync, RegisterAddress, SlaveState,
 };
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 use core::{
@@ -105,14 +105,6 @@ pub struct DcConfiguration {
     /// SubDevices with an `AssignActivate` value of `0x0300` in their ESI definition should set
     /// this value.
     pub sync0_period: Duration,
-
-    /// SYNC1 cycle time.
-    ///
-    /// The SYNC1 pulse will only be enabled if this is `Some`.
-    ///
-    /// SubDevices with an `AssignActivate` value of `0x0700` in their ESI definition should set
-    /// this value as well as [`sync0_period`](DcConfiguration::sync0_period).
-    pub sync1_period: Option<Duration>,
 
     /// Shift time relative to SYNC0 pulse.
     pub sync0_shift: Duration,
@@ -345,7 +337,6 @@ where
         let DcConfiguration {
             start_delay,
             sync0_period,
-            sync1_period,
             sync0_shift,
         } = dc_conf;
 
@@ -360,13 +351,17 @@ where
             _state: PhantomData::<PreOp>,
         };
 
-        for slave in
-            GroupSlaveIterator::new(&client, &self_).filter(|slave| slave.dc_support().any())
-        {
+        // Only configure DC for those devices that want and support it
+        let dc_devices = GroupSlaveIterator::new(&client, &self_).filter(|slave| {
+            slave.dc_support().any() && !matches!(slave.dc_sync(), DcSync::Disabled)
+        });
+
+        for slave in dc_devices {
             fmt::debug!(
-                "--> SubDevice {:#06x} {} supports enhanced DC",
+                "--> Configuring SubDevice {:#06x} {} DC mode {}",
                 slave.configured_address(),
-                slave.name()
+                slave.name(),
+                slave.dc_sync()
             );
 
             // Disable cyclic op, ignore WKC
@@ -410,7 +405,7 @@ where
                 .send(client, sync0_period)
                 .await?;
 
-            let flags = if let Some(sync1_period) = sync1_period {
+            let flags = if let DcSync::Sync01 { sync1_period } = slave.dc_sync() {
                 slave
                     .write(RegisterAddress::DcSync1CycleTime)
                     .send(client, sync1_period.as_nanos() as u64)

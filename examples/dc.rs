@@ -8,7 +8,7 @@ use ethercrab::{
     error::Error,
     slave_group::{CycleInfo, DcConfiguration},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, RegisterAddress, Timeouts,
+    Client, ClientConfig, DcSync, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
@@ -101,7 +101,7 @@ fn main() -> Result<(), Error> {
 
         // The group will be in PRE-OP at this point
 
-        for slave in group.iter(&client) {
+        for mut slave in group.iter(&client) {
             if slave.name() == "LAN9252-EVB-HBI" {
                 // Sync mode 02 = SYNC0
                 slave
@@ -179,6 +179,14 @@ fn main() -> Result<(), Error> {
                 // and the 4102 won't go into OP without setting up SYNC1 with the correct offset.
                 // Brilliant.
                 log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), shift {shift_time} ns, supported modes {supported_sync_modes:?}");
+
+                slave.set_dc_sync(DcSync::Sync01 {
+                    // EL4102 ESI specifies SYNC1 with an offset of 100k ns
+                    sync1_period: Duration::from_nanos(100_000),
+                });
+            } else {
+                // Enable SYNC0 for all other SubDevices
+                slave.set_dc_sync(DcSync::Sync0);
             }
         }
 
@@ -298,8 +306,6 @@ fn main() -> Result<(), Error> {
                     start_delay: Duration::from_millis(100),
                     // SYNC0 period should be the same as the process data loop in most cases
                     sync0_period: TICK_INTERVAL,
-                    // EL4102 ESI specifies SYNC1 with an offset of 100k ns
-                    sync1_period: Some(Duration::from_nanos(100_000)),
                     // Send process data half way through cycle
                     sync0_shift: TICK_INTERVAL / 2,
                 },
