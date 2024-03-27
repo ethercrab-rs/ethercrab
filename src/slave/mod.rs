@@ -224,6 +224,11 @@ impl Slave {
         self.identity
     }
 
+    /// Get the configured station address of the slave device.
+    pub fn configured_address(&self) -> u16 {
+        self.configured_address
+    }
+
     /// Get the network propagation delay of this device in nanoseconds.
     ///
     /// Note that before [`Client::init`](crate::client::Client::init) is called, this method will
