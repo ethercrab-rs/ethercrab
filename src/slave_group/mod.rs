@@ -462,6 +462,23 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC>
         self_.transition_to(client, SlaveState::Op).await
     }
 
+    /// Like [`into_op`](SlaveGroup::into_op), however does not wait for all SubDevices to enter OP
+    /// state.
+    ///
+    /// This allows the application process data loop to be started, so as to e.g. not time out
+    /// watchdogs, or provide valid data to prevent DC sync errors.
+    ///
+    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SlaveGroup::all_op) to
+    /// check if the group has reached OP state.
+    pub async fn request_into_op(
+        self,
+        client: &Client<'_>,
+    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op, DC>, Error> {
+        let self_ = self.into_safe_op(client).await?;
+
+        self_.request_into_op(client).await
+    }
+
     /// Transition all slave devices in the group from PRE-OP to INIT.
     pub async fn into_init(
         self,
@@ -933,7 +950,7 @@ where
     /// #     error::Error,
     /// #     slave_group::{CycleInfo, DcConfiguration},
     /// #     std::ethercat_now,
-    /// #     Client, ClientConfig, PduStorage, Timeouts,
+    /// #     Client, ClientConfig, PduStorage, Timeouts, DcSync,
     /// # };
     /// # use std::time::{Duration, Instant};
     /// # const MAX_SLAVES: usize = 16;
@@ -948,16 +965,20 @@ where
     ///
     /// let cycle_time = Duration::from_millis(5);
     ///
-    /// let group = /* ... */
-    /// # client
-    /// #     .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
-    /// #     .await
-    /// #     .expect("Init")
-    /// #     .into_pre_op_pdi(&client)
-    /// #     .await
-    /// #     .expect("PRE-OP -> PRE-OP with PDI");
+    /// let mut group = client
+    ///     .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
+    ///     .await
+    ///     .expect("Init");
+    ///
+    /// // This example enables SYNC0 for every detected SubDevice
+    /// for mut slave in group.iter(&client) {
+    ///     slave.set_dc_sync(DcSync::Sync0);
+    /// }
     ///
     /// let group = group
+    ///     .into_pre_op_pdi(&client)
+    ///     .await
+    ///     .expect("PRE-OP -> PRE-OP with PDI")
     ///     .configure_dc_sync(
     ///         &client,
     ///         DcConfiguration {
@@ -965,19 +986,30 @@ where
     ///             start_delay: Duration::from_millis(100),
     ///             // SYNC0 period should be the same as the process data loop in most cases
     ///             sync0_period: cycle_time,
-    ///             // SYNC1 is disabled for this example.
-    ///             sync1_period: None,
     ///             // Send process data half way through cycle
     ///             sync0_shift: cycle_time / 2,
     ///         },
     ///     )
     ///     .await
-    ///     .expect("DC configuration");
-    ///
-    /// let group = group
-    ///     .into_op(&client)
+    ///     .expect("DC configuration")
+    ///     .request_into_op(&client)
     ///     .await
     ///     .expect("PRE-OP -> SAFE-OP -> OP");
+    ///
+    /// // Wait for all SubDevices in the group to reach OP, whilst sending PDI to allow DC to start
+    /// // correctly.
+    /// while !group.all_op(&client).await? {
+    ///     let now = Instant::now();
+    ///
+    ///     let (
+    ///         _wkc,
+    ///         CycleInfo {
+    ///             next_cycle_wait, ..
+    ///         },
+    ///     ) = group.tx_rx_dc(&client).await.expect("TX/RX");
+    ///
+    ///     smol::Timer::at(now + next_cycle_wait).await;
+    /// }
     ///
     /// // Main application process data cycle
     /// loop {
