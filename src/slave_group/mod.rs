@@ -61,7 +61,7 @@ pub struct NoDc;
 
 /// A typestate for [`SlaveGroup`]s that have a configured Distributed Clock.
 ///
-/// This typestate can be entered by calling [`SlaveGroup::configure_dc_sync0`].
+/// This typestate can be entered by calling [`SlaveGroup::configure_dc_sync`].
 #[derive(Copy, Clone, Debug)]
 pub struct HasDc {
     sync0_period: u64,
@@ -127,7 +127,7 @@ pub struct CycleInfo {
     /// The time to wait before starting the next process data cycle.
     ///
     /// This duration is calculated based on the [`sync0_period`](DcConfiguration::sync0_period) and
-    /// [`sync0_shift`](DcConfiguration::sync0_shift) passed into [`SlaveGroup::configure_dc_sync0`]
+    /// [`sync0_shift`](DcConfiguration::sync0_shift) passed into [`SlaveGroup::configure_dc_sync`]
     /// and is meant to be used to accurately synchronise the MainDevice process data cycle with the
     /// DC system time.
     pub next_cycle_wait: Duration,
@@ -329,7 +329,7 @@ where
     /// This method will return with a
     /// [`Error::DistributedClock(DistributedClockError::NoReference)`](Error::DistributedClock)
     /// error if no DC reference SubDevice is present on the network.
-    pub async fn configure_dc_sync0(
+    pub async fn configure_dc_sync(
         self,
         client: &Client<'_>,
         dc_conf: DcConfiguration,
@@ -963,7 +963,7 @@ where
     /// #     .expect("PRE-OP -> PRE-OP with PDI");
     ///
     /// let group = group
-    ///     .configure_dc_sync0(
+    ///     .configure_dc_sync(
     ///         &client,
     ///         DcConfiguration {
     ///             // Start SYNC0 100ms in the future
