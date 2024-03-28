@@ -18,7 +18,6 @@ use crate::{
 use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
 use futures_lite::{AsyncRead, AsyncWrite};
-use rustix::{fs::Timespec, time::ClockId};
 use std::thread;
 
 struct TxRxFut<'a> {
@@ -144,9 +143,16 @@ pub fn tx_rx_task<'sto>(
 ///
 /// On POSIX systems, this function uses the monotonic clock provided by the system.
 pub fn ethercat_now() -> u64 {
-    let Timespec { tv_sec, tv_nsec } = rustix::time::clock_gettime(ClockId::Monotonic);
+    let mut time = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
 
-    let t = (tv_sec * 1000 * 1000 * 1000 + tv_nsec) as u64;
+    unsafe {
+        libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut time);
+    };
+
+    let t = (time.tv_sec * 1000 * 1000 * 1000 + time.tv_nsec) as u64;
 
     // EtherCAT epoch is 2000-01-01
     t.saturating_sub(946684800)
