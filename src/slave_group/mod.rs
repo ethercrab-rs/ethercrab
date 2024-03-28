@@ -825,7 +825,15 @@ where
 
             client.pdu_loop.wake_sender();
 
-            let received = frame.await?;
+            let received = match frame.await {
+                Ok(received) => received,
+                Err(Error::Timeout) => {
+                    fmt::warn!("Frame timed out");
+
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
 
             let data = received.take(pdu_handle)?;
 
@@ -896,7 +904,15 @@ where
 
                 client.pdu_loop.wake_sender();
 
-                let received = frame.await?;
+                let received = match frame.await {
+                    Ok(received) => received,
+                    Err(Error::Timeout) => {
+                        fmt::warn!("Frame timed out");
+
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                };
 
                 let dc = received.take(dc_handle)?;
                 let data = received.take(pdu_handle)?;
@@ -1067,7 +1083,15 @@ where
 
             client.pdu_loop.wake_sender();
 
-            let received = frame.await?;
+            let received = match frame.await {
+                Ok(received) => received,
+                Err(Error::Timeout) => {
+                    fmt::warn!("Frame timed out");
+
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
 
             let dc = received.take(dc_handle)?;
             let data = received.take(pdu_handle)?;
