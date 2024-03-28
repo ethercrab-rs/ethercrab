@@ -51,7 +51,7 @@ async-channel = "2.2.0"
 nix = { version = "0.28.0", features = ["net"] }
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2.153"
+libc = "0.2.149"
 rustix = { version = "0.38.21", default-features = false, features = ["time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

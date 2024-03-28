@@ -1,13 +1,11 @@
 //! Copied from SmolTCP's RawSocketDesc, with inspiration from
 //! [https://github.com/embassy-rs/embassy](https://github.com/embassy-rs/embassy/blob/master/examples/std/src/tuntap.rs).
 
-use crate::ETHERCAT_ETHERTYPE_RAW;
-use async_io::IoSafe;
-use rustix::{
-    fd::OwnedFd,
-    ioctl::{Opcode, RawOpcode},
-    net::{AddressFamily, Protocol, RawProtocol, SocketFlags, SocketType},
+use crate::{
+    std::unix::{ifreq, ifreq_for},
+    ETHERCAT_ETHERTYPE_RAW,
 };
+use async_io::IoSafe;
 use std::{
     io, mem,
     os::{
@@ -17,28 +15,30 @@ use std::{
 };
 
 pub struct RawSocketDesc {
-    /// Interface descriptor.
-    lower: OwnedFd,
-    /// Interface name.
-    if_name: String,
+    lower: i32,
+    ifreq: ifreq,
 }
 
 impl RawSocketDesc {
     pub fn new(name: &str) -> io::Result<Self> {
-        let lower = rustix::net::socket_with(
-            AddressFamily::PACKET,
-            SocketType::RAW,
-            SocketFlags::NONBLOCK,
-            Some(Protocol::from_raw(
-                // SAFETY: EtherCAT protocol is 0x88a4. If you've set the constant to 0, what is
-                // wrong with you?
-                unsafe { RawProtocol::new_unchecked(ETHERCAT_ETHERTYPE_RAW.into()) },
-            )),
-        )?;
+        let protocol = ETHERCAT_ETHERTYPE_RAW as i16;
+
+        let lower = unsafe {
+            let lower = libc::socket(
+                // Ethernet II frames
+                libc::AF_PACKET,
+                libc::SOCK_RAW | libc::SOCK_NONBLOCK,
+                protocol.to_be() as i32,
+            );
+            if lower == -1 {
+                return Err(io::Error::last_os_error());
+            }
+            lower
+        };
 
         let mut self_ = RawSocketDesc {
             lower,
-            if_name: name.to_string(),
+            ifreq: ifreq_for(name),
         };
 
         self_.bind_interface()?;
@@ -49,14 +49,10 @@ impl RawSocketDesc {
     fn bind_interface(&mut self) -> io::Result<()> {
         let protocol = ETHERCAT_ETHERTYPE_RAW as i16;
 
-        let if_index = rustix::net::netdevice::name_to_index(&self.lower, &self.if_name)?
-            .try_into()
-            .map_err(|e| io::Error::other(e))?;
-
         let sockaddr = libc::sockaddr_ll {
             sll_family: libc::AF_PACKET as u16,
             sll_protocol: protocol.to_be() as u16,
-            sll_ifindex: if_index,
+            sll_ifindex: ifreq_ioctl(self.lower, &mut self.ifreq, libc::SIOCGIFINDEX)?,
             sll_hatype: 1,
             sll_pkttype: 0,
             sll_halen: 6,
@@ -66,11 +62,10 @@ impl RawSocketDesc {
         unsafe {
             #[allow(trivial_casts)]
             let res = libc::bind(
-                self.lower.as_raw_fd(),
+                self.lower,
                 &sockaddr as *const libc::sockaddr_ll as *const libc::sockaddr,
                 mem::size_of::<libc::sockaddr_ll>() as libc::socklen_t,
             );
-
             if res == -1 {
                 return Err(io::Error::last_os_error());
             }
@@ -80,21 +75,19 @@ impl RawSocketDesc {
     }
 
     pub fn interface_mtu(&mut self) -> io::Result<usize> {
-        let mtu = unsafe { rustix::ioctl::ioctl(&self.lower, IoctlMtu::new(&self.if_name))? };
-
-        usize::try_from(mtu).map_err(|e| io::Error::other(e))
+        ifreq_ioctl(self.lower, &mut self.ifreq, libc::SIOCGIFMTU).map(|mtu| mtu as usize)
     }
 }
 
 impl AsRawFd for RawSocketDesc {
     fn as_raw_fd(&self) -> RawFd {
-        self.lower.as_raw_fd()
+        self.lower
     }
 }
 
 impl AsFd for RawSocketDesc {
     fn as_fd(&self) -> BorrowedFd<'_> {
-        self.lower.as_fd()
+        unsafe { BorrowedFd::borrow_raw(self.lower) }
     }
 }
 
@@ -102,6 +95,14 @@ impl AsFd for RawSocketDesc {
 // by `Read` or `Write` impls. More information can be read
 // [here](https://docs.rs/async-io/latest/async_io/trait.IoSafe.html).
 unsafe impl IoSafe for RawSocketDesc {}
+
+impl Drop for RawSocketDesc {
+    fn drop(&mut self) {
+        unsafe {
+            libc::close(self.lower);
+        }
+    }
+}
 
 impl io::Read for RawSocketDesc {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -141,44 +142,23 @@ impl io::Write for RawSocketDesc {
     }
 }
 
-#[repr(transparent)]
-struct IoctlMtu(libc::ifreq);
-
-impl IoctlMtu {
-    fn new(if_name: &str) -> Self {
-        let mut ifreq = libc::ifreq {
-            ifr_name: [0; libc::IF_NAMESIZE],
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_mtu: 0 },
-        };
-
-        for (i, byte) in if_name.as_bytes().iter().enumerate() {
-            ifreq.ifr_name[i] = *byte as libc::c_char
-        }
-
-        Self(ifreq)
-    }
-}
-
-unsafe impl rustix::ioctl::Ioctl for IoctlMtu {
-    type Output = i32;
-
-    const OPCODE: Opcode = Opcode::old(libc::SIOCGIFMTU as RawOpcode);
-
-    const IS_MUTATING: bool = true;
-
-    fn as_ptr(&mut self) -> *mut libc::c_void {
+fn ifreq_ioctl(
+    lower: libc::c_int,
+    ifreq: &mut ifreq,
+    cmd: libc::c_ulong,
+) -> io::Result<libc::c_int> {
+    unsafe {
         #[allow(trivial_casts)]
-        {
-            (&mut self.0) as *const _ as *mut _
+        #[cfg(target_env = "musl")]
+        let res = libc::ioctl(lower, cmd as libc::c_int, ifreq as *mut ifreq);
+        #[allow(trivial_casts)]
+        #[cfg(not(target_env = "musl"))]
+        let res = libc::ioctl(lower, cmd, ifreq as *mut ifreq);
+
+        if res == -1 {
+            return Err(io::Error::last_os_error());
         }
     }
 
-    unsafe fn output_from_ptr(
-        _out: rustix::ioctl::IoctlOutput,
-        extract_output: *mut libc::c_void,
-    ) -> rustix::io::Result<Self::Output> {
-        let result = extract_output.cast::<libc::ifreq>().read();
-
-        Ok(result.ifr_ifru.ifru_mtu)
-    }
+    Ok(ifreq.ifr_data)
 }

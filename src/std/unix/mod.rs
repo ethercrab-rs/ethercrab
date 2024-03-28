@@ -151,3 +151,24 @@ pub fn ethercat_now() -> u64 {
     // EtherCAT epoch is 2000-01-01
     t.saturating_sub(946684800)
 }
+
+// Unix only
+#[allow(trivial_numeric_casts)]
+fn ifreq_for(name: &str) -> ifreq {
+    let mut ifreq = ifreq {
+        ifr_name: [0; libc::IF_NAMESIZE],
+        ifr_data: 0,
+    };
+    for (i, byte) in name.as_bytes().iter().enumerate() {
+        ifreq.ifr_name[i] = *byte as libc::c_char
+    }
+    ifreq
+}
+
+#[repr(C)]
+#[derive(Debug)]
+#[allow(non_camel_case_types)]
+struct ifreq {
+    ifr_name: [libc::c_char; libc::IF_NAMESIZE],
+    ifr_data: libc::c_int, /* ifr_ifindex or ifr_mtu */
+}
