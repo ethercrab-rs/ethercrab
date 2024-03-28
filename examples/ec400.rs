@@ -60,14 +60,6 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
-
     let mut group = client
         .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
         .await
@@ -156,6 +148,10 @@ async fn main() -> Result<(), Error> {
 
     let accel = 300;
 
+    let term = Arc::new(AtomicBool::new(false));
+    signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
+        .expect("Register hook");
+
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
@@ -187,7 +183,7 @@ async fn main() -> Result<(), Error> {
 
             pos_cmd.copy_from_slice(&velocity.to_le_bytes());
 
-            if running.load(Ordering::SeqCst) {
+            if term.load(Ordering::Relaxed) {
                 if vel < 200_000 {
                     velocity += accel;
                 }
