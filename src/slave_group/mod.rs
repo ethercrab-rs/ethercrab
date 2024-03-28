@@ -811,50 +811,26 @@ where
             client.max_frame_data()
         );
 
-        for _ in 0..client.config.retry_behaviour.loop_counts() {
-            let mut frame = client.pdu_loop.alloc_frame()?;
+        let data = Command::lrw(self.inner().pdi_start.start_address)
+            .ignore_wkc()
+            .send_receive_slice(client, self.pdi())
+            .await?;
 
-            let pdu_handle = frame.push_pdu::<&[u8]>(
-                Command::lrw(self.inner().pdi_start.start_address).into(),
-                self.pdi(),
-                None,
-                false,
-            )?;
-
-            let frame = frame.mark_sendable().timeout(client.timeouts.pdu);
-
-            client.pdu_loop.wake_sender();
-
-            let received = match frame.await {
-                Ok(received) => received,
-                Err(Error::Timeout) => {
-                    fmt::warn!("Frame timed out");
-
-                    continue;
-                }
-                Err(e) => return Err(e),
-            };
-
-            let data = received.take(pdu_handle)?;
-
-            if data.len() != self.pdi().len() {
-                fmt::error!(
-                    "Data length {} does not match value length {}",
-                    data.len(),
-                    self.pdi().len()
-                );
-                return Err(Error::Pdu(PduError::Decode));
-            }
-
-            let wkc = data.working_counter;
-
-            // Copy received input data back into memory
-            self.pdi_mut()[0..self.read_pdi_len].copy_from_slice(&data[0..self.read_pdi_len]);
-
-            return Ok(wkc);
+        if data.len() != self.pdi().len() {
+            fmt::error!(
+                "Data length {} does not match value length {}",
+                data.len(),
+                self.pdi().len()
+            );
+            return Err(Error::Pdu(PduError::Decode));
         }
 
-        Err(Error::Timeout)
+        let wkc = data.working_counter;
+
+        // Copy received input data back into memory
+        self.pdi_mut()[0..self.read_pdi_len].copy_from_slice(&data[0..self.read_pdi_len]);
+
+        Ok(wkc)
     }
 
     /// Drive the slave group's inputs and outputs and synchronise EtherCAT system time with `FRMW`.
