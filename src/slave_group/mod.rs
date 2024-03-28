@@ -811,42 +811,12 @@ where
             client.max_frame_data()
         );
 
-        for _ in 0..client.config.retry_behaviour.loop_counts() {
-            let mut frame = client.pdu_loop.alloc_frame()?;
+        let data = Command::lrw(self.inner().pdi_start.start_address)
+            .ignore_wkc()
+            .send_receive_slice(client, self.pdi())
+            .await?;
 
-            let pdu_handle = frame.push_pdu::<&[u8]>(
-                Command::lrw(self.inner().pdi_start.start_address).into(),
-                self.pdi(),
-                None,
-                false,
-            )?;
-
-            let frame = frame.mark_sendable().timeout(client.timeouts.pdu);
-
-            client.pdu_loop.wake_sender();
-
-            let received = frame.await?;
-
-            let data = received.take(pdu_handle)?;
-
-            if data.len() != self.pdi().len() {
-                fmt::error!(
-                    "Data length {} does not match value length {}",
-                    data.len(),
-                    self.pdi().len()
-                );
-                return Err(Error::Pdu(PduError::Decode));
-            }
-
-            let wkc = data.working_counter;
-
-            // Copy received input data back into memory
-            self.pdi_mut()[0..self.read_pdi_len].copy_from_slice(&data[0..self.read_pdi_len]);
-
-            return Ok(wkc);
-        }
-
-        Err(Error::Timeout)
+        self.process_pdi_response(data)
     }
 
     /// Drive the slave group's inputs and outputs and synchronise EtherCAT system time with `FRMW`.
@@ -875,59 +845,76 @@ where
         );
 
         if let Some(dc_ref) = client.dc_ref_address() {
-            for _ in 0..client.config.retry_behaviour.loop_counts() {
-                let mut frame = client.pdu_loop.alloc_frame()?;
+            let (time, wkc) = client
+                .multi_pdu(
+                    |frame| {
+                        let dc_handle = frame.push_pdu::<u64>(
+                            Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into()).into(),
+                            0u64,
+                            None,
+                            true,
+                        )?;
 
-                let dc_handle = frame.push_pdu::<u64>(
-                    Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into()).into(),
-                    0u64,
-                    None,
-                    true,
-                )?;
+                        let pdu_handle = frame.push_pdu::<()>(
+                            Command::lrw(self.inner().pdi_start.start_address).into(),
+                            self.pdi(),
+                            None,
+                            false,
+                        )?;
 
-                let pdu_handle = frame.push_pdu::<&[u8]>(
-                    Command::lrw(self.inner().pdi_start.start_address).into(),
-                    self.pdi(),
-                    None,
-                    false,
-                )?;
+                        Ok((dc_handle, pdu_handle))
+                    },
+                    |received, (dc, data)| {
+                        self.process_pdi_response_with_time(
+                            received.take(dc)?,
+                            received.take(data)?,
+                        )
+                    },
+                )
+                .await?;
 
-                let frame = frame.mark_sendable().timeout(client.timeouts.pdu);
-
-                client.pdu_loop.wake_sender();
-
-                let received = frame.await?;
-
-                let dc = received.take(dc_handle)?;
-                let data = received.take(pdu_handle)?;
-
-                if data.len() != self.pdi().len() {
-                    fmt::error!(
-                        "Data length {} does not match value length {}",
-                        data.len(),
-                        self.pdi().len()
-                    );
-                    return Err(Error::Pdu(PduError::Decode));
-                }
-
-                // Do this before PDI inputs copy so if it fails for some reason, we're not left
-                // with potentially bad data in memory.
-                let time = u64::unpack_from_slice(&dc)?;
-                let wkc = data.working_counter;
-
-                // Copy received input data back into memory
-                self.pdi_mut()[0..self.read_pdi_len].copy_from_slice(&data[0..self.read_pdi_len]);
-
-                return Ok((wkc, Some(time)));
-            }
-
-            Err(Error::Timeout)
+            return Ok((wkc, Some(time)));
         } else {
             self.tx_rx(client).await.map(|wkc| (wkc, None))
         }
     }
+
+    fn process_pdi_response_with_time(
+        &self,
+        dc: crate::pdu_loop::ReceivedPdu<'_, u64>,
+        data: crate::pdu_loop::ReceivedPdu<'_, ()>,
+    ) -> Result<(u64, u16), Error> {
+        let time = u64::unpack_from_slice(&dc)?;
+
+        Ok((time, self.process_pdi_response(data)?))
+    }
+
+    /// Take a received PDI and copy its inputs into the group's memory.
+    ///
+    /// Returns working counter on success.
+    fn process_pdi_response(
+        &self,
+        data: crate::pdu_loop::ReceivedPdu<'_, ()>,
+    ) -> Result<u16, Error> {
+        if data.len() != self.pdi().len() {
+            fmt::error!(
+                "Data length {} does not match value length {}",
+                data.len(),
+                self.pdi().len()
+            );
+
+            return Err(Error::Pdu(PduError::Decode));
+        }
+
+        let wkc = data.working_counter;
+
+        self.pdi_mut()[0..self.read_pdi_len].copy_from_slice(&data[0..self.read_pdi_len]);
+
+        Ok(wkc)
+    }
 }
 
+// Methods for when the group has a PDI AND has Distributed Clocks configured
 impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MAX_PDI, S, HasDc>
 where
     S: HasPdi,
@@ -1046,66 +1033,46 @@ where
             self.read_pdi_len
         );
 
-        for _ in 0..client.config.retry_behaviour.loop_counts() {
-            let mut frame = client.pdu_loop.alloc_frame()?;
+        let (time, wkc) = client
+            .multi_pdu(
+                |frame| {
+                    let dc_handle = frame.push_pdu::<u64>(
+                        Command::frmw(self.dc_conf.reference, RegisterAddress::DcSystemTime.into())
+                            .into(),
+                        0u64,
+                        None,
+                        true,
+                    )?;
 
-            let dc_handle = frame.push_pdu::<u64>(
-                Command::frmw(self.dc_conf.reference, RegisterAddress::DcSystemTime.into()).into(),
-                0u64,
-                None,
-                true,
-            )?;
+                    let pdu_handle = frame.push_pdu::<()>(
+                        Command::lrw(self.inner().pdi_start.start_address).into(),
+                        self.pdi(),
+                        None,
+                        false,
+                    )?;
 
-            let pdu_handle = frame.push_pdu::<&[u8]>(
-                Command::lrw(self.inner().pdi_start.start_address).into(),
-                self.pdi(),
-                None,
-                false,
-            )?;
-
-            let frame = frame.mark_sendable().timeout(client.timeouts.pdu);
-
-            client.pdu_loop.wake_sender();
-
-            let received = frame.await?;
-
-            let dc = received.take(dc_handle)?;
-            let data = received.take(pdu_handle)?;
-
-            if data.len() != self.pdi().len() {
-                fmt::error!(
-                    "Data length {} does not match value length {}",
-                    data.len(),
-                    self.pdi().len()
-                );
-                return Err(Error::Pdu(PduError::Decode));
-            }
-
-            // Do this before PDI inputs copy so if it fails for some reason, we're not left
-            // with potentially bad data in memory.
-            let time = u64::unpack_from_slice(&dc)?;
-            let wkc = data.working_counter;
-
-            // Copy received input data back into memory
-            self.pdi_mut()[0..self.read_pdi_len].copy_from_slice(&data[0..self.read_pdi_len]);
-
-            // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
-            // time is rounded to a whole number of `sync0_period`-length cycles.
-            let cycle_start_offset = time % self.dc_conf.sync0_period;
-
-            let time_to_next_iter =
-                self.dc_conf.sync0_period + (self.dc_conf.sync0_shift - cycle_start_offset);
-
-            return Ok((
-                wkc,
-                CycleInfo {
-                    dc_system_time: time,
-                    cycle_start_offset: Duration::from_nanos(cycle_start_offset),
-                    next_cycle_wait: Duration::from_nanos(time_to_next_iter),
+                    Ok((dc_handle, pdu_handle))
                 },
-            ));
-        }
+                |received, (dc, data)| {
+                    self.process_pdi_response_with_time(received.take(dc)?, received.take(data)?)
+                },
+            )
+            .await?;
 
-        Err(Error::Timeout)
+        // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
+        // time is rounded to a whole number of `sync0_period`-length cycles.
+        let cycle_start_offset = time % self.dc_conf.sync0_period;
+
+        let time_to_next_iter =
+            self.dc_conf.sync0_period + (self.dc_conf.sync0_shift - cycle_start_offset);
+
+        return Ok((
+            wkc,
+            CycleInfo {
+                dc_system_time: time,
+                cycle_start_offset: Duration::from_nanos(cycle_start_offset),
+                next_cycle_wait: Duration::from_nanos(time_to_next_iter),
+            },
+        ));
     }
 }
