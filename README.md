@@ -167,11 +167,12 @@ async fn main() -> Result<(), Error> {
   - [x] Supports configuration using CoE data
 - [x] Safely usable in multi-threaded Linux systems with e.g. `smol`, `tokio` or `std::thread` and
       `block_on`.
+- [x] Support for `io_uring` on Linux systems to improve performance and latency
 - [x] Support for SDO read/writes to configure slave devices
-- [ ] Distributed clocks
+- [x] Distributed clocks
   - [x] Detection of delays between slave devices in topology
   - [x] Static drift compensation on startup
-  - [ ] Cyclic synchronisation during OP
+  - [x] Cyclic synchronisation during OP
 - [x] Basic support for [CiA402](https://www.can-cia.org/can-knowledge/canopen/cia402/)/DS402 drives
   - [ ] A higher level DS402 API for torque, position and velocity control of common servo drives in
         a more abstract way.
