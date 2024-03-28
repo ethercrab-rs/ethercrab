@@ -134,28 +134,8 @@ impl WrappedWrite {
         value: impl EtherCrabWireWrite,
         len_override: Option<u16>,
     ) -> Result<ReceivedPdu<'client, ()>, Error> {
-        for _ in 0..client.config.retry_behaviour.loop_counts() {
-            let mut frame = client.pdu_loop.alloc_frame()?;
-            let frame_idx = frame.frame_index();
-
-            let handle = frame.push_pdu::<()>(self.command.into(), &value, len_override, false)?;
-
-            let frame = frame.mark_sendable();
-
-            client.pdu_loop.wake_sender();
-
-            match frame.timeout(client.timeouts.pdu).await {
-                Ok(result) => return result.take(handle),
-                Err(Error::Timeout) => {
-                    fmt::error!("Frame index {} timed out", frame_idx);
-
-                    // NOTE: The `Drop` impl of `ReceiveFrameFut` frees the frame by setting its
-                    // state to `None`, ready for reuse.
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        Err(Error::Timeout)
+        client
+            .single_pdu(self.command.into(), &value, len_override)
+            .await
     }
 }

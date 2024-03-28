@@ -7,7 +7,8 @@ mod pdu_tx;
 // NOTE: Pub so doc links work
 pub mod storage;
 
-use self::frame_element::created_frame::CreatedFrame;
+pub(crate) use self::frame_element::created_frame::CreatedFrame;
+pub(crate) use self::frame_element::received_frame::ReceivedFrame;
 use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
 pub use frame_element::received_frame::ReceivedPdu;
 pub use frame_element::sendable_frame::SendableFrame;

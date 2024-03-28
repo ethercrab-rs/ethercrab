@@ -84,37 +84,6 @@ impl WrappedRead {
         }
     }
 
-    // Some manual monomorphisation
-    async fn common<'client, 'frame>(
-        &self,
-        client: &'client Client<'client>,
-        len: u16,
-    ) -> Result<ReceivedPdu<'client, ()>, Error>
-    where
-        'client: 'frame,
-    {
-        for _ in 0..client.config.retry_behaviour.loop_counts() {
-            let mut frame = client.pdu_loop.alloc_frame()?;
-            let frame_idx = frame.frame_index();
-
-            let handle = frame.push_pdu::<()>(self.command.into(), (), Some(len), false)?;
-
-            let frame = frame.mark_sendable();
-
-            client.pdu_loop.wake_sender();
-
-            match frame.timeout(client.timeouts.pdu).await {
-                Ok(result) => return result.take(handle),
-                Err(Error::Timeout) => {
-                    fmt::error!("Frame index {} timed out", frame_idx);
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        Err(Error::Timeout)
-    }
-
     /// Receive data and decode into a `T`.
     pub async fn receive<'client, T>(self, client: &'client Client<'client>) -> Result<T, Error>
     where
@@ -152,5 +121,17 @@ impl WrappedRead {
         self.common(client, T::PACKED_LEN as u16)
             .await
             .map(|res| res.working_counter)
+    }
+
+    // Some manual monomorphisation
+    async fn common<'client, 'frame>(
+        &self,
+        client: &'client Client<'client>,
+        len: u16,
+    ) -> Result<ReceivedPdu<'client, ()>, Error>
+    where
+        'client: 'frame,
+    {
+        client.single_pdu(self.command.into(), (), Some(len)).await
     }
 }
