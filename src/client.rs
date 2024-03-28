@@ -3,10 +3,10 @@ use crate::{
     al_status_code::AlStatusCode,
     command::Command,
     dc,
-    error::{Error, Item},
+    error::{Error, Item, PduError},
     fmt,
     pdi::PdiOffset,
-    pdu_loop::PduLoop,
+    pdu_loop::{CreatedFrame, PduLoop, ReceivedFrame, ReceivedPdu},
     register::RegisterAddress,
     slave::Slave,
     slave_group::{self, SlaveGroupHandle},
@@ -18,6 +18,7 @@ use core::{
     ops::Range,
     sync::atomic::{AtomicU16, Ordering},
 };
+use ethercrab_wire::EtherCrabWireWrite;
 use heapless::FnvIndexMap;
 
 /// The main EtherCAT master instance.
@@ -475,6 +476,71 @@ impl<'sto> Client<'sto> {
 
     pub(crate) fn max_frame_data(&self) -> usize {
         self.pdu_loop.max_frame_data()
+    }
+
+    /// Send one or more PDUs in a frame.
+    pub(crate) async fn multi_pdu<T, H>(
+        &self,
+        send: impl Fn(&mut CreatedFrame) -> Result<H, PduError>,
+        take: impl Fn(ReceivedFrame<'_>, H) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        for _ in 0..self.config.retry_behaviour.loop_counts() {
+            let mut frame = self.pdu_loop.alloc_frame()?;
+            let frame_idx = frame.frame_index();
+
+            let handles = send(&mut frame)?;
+
+            let frame = frame.mark_sendable().timeout(self.timeouts.pdu);
+
+            self.pdu_loop.wake_sender();
+
+            let received = match frame.await {
+                Ok(received) => received,
+                Err(Error::Timeout) => {
+                    fmt::warn!("Frame index {} timed out", frame_idx);
+
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
+
+            return take(received, handles);
+        }
+
+        Err(Error::Timeout)
+    }
+
+    /// Send a single PDU in a frame.
+    pub(crate) async fn single_pdu<T>(
+        &self,
+        command: Command,
+        data: impl EtherCrabWireWrite + Copy,
+        len_override: Option<u16>,
+    ) -> Result<ReceivedPdu<'_, T>, Error> {
+        for _ in 0..self.config.retry_behaviour.loop_counts() {
+            let mut frame = self.pdu_loop.alloc_frame()?;
+            let frame_idx = frame.frame_index();
+
+            let handle = frame.push_pdu(command, data, len_override, false)?;
+
+            let frame = frame.mark_sendable().timeout(self.timeouts.pdu);
+
+            self.pdu_loop.wake_sender();
+
+            let received = match frame.await {
+                Ok(received) => received,
+                Err(Error::Timeout) => {
+                    fmt::warn!("Frame index {} timed out", frame_idx);
+
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
+
+            return received.take(handle);
+        }
+
+        Err(Error::Timeout)
     }
 }
 
