@@ -81,8 +81,6 @@ cassette = "0.2.5"
 csv = "1.3.0"
 serde = { version = "1.0.190", default-features = false, features = ["derive"] }
 signal-hook = "0.3.17"
-
-[target.'cfg(target_os = "linux")'.dev-dependencies]
 core_affinity = "0.8.1"
 
 [features]
