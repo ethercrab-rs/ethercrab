@@ -6,6 +6,7 @@ use crate::{
 };
 use core::{mem::MaybeUninit, task::Waker};
 use io_uring::{opcode, IoUring};
+use rustix::io::Errno;
 use smallvec::{smallvec, SmallVec};
 use std::{
     io,
@@ -177,7 +178,7 @@ pub fn tx_rx_task_io_uring<'sto>(
 
         // SAFETY: We must never call `completion_shared` or `completion` inside this loop.
         for recv in unsafe { ring.completion_shared() } {
-            if recv.result() < 0 && recv.result() != -libc::EWOULDBLOCK {
+            if recv.result() < 0 && Errno::from_raw_os_error(recv.result()) != Errno::WOULDBLOCK {
                 return Err(io::Error::last_os_error());
             }
 
@@ -208,7 +209,7 @@ pub fn tx_rx_task_io_uring<'sto>(
             }
 
             // Original read did not succeed. Requeue read so we can try again.
-            if recv.result() == -libc::EWOULDBLOCK {
+            if Errno::from_raw_os_error(recv.result()) == Errno::WOULDBLOCK {
                 fmt::trace!("Frame key {} would block. Queuing for retry", key);
 
                 let (rx_entry, _buf) = bufs.get(key as usize).expect("Could not get retry entry");
