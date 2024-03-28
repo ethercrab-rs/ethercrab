@@ -138,3 +138,7 @@ harness = false
 [profile.profiling]
 inherits = "release"
 debug = true
+
+# DELETEME when https://github.com/smoltcp-rs/smoltcp/pull/906 is released
+[patch.crates-io]
+smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "f0d1fd94df877832219f7250259f7b63beaa0363" }
