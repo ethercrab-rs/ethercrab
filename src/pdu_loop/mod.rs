@@ -212,8 +212,7 @@ mod tests {
 
         // Using poll_fn so we can manually poll the frame future multiple times
         let poller = poll_fn(|ctx| {
-            let mut written_packet = Vec::new();
-            written_packet.resize(FRAME_OVERHEAD + data.len(), 0);
+            let mut written_packet = vec![0; FRAME_OVERHEAD + data.len()];
 
             let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 

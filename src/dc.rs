@@ -683,6 +683,7 @@ mod tests {
     }
 
     /// Create a ports object with active flags and DC receive times.
+    #[allow(clippy::too_many_arguments)]
     fn ports(
         active0: bool,
         t0: u32,
