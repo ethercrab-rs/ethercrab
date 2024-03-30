@@ -172,8 +172,7 @@ impl<'sto> PduStorageRef<'sto> {
             // Claim frame so it is no longer free and can be used. It must be claimed before
             // initialisation to avoid race conditions with other threads potentially claiming the
             // same frame.
-            let frame =
-                unsafe { NonNull::new_unchecked(self.frame_at_index(usize::from(frame_idx))) };
+            let frame = unsafe { self.frame_at_index(usize::from(frame_idx)) };
             let frame = unsafe { FrameElement::claim_created(frame, frame_idx) };
 
             if let Ok(f) = frame {
@@ -216,7 +215,7 @@ impl<'sto> PduStorageRef<'sto> {
 
         fmt::trace!("--> Claim receiving frame index {}", frame_idx);
 
-        let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(frame_idx)) };
+        let frame = unsafe { self.frame_at_index(frame_idx) };
         let frame = unsafe { FrameElement::claim_receiving(frame)? };
 
         Some(ReceivingFrame {
@@ -230,10 +229,15 @@ impl<'sto> PduStorageRef<'sto> {
     ///
     /// If the given index is greater than the value in `PduStorage::N`, this will return garbage
     /// data off the end of the frame element buffer.
-    pub(in crate::pdu_loop) unsafe fn frame_at_index(&self, idx: usize) -> *mut FrameElement<0> {
-        self.frames
-            .as_ptr()
-            .byte_add(idx * self.frame_element_stride)
+    pub(in crate::pdu_loop) unsafe fn frame_at_index(
+        &self,
+        idx: usize,
+    ) -> NonNull<FrameElement<0>> {
+        NonNull::new_unchecked(
+            self.frames
+                .as_ptr()
+                .byte_add(idx * self.frame_element_stride),
+        )
     }
 
     pub(crate) unsafe fn marker_at_index(&self, idx: usize) -> &PduMarker {
