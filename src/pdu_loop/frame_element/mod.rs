@@ -1,5 +1,5 @@
 use super::{frame_header::EthercatFrameHeader, PDU_UNUSED_SENTINEL};
-use crate::{error::PduError, fmt, pdu_loop::pdu_flags::PduFlags};
+use crate::{error::PduError, fmt};
 use atomic_waker::AtomicWaker;
 use core::{
     ptr::{addr_of, addr_of_mut, NonNull},
@@ -48,18 +48,6 @@ pub struct PduMarker {
     ///
     /// The marker value is defined by [`PDU_UNUSED_SENTINEL`].
     pub(in crate::pdu_loop) frame_index: AtomicU16,
-}
-
-#[derive(Copy, Clone, Debug, Default)]
-pub struct PduMarkerInner {
-    // Keep so we can check received PDU against this one
-    pub command_code: u8,
-    // Keep so we can check received PDU against this one
-    pub flags: PduFlags,
-    // Always sent as zero plus we never check or use it currently
-    // pub irq: u16,
-    // Sent working counter is always zero, and the received WKC is checked outside the PDU loop
-    // pub working_counter: u16,
 }
 
 impl PduMarker {
