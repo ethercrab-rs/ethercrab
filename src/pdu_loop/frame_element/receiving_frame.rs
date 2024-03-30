@@ -1,20 +1,34 @@
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::frame_element::{received_frame::ReceivedFrame, FrameBox, FrameState},
+    pdu_loop::frame_element::{
+        received_frame::ReceivedFrame, FrameBox, FrameElement, FrameState, PduMarker,
+    },
 };
-use core::{future::Future, task::Poll};
+use core::{future::Future, ptr::NonNull, sync::atomic::AtomicU8, task::Poll};
 
 /// A frame has been sent and is now waiting for a response from the network.
 ///
 /// This state may only be entered once the frame has been sent over the network.
 #[derive(Debug)]
 pub struct ReceivingFrame<'sto> {
-    pub inner: FrameBox<'sto>,
-    // pub pdu_states: &'sto [PduMarker],
+    inner: FrameBox<'sto>,
 }
 
 impl<'sto> ReceivingFrame<'sto> {
+    pub(crate) fn claim_receiving(
+        frame: NonNull<FrameElement<0>>,
+        pdu_markers: NonNull<PduMarker>,
+        pdu_idx: &'sto AtomicU8,
+        frame_data_len: usize,
+    ) -> Option<Self> {
+        let frame = unsafe { FrameElement::claim_receiving(frame)? };
+
+        Some(Self {
+            inner: FrameBox::new(frame, pdu_markers, pdu_idx, frame_data_len),
+        })
+    }
+
     /// Mark the frame as fully received.
     ///
     /// This method may only be called once the frame response (header and data) has been validated

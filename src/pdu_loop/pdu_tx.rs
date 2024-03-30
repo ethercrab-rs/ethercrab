@@ -1,7 +1,4 @@
-use super::{
-    frame_element::{sendable_frame::SendableFrame, FrameBox, FrameElement},
-    storage::PduStorageRef,
-};
+use super::{frame_element::sendable_frame::SendableFrame, storage::PduStorageRef};
 use core::task::Waker;
 
 /// EtherCAT frame transmit adapter.
@@ -25,14 +22,12 @@ impl<'sto> PduTx<'sto> {
         for idx in 0..self.storage.num_frames {
             let frame = self.storage.frame_at_index(idx);
 
-            let sending = if let Some(frame) = unsafe { FrameElement::claim_sending(frame) } {
-                SendableFrame::new(FrameBox::new(
-                    frame,
-                    self.storage.pdu_markers,
-                    self.storage.pdu_idx,
-                    self.storage.frame_data_len,
-                ))
-            } else {
+            let Some(sending) = SendableFrame::claim_sending(
+                frame,
+                self.storage.pdu_markers,
+                self.storage.pdu_idx,
+                self.storage.frame_data_len,
+            ) else {
                 continue;
             };
 

@@ -3,14 +3,16 @@ use crate::{
     fmt,
     generate::write_packed,
     pdu_loop::{
-        frame_element::{receiving_frame::ReceiveFrameFut, FrameBox, FrameState},
+        frame_element::{
+            receiving_frame::ReceiveFrameFut, FrameBox, FrameElement, FrameState, PduMarker,
+        },
         frame_header::EthercatFrameHeader,
         pdu_flags::PduFlags,
         pdu_header::PduHeader,
     },
     Command,
 };
-use core::marker::PhantomData;
+use core::{marker::PhantomData, ptr::NonNull, sync::atomic::AtomicU8};
 use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized};
 
 /// A frame in a freshly allocated state.
@@ -23,8 +25,20 @@ pub struct CreatedFrame<'sto> {
 }
 
 impl<'sto> CreatedFrame<'sto> {
-    pub(crate) fn new(inner: FrameBox<'sto>) -> CreatedFrame<'sto> {
-        Self { inner }
+    pub(crate) fn claim_created(
+        frame: NonNull<FrameElement<0>>,
+        frame_index: u8,
+        pdu_markers: NonNull<PduMarker>,
+        pdu_idx: &'sto AtomicU8,
+        frame_data_len: usize,
+    ) -> Result<Self, PduError> {
+        let frame = unsafe { FrameElement::claim_created(frame, frame_index)? };
+
+        let mut inner = FrameBox::new(frame, pdu_markers, pdu_idx, frame_data_len);
+
+        inner.init();
+
+        Ok(Self { inner })
     }
 
     /// The frame has been initialised, filled with a data payload (if required), and is now ready
@@ -138,7 +152,7 @@ pub struct PduResponseHandle<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameBox, FrameElement, PduMarker};
+    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, PduMarker};
     use atomic_waker::AtomicWaker;
     use core::{cell::UnsafeCell, mem::MaybeUninit, ptr::NonNull, sync::atomic::AtomicU8};
 
@@ -150,12 +164,12 @@ mod tests {
 
         let pdu_idx = AtomicU8::new(0);
 
-        let mut pdu_states: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
-        pdu_states[0].init();
+        let mut pdu_markers: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
+        pdu_markers[0].init();
 
         let frames = UnsafeCell::new([FrameElement {
             frame_index: 0xab,
-            status: AtomicFrameState::new(FrameState::Created),
+            status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
             pdu_payload_len: 0,
@@ -163,18 +177,14 @@ mod tests {
             pdu_count: 0,
         }]);
 
-        // Only one element, and it's the first one, so we don't have to do any pointer arithmetic -
-        // just point to the beginning of the array.
-        let frame_ptr = frames.get().cast();
-
-        let frame_box = FrameBox::new(
-            unsafe { NonNull::new_unchecked(frame_ptr) },
-            unsafe { NonNull::new_unchecked(pdu_states.as_mut_ptr()) },
+        let mut created = CreatedFrame::claim_created(
+            unsafe { NonNull::new_unchecked(frames.get().cast()) },
+            0xab,
+            unsafe { NonNull::new_unchecked(pdu_markers.as_mut_ptr()) },
             &pdu_idx,
             BUF_LEN,
-        );
-
-        let mut created = CreatedFrame::new(frame_box);
+        )
+        .expect("Claim created");
 
         let handle = created.push_pdu::<u32>(
             Command::fpwr(0x1000, 0x0918).into(),

@@ -2,10 +2,11 @@ use crate::{
     error::Error,
     fmt,
     pdu_loop::{
-        frame_element::{FrameBox, FrameState},
+        frame_element::{FrameBox, FrameElement, FrameState, PduMarker},
         frame_header::EthercatFrameHeader,
     },
 };
+use core::{ptr::NonNull, sync::atomic::AtomicU8};
 use ethercrab_wire::EtherCrabWireSized;
 use smoltcp::wire::EthernetFrame;
 
@@ -54,8 +55,17 @@ pub struct SendableFrame<'sto> {
 unsafe impl<'sto> Send for SendableFrame<'sto> {}
 
 impl<'sto> SendableFrame<'sto> {
-    pub(in crate::pdu_loop) fn new(inner: FrameBox<'sto>) -> Self {
-        Self { inner }
+    pub(crate) fn claim_sending(
+        frame: NonNull<FrameElement<0>>,
+        pdu_markers: NonNull<PduMarker>,
+        pdu_idx: &'sto AtomicU8,
+        frame_data_len: usize,
+    ) -> Option<Self> {
+        let frame = unsafe { FrameElement::claim_sending(frame)? };
+
+        Some(Self {
+            inner: FrameBox::new(frame, pdu_markers, pdu_idx, frame_data_len),
+        })
     }
 
     /// The frame has been sent by the network driver.

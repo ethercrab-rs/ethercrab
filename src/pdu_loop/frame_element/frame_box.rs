@@ -1,5 +1,5 @@
 use crate::{
-    error::{Error, PduError},
+    error::PduError,
     fmt,
     pdu_loop::{
         frame_element::{FrameElement, FrameState, PduMarker},
@@ -49,14 +49,14 @@ impl<'sto> FrameBox<'sto> {
     /// Wrap a [`FrameElement`] pointer in a `FrameBox` without modifying the underlying data.
     pub(crate) fn new(
         frame: NonNull<FrameElement<0>>,
-        pdu_states: NonNull<PduMarker>,
+        pdu_markers: NonNull<PduMarker>,
         pdu_idx: &'sto AtomicU8,
         max_len: usize,
     ) -> FrameBox<'sto> {
         Self {
             frame,
             max_len,
-            pdu_markers: pdu_states,
+            pdu_markers,
             pdu_idx,
             _lifetime: PhantomData,
         }
@@ -64,38 +64,17 @@ impl<'sto> FrameBox<'sto> {
 
     /// Wrap a [`FrameElement`] pointer in a `FrameBox` but reset Ethernet and EtherCAT headers, as
     /// well as zero out data payload.
-    pub(crate) fn init(
-        frame: NonNull<FrameElement<0>>,
-        pdu_states: NonNull<PduMarker>,
-        pdu_idx: &'sto AtomicU8,
-        max_len: usize,
-    ) -> Result<FrameBox<'sto>, Error> {
+    pub(crate) fn init(&mut self) {
         unsafe {
-            addr_of_mut!((*frame.as_ptr()).waker).write(AtomicWaker::new());
+            addr_of_mut!((*self.frame.as_ptr()).waker).write(AtomicWaker::new());
         }
 
-        let mut ethernet_frame = unsafe {
-            let buf = core::slice::from_raw_parts_mut(
-                addr_of_mut!((*frame.as_ptr()).ethernet_frame).cast(),
-                max_len,
-            );
-
-            EthernetFrame::new_checked(buf)?
-        };
+        let mut ethernet_frame = self.ethernet_frame_mut();
 
         ethernet_frame.set_src_addr(MASTER_ADDR);
         ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
         ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
-
         ethernet_frame.payload_mut().fill(0);
-
-        Ok(Self {
-            max_len,
-            frame,
-            pdu_markers: pdu_states,
-            pdu_idx,
-            _lifetime: PhantomData,
-        })
     }
 
     pub fn next_pdu_idx(&self) -> u8 {
@@ -157,6 +136,17 @@ impl<'sto> FrameBox<'sto> {
             EthernetFrame::<&[u8]>::header_len() + EthercatFrameHeader::header_len();
 
         unsafe { core::slice::from_raw_parts(ptr.as_ptr(), self.max_len - pdu_payload_start) }
+    }
+
+    fn ethernet_frame_mut(&mut self) -> EthernetFrame<&mut [u8]> {
+        // SAFETY: We hold a mutable reference to the containing `FrameBox`. A `FrameBox` can only
+        // be created from a successful unique acquisition of a frame element.
+        unsafe {
+            EthernetFrame::new_unchecked(core::slice::from_raw_parts_mut(
+                FrameElement::<0>::ptr(self.frame).as_ptr(),
+                self.max_len,
+            ))
+        }
     }
 
     pub(in crate::pdu_loop) fn ethernet_frame(&self) -> EthernetFrame<&[u8]> {
