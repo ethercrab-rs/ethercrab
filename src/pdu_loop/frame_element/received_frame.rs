@@ -83,7 +83,7 @@ impl<'sto> ReceivedFrame<'sto> {
             frame: unsafe { core::mem::transmute::<FrameBox<'sto>, FrameBox<'frame>>(self.inner) },
             pdu_marker: unsafe {
                 core::mem::transmute::<&'sto PduMarker, &'frame PduMarker>(
-                    self.inner.pdu_marker_at(usize::from(pdu_header.index)),
+                    self.inner.pdu_marker_at(pdu_header.index),
                 )
             },
             working_counter,

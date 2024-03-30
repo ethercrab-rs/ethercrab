@@ -187,10 +187,6 @@ impl<'sto> FrameBox<'sto> {
     pub fn reserve_pdu_marker(&self, frame_index: u8) -> Result<u8, PduError> {
         let pdu_idx = self.next_pdu_idx();
 
-        // Sanity check. PDU_SLOTS is currently 256 which is fine, but if that changes, this assert
-        // should catch the logic bug.
-        assert!(usize::from(pdu_idx) < PDU_SLOTS);
-
         let marker = unsafe {
             let base_ptr = self.pdu_markers.as_ptr() as *const PduMarker;
 
@@ -208,9 +204,7 @@ impl<'sto> FrameBox<'sto> {
         Ok(pdu_idx)
     }
 
-    pub fn pdu_marker_at(&self, index: usize) -> &PduMarker {
-        assert!(index < PDU_SLOTS);
-
+    pub fn pdu_marker_at(&self, index: u8) -> &PduMarker {
         unsafe {
             let base_ptr = self.pdu_markers.as_ptr();
 
@@ -218,7 +212,7 @@ impl<'sto> FrameBox<'sto> {
 
             let stride = layout.size() / PDU_SLOTS;
 
-            let this_marker = base_ptr.byte_add(index * stride);
+            let this_marker = base_ptr.byte_add(usize::from(index) * stride);
 
             &*this_marker
         }

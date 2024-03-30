@@ -47,6 +47,7 @@ pub enum FrameState {
 }
 
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct PduMarker {
     /// Ethernet frame index (`u8`) plus marker to indicate if this PDU is in flight (uses `u16`
     /// high bits).

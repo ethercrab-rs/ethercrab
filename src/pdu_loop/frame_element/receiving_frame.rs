@@ -197,7 +197,6 @@ impl<'sto> Drop for ReceiveFrameFut<'sto> {
             r.release_pdu_claims();
 
             // Make frame available for reuse if this future is dropped.
-            // unsafe { FrameElement::set_state(r.frame, FrameState::None) };
             r.set_state(FrameState::None);
         }
     }

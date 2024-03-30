@@ -214,13 +214,6 @@ impl<'sto> PduStorageRef<'sto> {
 
         fmt::trace!("--> Claim receiving frame index {}", frame_idx);
 
-        // let frame = self.frame_at_index(frame_idx);
-        // let frame = unsafe { FrameElement::claim_receiving(frame)? };
-
-        // Some(ReceivingFrame {
-        //     inner: FrameBox::new(frame, self.pdu_markers, self.pdu_idx, self.frame_data_len),
-        // })
-
         ReceivingFrame::claim_receiving(
             self.frame_at_index(frame_idx),
             self.pdu_markers,
@@ -248,10 +241,15 @@ impl<'sto> PduStorageRef<'sto> {
         }
     }
 
-    pub(crate) unsafe fn marker_at_index(&self, idx: usize) -> &PduMarker {
+    pub(crate) fn marker_at_index(&self, idx: u8) -> &PduMarker {
         let stride = Layout::array::<PduMarker>(PDU_SLOTS).unwrap().size() / PDU_SLOTS;
 
-        &*self.pdu_markers.as_ptr().byte_add(idx * stride)
+        unsafe {
+            &*self
+                .pdu_markers
+                .as_ptr()
+                .byte_add(usize::from(idx) * stride)
+        }
     }
 }
 
