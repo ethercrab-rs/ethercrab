@@ -123,7 +123,7 @@ mod tests {
     use core::{future::poll_fn, ops::Deref, pin::pin, task::Poll, time::Duration};
     use futures_lite::Future;
     use smoltcp::wire::{EthernetAddress, EthernetFrame};
-    use std::{sync::Arc, thread, time::Instant};
+    use std::{sync::Arc, thread};
 
     #[test]
     fn timed_out_frame_is_reallocatable() {

@@ -136,23 +136,22 @@ impl PduMarker {
 #[derive(Debug)]
 #[repr(C)]
 pub struct FrameElement<const N: usize> {
-    // TODO: Un-pub everything. This is just to get the thing to compile.
     /// Ethernet frame index. Has nothing to do with PDU header index field.
-    pub(in crate::pdu_loop) frame_index: u8,
-    pub(in crate::pdu_loop) status: AtomicFrameState,
-    pub(in crate::pdu_loop) waker: AtomicWaker,
-    pub(in crate::pdu_loop) pdu_payload_len: usize,
+    frame_index: u8,
+    status: AtomicFrameState,
+    waker: AtomicWaker,
+    pdu_payload_len: usize,
     /// The number of PDU handles held by this frame.
     ///
     /// Used to drop the whole frame only when all PDUs have been consumed from it.
-    pub(in crate::pdu_loop) marker_count: u8,
+    marker_count: u8,
 
     /// Number of PDUs inserted into this frame element
-    pub(in crate::pdu_loop) pdu_count: u8,
+    pdu_count: u8,
 
     // MUST be the last element otherwise pointer arithmetic doesn't work for
     // `NonNull<FrameElement<0>>`.
-    pub(in crate::pdu_loop) ethernet_frame: [u8; N],
+    ethernet_frame: [u8; N],
 }
 
 impl<const N: usize> Default for FrameElement<N> {

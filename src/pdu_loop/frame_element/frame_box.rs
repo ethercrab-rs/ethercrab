@@ -23,7 +23,6 @@ use smoltcp::wire::{EthernetAddress, EthernetFrame};
 /// Frame data common to all typestates.
 #[derive(Copy, Clone)]
 pub struct FrameBox<'sto> {
-    // NOTE: Only pub for tests
     frame: NonNull<FrameElement<0>>,
     pdu_markers: NonNull<PduMarker>,
     pdu_idx: &'sto AtomicU8,
@@ -62,8 +61,7 @@ impl<'sto> FrameBox<'sto> {
         }
     }
 
-    /// Wrap a [`FrameElement`] pointer in a `FrameBox` but reset Ethernet and EtherCAT headers, as
-    /// well as zero out data payload.
+    /// Reset Ethernet and EtherCAT headers, zero out Ethernet frame payload data.
     pub fn init(&mut self) {
         unsafe {
             addr_of_mut!((*self.frame.as_ptr()).waker).write(AtomicWaker::new());

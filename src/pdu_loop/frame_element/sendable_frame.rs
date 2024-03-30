@@ -85,8 +85,7 @@ impl<'sto> SendableFrame<'sto> {
         self.inner.set_state(FrameState::Sendable);
     }
 
-    // NOTE: Only pub for tests
-    pub(crate) fn as_bytes(&self) -> &[u8] {
+    fn as_bytes(&self) -> &[u8] {
         let frame = self.inner.ethernet_frame().into_inner();
 
         let len = EthernetFrame::<&[u8]>::buffer_len(
