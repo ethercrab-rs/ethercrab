@@ -1,10 +1,11 @@
-use super::{receiving_frame::ReceiveFrameFut, FrameState};
 use crate::{
     error::PduError,
     fmt,
     generate::write_packed,
     pdu_loop::{
-        frame_box::FrameBox, frame_header::EthercatFrameHeader, pdu_flags::PduFlags,
+        frame_element::{receiving_frame::ReceiveFrameFut, FrameBox, FrameState},
+        frame_header::EthercatFrameHeader,
+        pdu_flags::PduFlags,
         pdu_header::PduHeader,
     },
     Command,
@@ -137,7 +138,7 @@ pub struct PduResponseHandle<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, PduMarker};
+    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameBox, FrameElement, PduMarker};
     use atomic_waker::AtomicWaker;
     use core::{cell::UnsafeCell, mem::MaybeUninit, ptr::NonNull, sync::atomic::AtomicU8};
 

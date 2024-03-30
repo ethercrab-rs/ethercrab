@@ -1,8 +1,11 @@
-use super::{created_frame::PduResponseHandle, PduMarker};
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::{frame_box::FrameBox, frame_element::FrameState, pdu_header::PduHeader, PDU_SLOTS},
+    pdu_loop::{
+        frame_element::{created_frame::PduResponseHandle, FrameBox, FrameState, PduMarker},
+        pdu_header::PduHeader,
+        PDU_SLOTS,
+    },
 };
 use core::{alloc::Layout, cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
@@ -40,14 +43,6 @@ impl<'sto> ReceivedFrame<'sto> {
         let pdu_header = PduHeader::unpack_from_slice(this_pdu)?;
 
         let payload_len = usize::from(pdu_header.flags.len());
-
-        // let payload_ptr = unsafe {
-        //     NonNull::new_unchecked(
-        //         FrameElement::ethercat_payload_ptr(self.inner.frame)
-        //             .as_ptr()
-        //             .byte_add(pdu_start_offset + PduHeader::PACKED_LEN),
-        //     )
-        // };
 
         // SAFETY: The memory behind `this_pdu` was initialised by Rust so is always valid
         let payload_ptr =

@@ -1,7 +1,10 @@
 use crate::{
     error::Error,
     fmt,
-    pdu_loop::{frame_box::FrameBox, frame_element::FrameState, frame_header::EthercatFrameHeader},
+    pdu_loop::{
+        frame_element::{FrameBox, FrameState},
+        frame_header::EthercatFrameHeader,
+    },
 };
 use ethercrab_wire::EtherCrabWireSized;
 use smoltcp::wire::EthernetFrame;

@@ -1,6 +1,5 @@
 use super::{
-    frame_box::FrameBox,
-    frame_element::{sendable_frame::SendableFrame, FrameElement},
+    frame_element::{sendable_frame::SendableFrame, FrameBox, FrameElement},
     storage::PduStorageRef,
 };
 use core::task::Waker;

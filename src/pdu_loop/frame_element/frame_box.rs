@@ -2,7 +2,7 @@ use crate::{
     error::{Error, PduError},
     fmt,
     pdu_loop::{
-        frame_element::{FrameElement, PduMarker},
+        frame_element::{FrameElement, FrameState, PduMarker},
         frame_header::EthercatFrameHeader,
         PDU_SLOTS,
     },
@@ -19,8 +19,6 @@ use core::{
 };
 use ethercrab_wire::EtherCrabWireSized;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
-
-use super::frame_element::FrameState;
 
 /// Frame data common to all typestates.
 #[derive(Copy, Clone)]

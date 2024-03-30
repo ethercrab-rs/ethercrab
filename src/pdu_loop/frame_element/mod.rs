@@ -1,13 +1,18 @@
-use super::{frame_header::EthercatFrameHeader, PDU_UNUSED_SENTINEL};
-use crate::{error::PduError, fmt};
+use crate::{
+    error::PduError,
+    fmt,
+    pdu_loop::{frame_header::EthercatFrameHeader, PDU_UNUSED_SENTINEL},
+};
 use atomic_waker::AtomicWaker;
 use core::{
     ptr::{addr_of, addr_of_mut, NonNull},
     sync::atomic::{AtomicU16, Ordering},
 };
+pub use frame_box::FrameBox;
 use smoltcp::wire::EthernetFrame;
 
 pub mod created_frame;
+mod frame_box;
 pub mod received_frame;
 pub mod receiving_frame;
 pub mod sendable_frame;
@@ -166,7 +171,7 @@ impl<const N: usize> Default for FrameElement<N> {
 impl<const N: usize> FrameElement<N> {
     /// Get pointer to entire data: the Ethernet frame including header and all subsequent EtherCAT
     /// payload.
-    pub unsafe fn ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
+    unsafe fn ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
         let buf_ptr: *mut [u8; N] = unsafe { addr_of_mut!((*this.as_ptr()).ethernet_frame) };
         let buf_ptr: *mut u8 = buf_ptr.cast();
         NonNull::new_unchecked(buf_ptr)
@@ -174,7 +179,7 @@ impl<const N: usize> FrameElement<N> {
 
     /// Get pointer to EtherCAT frame payload. i.e. the buffer after the end of the EtherCAT frame
     /// header where all the PDUs (header and data) go.
-    pub unsafe fn ethercat_payload_ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
+    unsafe fn ethercat_payload_ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
         // MSRV: `feature(non_null_convenience)` when stabilised
         NonNull::new_unchecked(
             Self::ptr(this)
@@ -185,7 +190,7 @@ impl<const N: usize> FrameElement<N> {
     }
 
     /// Set the frame's state without checking its current state.
-    pub(in crate::pdu_loop) unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
+    unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
         let fptr = this.as_ptr();
 
         (*addr_of_mut!((*fptr).status)).store(state, Ordering::Release);
@@ -195,7 +200,7 @@ impl<const N: usize> FrameElement<N> {
     ///
     /// If the frame is not currently in the given `from` state, this method will return an error
     /// with the actual current frame state.
-    pub unsafe fn swap_state(
+    unsafe fn swap_state(
         this: NonNull<FrameElement<N>>,
         from: FrameState,
         to: FrameState,
@@ -214,7 +219,7 @@ impl<const N: usize> FrameElement<N> {
 
     /// Attempt to clame a frame element as CREATED. Succeeds if the selected FrameElement is
     /// currently in the NONE state.
-    pub unsafe fn claim_created(
+    unsafe fn claim_created(
         this: NonNull<FrameElement<N>>,
         frame_index: u8,
     ) -> Result<NonNull<FrameElement<N>>, PduError> {
@@ -242,15 +247,11 @@ impl<const N: usize> FrameElement<N> {
         Ok(this)
     }
 
-    pub unsafe fn claim_sending(
-        this: NonNull<FrameElement<N>>,
-    ) -> Option<NonNull<FrameElement<N>>> {
+    unsafe fn claim_sending(this: NonNull<FrameElement<N>>) -> Option<NonNull<FrameElement<N>>> {
         Self::swap_state(this, FrameState::Sendable, FrameState::Sending).ok()
     }
 
-    pub unsafe fn claim_receiving(
-        this: NonNull<FrameElement<N>>,
-    ) -> Option<NonNull<FrameElement<N>>> {
+    unsafe fn claim_receiving(this: NonNull<FrameElement<N>>) -> Option<NonNull<FrameElement<N>>> {
         Self::swap_state(this, FrameState::Sent, FrameState::RxBusy)
             .map_err(|actual_state| {
                 fmt::error!(
@@ -263,13 +264,13 @@ impl<const N: usize> FrameElement<N> {
             .ok()
     }
 
-    pub unsafe fn inc_refcount(this: NonNull<FrameElement<0>>) {
+    unsafe fn inc_refcount(this: NonNull<FrameElement<0>>) {
         let value = &mut *addr_of_mut!((*this.as_ptr()).marker_count);
 
         *value += 1;
     }
 
-    pub unsafe fn dec_refcount(this: NonNull<FrameElement<0>>) -> u8 {
+    unsafe fn dec_refcount(this: NonNull<FrameElement<0>>) -> u8 {
         let value = &mut *addr_of_mut!((*this.as_ptr()).marker_count);
 
         *value -= 1;
@@ -277,17 +278,17 @@ impl<const N: usize> FrameElement<N> {
         *value
     }
 
-    pub unsafe fn inc_pdu_count(this: NonNull<FrameElement<0>>) {
+    unsafe fn inc_pdu_count(this: NonNull<FrameElement<0>>) {
         let value = &mut *addr_of_mut!((*this.as_ptr()).pdu_count);
 
         *value += 1;
     }
 
-    pub unsafe fn pdu_count(this: NonNull<FrameElement<0>>) -> u8 {
+    unsafe fn pdu_count(this: NonNull<FrameElement<0>>) -> u8 {
         *addr_of!((*this.as_ptr()).pdu_count)
     }
 
-    pub unsafe fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
+    unsafe fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
         *addr_of!((*this.as_ptr()).frame_index)
     }
 }
