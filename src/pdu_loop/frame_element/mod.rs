@@ -1,26 +1,21 @@
-use super::{frame_header::EthercatFrameHeader, PDU_UNUSED_SENTINEL};
-use crate::{
-    error::{Error, PduError},
-    fmt,
-    pdu_loop::{pdu_flags::PduFlags, PDU_SLOTS},
-    ETHERCAT_ETHERTYPE, MASTER_ADDR,
-};
-use atomic_waker::AtomicWaker;
-use core::{
-    alloc::Layout,
-    fmt::Debug,
-    marker::PhantomData,
-    ptr::{addr_of, addr_of_mut, NonNull},
-    sync::atomic::{AtomicU16, AtomicU8, Ordering},
-    task::Waker,
-};
-use ethercrab_wire::EtherCrabWireSized;
-use smoltcp::wire::{EthernetAddress, EthernetFrame};
-
 pub mod created_frame;
+mod frame_box;
 pub mod received_frame;
 pub mod receiving_frame;
 pub mod sendable_frame;
+
+use crate::{
+    error::PduError,
+    fmt,
+    pdu_loop::{frame_header::EthercatFrameHeader, PDU_UNUSED_SENTINEL},
+};
+use atomic_waker::AtomicWaker;
+use core::{
+    ptr::{addr_of, addr_of_mut, NonNull},
+    sync::atomic::{AtomicU16, Ordering},
+};
+use frame_box::FrameBox;
+use smoltcp::wire::EthernetFrame;
 
 /// Frame state.
 #[atomic_enum::atomic_enum]
@@ -52,6 +47,7 @@ pub enum FrameState {
 }
 
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct PduMarker {
     /// Ethernet frame index (`u8`) plus marker to indicate if this PDU is in flight (uses `u16`
     /// high bits).
@@ -60,23 +56,11 @@ pub struct PduMarker {
     frame_index: AtomicU16,
 }
 
-#[derive(Copy, Clone, Debug, Default)]
-pub struct PduMarkerInner {
-    // Keep so we can check received PDU against this one
-    pub command_code: u8,
-    // Keep so we can check received PDU against this one
-    pub flags: PduFlags,
-    // Always sent as zero plus we never check or use it currently
-    // pub irq: u16,
-    // Sent working counter is always zero, and the received WKC is checked outside the PDU loop
-    // pub working_counter: u16,
-}
-
 impl PduMarker {
     /// Try to reserve this PDU for use in a TX/RX.
     ///
     /// If the given index is already reserved, an error will be returned.
-    pub fn reserve(&self, frame_idx: u8) -> Result<(), PduError> {
+    fn reserve(&self, frame_idx: u8) -> Result<(), PduError> {
         // Try to reserve the frame by switching the flag state from unused to the frame
         if let Err(bad_state) = self.frame_index.compare_exchange(
             PDU_UNUSED_SENTINEL,
@@ -206,7 +190,7 @@ impl<const N: usize> FrameElement<N> {
     }
 
     /// Set the frame's state without checking its current state.
-    pub(in crate::pdu_loop) unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
+    unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
         let fptr = this.as_ptr();
 
         (*addr_of_mut!((*fptr).status)).store(state, Ordering::Release);
@@ -235,7 +219,7 @@ impl<const N: usize> FrameElement<N> {
 
     /// Attempt to clame a frame element as CREATED. Succeeds if the selected FrameElement is
     /// currently in the NONE state.
-    pub unsafe fn claim_created(
+    unsafe fn claim_created(
         this: NonNull<FrameElement<N>>,
         frame_index: u8,
     ) -> Result<NonNull<FrameElement<N>>, PduError> {
@@ -263,15 +247,11 @@ impl<const N: usize> FrameElement<N> {
         Ok(this)
     }
 
-    pub unsafe fn claim_sending(
-        this: NonNull<FrameElement<N>>,
-    ) -> Option<NonNull<FrameElement<N>>> {
+    unsafe fn claim_sending(this: NonNull<FrameElement<N>>) -> Option<NonNull<FrameElement<N>>> {
         Self::swap_state(this, FrameState::Sendable, FrameState::Sending).ok()
     }
 
-    pub unsafe fn claim_receiving(
-        this: NonNull<FrameElement<N>>,
-    ) -> Option<NonNull<FrameElement<N>>> {
+    unsafe fn claim_receiving(this: NonNull<FrameElement<N>>) -> Option<NonNull<FrameElement<N>>> {
         Self::swap_state(this, FrameState::Sent, FrameState::RxBusy)
             .map_err(|actual_state| {
                 fmt::error!(
@@ -284,220 +264,31 @@ impl<const N: usize> FrameElement<N> {
             .ok()
     }
 
-    fn inc_refcount(this: NonNull<FrameElement<0>>) {
-        let value = unsafe { &mut *addr_of_mut!((*this.as_ptr()).marker_count) };
+    unsafe fn inc_refcount(this: NonNull<FrameElement<0>>) {
+        let value = &mut *addr_of_mut!((*this.as_ptr()).marker_count);
 
         *value += 1;
     }
 
-    fn dec_refcount(this: NonNull<FrameElement<0>>) -> u8 {
-        let value = unsafe { &mut *addr_of_mut!((*this.as_ptr()).marker_count) };
+    unsafe fn dec_refcount(this: NonNull<FrameElement<0>>) -> u8 {
+        let value = &mut *addr_of_mut!((*this.as_ptr()).marker_count);
 
         *value -= 1;
 
         *value
     }
 
-    fn inc_pdu_count(this: NonNull<FrameElement<0>>) {
-        let value = unsafe { &mut *addr_of_mut!((*this.as_ptr()).pdu_count) };
+    unsafe fn inc_pdu_count(this: NonNull<FrameElement<0>>) {
+        let value = &mut *addr_of_mut!((*this.as_ptr()).pdu_count);
 
         *value += 1;
     }
 
-    fn pdu_count(this: NonNull<FrameElement<0>>) -> u8 {
-        unsafe { *addr_of!((*this.as_ptr()).pdu_count) }
+    unsafe fn pdu_count(this: NonNull<FrameElement<0>>) -> u8 {
+        *addr_of!((*this.as_ptr()).pdu_count)
     }
 
-    fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
-        unsafe { *addr_of!((*this.as_ptr()).frame_index) }
-    }
-}
-
-/// Frame data common to all typestates.
-#[derive(Copy, Clone)]
-pub struct FrameBox<'sto> {
-    // NOTE: Only pub for tests
-    pub(in crate::pdu_loop) frame: NonNull<FrameElement<0>>,
-    _lifetime: PhantomData<&'sto mut FrameElement<0>>,
-    pdu_states: NonNull<PduMarker>,
-    pdu_idx: &'sto AtomicU8,
-    max_len: usize,
-}
-
-impl<'sto> Debug for FrameBox<'sto> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let data = unsafe { self.pdu_buf() };
-
-        f.debug_struct("FrameBox")
-            .field("state", unsafe {
-                &(*addr_of!((*self.frame.as_ptr()).status))
-            })
-            .field("frame_index", &self.frame_index())
-            .field("data_hex", &format_args!("{:02x?}", data))
-            .finish()
-    }
-}
-
-impl<'sto> FrameBox<'sto> {
-    /// Wrap a [`FrameElement`] pointer in a `FrameBox` without modifying the underlying data.
-    pub(crate) fn new(
-        frame: NonNull<FrameElement<0>>,
-        pdu_states: NonNull<PduMarker>,
-        pdu_idx: &'sto AtomicU8,
-        max_len: usize,
-    ) -> FrameBox<'sto> {
-        Self {
-            frame,
-            max_len,
-            pdu_states,
-            pdu_idx,
-            _lifetime: PhantomData,
-        }
-    }
-
-    /// Wrap a [`FrameElement`] pointer in a `FrameBox` but reset Ethernet and EtherCAT headers, as
-    /// well as zero out data payload.
-    pub(crate) fn init(
-        frame: NonNull<FrameElement<0>>,
-        pdu_states: NonNull<PduMarker>,
-
-        pdu_idx: &'sto AtomicU8,
-        max_len: usize,
-    ) -> Result<FrameBox<'sto>, Error> {
-        unsafe {
-            addr_of_mut!((*frame.as_ptr()).waker).write(AtomicWaker::new());
-        }
-
-        let mut ethernet_frame = unsafe {
-            let buf = core::slice::from_raw_parts_mut(
-                addr_of_mut!((*frame.as_ptr()).ethernet_frame).cast(),
-                max_len,
-            );
-
-            EthernetFrame::new_checked(buf)?
-        };
-
-        ethernet_frame.set_src_addr(MASTER_ADDR);
-        ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
-        ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
-
-        ethernet_frame.payload_mut().fill(0);
-
-        Ok(Self {
-            max_len,
-            frame,
-            pdu_states,
-            pdu_idx,
-            _lifetime: PhantomData,
-        })
-    }
-
-    pub fn next_pdu_idx(&self) -> u8 {
-        self.pdu_idx.fetch_add(1, Ordering::Relaxed)
-    }
-
-    unsafe fn replace_waker(&self, waker: &Waker) {
-        (*addr_of!((*self.frame.as_ptr()).waker)).register(waker);
-    }
-
-    unsafe fn wake(&self) -> Result<(), ()> {
-        if let Some(waker) = (*addr_of!((*self.frame.as_ptr()).waker)).take() {
-            waker.wake();
-
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
-
-    fn frame_index(&self) -> u8 {
-        FrameElement::<0>::frame_index(self.frame)
-    }
-
-    /// Get EtherCAT frame header buffer.
-    unsafe fn ecat_frame_header_mut(&mut self) -> &mut [u8] {
-        let ptr = FrameElement::<0>::ptr(self.frame);
-
-        let ethercat_header_start = EthernetFrame::<&[u8]>::header_len();
-
-        core::slice::from_raw_parts_mut(
-            ptr.as_ptr().byte_add(ethercat_header_start),
-            EthercatFrameHeader::PACKED_LEN,
-        )
-    }
-
-    /// Get frame payload for writing PDUs into
-    unsafe fn pdu_buf_mut(&mut self) -> &mut [u8] {
-        let ptr = FrameElement::<0>::ethercat_payload_ptr(self.frame);
-
-        let pdu_payload_start =
-            EthernetFrame::<&[u8]>::header_len() + EthercatFrameHeader::header_len();
-
-        core::slice::from_raw_parts_mut(ptr.as_ptr(), self.max_len - pdu_payload_start)
-    }
-
-    /// Get frame payload area.
-    unsafe fn pdu_buf(&self) -> &[u8] {
-        let ptr = FrameElement::<0>::ethercat_payload_ptr(self.frame);
-
-        let pdu_payload_start =
-            EthernetFrame::<&[u8]>::header_len() + EthercatFrameHeader::header_len();
-
-        core::slice::from_raw_parts(ptr.as_ptr(), self.max_len - pdu_payload_start)
-    }
-
-    unsafe fn ethernet_frame(&self) -> EthernetFrame<&[u8]> {
-        let ptr = FrameElement::<0>::ptr(self.frame);
-
-        EthernetFrame::new_unchecked(core::slice::from_raw_parts(ptr.as_ptr(), self.max_len))
-    }
-
-    pub(crate) fn release_pdu_claims(&self) {
-        let frame_index = u16::from(self.frame_index());
-
-        fmt::trace!("Releasing PDUs from frame index {}", frame_index);
-
-        let states: &[PduMarker] =
-            unsafe { core::slice::from_raw_parts(self.pdu_states.as_ptr() as *const _, PDU_SLOTS) };
-
-        states
-            .iter()
-            .filter(|marker| marker.frame_index.load(Ordering::Relaxed) == frame_index)
-            .take(usize::from(FrameElement::<0>::pdu_count(self.frame)))
-            .for_each(|marker| {
-                marker.release();
-            });
-    }
-
-    pub(in crate::pdu_loop) fn pdu_payload_len(&self) -> usize {
-        unsafe { *addr_of!((*self.frame.as_ptr()).pdu_payload_len) }
-    }
-
-    pub(in crate::pdu_loop) fn add_pdu_payload_len(&mut self, len: usize) {
-        unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += len };
-    }
-
-    fn reserve_pdu_marker(&self, frame_index: u8) -> Result<u8, PduError> {
-        let pdu_idx = self.next_pdu_idx();
-
-        // Sanity check. PDU_SLOTS is currently 256 which is fine, but if that changes, this assert
-        // should catch the logic bug.
-        assert!(usize::from(pdu_idx) < PDU_SLOTS);
-
-        let marker = unsafe {
-            let base_ptr = self.pdu_states.as_ptr() as *const PduMarker;
-
-            let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
-
-            let stride = layout.size() / PDU_SLOTS;
-
-            let this_marker = base_ptr.byte_add(usize::from(pdu_idx) * stride);
-
-            &*this_marker
-        };
-
-        marker.reserve(frame_index)?;
-
-        Ok(pdu_idx)
+    unsafe fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
+        *addr_of!((*this.as_ptr()).frame_index)
     }
 }

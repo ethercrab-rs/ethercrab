@@ -148,10 +148,6 @@ mod tests {
         };
 
         assert_eq!(a, b);
-
-        let mut state = DefaultHasher::new();
-
-        assert_eq!(a.hash(&mut state), b.hash(&mut state));
     }
 
     #[test]

@@ -79,8 +79,7 @@ impl<'sto> PduRx<'sto> {
         // use the first one.
 
         // PDU has its own EtherCAT index. This needs mapping back to the original frame.
-        let frame_index =
-            unsafe { self.storage.marker_at_index(usize::from(pdu_idx)) }.frame_index();
+        let frame_index = self.storage.marker_at_index(pdu_idx).frame_index();
 
         fmt::trace!(
             "Receiving frame index {} (found from PDU {:#04x})",

@@ -352,7 +352,7 @@ where
         };
 
         // Only configure DC for those devices that want and support it
-        let dc_devices = GroupSlaveIterator::new(&client, &self_).filter(|slave| {
+        let dc_devices = GroupSlaveIterator::new(client, &self_).filter(|slave| {
             slave.dc_support().any() && !matches!(slave.dc_sync(), DcSync::Disabled)
         });
 
@@ -873,7 +873,7 @@ where
                 )
                 .await?;
 
-            return Ok((wkc, Some(time)));
+            Ok((wkc, Some(time)))
         } else {
             self.tx_rx(client).await.map(|wkc| (wkc, None))
         }
@@ -1066,13 +1066,13 @@ where
         let time_to_next_iter =
             self.dc_conf.sync0_period + (self.dc_conf.sync0_shift - cycle_start_offset);
 
-        return Ok((
+        Ok((
             wkc,
             CycleInfo {
                 dc_system_time: time,
                 cycle_start_offset: Duration::from_nanos(cycle_start_offset),
                 next_cycle_wait: Duration::from_nanos(time_to_next_iter),
             },
-        ));
+        ))
     }
 }

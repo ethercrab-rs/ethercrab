@@ -77,7 +77,7 @@ async fn replay_ek1914_el3004_mailbox() -> Result<(), Error> {
         }
     }
 
-    assert_eq!(configured, true, "did not find target slave");
+    assert!(configured, "did not find target slave");
 
     Ok(())
 }

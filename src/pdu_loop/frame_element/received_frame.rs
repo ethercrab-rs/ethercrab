@@ -1,10 +1,12 @@
-use super::{created_frame::PduResponseHandle, FrameBox, FrameElement, PduMarker};
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::{frame_element::FrameState, pdu_header::PduHeader, PDU_SLOTS},
+    pdu_loop::{
+        frame_element::{created_frame::PduResponseHandle, FrameBox, FrameState, PduMarker},
+        pdu_header::PduHeader,
+    },
 };
-use core::{alloc::Layout, cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
+use core::{cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// A frame element where response data has been received from the EtherCAT network.
@@ -21,38 +23,34 @@ pub struct ReceivedFrame<'sto> {
 }
 
 impl<'sto> ReceivedFrame<'sto> {
-    pub fn new(inner: FrameBox<'sto>) -> ReceivedFrame<'sto> {
+    pub(in crate::pdu_loop) fn new(inner: FrameBox<'sto>) -> ReceivedFrame<'sto> {
         Self {
             inner,
             unread: Cell::new(true),
         }
     }
 
-    pub(crate) fn take<'frame, T>(
+    pub fn take<'frame, T>(
         &'sto self,
         handle: PduResponseHandle<T>,
     ) -> Result<ReceivedPdu<'frame, T>, Error> {
         // Offset relative to end of EtherCAT header
         let pdu_start_offset = handle.buf_start;
 
-        let this_pdu = &unsafe { self.inner.pdu_buf() }[pdu_start_offset..];
+        let this_pdu = &self.inner.pdu_buf()[pdu_start_offset..];
 
         let pdu_header = PduHeader::unpack_from_slice(this_pdu)?;
 
         let payload_len = usize::from(pdu_header.flags.len());
 
-        let payload_ptr = unsafe {
-            NonNull::new_unchecked(
-                FrameElement::ethercat_payload_ptr(self.inner.frame)
-                    .as_ptr()
-                    .byte_add(pdu_start_offset + PduHeader::PACKED_LEN),
-            )
-        };
+        // SAFETY: The memory behind `this_pdu` was initialised by Rust so is always valid
+        let payload_ptr =
+            unsafe { NonNull::new_unchecked(this_pdu[PduHeader::PACKED_LEN..].as_ptr() as *mut _) };
 
         let working_counter =
             u16::unpack_from_slice(&this_pdu[(PduHeader::PACKED_LEN + payload_len)..])?;
 
-        FrameElement::<0>::inc_refcount(self.inner.frame);
+        self.inner.inc_refcount();
 
         if pdu_header.index != handle.pdu_idx {
             fmt::error!(
@@ -80,17 +78,13 @@ impl<'sto> ReceivedFrame<'sto> {
         Ok(ReceivedPdu {
             data_start: payload_ptr,
             len: payload_len,
-            frame: self.inner.frame,
+            // SAFETY: 'sto must always live longer than 'frame or we risk reading into uninit
+            // memory.
+            frame: unsafe { core::mem::transmute::<FrameBox<'sto>, FrameBox<'frame>>(self.inner) },
             pdu_marker: unsafe {
-                let base_ptr = self.inner.pdu_states.as_ptr();
-
-                let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
-
-                let stride = layout.size() / PDU_SLOTS;
-
-                let this_marker = base_ptr.byte_add(usize::from(pdu_header.index) * stride);
-
-                NonNull::new_unchecked(this_marker)
+                core::mem::transmute::<&'sto PduMarker, &'frame PduMarker>(
+                    self.inner.pdu_marker_at(pdu_header.index),
+                )
             },
             working_counter,
             _ty: PhantomData,
@@ -112,24 +106,20 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
 
             self.inner.release_pdu_claims();
 
-            unsafe {
-                // Invariant: the frame can only be in `RxProcessing` at this point, so if this
-                // swap fails there's either a logic bug, or we should panic anyway because the
-                // hardware failed.
-                fmt::unwrap!(FrameElement::swap_state(
-                    self.inner.frame,
-                    FrameState::RxProcessing,
-                    FrameState::None
-                ));
-            }
+            // Invariant: the frame can only be in `RxProcessing` at this point, so if this
+            // swap fails there's either a logic bug, or we should panic anyway because the
+            // hardware failed.
+            fmt::unwrap!(self
+                .inner
+                .swap_state(FrameState::RxProcessing, FrameState::None));
         }
     }
 }
 
 #[derive(Debug)]
 pub struct ReceivedPdu<'sto, T> {
-    pdu_marker: NonNull<PduMarker>,
-    frame: NonNull<FrameElement<0>>,
+    pdu_marker: &'sto PduMarker,
+    frame: FrameBox<'sto>,
     data_start: NonNull<u8>,
     len: usize,
     pub(crate) working_counter: u16,
@@ -177,11 +167,11 @@ impl<'sto, T> ReceivedPdu<'sto, T> {
 // any referenced data.
 impl<'sto, T> Drop for ReceivedPdu<'sto, T> {
     fn drop(&mut self) {
-        let frame_idx = u16::from(FrameElement::<0>::frame_index(self.frame));
+        let frame_idx = u16::from(self.frame.frame_index());
 
-        unsafe { self.pdu_marker.as_mut() }.release_for_frame(frame_idx);
+        self.pdu_marker.release_for_frame(frame_idx);
 
-        let count = FrameElement::<0>::dec_refcount(self.frame);
+        let count = self.frame.dec_refcount();
 
         fmt::trace!(
             "Drop received PDU marker {:#04x}, points to frame index {}, refcount {}",
@@ -194,19 +184,15 @@ impl<'sto, T> Drop for ReceivedPdu<'sto, T> {
         if count == 0 {
             fmt::trace!(
                 "All PDU handles dropped, freeing frame element {}",
-                FrameElement::<0>::frame_index(self.frame)
+                self.frame.frame_index()
             );
 
-            unsafe {
-                // Invariant: the frame can only be in `RxProcessing` at this point, so if this swap
-                // fails there's either a logic bug, or we should panic anyway because the hardware
-                // failed.
-                fmt::unwrap!(FrameElement::swap_state(
-                    self.frame,
-                    FrameState::RxProcessing,
-                    FrameState::None
-                ));
-            }
+            // Invariant: the frame can only be in `RxProcessing` at this point, so if this swap
+            // fails there's either a logic bug, or we should panic anyway because the hardware
+            // failed.
+            fmt::unwrap!(self
+                .frame
+                .swap_state(FrameState::RxProcessing, FrameState::None));
         }
 
         // dbg!(self.frame.refcount.fetch_sub(1, Ordering::Release));

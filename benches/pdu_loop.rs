@@ -54,7 +54,7 @@ fn do_bench(b: &mut Bencher) {
         // Bump working counter so we don't error out
         written_packet[written_packet.len() - 2] = 1;
 
-        let _ = rx.receive_frame(&written_packet).expect("RX");
+        rx.receive_frame(&written_packet).expect("RX");
 
         let _ = cassette::block_on(frame_fut);
     })

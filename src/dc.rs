@@ -673,16 +673,17 @@ mod tests {
             ..Default::default()
         };
 
-        let mut parents = [];
+        let parents = [];
 
         let mut delay_accum = 0u32;
 
-        configure_slave_offsets(&mut slave, &mut parents, &mut delay_accum);
+        configure_slave_offsets(&mut slave, &parents, &mut delay_accum);
 
         assert_eq!(slave.dc_receive_time, 0u64);
     }
 
     /// Create a ports object with active flags and DC receive times.
+    #[allow(clippy::too_many_arguments)]
     fn ports(
         active0: bool,
         t0: u32,

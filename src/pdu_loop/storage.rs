@@ -7,7 +7,7 @@ use crate::{
     fmt,
     pdu_loop::{
         frame_element::{
-            created_frame::CreatedFrame, receiving_frame::ReceivingFrame, FrameBox, FrameElement,
+            created_frame::CreatedFrame, receiving_frame::ReceivingFrame, FrameElement,
         },
         pdu_flags::PduFlags,
     },
@@ -161,46 +161,44 @@ pub(crate) struct PduStorageRef<'sto> {
 impl<'sto> PduStorageRef<'sto> {
     /// Allocate a PDU frame with the given command and data length.
     pub(in crate::pdu_loop) fn alloc_frame(&self) -> Result<CreatedFrame<'sto>, Error> {
-        let mut search = 0;
-
         // Find next frame that is not currently in use.
-        let frame = loop {
+        //
+        // Escape hatch: we'll only loop through the frame storage array twice to put an upper
+        // bound on the number of times this loop can execute. It could be allowed to execute
+        // indefinitely and rely on PDU future timeouts to cancel, but that seems brittle hence
+        // this safety check.
+        //
+        // This can be mitigated by using a `RetryBehaviour` of `Count` or `Forever`.
+        for _ in 0..(self.num_frames * 2) {
             let frame_idx = self.frame_idx.fetch_add(1, Ordering::Relaxed) % self.num_frames as u8;
 
             fmt::trace!("Try to allocate frame {}", frame_idx);
 
-            // Claim frame so it is no longer free and can be used. It must be claimed before
-            // initialisation to avoid race conditions with other threads potentially claiming the
-            // same frame.
-            let frame =
-                unsafe { NonNull::new_unchecked(self.frame_at_index(usize::from(frame_idx))) };
-            let frame = unsafe { FrameElement::claim_created(frame, frame_idx) };
+            // Claim frame so it has a unique owner until its response data is dropped. It must be
+            // claimed before initialisation to avoid race conditions with other threads potentially
+            // claiming the same frame. The race conditions are mitigated by an atomic state
+            // variable in the frame, and the atomic index counter above.
+            let frame = self.frame_at_index(usize::from(frame_idx));
+
+            let frame = CreatedFrame::claim_created(
+                frame,
+                frame_idx,
+                self.pdu_markers,
+                self.pdu_idx,
+                self.frame_data_len,
+            );
 
             if let Ok(f) = frame {
-                break f;
+                return Ok(f);
             }
+        }
 
-            search += 1;
+        // We've searched twice and found no free slots. This means the application should
+        // either slow down its packet sends, or increase `N` in `PduStorage` as there
+        // aren't enough slots to hold all in-flight packets.
+        fmt::error!("No available frames in {} slots", self.num_frames);
 
-            // Escape hatch: we'll only loop through the frame storage array twice to put an upper
-            // bound on the number of times this loop can execute. It could be allowed to execute
-            // indefinitely and rely on PDU future timeouts to cancel, but that seems brittle hence
-            // this safety check.
-            //
-            // This can be mitigated by using a `RetryBehaviour` of `Count` or `Forever`.
-            if search > self.num_frames * 2 {
-                // We've searched twice and found no free slots. This means the application should
-                // either slow down its packet sends, or increase `N` in `PduStorage` as there
-                // aren't enough slots to hold all in-flight packets.
-                fmt::error!("No available frames in {} slots", self.num_frames);
-
-                return Err(PduError::SwapState.into());
-            }
-        };
-
-        let inner = FrameBox::init(frame, self.pdu_markers, self.pdu_idx, self.frame_data_len)?;
-
-        Ok(CreatedFrame::new(inner))
+        Err(PduError::SwapState.into())
     }
 
     /// Updates state from SENDING -> RX_BUSY
@@ -216,30 +214,42 @@ impl<'sto> PduStorageRef<'sto> {
 
         fmt::trace!("--> Claim receiving frame index {}", frame_idx);
 
-        let frame = unsafe { NonNull::new_unchecked(self.frame_at_index(frame_idx)) };
-        let frame = unsafe { FrameElement::claim_receiving(frame)? };
-
-        Some(ReceivingFrame {
-            inner: FrameBox::new(frame, self.pdu_markers, self.pdu_idx, self.frame_data_len),
-        })
+        ReceivingFrame::claim_receiving(
+            self.frame_at_index(frame_idx),
+            self.pdu_markers,
+            self.pdu_idx,
+            self.frame_data_len,
+        )
     }
 
     /// Retrieve a frame at the given index.
     ///
-    /// # Safety
-    ///
     /// If the given index is greater than the value in `PduStorage::N`, this will return garbage
     /// data off the end of the frame element buffer.
-    pub(in crate::pdu_loop) unsafe fn frame_at_index(&self, idx: usize) -> *mut FrameElement<0> {
-        self.frames
-            .as_ptr()
-            .byte_add(idx * self.frame_element_stride)
+    pub(in crate::pdu_loop) fn frame_at_index(&self, idx: usize) -> NonNull<FrameElement<0>> {
+        assert!(idx < self.num_frames);
+
+        // SAFETY: `self.frames` was created by Rust, so will always be valid. The index is checked
+        // that it doesn't extend past the end of the storage array above, so we should never return
+        // garbage data as long as `self.frame_element_stride` is computed correctly.
+        unsafe {
+            NonNull::new_unchecked(
+                self.frames
+                    .as_ptr()
+                    .byte_add(idx * self.frame_element_stride),
+            )
+        }
     }
 
-    pub(crate) unsafe fn marker_at_index(&self, idx: usize) -> &PduMarker {
+    pub(crate) fn marker_at_index(&self, idx: u8) -> &PduMarker {
         let stride = Layout::array::<PduMarker>(PDU_SLOTS).unwrap().size() / PDU_SLOTS;
 
-        &*self.pdu_markers.as_ptr().byte_add(idx * stride)
+        unsafe {
+            &*self
+                .pdu_markers
+                .as_ptr()
+                .byte_add(usize::from(idx) * stride)
+        }
     }
 }
 

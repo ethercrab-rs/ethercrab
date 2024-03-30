@@ -30,7 +30,6 @@ async fn replay_ek1914_no_complete_access() -> Result<(), Error> {
         ClientConfig {
             dc_static_sync_iterations: 100,
             retry_behaviour: RetryBehaviour::None,
-            ..Default::default()
         },
     );
 

@@ -1,4 +1,4 @@
-use crate::{error::Error, fmt, pdu_loop::ReceivedPdu, timer_factory::IntoTimeout, Client};
+use crate::{error::Error, pdu_loop::ReceivedPdu, Client};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// Read commands that send no data.

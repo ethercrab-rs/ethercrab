@@ -1,12 +1,12 @@
-use super::FrameBox;
 use crate::{
     error::Error,
     fmt,
     pdu_loop::{
-        frame_element::{FrameElement, FrameState},
+        frame_element::{FrameBox, FrameElement, FrameState, PduMarker},
         frame_header::EthercatFrameHeader,
     },
 };
+use core::{ptr::NonNull, sync::atomic::AtomicU8};
 use ethercrab_wire::EtherCrabWireSized;
 use smoltcp::wire::EthernetFrame;
 
@@ -55,17 +55,24 @@ pub struct SendableFrame<'sto> {
 unsafe impl<'sto> Send for SendableFrame<'sto> {}
 
 impl<'sto> SendableFrame<'sto> {
-    pub(in crate::pdu_loop) fn new(inner: FrameBox<'sto>) -> Self {
-        Self { inner }
+    pub(crate) fn claim_sending(
+        frame: NonNull<FrameElement<0>>,
+        pdu_markers: NonNull<PduMarker>,
+        pdu_idx: &'sto AtomicU8,
+        frame_data_len: usize,
+    ) -> Option<Self> {
+        let frame = unsafe { FrameElement::claim_sending(frame)? };
+
+        Some(Self {
+            inner: FrameBox::new(frame, pdu_markers, pdu_idx, frame_data_len),
+        })
     }
 
     /// The frame has been sent by the network driver.
     fn mark_sent(&self) {
         fmt::trace!("Frame index {} is sent", self.inner.frame_index());
 
-        unsafe {
-            FrameElement::set_state(self.inner.frame, FrameState::Sent);
-        }
+        self.inner.set_state(FrameState::Sent);
     }
 
     pub(crate) fn index(&self) -> u8 {
@@ -75,14 +82,11 @@ impl<'sto> SendableFrame<'sto> {
     /// Used on send failure to release the frame sending claim so the frame can attempt to be sent
     /// again, or reclaimed for reuse.
     fn release_sending_claim(&self) {
-        unsafe {
-            FrameElement::set_state(self.inner.frame, FrameState::Sendable);
-        }
+        self.inner.set_state(FrameState::Sendable);
     }
 
-    // NOTE: Only pub for tests
-    pub(crate) fn as_bytes(&self) -> &[u8] {
-        let frame = unsafe { self.inner.ethernet_frame() }.into_inner();
+    fn as_bytes(&self) -> &[u8] {
+        let frame = self.inner.ethernet_frame().into_inner();
 
         let len = EthernetFrame::<&[u8]>::buffer_len(
             EthercatFrameHeader::PACKED_LEN + self.inner.pdu_payload_len(),
