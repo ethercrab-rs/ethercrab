@@ -319,7 +319,7 @@ pub struct FrameBox<'sto> {
     // NOTE: Only pub for tests
     pub(in crate::pdu_loop) frame: NonNull<FrameElement<0>>,
     _lifetime: PhantomData<&'sto mut FrameElement<0>>,
-    pdu_states: NonNull<PduMarker>,
+    pdu_markers: NonNull<PduMarker>,
     pdu_idx: &'sto AtomicU8,
     max_len: usize,
 }
@@ -349,7 +349,7 @@ impl<'sto> FrameBox<'sto> {
         Self {
             frame,
             max_len,
-            pdu_states,
+            pdu_markers: pdu_states,
             pdu_idx,
             _lifetime: PhantomData,
         }
@@ -386,7 +386,7 @@ impl<'sto> FrameBox<'sto> {
         Ok(Self {
             max_len,
             frame,
-            pdu_states,
+            pdu_markers: pdu_states,
             pdu_idx,
             _lifetime: PhantomData,
         })
@@ -457,8 +457,9 @@ impl<'sto> FrameBox<'sto> {
 
         fmt::trace!("Releasing PDUs from frame index {}", frame_index);
 
-        let states: &[PduMarker] =
-            unsafe { core::slice::from_raw_parts(self.pdu_states.as_ptr() as *const _, PDU_SLOTS) };
+        let states: &[PduMarker] = unsafe {
+            core::slice::from_raw_parts(self.pdu_markers.as_ptr() as *const _, PDU_SLOTS)
+        };
 
         states
             .iter()
@@ -485,7 +486,7 @@ impl<'sto> FrameBox<'sto> {
         assert!(usize::from(pdu_idx) < PDU_SLOTS);
 
         let marker = unsafe {
-            let base_ptr = self.pdu_states.as_ptr() as *const PduMarker;
+            let base_ptr = self.pdu_markers.as_ptr() as *const PduMarker;
 
             let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
 

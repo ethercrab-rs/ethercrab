@@ -82,7 +82,7 @@ impl<'sto> ReceivedFrame<'sto> {
             len: payload_len,
             frame: self.inner.frame,
             pdu_marker: unsafe {
-                let base_ptr = self.inner.pdu_states.as_ptr();
+                let base_ptr = self.inner.pdu_markers.as_ptr();
 
                 let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
 
