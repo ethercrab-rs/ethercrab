@@ -1,8 +1,8 @@
-use super::{created_frame::PduResponseHandle, FrameBox, FrameElement, PduMarker};
+use super::{created_frame::PduResponseHandle, FrameElement, PduMarker};
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::{frame_element::FrameState, pdu_header::PduHeader, PDU_SLOTS},
+    pdu_loop::{frame_box::FrameBox, frame_element::FrameState, pdu_header::PduHeader, PDU_SLOTS},
 };
 use core::{alloc::Layout, cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};

@@ -1,9 +1,12 @@
-use super::{receiving_frame::ReceiveFrameFut, FrameBox, FrameElement, FrameState};
+use super::{receiving_frame::ReceiveFrameFut, FrameElement, FrameState};
 use crate::{
     error::PduError,
     fmt,
     generate::write_packed,
-    pdu_loop::{frame_header::EthercatFrameHeader, pdu_flags::PduFlags, pdu_header::PduHeader},
+    pdu_loop::{
+        frame_box::FrameBox, frame_header::EthercatFrameHeader, pdu_flags::PduFlags,
+        pdu_header::PduHeader,
+    },
     Command,
 };
 use core::marker::PhantomData;

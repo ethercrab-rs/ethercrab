@@ -1,8 +1,8 @@
-use super::FrameBox;
 use crate::{
     error::Error,
     fmt,
     pdu_loop::{
+        frame_box::FrameBox,
         frame_element::{FrameElement, FrameState},
         frame_header::EthercatFrameHeader,
     },

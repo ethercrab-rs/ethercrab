@@ -1,3 +1,4 @@
+mod frame_box;
 mod frame_element;
 mod frame_header;
 mod pdu_flags;

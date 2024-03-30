@@ -1,13 +1,13 @@
 use super::{
-    frame_element::PduMarker, frame_header::EthercatFrameHeader, pdu_rx::PduRx, pdu_tx::PduTx,
-    PDU_SLOTS,
+    frame_box::FrameBox, frame_element::PduMarker, frame_header::EthercatFrameHeader,
+    pdu_rx::PduRx, pdu_tx::PduTx, PDU_SLOTS,
 };
 use crate::{
     error::{Error, PduError},
     fmt,
     pdu_loop::{
         frame_element::{
-            created_frame::CreatedFrame, receiving_frame::ReceivingFrame, FrameBox, FrameElement,
+            created_frame::CreatedFrame, receiving_frame::ReceivingFrame, FrameElement,
         },
         pdu_flags::PduFlags,
     },

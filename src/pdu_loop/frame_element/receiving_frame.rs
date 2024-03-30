@@ -1,8 +1,10 @@
-use super::{received_frame::ReceivedFrame, FrameBox};
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::frame_element::{FrameElement, FrameState},
+    pdu_loop::{
+        frame_box::FrameBox,
+        frame_element::{received_frame::ReceivedFrame, FrameElement, FrameState},
+    },
 };
 use core::{future::Future, task::Poll};
 
