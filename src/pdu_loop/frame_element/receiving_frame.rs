@@ -1,87 +1,90 @@
-use super::{received_frame::ReceivedFrame, FrameBox};
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::frame_element::{FrameElement, FrameState},
+    pdu_loop::frame_element::{
+        received_frame::ReceivedFrame, FrameBox, FrameElement, FrameState, PduMarker,
+    },
 };
-use core::{future::Future, task::Poll};
+use core::{future::Future, ptr::NonNull, sync::atomic::AtomicU8, task::Poll};
 
 /// A frame has been sent and is now waiting for a response from the network.
 ///
 /// This state may only be entered once the frame has been sent over the network.
 #[derive(Debug)]
 pub struct ReceivingFrame<'sto> {
-    pub inner: FrameBox<'sto>,
-    // pub pdu_states: &'sto [PduMarker],
+    inner: FrameBox<'sto>,
 }
 
 impl<'sto> ReceivingFrame<'sto> {
+    pub(in crate::pdu_loop) fn claim_receiving(
+        frame: NonNull<FrameElement<0>>,
+        pdu_markers: NonNull<PduMarker>,
+        pdu_idx: &'sto AtomicU8,
+        frame_data_len: usize,
+    ) -> Option<Self> {
+        let frame = unsafe { FrameElement::claim_receiving(frame)? };
+
+        Some(Self {
+            inner: FrameBox::new(frame, pdu_markers, pdu_idx, frame_data_len),
+        })
+    }
+
     /// Mark the frame as fully received.
     ///
     /// This method may only be called once the frame response (header and data) has been validated
     /// and stored in the frame element.
-    pub fn mark_received(&self) -> Result<(), PduError> {
+    pub(in crate::pdu_loop) fn mark_received(&self) -> Result<(), PduError> {
         // Frame state must be updated BEFORE the waker is awoken so the future impl returns
         // `Poll::Ready`. The future will poll, see the `FrameState` as RxDone and return
         // Poll::Ready.
-        unsafe {
-            // NOTE: claim_receiving sets the state to `RxBusy` during parsing of the incoming frame
-            // so the previous state here should be RxBusy.
-            FrameElement::swap_state(self.inner.frame, FrameState::RxBusy, FrameState::RxDone)
-                .map(|_| {})
-                .map_err(|bad| {
-                    fmt::error!(
-                        "Failed to set frame {:#04x} state from RxBusy -> RxDone, got {:?}",
-                        self.frame_index(),
-                        bad
-                    );
 
-                    PduError::InvalidFrameState
-                })?;
-        }
+        // NOTE: claim_receiving sets the state to `RxBusy` during parsing of the incoming frame
+        // so the previous state here should be RxBusy.
+        self.inner
+            .swap_state(FrameState::RxBusy, FrameState::RxDone)
+            .map_err(|bad| {
+                fmt::error!(
+                    "Failed to set frame {:#04x} state from RxBusy -> RxDone, got {:?}",
+                    self.frame_index(),
+                    bad
+                );
+
+                PduError::InvalidFrameState
+            })?;
 
         // If the wake fails, release the receiving claim so the frame receive can possibly be
         // reattempted at a later time.
-        if let Err(()) = unsafe { self.inner.wake() } {
+        if let Err(()) = self.inner.wake() {
             fmt::trace!("Failed to wake frame {:#04x}: no waker", self.frame_index());
 
-            unsafe {
-                // Restore frame state to `Sent`, which is what `PduStorageRef::claim_receiving`
-                // expects. This allows us to reprocess the frame again later. The frame will be
-                // made reusable by `ReceiveFrameFut::drop` which sets the frame state to `None`,
-                // preventing a deadlock of this PDU frame slot.
-                //
-                // If the frame is in another state, e.g. `RxProcessing` or other states that are
-                // set after `RxDone`, the future is already being processed and likely doesn't even
-                // need waking. In this case we can ignore the swap failure here.
-                //
-                // TODO: Only match on expected other states. Anything else should actually be a
-                // logic bug.
-                match FrameElement::swap_state(
-                    self.inner.frame,
-                    FrameState::RxDone,
-                    FrameState::Sent,
-                ) {
-                    Ok(_) => (),
-                    // Frame is being processed. We don't need to retry the receive
-                    Err(bad_state)
-                        if matches!(bad_state, FrameState::RxProcessing | FrameState::None) =>
-                    {
-                        fmt::trace!("--> Frame is {:?}, no need to wake", bad_state);
+            // Restore frame state to `Sent`, which is what `PduStorageRef::claim_receiving`
+            // expects. This allows us to reprocess the frame again later. The frame will be
+            // made reusable by `ReceiveFrameFut::drop` which sets the frame state to `None`,
+            // preventing a deadlock of this PDU frame slot.
+            //
+            // If the frame is in another state, e.g. `RxProcessing` or other states that are
+            // set after `RxDone`, the future is already being processed and likely doesn't even
+            // need waking. In this case we can ignore the swap failure here.
+            match self.inner.swap_state(FrameState::RxDone, FrameState::Sent) {
+                Ok(_) => (),
+                // Frame is being processed. We don't need to retry the receive
+                Err(bad_state)
+                    if matches!(bad_state, FrameState::RxProcessing | FrameState::None) =>
+                {
+                    fmt::trace!("--> Frame is {:?}, no need to wake", bad_state);
 
-                        return Ok(());
-                    }
-                    Err(bad_state) => {
-                        fmt::error!(
-                            "Failed to set frame {:#04x} state from RxDone -> Sent, got {:?}",
-                            self.frame_index(),
-                            bad_state
-                        );
+                    return Ok(());
+                }
+                Err(bad_state) => {
+                    fmt::error!(
+                        "Failed to set frame {:#04x} state from RxDone -> Sent, got {:?}",
+                        self.frame_index(),
+                        bad_state
+                    );
 
-                        // Logic bug if the swap failed - no other threads should be using this
-                        // frame, and the code just above this block sets the state to `RxDone`.
-                        unreachable!();
-                    }
+                    // Logic bug if the swap failed - no other threads should be using this
+                    // frame, and the code just above this block sets the state to `RxDone`.
+                    unreachable!();
                 }
             }
 
@@ -91,12 +94,12 @@ impl<'sto> ReceivingFrame<'sto> {
         }
     }
 
-    pub fn buf_mut(&mut self) -> &mut [u8] {
-        unsafe { self.inner.pdu_buf_mut() }
+    pub(in crate::pdu_loop) fn buf_mut(&mut self) -> &mut [u8] {
+        self.inner.pdu_buf_mut()
     }
 
     /// Ethernet frame index.
-    pub fn frame_index(&self) -> u8 {
+    fn frame_index(&self) -> u8 {
         self.inner.frame_index()
     }
 }
@@ -115,7 +118,7 @@ impl<'sto> ReceiveFrameFut<'sto> {
 
         let frame = self.frame.as_ref().unwrap();
 
-        let b = unsafe { frame.ethernet_frame() };
+        let b = frame.ethernet_frame();
 
         let len = EthernetFrame::<&[u8]>::buffer_len(frame.pdu_payload_len())
             + EthercatFrameHeader::PACKED_LEN;
@@ -149,17 +152,15 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
             }
         };
 
-        unsafe { rxin.replace_waker(cx.waker()) };
+        rxin.replace_waker(cx.waker());
 
         let frame_idx = rxin.frame_index();
 
         // RxDone is set by mark_received when the incoming packet has been parsed and stored
-        let swappy = unsafe {
-            FrameElement::swap_state(rxin.frame, FrameState::RxDone, FrameState::RxProcessing)
-        };
+        let swappy = rxin.swap_state(FrameState::RxDone, FrameState::RxProcessing);
 
         let was = match swappy {
-            Ok(_frame_element) => {
+            Ok(_) => {
                 fmt::trace!("frame index {} is ready", frame_idx);
 
                 return Poll::Ready(Ok(ReceivedFrame::new(rxin)));
@@ -196,7 +197,7 @@ impl<'sto> Drop for ReceiveFrameFut<'sto> {
             r.release_pdu_claims();
 
             // Make frame available for reuse if this future is dropped.
-            unsafe { FrameElement::set_state(r.frame, FrameState::None) };
+            r.set_state(FrameState::None);
         }
     }
 }
