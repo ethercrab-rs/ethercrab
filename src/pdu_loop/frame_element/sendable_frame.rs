@@ -1,11 +1,7 @@
 use crate::{
     error::Error,
     fmt,
-    pdu_loop::{
-        frame_box::FrameBox,
-        frame_element::{FrameElement, FrameState},
-        frame_header::EthercatFrameHeader,
-    },
+    pdu_loop::{frame_box::FrameBox, frame_element::FrameState, frame_header::EthercatFrameHeader},
 };
 use ethercrab_wire::EtherCrabWireSized;
 use smoltcp::wire::EthernetFrame;
@@ -63,9 +59,7 @@ impl<'sto> SendableFrame<'sto> {
     fn mark_sent(&self) {
         fmt::trace!("Frame index {} is sent", self.inner.frame_index());
 
-        unsafe {
-            FrameElement::set_state(self.inner.frame, FrameState::Sent);
-        }
+        self.inner.set_state(FrameState::Sent);
     }
 
     pub(crate) fn index(&self) -> u8 {
@@ -75,9 +69,7 @@ impl<'sto> SendableFrame<'sto> {
     /// Used on send failure to release the frame sending claim so the frame can attempt to be sent
     /// again, or reclaimed for reuse.
     fn release_sending_claim(&self) {
-        unsafe {
-            FrameElement::set_state(self.inner.frame, FrameState::Sendable);
-        }
+        self.inner.set_state(FrameState::Sendable);
     }
 
     // NOTE: Only pub for tests

@@ -20,15 +20,17 @@ use core::{
 use ethercrab_wire::EtherCrabWireSized;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
+use super::frame_element::FrameState;
+
 /// Frame data common to all typestates.
 #[derive(Copy, Clone)]
 pub struct FrameBox<'sto> {
     // NOTE: Only pub for tests
-    pub(in crate::pdu_loop) frame: NonNull<FrameElement<0>>,
-    _lifetime: PhantomData<&'sto mut FrameElement<0>>,
+    frame: NonNull<FrameElement<0>>,
     pub(in crate::pdu_loop) pdu_markers: NonNull<PduMarker>,
     pdu_idx: &'sto AtomicU8,
     max_len: usize,
+    _lifetime: PhantomData<&'sto mut FrameElement<0>>,
 }
 
 impl<'sto> Debug for FrameBox<'sto> {
@@ -122,7 +124,7 @@ impl<'sto> FrameBox<'sto> {
     }
 
     pub(in crate::pdu_loop) fn frame_index(&self) -> u8 {
-        FrameElement::<0>::frame_index(self.frame)
+        unsafe { FrameElement::<0>::frame_index(self.frame) }
     }
 
     /// Get EtherCAT frame header buffer.
@@ -180,7 +182,7 @@ impl<'sto> FrameBox<'sto> {
         states
             .iter()
             .filter(|marker| marker.frame_index.load(Ordering::Relaxed) == frame_index)
-            .take(usize::from(FrameElement::<0>::pdu_count(self.frame)))
+            .take(unsafe { usize::from(FrameElement::<0>::pdu_count(self.frame)) })
             .for_each(|marker| {
                 marker.release();
             });
@@ -216,5 +218,25 @@ impl<'sto> FrameBox<'sto> {
         marker.reserve(frame_index)?;
 
         Ok(pdu_idx)
+    }
+
+    pub(crate) fn set_state(&self, to: FrameState) {
+        unsafe { FrameElement::set_state(self.frame, to) };
+    }
+
+    pub(crate) fn swap_state(&self, from: FrameState, to: FrameState) -> Result<(), FrameState> {
+        unsafe { FrameElement::swap_state(self.frame, from, to) }.map(|_| ())
+    }
+
+    pub(crate) fn inc_pdu_count(&self) {
+        unsafe { FrameElement::<0>::inc_pdu_count(self.frame) };
+    }
+
+    pub(crate) fn inc_refcount(&self) {
+        unsafe { FrameElement::<0>::inc_refcount(self.frame) };
+    }
+
+    pub(crate) fn dec_refcount(&self) -> u8 {
+        unsafe { FrameElement::<0>::dec_refcount(self.frame) }
     }
 }

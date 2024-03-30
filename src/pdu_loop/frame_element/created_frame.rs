@@ -1,4 +1,4 @@
-use super::{receiving_frame::ReceiveFrameFut, FrameElement, FrameState};
+use super::{receiving_frame::ReceiveFrameFut, FrameState};
 use crate::{
     error::PduError,
     fmt,
@@ -35,9 +35,7 @@ impl<'sto> CreatedFrame<'sto> {
         EthercatFrameHeader::pdu(self.inner.pdu_payload_len() as u16)
             .pack_to_slice_unchecked(self.inner.ecat_frame_header_mut());
 
-        unsafe {
-            FrameElement::set_state(self.inner.frame, FrameState::Sendable);
-        }
+        self.inner.set_state(FrameState::Sendable);
 
         ReceiveFrameFut {
             frame: Some(self.inner),
@@ -100,8 +98,9 @@ impl<'sto> CreatedFrame<'sto> {
         // Next two bytes are working counter, but they are always zero on send (and the buffer is
         // zero-initialised) so there's nothing to do.
 
+        // TODO: Combine in to one method
         self.inner.add_pdu_payload_len(alloc_size);
-        FrameElement::<0>::inc_pdu_count(self.inner.frame);
+        self.inner.inc_pdu_count();
 
         Ok(PduResponseHandle {
             _ty: PhantomData,
@@ -138,7 +137,7 @@ pub struct PduResponseHandle<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pdu_loop::frame_element::{AtomicFrameState, PduMarker};
+    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, PduMarker};
     use atomic_waker::AtomicWaker;
     use core::{cell::UnsafeCell, mem::MaybeUninit, ptr::NonNull, sync::atomic::AtomicU8};
 

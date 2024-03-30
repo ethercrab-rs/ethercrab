@@ -195,7 +195,7 @@ impl<const N: usize> FrameElement<N> {
     ///
     /// If the frame is not currently in the given `from` state, this method will return an error
     /// with the actual current frame state.
-    unsafe fn swap_state(
+    pub unsafe fn swap_state(
         this: NonNull<FrameElement<N>>,
         from: FrameState,
         to: FrameState,
@@ -263,31 +263,31 @@ impl<const N: usize> FrameElement<N> {
             .ok()
     }
 
-    fn inc_refcount(this: NonNull<FrameElement<0>>) {
-        let value = unsafe { &mut *addr_of_mut!((*this.as_ptr()).marker_count) };
+    pub unsafe fn inc_refcount(this: NonNull<FrameElement<0>>) {
+        let value = &mut *addr_of_mut!((*this.as_ptr()).marker_count);
 
         *value += 1;
     }
 
-    fn dec_refcount(this: NonNull<FrameElement<0>>) -> u8 {
-        let value = unsafe { &mut *addr_of_mut!((*this.as_ptr()).marker_count) };
+    pub unsafe fn dec_refcount(this: NonNull<FrameElement<0>>) -> u8 {
+        let value = &mut *addr_of_mut!((*this.as_ptr()).marker_count);
 
         *value -= 1;
 
         *value
     }
 
-    fn inc_pdu_count(this: NonNull<FrameElement<0>>) {
-        let value = unsafe { &mut *addr_of_mut!((*this.as_ptr()).pdu_count) };
+    pub unsafe fn inc_pdu_count(this: NonNull<FrameElement<0>>) {
+        let value = &mut *addr_of_mut!((*this.as_ptr()).pdu_count);
 
         *value += 1;
     }
 
-    pub fn pdu_count(this: NonNull<FrameElement<0>>) -> u8 {
-        unsafe { *addr_of!((*this.as_ptr()).pdu_count) }
+    pub unsafe fn pdu_count(this: NonNull<FrameElement<0>>) -> u8 {
+        *addr_of!((*this.as_ptr()).pdu_count)
     }
 
-    pub fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
-        unsafe { *addr_of!((*this.as_ptr()).frame_index) }
+    pub unsafe fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
+        *addr_of!((*this.as_ptr()).frame_index)
     }
 }
