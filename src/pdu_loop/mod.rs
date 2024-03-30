@@ -7,14 +7,16 @@ mod pdu_tx;
 // NOTE: Pub so doc links work
 pub mod storage;
 
-pub(crate) use self::frame_element::created_frame::CreatedFrame;
-pub(crate) use self::frame_element::received_frame::ReceivedFrame;
 use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
-pub use frame_element::received_frame::ReceivedPdu;
-pub use frame_element::sendable_frame::SendableFrame;
 pub use pdu_rx::PduRx;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
+
+pub(crate) use self::frame_element::created_frame::CreatedFrame;
+pub(crate) use self::frame_element::received_frame::ReceivedFrame;
+pub(crate) use frame_element::received_frame::ReceivedPdu;
+
+pub use frame_element::sendable_frame::SendableFrame;
 
 #[cfg(feature = "__internals")]
 pub use frame_header::EthercatFrameHeader;

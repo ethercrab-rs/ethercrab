@@ -4,10 +4,9 @@ use crate::{
     pdu_loop::{
         frame_element::{created_frame::PduResponseHandle, FrameBox, FrameState, PduMarker},
         pdu_header::PduHeader,
-        PDU_SLOTS,
     },
 };
-use core::{alloc::Layout, cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
+use core::{cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// A frame element where response data has been received from the EtherCAT network.
@@ -24,14 +23,14 @@ pub struct ReceivedFrame<'sto> {
 }
 
 impl<'sto> ReceivedFrame<'sto> {
-    pub fn new(inner: FrameBox<'sto>) -> ReceivedFrame<'sto> {
+    pub(in crate::pdu_loop) fn new(inner: FrameBox<'sto>) -> ReceivedFrame<'sto> {
         Self {
             inner,
             unread: Cell::new(true),
         }
     }
 
-    pub(crate) fn take<'frame, T>(
+    pub fn take<'frame, T>(
         &'sto self,
         handle: PduResponseHandle<T>,
     ) -> Result<ReceivedPdu<'frame, T>, Error> {
@@ -83,15 +82,9 @@ impl<'sto> ReceivedFrame<'sto> {
             // memory.
             frame: unsafe { core::mem::transmute::<FrameBox<'sto>, FrameBox<'frame>>(self.inner) },
             pdu_marker: unsafe {
-                let base_ptr = self.inner.pdu_markers.as_ptr();
-
-                let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
-
-                let stride = layout.size() / PDU_SLOTS;
-
-                let this_marker = base_ptr.byte_add(usize::from(pdu_header.index) * stride);
-
-                NonNull::new_unchecked(this_marker)
+                core::mem::transmute::<&'sto PduMarker, &'frame PduMarker>(
+                    self.inner.pdu_marker_at(usize::from(pdu_header.index)),
+                )
             },
             working_counter,
             _ty: PhantomData,
@@ -125,7 +118,7 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
 
 #[derive(Debug)]
 pub struct ReceivedPdu<'sto, T> {
-    pdu_marker: NonNull<PduMarker>,
+    pdu_marker: &'sto PduMarker,
     frame: FrameBox<'sto>,
     data_start: NonNull<u8>,
     len: usize,
@@ -176,7 +169,7 @@ impl<'sto, T> Drop for ReceivedPdu<'sto, T> {
     fn drop(&mut self) {
         let frame_idx = u16::from(self.frame.frame_index());
 
-        unsafe { self.pdu_marker.as_mut() }.release_for_frame(frame_idx);
+        self.pdu_marker.release_for_frame(frame_idx);
 
         let count = self.frame.dec_refcount();
 

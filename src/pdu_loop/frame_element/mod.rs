@@ -1,3 +1,9 @@
+pub mod created_frame;
+mod frame_box;
+pub mod received_frame;
+pub mod receiving_frame;
+pub mod sendable_frame;
+
 use crate::{
     error::PduError,
     fmt,
@@ -8,14 +14,8 @@ use core::{
     ptr::{addr_of, addr_of_mut, NonNull},
     sync::atomic::{AtomicU16, Ordering},
 };
-pub use frame_box::FrameBox;
+use frame_box::FrameBox;
 use smoltcp::wire::EthernetFrame;
-
-pub mod created_frame;
-mod frame_box;
-pub mod received_frame;
-pub mod receiving_frame;
-pub mod sendable_frame;
 
 /// Frame state.
 #[atomic_enum::atomic_enum]
@@ -52,14 +52,14 @@ pub struct PduMarker {
     /// high bits).
     ///
     /// The marker value is defined by [`PDU_UNUSED_SENTINEL`].
-    pub(in crate::pdu_loop) frame_index: AtomicU16,
+    frame_index: AtomicU16,
 }
 
 impl PduMarker {
     /// Try to reserve this PDU for use in a TX/RX.
     ///
     /// If the given index is already reserved, an error will be returned.
-    pub fn reserve(&self, frame_idx: u8) -> Result<(), PduError> {
+    fn reserve(&self, frame_idx: u8) -> Result<(), PduError> {
         // Try to reserve the frame by switching the flag state from unused to the frame
         if let Err(bad_state) = self.frame_index.compare_exchange(
             PDU_UNUSED_SENTINEL,
@@ -104,7 +104,7 @@ impl PduMarker {
         }
     }
 
-    pub(in crate::pdu_loop) fn release(&self) {
+    fn release(&self) {
         self.frame_index
             .store(PDU_UNUSED_SENTINEL, Ordering::Release);
     }

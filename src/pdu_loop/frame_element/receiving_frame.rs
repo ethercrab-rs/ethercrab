@@ -16,7 +16,7 @@ pub struct ReceivingFrame<'sto> {
 }
 
 impl<'sto> ReceivingFrame<'sto> {
-    pub(crate) fn claim_receiving(
+    pub(in crate::pdu_loop) fn claim_receiving(
         frame: NonNull<FrameElement<0>>,
         pdu_markers: NonNull<PduMarker>,
         pdu_idx: &'sto AtomicU8,
@@ -33,7 +33,7 @@ impl<'sto> ReceivingFrame<'sto> {
     ///
     /// This method may only be called once the frame response (header and data) has been validated
     /// and stored in the frame element.
-    pub fn mark_received(&self) -> Result<(), PduError> {
+    pub(in crate::pdu_loop) fn mark_received(&self) -> Result<(), PduError> {
         // Frame state must be updated BEFORE the waker is awoken so the future impl returns
         // `Poll::Ready`. The future will poll, see the `FrameState` as RxDone and return
         // Poll::Ready.
@@ -94,12 +94,12 @@ impl<'sto> ReceivingFrame<'sto> {
         }
     }
 
-    pub fn buf_mut(&mut self) -> &mut [u8] {
+    pub(in crate::pdu_loop) fn buf_mut(&mut self) -> &mut [u8] {
         self.inner.pdu_buf_mut()
     }
 
     /// Ethernet frame index.
-    pub fn frame_index(&self) -> u8 {
+    fn frame_index(&self) -> u8 {
         self.inner.frame_index()
     }
 }

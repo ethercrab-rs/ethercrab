@@ -25,7 +25,7 @@ pub struct CreatedFrame<'sto> {
 }
 
 impl<'sto> CreatedFrame<'sto> {
-    pub(crate) fn claim_created(
+    pub(in crate::pdu_loop) fn claim_created(
         frame: NonNull<FrameElement<0>>,
         frame_index: u8,
         pdu_markers: NonNull<PduMarker>,
