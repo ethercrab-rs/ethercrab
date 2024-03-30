@@ -24,7 +24,7 @@ impl<'sto> PduTx<'sto> {
     // NOTE: Mutable so it can only be used in one task.
     pub fn next_sendable_frame(&mut self) -> Option<SendableFrame<'sto>> {
         for idx in 0..self.storage.num_frames {
-            let frame = unsafe { self.storage.frame_at_index(idx) };
+            let frame = self.storage.frame_at_index(idx);
 
             let sending = if let Some(frame) = unsafe { FrameElement::claim_sending(frame) } {
                 SendableFrame::new(FrameBox::new(
