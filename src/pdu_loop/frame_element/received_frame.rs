@@ -35,7 +35,7 @@ impl<'sto> ReceivedFrame<'sto> {
         // Offset relative to end of EtherCAT header
         let pdu_start_offset = handle.buf_start;
 
-        let this_pdu = &unsafe { self.inner.pdu_buf() }[pdu_start_offset..];
+        let this_pdu = &self.inner.pdu_buf()[pdu_start_offset..];
 
         let pdu_header = PduHeader::unpack_from_slice(this_pdu)?;
 

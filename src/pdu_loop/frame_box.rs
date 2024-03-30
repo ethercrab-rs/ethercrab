@@ -33,7 +33,7 @@ pub struct FrameBox<'sto> {
 
 impl<'sto> Debug for FrameBox<'sto> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let data = unsafe { self.pdu_buf() };
+        let data = self.pdu_buf();
 
         f.debug_struct("FrameBox")
             .field("state", unsafe {
@@ -67,7 +67,6 @@ impl<'sto> FrameBox<'sto> {
     pub(crate) fn init(
         frame: NonNull<FrameElement<0>>,
         pdu_states: NonNull<PduMarker>,
-
         pdu_idx: &'sto AtomicU8,
         max_len: usize,
     ) -> Result<FrameBox<'sto>, Error> {
@@ -103,12 +102,17 @@ impl<'sto> FrameBox<'sto> {
         self.pdu_idx.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub(in crate::pdu_loop) unsafe fn replace_waker(&self, waker: &Waker) {
-        (*addr_of!((*self.frame.as_ptr()).waker)).register(waker);
+    pub(in crate::pdu_loop) fn replace_waker(&self, waker: &Waker) {
+        let ptr = unsafe { &*addr_of!((*self.frame.as_ptr()).waker) };
+
+        ptr.register(waker);
     }
 
-    pub(in crate::pdu_loop) unsafe fn wake(&self) -> Result<(), ()> {
-        if let Some(waker) = (*addr_of!((*self.frame.as_ptr()).waker)).take() {
+    pub(in crate::pdu_loop) fn wake(&self) -> Result<(), ()> {
+        // SAFETY: `self.frame` is a `NonNull`, so `addr_of` will always point to valid data.
+        let waker = unsafe { &*addr_of!((*self.frame.as_ptr()).waker) };
+
+        if let Some(waker) = waker.take() {
             waker.wake();
 
             Ok(())
@@ -122,41 +126,46 @@ impl<'sto> FrameBox<'sto> {
     }
 
     /// Get EtherCAT frame header buffer.
-    pub(in crate::pdu_loop) unsafe fn ecat_frame_header_mut(&mut self) -> &mut [u8] {
-        let ptr = FrameElement::<0>::ptr(self.frame);
+    pub(in crate::pdu_loop) fn ecat_frame_header_mut(&mut self) -> &mut [u8] {
+        let ptr = unsafe { FrameElement::<0>::ptr(self.frame) };
 
         let ethercat_header_start = EthernetFrame::<&[u8]>::header_len();
 
-        core::slice::from_raw_parts_mut(
-            ptr.as_ptr().byte_add(ethercat_header_start),
-            EthercatFrameHeader::PACKED_LEN,
-        )
+        unsafe {
+            core::slice::from_raw_parts_mut(
+                ptr.as_ptr().byte_add(ethercat_header_start),
+                EthercatFrameHeader::PACKED_LEN,
+            )
+        }
     }
 
     /// Get frame payload for writing PDUs into
-    pub(in crate::pdu_loop) unsafe fn pdu_buf_mut(&mut self) -> &mut [u8] {
-        let ptr = FrameElement::<0>::ethercat_payload_ptr(self.frame);
+    pub(in crate::pdu_loop) fn pdu_buf_mut(&mut self) -> &mut [u8] {
+        let ptr = unsafe { FrameElement::<0>::ethercat_payload_ptr(self.frame) };
 
         let pdu_payload_start =
             EthernetFrame::<&[u8]>::header_len() + EthercatFrameHeader::header_len();
 
-        core::slice::from_raw_parts_mut(ptr.as_ptr(), self.max_len - pdu_payload_start)
+        unsafe { core::slice::from_raw_parts_mut(ptr.as_ptr(), self.max_len - pdu_payload_start) }
     }
 
     /// Get frame payload area.
-    pub(in crate::pdu_loop) unsafe fn pdu_buf(&self) -> &[u8] {
-        let ptr = FrameElement::<0>::ethercat_payload_ptr(self.frame);
+    pub(in crate::pdu_loop) fn pdu_buf(&self) -> &[u8] {
+        let ptr = unsafe { FrameElement::<0>::ethercat_payload_ptr(self.frame) };
 
         let pdu_payload_start =
             EthernetFrame::<&[u8]>::header_len() + EthercatFrameHeader::header_len();
 
-        core::slice::from_raw_parts(ptr.as_ptr(), self.max_len - pdu_payload_start)
+        unsafe { core::slice::from_raw_parts(ptr.as_ptr(), self.max_len - pdu_payload_start) }
     }
 
-    pub(in crate::pdu_loop) unsafe fn ethernet_frame(&self) -> EthernetFrame<&[u8]> {
-        let ptr = FrameElement::<0>::ptr(self.frame);
-
-        EthernetFrame::new_unchecked(core::slice::from_raw_parts(ptr.as_ptr(), self.max_len))
+    pub(in crate::pdu_loop) fn ethernet_frame(&self) -> EthernetFrame<&[u8]> {
+        unsafe {
+            EthernetFrame::new_unchecked(core::slice::from_raw_parts(
+                FrameElement::<0>::ptr(self.frame).as_ptr(),
+                self.max_len,
+            ))
+        }
     }
 
     pub(crate) fn release_pdu_claims(&self) {

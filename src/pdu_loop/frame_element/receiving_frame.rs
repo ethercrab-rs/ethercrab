@@ -44,7 +44,7 @@ impl<'sto> ReceivingFrame<'sto> {
 
         // If the wake fails, release the receiving claim so the frame receive can possibly be
         // reattempted at a later time.
-        if let Err(()) = unsafe { self.inner.wake() } {
+        if let Err(()) = self.inner.wake() {
             fmt::trace!("Failed to wake frame {:#04x}: no waker", self.frame_index());
 
             unsafe {
@@ -94,7 +94,7 @@ impl<'sto> ReceivingFrame<'sto> {
     }
 
     pub fn buf_mut(&mut self) -> &mut [u8] {
-        unsafe { self.inner.pdu_buf_mut() }
+        self.inner.pdu_buf_mut()
     }
 
     /// Ethernet frame index.
@@ -117,7 +117,7 @@ impl<'sto> ReceiveFrameFut<'sto> {
 
         let frame = self.frame.as_ref().unwrap();
 
-        let b = unsafe { frame.ethernet_frame() };
+        let b = frame.ethernet_frame();
 
         let len = EthernetFrame::<&[u8]>::buffer_len(frame.pdu_payload_len())
             + EthercatFrameHeader::PACKED_LEN;
@@ -151,7 +151,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
             }
         };
 
-        unsafe { rxin.replace_waker(cx.waker()) };
+        rxin.replace_waker(cx.waker());
 
         let frame_idx = rxin.frame_index();
 

@@ -33,7 +33,7 @@ impl<'sto> CreatedFrame<'sto> {
     /// received.
     pub fn mark_sendable(mut self) -> ReceiveFrameFut<'sto> {
         EthercatFrameHeader::pdu(self.inner.pdu_payload_len() as u16)
-            .pack_to_slice_unchecked(unsafe { self.inner.ecat_frame_header_mut() });
+            .pack_to_slice_unchecked(self.inner.ecat_frame_header_mut());
 
         unsafe {
             FrameElement::set_state(self.inner.frame, FrameState::Sendable);
@@ -78,7 +78,9 @@ impl<'sto> CreatedFrame<'sto> {
             buf_range
         );
 
-        let pdu_buf = unsafe { self.inner.pdu_buf_mut() }
+        let pdu_buf = self
+            .inner
+            .pdu_buf_mut()
             .get_mut(buf_range.clone())
             .ok_or(PduError::TooLong)?;
 

@@ -82,7 +82,7 @@ impl<'sto> SendableFrame<'sto> {
 
     // NOTE: Only pub for tests
     pub(crate) fn as_bytes(&self) -> &[u8] {
-        let frame = unsafe { self.inner.ethernet_frame() }.into_inner();
+        let frame = self.inner.ethernet_frame().into_inner();
 
         let len = EthernetFrame::<&[u8]>::buffer_len(
             EthercatFrameHeader::PACKED_LEN + self.inner.pdu_payload_len(),
