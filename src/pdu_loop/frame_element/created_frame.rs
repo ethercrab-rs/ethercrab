@@ -113,9 +113,8 @@ impl<'sto> CreatedFrame<'sto> {
         // Next two bytes are working counter, but they are always zero on send (and the buffer is
         // zero-initialised) so there's nothing to do.
 
-        // TODO: Combine in to one method
-        self.inner.add_pdu_payload_len(alloc_size);
-        self.inner.inc_pdu_count();
+        // Don't need to check length here as we do that with `pdu_buf_mut().get_mut()` above.
+        self.inner.add_pdu(alloc_size);
 
         Ok(PduResponseHandle {
             _ty: PhantomData,

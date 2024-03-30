@@ -180,10 +180,6 @@ impl<'sto> FrameBox<'sto> {
         unsafe { *addr_of!((*self.frame.as_ptr()).pdu_payload_len) }
     }
 
-    pub fn add_pdu_payload_len(&mut self, len: usize) {
-        unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += len };
-    }
-
     pub fn reserve_pdu_marker(&self, frame_index: u8) -> Result<u8, PduError> {
         let pdu_idx = self.next_pdu_idx();
 
@@ -226,15 +222,17 @@ impl<'sto> FrameBox<'sto> {
         unsafe { FrameElement::swap_state(self.frame, from, to) }.map(|_| ())
     }
 
-    pub fn inc_pdu_count(&self) {
-        unsafe { FrameElement::<0>::inc_pdu_count(self.frame) };
-    }
-
     pub fn inc_refcount(&self) {
         unsafe { FrameElement::<0>::inc_refcount(self.frame) };
     }
 
     pub fn dec_refcount(&self) -> u8 {
         unsafe { FrameElement::<0>::dec_refcount(self.frame) }
+    }
+
+    pub fn add_pdu(&mut self, alloc_size: usize) {
+        unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += alloc_size };
+
+        unsafe { FrameElement::<0>::inc_pdu_count(self.frame) };
     }
 }
