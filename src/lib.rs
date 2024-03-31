@@ -155,6 +155,12 @@
 #![deny(unused_qualifications)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/ethercrab-rs/ethercrab/5185a914f49abad8b0f71a1b3b689500077e7c2b/ethercrab-logo-docsrs.svg"
+)]
+#![doc(
+    html_favicon_url = "https://raw.githubusercontent.com/ethercrab-rs/ethercrab/5185a914f49abad8b0f71a1b3b689500077e7c2b/ethercrab-logo-docsrs.svg"
+)]
 
 // MUST go first so everything else can see the macros inside
 pub(crate) mod fmt;
