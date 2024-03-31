@@ -9,6 +9,8 @@ Primarily used by `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.1.4] - 2024-03-31
+
 ## [0.1.3] - 2024-03-27
 
 ### Added
@@ -32,7 +34,8 @@ Primarily used by `ethercrab`.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.3...HEAD
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.4...HEAD
+[0.1.4]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.3...ethercrab-wire-v0.1.4
 
 [0.1.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.2...ethercrab-wire-v0.1.3
 [0.1.2]:
