@@ -192,7 +192,7 @@ pub fn ether_crab_wire(input: TokenStream) -> TokenStream {
 
     let res = match input.clone().data {
         Data::Enum(e) => parse_enum(e, input.clone()).and_then(|parsed| {
-            let mut tokens = generate_enum_write(parsed.clone(), &input)?;
+            let mut tokens = generate_enum_write(parsed.clone(), &input, false)?;
 
             tokens.extend(generate_enum_read(parsed, &input)?);
 
@@ -267,9 +267,8 @@ pub fn ether_crab_wire_write(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let res = match input.clone().data {
-        Data::Enum(e) => {
-            parse_enum(e, input.clone()).and_then(|parsed| generate_enum_write(parsed, &input))
-        }
+        Data::Enum(e) => parse_enum(e, input.clone())
+            .and_then(|parsed| generate_enum_write(parsed, &input, true)),
         Data::Struct(s) => parse_struct(s, input.clone()).and_then(|parsed| {
             let mut tokens = generate_struct_write(parsed.clone(), &input)?;
 

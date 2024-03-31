@@ -6,6 +6,7 @@ use syn::DeriveInput;
 pub fn generate_enum_write(
     parsed: EnumMeta,
     input: &DeriveInput,
+    gen_sized_impl: bool,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let name = input.ident.clone();
     let repr_type = parsed.repr_type;
@@ -47,6 +48,22 @@ pub fn generate_enum_write(
         }
     };
 
+    let sized_impl = if gen_sized_impl {
+        quote! {
+            impl ::ethercrab_wire::EtherCrabWireSized for #name {
+                const PACKED_LEN: usize = #size_bytes;
+
+                type Buffer = [u8; #size_bytes];
+
+                fn buffer() -> Self::Buffer {
+                    [0u8; #size_bytes]
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let out = quote! {
         impl ::ethercrab_wire::EtherCrabWireWrite for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
@@ -65,6 +82,8 @@ pub fn generate_enum_write(
                 #size_bytes
             }
         }
+
+        #sized_impl
 
         impl ::ethercrab_wire::EtherCrabWireWriteSized for #name {
             fn pack(&self) -> Self::Buffer {
