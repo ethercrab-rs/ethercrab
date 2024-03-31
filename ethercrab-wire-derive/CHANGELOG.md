@@ -6,6 +6,11 @@ Derives for `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- [#207](https://github.com/ethercrab-rs/ethercrab/pull/207) Generate `EtherCrabWireSized` for
+  write-only enums.
+
 ## [0.1.3] - 2024-03-27
 
 ## [0.1.2] - 2024-02-03
@@ -30,10 +35,12 @@ Derives for `ethercrab`.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.3...HEAD
-[0.1.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.2...ethercrab-wire-derive-v0.1.3
 
-[0.1.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.1...ethercrab-wire-derive-v0.1.2
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.3...HEAD
+[0.1.3]:
+  https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.2...ethercrab-wire-derive-v0.1.3
+[0.1.2]:
+  https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.1...ethercrab-wire-derive-v0.1.2
 [0.1.1]:
   https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.0...ethercrab-wire-derive-v0.1.1
 [0.1.0]: https://github.com/ethercrab-rs/ethercrab/compare/HEAD...ethercrab-wire-derive-v0.1.0

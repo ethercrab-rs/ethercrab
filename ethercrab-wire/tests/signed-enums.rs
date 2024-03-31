@@ -119,3 +119,43 @@ fn cia402_control_word() {
 
     assert_eq!(cw, cw2);
 }
+
+#[test]
+fn sized() {
+    #[derive(ethercrab_wire::EtherCrabWireRead)]
+    #[wire(bytes = 9)]
+    struct DriveState {
+        #[wire(bytes = 4)]
+        actual_position: u32,
+        #[wire(bytes = 4)]
+        actual_velocity: u32,
+        #[wire(bits = 4)]
+        status_word: u8,
+        #[wire(bits = 1)]
+        di0: bool,
+        #[wire(bits = 1)]
+        di1: bool,
+        #[wire(bits = 1)]
+        di2: bool,
+        #[wire(bits = 1)]
+        di3: bool,
+    }
+
+    #[derive(Copy, Clone, ethercrab_wire::EtherCrabWireWrite)]
+    #[wire(bytes = 1)]
+    #[repr(u8)]
+    enum ControlState {
+        Init = 0x01,
+        Conf = 0x04,
+        Op = 0xaa,
+    }
+
+    #[derive(ethercrab_wire::EtherCrabWireWrite)]
+    #[wire(bytes = 5)]
+    struct DriveControl {
+        #[wire(bytes = 4)]
+        target_position: u32,
+        #[wire(bytes = 1)]
+        control_state: ControlState,
+    }
+}
