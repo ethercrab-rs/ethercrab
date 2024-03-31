@@ -1,6 +1,6 @@
 [package]
 name = "ethercrab-wire-derive"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 categories = ["science::robotics", "no-std", "network-programming"]
 license = "MIT OR Apache-2.0"
