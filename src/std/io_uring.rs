@@ -16,6 +16,10 @@ use std::{
     time::Instant,
 };
 
+/// Use the upper bit of a u64 to mark whether a frame is a write (`1`) or a read (`0`).
+const WRITE_MASK: u64 = 1 << 63;
+const ENTRIES: usize = 256;
+
 struct ParkSignal {
     current_thread: Thread,
 }
@@ -38,12 +42,9 @@ impl ParkSignal {
 
 impl Wake for ParkSignal {
     fn wake(self: Arc<Self>) {
-        self.current_thread.unpark()
+        self.current_thread.unpark();
     }
 }
-
-/// Use the upper bit of a u64 to mark whether a frame is a write (`1`) or a read (`0`).
-const WRITE_MASK: u64 = 1 << 63;
 
 /// Create a blocking TX/RX loop using `io_uring`.
 ///
@@ -66,8 +67,6 @@ pub fn tx_rx_task_io_uring<'sto>(
 
     // MTU is payload size. We need to add the layer 2 header which is 18 bytes.
     let mtu = mtu + 18;
-
-    const ENTRIES: usize = 256;
 
     // SAFETY: Max entries is 256 because `PduStorage::N` is checked to be in 0..u8::MAX, and will
     // eventually be a `u8` once const generics get there. Twice as much space is reserved as each

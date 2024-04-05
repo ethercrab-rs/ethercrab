@@ -822,7 +822,7 @@ where
             .send_receive_slice(client, self.pdi())
             .await?;
 
-        self.process_pdi_response(data)
+        self.process_pdi_response(&data)
     }
 
     /// Drive the slave group's inputs and outputs and synchronise EtherCAT system time with `FRMW`.
@@ -883,8 +883,8 @@ where
                     },
                     |received, (dc, data)| {
                         self.process_pdi_response_with_time(
-                            received.take(dc)?,
-                            received.take(data)?,
+                            &received.take(dc)?,
+                            &received.take(data)?,
                         )
                     },
                 )
@@ -898,10 +898,10 @@ where
 
     fn process_pdi_response_with_time(
         &self,
-        dc: crate::pdu_loop::ReceivedPdu<'_, u64>,
-        data: crate::pdu_loop::ReceivedPdu<'_, ()>,
+        dc: &crate::pdu_loop::ReceivedPdu<'_, u64>,
+        data: &crate::pdu_loop::ReceivedPdu<'_, ()>,
     ) -> Result<(u64, u16), Error> {
-        let time = u64::unpack_from_slice(&dc)?;
+        let time = u64::unpack_from_slice(dc)?;
 
         Ok((time, self.process_pdi_response(data)?))
     }
@@ -911,7 +911,7 @@ where
     /// Returns working counter on success.
     fn process_pdi_response(
         &self,
-        data: crate::pdu_loop::ReceivedPdu<'_, ()>,
+        data: &crate::pdu_loop::ReceivedPdu<'_, ()>,
     ) -> Result<u16, Error> {
         if data.len() != self.pdi().len() {
             fmt::error!(
@@ -1071,7 +1071,7 @@ where
                     Ok((dc_handle, pdu_handle))
                 },
                 |received, (dc, data)| {
-                    self.process_pdi_response_with_time(received.take(dc)?, received.take(data)?)
+                    self.process_pdi_response_with_time(&received.take(dc)?, &received.take(data)?)
                 },
             )
             .await?;

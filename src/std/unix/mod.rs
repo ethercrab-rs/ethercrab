@@ -166,7 +166,7 @@ fn ifreq_for(name: &str) -> ifreq {
         ifr_data: 0,
     };
     for (i, byte) in name.as_bytes().iter().enumerate() {
-        ifreq.ifr_name[i] = *byte as libc::c_char
+        ifreq.ifr_name[i] = *byte as libc::c_char;
     }
     ifreq
 }
