@@ -161,7 +161,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
         // Configure master read PDI mappings in the first section of the PDI
         for slave in inner.slaves.iter_mut().map(AtomicRefCell::get_mut) {
             // We're in PRE-OP at this point
-            pdi_position = SlaveRef::new(client, slave.configured_address, slave)
+            pdi_position = SlaveRef::new(client, slave.configured_address(), slave)
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
@@ -178,7 +178,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
         for slave in inner.slaves.iter_mut().map(AtomicRefCell::get_mut) {
-            let addr = slave.configured_address;
+            let addr = slave.configured_address();
 
             let mut slave_config = SlaveRef::new(client, addr, slave);
 
@@ -244,7 +244,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
                 Error::Borrow
             })?;
 
-        Ok(SlaveRef::new(client, slave.configured_address, slave))
+        Ok(SlaveRef::new(client, slave.configured_address(), slave))
     }
 
     /// Transition the group from PRE-OP -> SAFE-OP -> OP.
@@ -527,7 +527,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC>
             .iter_mut()
             .map(|slave| slave.get_mut())
         {
-            SlaveRef::new(client, slave.configured_address, slave)
+            SlaveRef::new(client, slave.configured_address(), slave)
                 .request_slave_state_nowait(SlaveState::Op)
                 .await?;
         }
@@ -622,7 +622,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES
         desired_state: SlaveState,
     ) -> Result<bool, Error> {
         for slave in self.inner().slaves.iter().map(|slave| slave.borrow()) {
-            let s = SlaveRef::new(client, slave.configured_address, slave);
+            let s = SlaveRef::new(client, slave.configured_address(), slave);
 
             // TODO: Add a way to queue up a bunch of PDUs and send all at once
             let slave_state = s.state().await.map_err(|e| {
@@ -677,7 +677,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES
             .iter_mut()
             .map(AtomicRefCell::get_mut)
         {
-            SlaveRef::new(client, slave.configured_address, slave)
+            SlaveRef::new(client, slave.configured_address(), slave)
                 .request_slave_state_nowait(desired_state)
                 .await?;
         }
@@ -741,7 +741,7 @@ where
 
         fmt::trace!(
             "Get slave {:#06x} IO ranges I: {}, O: {}",
-            slave.configured_address,
+            slave.configured_address(),
             input_range,
             output_range
         );
@@ -770,7 +770,7 @@ where
 
         Ok(SlaveRef::new(
             client,
-            slave.configured_address,
+            slave.configured_address(),
             // SAFETY: A given slave contained in a `SlavePdi` MUST only be borrowed once (currently
             // enforced by `AtomicRefCell`). If it is borrowed more than once, immutable APIs in
             // `SlaveRef<SlavePdi>` will be unsound.
