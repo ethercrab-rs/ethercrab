@@ -709,11 +709,6 @@ where
     /// Each slave device in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
     /// single reference to it at any one time. Multiple different slaves can be borrowed
     /// simultaneously, but multiple references to the same slave are not allowed.
-    ///
-    /// # Panics
-    ///
-    /// Borrowing a slave across a [`SlaveGroup::iter`](crate::SlaveGroup::iter) call will cause the
-    /// returned iterator to panic as it tries to borrow the slave a second time.
     pub fn slave<'client, 'group>(
         &'group self,
         client: &'client Client<'client>,
@@ -796,6 +791,17 @@ where
     /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
     ///
     /// This method returns the working counter on success.
+    ///
+    /// # Errors
+    ///
+    /// This method will return with an error if the PDU could not be sent over the network, or the
+    /// response times out.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the frame data length of the group is too large to fit in the
+    /// configured maximum PDU length set by the `DATA` const generic of
+    /// [`PduStorage`](crate::PduStorage).
     pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<u16, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
@@ -826,6 +832,17 @@ where
     ///
     /// This method returns the working counter and the current EtherCAT system time in nanoseconds
     /// on success.
+    ///
+    /// # Errors
+    ///
+    /// This method will return with an error if the PDU could not be sent over the network, or the
+    /// response times out.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the frame data length of the group is too large to fit in the
+    /// configured maximum PDU length set by the `DATA` const generic of
+    /// [`PduStorage`](crate::PduStorage).
     pub async fn tx_rx_sync_system_time<'sto>(
         &self,
         client: &'sto Client<'sto>,
