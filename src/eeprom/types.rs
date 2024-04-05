@@ -671,20 +671,21 @@ bitflags::bitflags! {
     /// Supported mailbox category.
     ///
     /// Defined in ETG1000.6 Table 18 or ETG2010 Table 4.
+    // NOTE: Is actually a u16, but only the lower byte has any data in it
     #[derive(Copy, Clone, Default, Debug, PartialEq)]
-    pub struct MailboxProtocols: u16 {
+    pub struct MailboxProtocols: u8 {
         /// ADS over EtherCAT (routing and parallel services).
-        const AOE = 0x0001;
+        const AOE = 0x01;
         /// Ethernet over EtherCAT (tunnelling of Data Link services).
-        const EOE = 0x0002;
+        const EOE = 0x02;
         /// CAN application protocol over EtherCAT (access to SDO).
-        const COE = 0x0004;
+        const COE = 0x04;
         /// File Access over EtherCAT.
-        const FOE = 0x0008;
+        const FOE = 0x08;
         /// Servo Drive Profile over EtherCAT.
-        const SOE = 0x0010;
+        const SOE = 0x10;
         /// Vendor specific protocol over EtherCAT.
-        const VOE = 0x0020;
+        const VOE = 0x20;
     }
 }
 
@@ -700,8 +701,8 @@ impl EtherCrabWireSized for MailboxProtocols {
 
 impl EtherCrabWireRead for MailboxProtocols {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
-        u16::unpack_from_slice(buf)
-            .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
+        // NOTE: Is actually a u16, but only the lower byte has any data in it
+        Self::from_bits(buf[0]).ok_or(ethercrab_wire::WireError::InvalidValue)
     }
 }
 
@@ -709,7 +710,7 @@ impl EtherCrabWireRead for MailboxProtocols {
 #[cfg(feature = "defmt")]
 impl defmt::Format for MailboxProtocols {
     fn format(&self, f: defmt::Formatter) {
-        defmt::write!(f, "{=u16:b}", self.bits())
+        defmt::write!(f, "{=u8:b}", self.bits())
     }
 }
 
