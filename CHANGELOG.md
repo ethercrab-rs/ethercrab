@@ -6,6 +6,11 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- [#208](https://github.com/ethercrab-rs/ethercrab/pull/208) Expose `DcSupport` enum at the crate
+  root so it can be used by everyone.
+
 ## [0.4.0] - 2024-03-31
 
 ### Changed
@@ -363,8 +368,8 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.0...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.0...HEAD
 [0.4.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...ethercrab-v0.4.0
 [0.3.7]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.5...v0.3.6
