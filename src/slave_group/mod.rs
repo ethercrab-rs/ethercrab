@@ -159,7 +159,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
         );
 
         // Configure master read PDI mappings in the first section of the PDI
-        for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
+        for slave in inner.slaves.iter_mut().map(AtomicRefCell::get_mut) {
             // We're in PRE-OP at this point
             pdi_position = SlaveRef::new(client, slave.configured_address, slave)
                 .configure_fmmus(
@@ -177,7 +177,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
         // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
-        for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
+        for slave in inner.slaves.iter_mut().map(AtomicRefCell::get_mut) {
             let addr = slave.configured_address;
 
             let mut slave_config = SlaveRef::new(client, addr, slave);
@@ -219,10 +219,11 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
     /// single reference to it at any one time. Multiple different slaves can be borrowed
     /// simultaneously, but multiple references to the same slave are not allowed.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Borrowing a slave across a [`SlaveGroup::iter`](crate::SlaveGroup::iter) call will cause the
-    /// returned iterator to panic as it tries to borrow the slave a second time.
+    /// This method will return an error if the given index is out of range of the current group, or
+    /// if the SubDevice at the given index is already borrowed.
+    #[deny(clippy::panic)]
     pub fn slave<'client, 'group>(
         &'group self,
         client: &'client Client<'client>,
@@ -674,7 +675,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES
             .get_mut()
             .slaves
             .iter_mut()
-            .map(|slave| slave.get_mut())
+            .map(AtomicRefCell::get_mut)
         {
             SlaveRef::new(client, slave.configured_address, slave)
                 .request_slave_state_nowait(desired_state)
@@ -754,17 +755,17 @@ where
 
         // NOTE: Using panicking `[]` indexing as the indices and arrays should all be correct by
         // this point. If something isn't right, that's a bug.
-        let inputs = if !input_range.is_empty() {
-            &i_data[input_range.bytes.clone()]
-        } else {
+        let inputs = if input_range.is_empty() {
             EMPTY_PDI_SLICE
+        } else {
+            &i_data[input_range.bytes.clone()]
         };
 
-        let outputs = if !output_range.is_empty() {
-            &mut o_data[output_range.bytes.clone()]
-        } else {
+        let outputs = if output_range.is_empty() {
             // SAFETY: Slice is empty so can never be mutated
-            unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr() as *mut _, 0) }
+            unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr().cast_mut(), 0) }
+        } else {
+            &mut o_data[output_range.bytes.clone()]
         };
 
         Ok(SlaveRef::new(
@@ -945,7 +946,18 @@ where
     /// This method returns the working counter and a [`CycleInfo`], containing values that can be
     /// used to synchronise the MainDevice to the network SYNC0 event.
     ///
-    /// ## Examples
+    /// # Errors
+    ///
+    /// This method will return with an error if the PDU could not be sent over the network, or the
+    /// response times out.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the frame data length of the group is too large to fit in the
+    /// configured maximum PDU length set by the `DATA` const generic of
+    /// [`PduStorage`](crate::PduStorage).
+    ///
+    /// # Examples
     ///
     /// This example sends process data at 2.5ms offset into a 5ms cycle.
     ///

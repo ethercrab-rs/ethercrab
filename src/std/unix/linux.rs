@@ -6,6 +6,7 @@ use crate::{
     ETHERCAT_ETHERTYPE_RAW,
 };
 use async_io::IoSafe;
+use core::ptr::addr_of;
 use std::{
     io, mem,
     os::{
@@ -63,7 +64,7 @@ impl RawSocketDesc {
             #[allow(trivial_casts)]
             let res = libc::bind(
                 self.lower,
-                &sockaddr as *const libc::sockaddr_ll as *const libc::sockaddr,
+                addr_of!(sockaddr).cast(),
                 mem::size_of::<libc::sockaddr_ll>() as libc::socklen_t,
             );
             if res == -1 {
@@ -106,13 +107,7 @@ impl Drop for RawSocketDesc {
 
 impl io::Read for RawSocketDesc {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let len = unsafe {
-            libc::read(
-                self.as_raw_fd(),
-                buf.as_mut_ptr() as *mut libc::c_void,
-                buf.len(),
-            )
-        };
+        let len = unsafe { libc::read(self.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
         if len == -1 {
             Err(io::Error::last_os_error())
         } else {
@@ -123,13 +118,7 @@ impl io::Read for RawSocketDesc {
 
 impl io::Write for RawSocketDesc {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let len = unsafe {
-            libc::write(
-                self.as_raw_fd(),
-                buf.as_ptr() as *mut libc::c_void,
-                buf.len(),
-            )
-        };
+        let len = unsafe { libc::write(self.as_raw_fd(), buf.as_ptr().cast(), buf.len()) };
         if len == -1 {
             Err(io::Error::last_os_error())
         } else {

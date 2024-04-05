@@ -2,7 +2,7 @@ use super::{Slave, SlaveRef};
 use crate::{
     coe::{SdoExpedited, SubIndex},
     eeprom::types::{
-        CoeDetails, FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable,
+        CoeDetails, FmmuUsage, MailboxProtocols, Pdo, SiiOwner, SyncManager, SyncManagerEnable,
         SyncManagerType,
     },
     error::{Error, Item},
@@ -12,7 +12,7 @@ use crate::{
     register::RegisterAddress,
     slave::types::{Mailbox, MailboxConfig},
     slave_state::SlaveState,
-    sync_manager_channel::{self, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
+    sync_manager_channel::{Enable, Status, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
 use core::ops::DerefMut;
 
@@ -183,10 +183,10 @@ where
             // Bit length, rounded up to the nearest byte
             length_bytes,
             control: sync_manager.control,
-            status: Default::default(),
-            enable: sync_manager_channel::Enable {
+            status: Status::default(),
+            enable: Enable {
                 enable: sync_manager.enable.contains(SyncManagerEnable::ENABLE),
-                ..Default::default()
+                ..Enable::default()
             },
         };
 
@@ -275,7 +275,7 @@ where
             has_coe: mailbox_config
                 .supported_protocols
                 .contains(MailboxProtocols::COE)
-                && read_mailbox.map(|mbox| mbox.len > 0).unwrap_or(false),
+                && read_mailbox.is_some_and(|mbox| mbox.len > 0),
             complete_access: general
                 .coe_details
                 .contains(CoeDetails::ENABLE_COMPLETE_ACCESS),
@@ -499,7 +499,7 @@ where
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
-        let pdos: heapless::Vec<crate::eeprom::types::Pdo, 16> = match direction {
+        let pdos: heapless::Vec<Pdo, 16> = match direction {
             PdoDirection::MasterRead => {
                 let read_pdos = self.eeprom().master_read_pdos().await?;
 
@@ -533,7 +533,7 @@ where
             let bit_len = pdos
                 .iter()
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
-                .map(|pdo| pdo.bit_len())
+                .map(Pdo::bit_len)
                 .sum();
 
             total_bit_len += bit_len;

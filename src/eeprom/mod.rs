@@ -147,7 +147,7 @@ where
         while !buf.is_empty() {
             let res = self.reader.read_chunk(self.pos / 2).await?;
 
-            let chunk = res.deref();
+            let chunk = &*res;
 
             // If position is odd, we must skip the first received byte as the reader operates on
             // WORD addresses.
