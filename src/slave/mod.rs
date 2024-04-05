@@ -67,12 +67,12 @@ pub struct Slave {
     pub(crate) dc_receive_time: u64,
 
     /// The index of the slave in the EtherCAT tree.
-    pub(crate) index: usize,
+    pub(crate) index: u16,
 
     /// The index of the previous slave in the EtherCAT tree.
     ///
     /// For the first slave in the network, this will always be `None`.
-    pub(crate) parent_index: Option<usize>,
+    pub(crate) parent_index: Option<u16>,
 
     /// Propagation delay in nanoseconds.
     ///
@@ -137,7 +137,7 @@ impl Slave {
     /// the slave.
     pub(crate) async fn new<'sto>(
         client: &'sto Client<'sto>,
-        index: usize,
+        index: u16,
         configured_address: u16,
     ) -> Result<Self, Error> {
         let slave_ref = SlaveRef::new(client, configured_address, ());

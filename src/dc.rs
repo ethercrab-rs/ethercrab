@@ -135,7 +135,7 @@ async fn write_dc_parameters(
 ///           │            │  │
 ///           └────────────┘◀─┘
 /// ```
-fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, Error> {
+fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<u16>, Error> {
     // No parent if we're first in the network, e.g. the EK1100 in the diagram above
     if parents.is_empty() {
         return Ok(None);

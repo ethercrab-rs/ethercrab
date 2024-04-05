@@ -258,7 +258,7 @@ impl<'sto> Client<'sto> {
                 .send(self, configured_address)
                 .await?;
 
-            let slave = Slave::new(self, usize::from(slave_idx), configured_address).await?;
+            let slave = Slave::new(self, slave_idx, configured_address).await?;
 
             slaves
                 .push_back(slave)

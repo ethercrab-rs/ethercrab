@@ -8,9 +8,9 @@ pub struct Port {
     pub active: bool,
     pub dc_receive_time: u32,
     /// The EtherCAT port number, ordered as 0 -> 3 -> 1 -> 2.
-    pub number: usize,
+    pub number: u8,
     /// Holds the index of the downstream slave this port is connected to.
-    pub downstream_to: Option<usize>,
+    pub downstream_to: Option<u16>,
 }
 
 impl Port {
@@ -113,10 +113,10 @@ impl Ports {
     #[cfg(test)]
     pub(crate) fn set_downstreams(
         &mut self,
-        d0: Option<usize>,
-        d3: Option<usize>,
-        d1: Option<usize>,
-        d2: Option<usize>,
+        d0: Option<u16>,
+        d3: Option<u16>,
+        d1: Option<u16>,
+        d2: Option<u16>,
     ) -> Self {
         self.0[0].downstream_to = d0;
         self.0[1].downstream_to = d3;
@@ -164,7 +164,7 @@ impl Ports {
     }
 
     /// Link a downstream device to the current device using the next open port from the entry port.
-    pub fn assign_next_downstream_port(&mut self, downstream_slave_index: usize) -> Option<usize> {
+    pub fn assign_next_downstream_port(&mut self, downstream_slave_index: u16) -> Option<u8> {
         let entry_port = self.entry_port();
 
         let next_port = self.next_assignable_port(&entry_port)?;
