@@ -290,7 +290,7 @@ where
         sync_managers: &[SyncManager],
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
-        gobal_offset: &mut PdiOffset,
+        global_offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
         if !self.state.config.mailbox.has_coe {
             fmt::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
@@ -307,7 +307,7 @@ where
         //     .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
         //     .await?;
 
-        let start_offset = *gobal_offset;
+        let start_offset = *global_offset;
         let mut total_bit_len = 0;
 
         for (sync_manager_index, sm_type) in self
@@ -423,7 +423,7 @@ where
                 self.write_fmmu_config(
                     sm_bit_len,
                     fmmu_index,
-                    gobal_offset,
+                    global_offset,
                     desired_sm_type,
                     &sm_config,
                 )
@@ -435,7 +435,7 @@ where
 
         Ok(PdiSegment {
             bit_len: total_bit_len.into(),
-            bytes: start_offset.up_to(*gobal_offset),
+            bytes: start_offset.up_to(*global_offset),
         })
     }
 
