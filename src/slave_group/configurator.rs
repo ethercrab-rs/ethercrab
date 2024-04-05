@@ -23,6 +23,7 @@ unsafe impl<'a> Send for SlaveGroupRef<'a> {}
 /// A reference to a [`SlaveGroup`](crate::SlaveGroup) returned by the closure passed to
 /// [`Client::init`](crate::Client::init).
 pub struct SlaveGroupRef<'a> {
+    /// Maximum PDI length in bytes.
     max_pdi_len: usize,
     inner: GroupInnerRef<'a>,
 }
