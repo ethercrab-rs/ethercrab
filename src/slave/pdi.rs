@@ -67,24 +67,7 @@ impl<'a, 'group> SlaveRef<'a, SlavePdi<'group>> {
     /// # }
     /// ```
     pub fn io_raw_mut(&mut self) -> (&[u8], &mut [u8]) {
-        (
-            self.state.inputs,
-            self.state.outputs, // // SAFETY: `self.state.inputs` and `self.state.outputs` can never overlap for valid
-                                // // inputs, so we can borrow immutably _and_ mutably at the same time here.
-                                // //
-                                // // SAFETY: Only one instance of `SlavePdi` can exist for any given slave (and therefore
-                                // // any given non-overlapping PDI slice) due to the usage of `AtomicRefCell` and runtime
-                                // // checked borrows.
-                                // //
-                                // // SAFETY: `io_raw_mut` must be `&mut self`, not `&self` to ensure the mutable borrow
-                                // // cannot be held more than once at a time.
-                                // unsafe {
-                                //     core::slice::from_raw_parts_mut(
-                                //         self.state.outputs.as_mut_ptr(),
-                                //         self.state.outputs.len(),
-                                //     )
-                                // },
-        )
+        (self.state.inputs, self.state.outputs)
     }
 
     /// Get a tuple of (&I, &O) for this slave in the Process Data Image (PDI).
