@@ -36,8 +36,7 @@ pub fn usize_attr(attrs: &[syn::Attribute], search: &str) -> Result<Option<usize
 
         for meta in nested {
             match meta {
-                Meta::Path(_) => (),
-                Meta::List(_) => (),
+                Meta::Path(_) | Meta::List(_) => (),
                 Meta::NameValue(nv) if nv.path.is_ident(search) => {
                     if let Expr::Lit(ExprLit {
                         lit: Lit::Int(lit), ..
@@ -46,7 +45,7 @@ pub fn usize_attr(attrs: &[syn::Attribute], search: &str) -> Result<Option<usize
                         return Ok(Some(lit.base10_parse::<usize>()?));
                     }
                 }
-                _ => (),
+                Meta::NameValue(_) => (),
             }
         }
     }
@@ -96,7 +95,7 @@ pub fn all_valid_attrs(attrs: &[syn::Attribute], allowed: &[&str]) -> Result<(),
     Ok(())
 }
 
-pub fn attr_exists(attrs: &[syn::Attribute], search: &str) -> Result<bool, syn::Error> {
+pub fn attr_exists(attrs: &[syn::Attribute], search: &str) -> bool {
     for attr in my_attributes(attrs) {
         let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
         else {
@@ -105,13 +104,13 @@ pub fn attr_exists(attrs: &[syn::Attribute], search: &str) -> Result<bool, syn::
 
         for meta in nested {
             match meta {
-                Meta::Path(p) if p.is_ident(search) => return Ok(true),
+                Meta::Path(p) if p.is_ident(search) => return true,
                 _ => (),
             }
         }
     }
 
-    Ok(false)
+    false
 }
 
 // pub fn field_is_enum_attr(attrs: &[syn::Attribute]) -> Result<bool, syn::Error> {
@@ -165,7 +164,7 @@ pub fn enum_repr_ty(attrs: &[syn::Attribute], ident: &Ident) -> Result<Ident, sy
     ))
 }
 
-/// Look for 'alternatives = [1,2,3]` attribute on enum variant.
+/// Look for `alternatives = [1,2,3]` attribute on enum variant.
 pub fn variant_alternatives(attrs: &[syn::Attribute]) -> Result<Vec<i128>, syn::Error> {
     for attr in my_attributes(attrs) {
         let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
@@ -175,8 +174,7 @@ pub fn variant_alternatives(attrs: &[syn::Attribute]) -> Result<Vec<i128>, syn::
 
         for meta in nested {
             match meta {
-                Meta::Path(_) => (),
-                Meta::List(_) => (),
+                Meta::Path(_) | Meta::List(_) => (),
                 Meta::NameValue(nv) if nv.path.is_ident("alternatives") => {
                     if let Expr::Array(ExprArray { elems, .. }) = &nv.value {
                         return elems
@@ -197,7 +195,7 @@ pub fn variant_alternatives(attrs: &[syn::Attribute]) -> Result<Vec<i128>, syn::
                             .collect::<Result<Vec<_>, _>>();
                     }
                 }
-                _ => (),
+                Meta::NameValue(_) => (),
             }
         }
     }
@@ -205,13 +203,13 @@ pub fn variant_alternatives(attrs: &[syn::Attribute]) -> Result<Vec<i128>, syn::
     Ok(Vec::new())
 }
 
-pub fn variant_is_default(attrs: &[syn::Attribute]) -> Result<bool, syn::Error> {
+pub fn variant_is_default(attrs: &[syn::Attribute]) -> bool {
     for attr in attrs {
         match attr.meta {
-            Meta::Path(ref p) if p.is_ident("default") => return Ok(true),
+            Meta::Path(ref p) if p.is_ident("default") => return true,
             _ => continue,
         }
     }
 
-    Ok(false)
+    false
 }

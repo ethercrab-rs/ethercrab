@@ -7,7 +7,7 @@ pub fn generate_enum_write(
     parsed: EnumMeta,
     input: &DeriveInput,
     gen_sized_impl: bool,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
+) -> proc_macro2::TokenStream {
     let name = input.ident.clone();
     let repr_type = parsed.repr_type;
     let size_bytes = match repr_type.to_string().as_str() {
@@ -64,7 +64,7 @@ pub fn generate_enum_write(
         quote! {}
     };
 
-    let out = quote! {
+    quote! {
         impl ::ethercrab_wire::EtherCrabWireWrite for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 let mut buf = &mut buf[0..#size_bytes];
@@ -97,15 +97,10 @@ pub fn generate_enum_write(
         }
 
 
-    };
-
-    Ok(out)
+    }
 }
 
-pub fn generate_enum_read(
-    parsed: EnumMeta,
-    input: &DeriveInput,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
+pub fn generate_enum_read(parsed: EnumMeta, input: &DeriveInput) -> proc_macro2::TokenStream {
     let name = input.ident.clone();
     let repr_type = parsed.repr_type;
     let size_bytes = match repr_type.to_string().as_str() {
@@ -239,7 +234,7 @@ pub fn generate_enum_read(
         }
     };
 
-    let out = quote! {
+    quote! {
         impl ::ethercrab_wire::EtherCrabWireRead for #name {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
                 let raw = buf.get(0..#size_bytes).map(|bytes| {
@@ -268,7 +263,5 @@ pub fn generate_enum_read(
 
         #from_primitive_impl
         #into_primitive_impl
-    };
-
-    Ok(out)
+    }
 }
