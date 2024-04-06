@@ -32,7 +32,10 @@ impl<'sto> ReceivedFrame<'sto> {
 
     pub fn take<'frame, T>(
         &'sto self,
-        handle: PduResponseHandle<T>,
+        // SAFETY: Consumes handle so it cannot be retrieved again. If this invariant is relaxed, we
+        // could hold multiple references to the same section of response data. This isn't hugely
+        // bad on its own as all we ever do is read it, but semantically it makes sense.
+        #[allow(clippy::needless_pass_by_value)] handle: PduResponseHandle<T>,
     ) -> Result<ReceivedPdu<'frame, T>, Error> {
         // Offset relative to end of EtherCAT header
         let pdu_start_offset = handle.buf_start;
@@ -44,8 +47,9 @@ impl<'sto> ReceivedFrame<'sto> {
         let payload_len = usize::from(pdu_header.flags.len());
 
         // SAFETY: The memory behind `this_pdu` was initialised by Rust so is always valid
-        let payload_ptr =
-            unsafe { NonNull::new_unchecked(this_pdu[PduHeader::PACKED_LEN..].as_ptr() as *mut _) };
+        let payload_ptr = unsafe {
+            NonNull::new_unchecked(this_pdu[PduHeader::PACKED_LEN..].as_ptr().cast_mut())
+        };
 
         let working_counter =
             u16::unpack_from_slice(&this_pdu[(PduHeader::PACKED_LEN + payload_len)..])?;

@@ -57,6 +57,22 @@ impl PduStorage<0, 0> {
     ///
     /// This computes the additional overhead the Ethernet, EtherCAT frame and EtherCAT PDU headers
     /// require.
+    ///
+    /// # Examples
+    ///
+    /// Create a `PduStorage` for a process data image of 128 bytes:
+    ///
+    /// ```rust
+    /// use ethercrab::PduStorage;
+    ///
+    /// const NUM_FRAMES: usize = 16;
+    /// const FRAME_SIZE: usize = PduStorage::element_size(128);
+    ///
+    /// // 28 byte overhead
+    /// assert_eq!(FRAME_SIZE, 156);
+    ///
+    /// let storage = PduStorage::<NUM_FRAMES, FRAME_SIZE>::new();
+    /// ```
     pub const fn element_size(data_len: usize) -> usize {
         MIN_DATA + data_len
     }
@@ -65,7 +81,16 @@ impl PduStorage<0, 0> {
 impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     /// Create a new `PduStorage` instance.
     ///
-    /// The number of storage elements `N` must be a power of 2.
+    /// It is recommended to use [`element_size`](PduStorage::element_size) to correctly compute the
+    /// overhead required to hold a given PDU payload size.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if
+    ///
+    /// - `N` is larger than `u8::MAX, or not a power of two, or
+    /// - `DATA` is less than 28 as this is the minimum size required to hold an EtherCAT frame with
+    ///   zero PDU length.
     pub const fn new() -> Self {
         // MSRV: Make `N` a `u8` when `generic_const_exprs` is stablised
         // If possible, try using `NonZeroU8`.
@@ -108,6 +133,11 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     ///
     /// Returns a TX and RX driver, and a handle to the PDU loop. This method will return an error
     /// if called more than once.
+    ///
+    /// # Errors
+    ///
+    /// To maintain ownership and lifetime invariants, `try_split` will return an error if called
+    /// more than once on any given `PduStorage`.
     #[allow(clippy::result_unit_err)]
     pub fn try_split(&self) -> Result<(PduTx<'_>, PduRx<'_>, PduLoop<'_>), ()> {
         self.is_split
@@ -128,7 +158,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     fn as_ref(&self) -> PduStorageRef {
         // Initialise all PDU markers as available
         let markers: &[PduMarker] = unsafe { &*self.pdu_markers.get() };
-        markers.iter().for_each(|marker| marker.init());
+        markers.iter().for_each(PduMarker::init);
 
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },

@@ -8,8 +8,8 @@ use core::ops::Range;
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PdiOffset {
     pub start_address: u32,
-    // Not really used, but will become useful if we support bit-packed PDI mappings in the future.
-    start_bit: u8,
+    // // Unused, but will become useful if we support bit-packed PDI mappings in the future.
+    // start_bit: u8,
 }
 
 impl PdiOffset {
@@ -25,34 +25,32 @@ impl PdiOffset {
     }
 
     /// Common code shared between byte and bit aligned public methods.
-    fn increment_inner(self, inc_bits: u16, mut inc_bytes: u16) -> Self {
-        // Bit count overflows a byte, so move into the next byte's bits by incrementing the byte
-        // index one more.
-        let start_bit = if u16::from(self.start_bit) + inc_bits >= 8 {
-            inc_bytes += 1;
+    fn increment_inner(self, _inc_bits: u16, inc_bytes: u16) -> Self {
+        // // Bit count overflows a byte, so move into the next byte's bits by incrementing the byte
+        // // index one more.
+        // let start_bit = if u16::from(self.start_bit) + inc_bits >= 8 {
+        //     inc_bytes += 1;
 
-            ((u16::from(self.start_bit) + inc_bits) % 8) as u8
-        } else {
-            self.start_bit + inc_bits as u8
-        };
+        //     ((u16::from(self.start_bit) + inc_bits) % 8) as u8
+        // } else {
+        //     self.start_bit + inc_bits as u8
+        // };
 
         Self {
             start_address: self.start_address + u32::from(inc_bytes),
-            start_bit,
+            // start_bit,
         }
     }
 
-    /// Compute end bit 0-7 in the final byte of the mapped PDI section.
-    // Kept around in case we support bit-packed PDIs.
-    #[allow(unused)]
-    fn end_bit(self, bits: u16) -> u8 {
-        // SAFETY: The modulos here and in `increment` mean that all value can comfortably fit in a
-        // u8, so all the `as` and non-checked `+` here are fine.
+    // /// Compute end bit 0-7 in the final byte of the mapped PDI section.
+    // fn end_bit(self, bits: u16) -> u8 {
+    //     // SAFETY: The modulos here and in `increment` mean that all value can comfortably fit in a
+    //     // u8, so all the `as` and non-checked `+` here are fine.
 
-        let bits = (bits.saturating_sub(1) % 8) as u8;
+    //     let bits = (bits.saturating_sub(1) % 8) as u8;
 
-        self.start_bit + bits % 8
-    }
+    //     self.start_bit + bits % 8
+    // }
 
     /// Compute an index range between this offset (inclusive) and another (exclusive).
     pub fn up_to(self, other: Self) -> Range<usize> {
@@ -119,35 +117,18 @@ mod tests {
 
         let input = input.increment_byte_aligned(4);
 
-        assert_eq!(
-            input,
-            PdiOffset {
-                start_address: 1,
-                start_bit: 0
-            },
-            "first increment"
-        );
+        assert_eq!(input, PdiOffset { start_address: 1 }, "first increment");
 
         let input = input.increment_byte_aligned(4);
 
-        assert_eq!(
-            input,
-            PdiOffset {
-                start_address: 2,
-                start_bit: 0
-            },
-            "second increment"
-        );
+        assert_eq!(input, PdiOffset { start_address: 2 }, "second increment");
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn fuzz_pdi_segment() {
         heckcheck::check(|(start_address, incr_bits): (u32, u16)| {
-            let offset = PdiOffset {
-                start_address,
-                start_bit: 0,
-            };
+            let offset = PdiOffset { start_address };
 
             let new = offset.increment_byte_aligned(incr_bits);
 
@@ -159,7 +140,7 @@ mod tests {
                 offset.start_address + incr_bytes,
                 "incorrect increment"
             );
-            assert_eq!(new.start_bit, 0, "not byte aligned");
+            // assert_eq!(new.start_bit, 0, "not byte aligned");
 
             Ok(())
         });

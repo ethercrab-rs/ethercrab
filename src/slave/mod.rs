@@ -67,12 +67,12 @@ pub struct Slave {
     pub(crate) dc_receive_time: u64,
 
     /// The index of the slave in the EtherCAT tree.
-    pub(crate) index: usize,
+    pub(crate) index: u16,
 
     /// The index of the previous slave in the EtherCAT tree.
     ///
     /// For the first slave in the network, this will always be `None`.
-    pub(crate) parent_index: Option<usize>,
+    pub(crate) parent_index: Option<u16>,
 
     /// Propagation delay in nanoseconds.
     ///
@@ -137,7 +137,7 @@ impl Slave {
     /// the slave.
     pub(crate) async fn new<'sto>(
         client: &'sto Client<'sto>,
-        index: usize,
+        index: u16,
         configured_address: u16,
     ) -> Result<Self, Error> {
         let slave_ref = SlaveRef::new(client, configured_address, ());
@@ -264,9 +264,8 @@ impl Slave {
         let parent_port = parent.ports.port_assigned_to(self);
 
         // Children in a fork must be connected to intermediate ports
-        let child_attached_to_last_parent_port = parent_port
-            .map(|child_port| parent.ports.is_last_port(child_port))
-            .unwrap_or(false);
+        let child_attached_to_last_parent_port =
+            parent_port.is_some_and(|child_port| parent.ports.is_last_port(child_port));
 
         parent_is_fork && !child_attached_to_last_parent_port
     }

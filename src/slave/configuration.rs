@@ -2,7 +2,7 @@ use super::{Slave, SlaveRef};
 use crate::{
     coe::{SdoExpedited, SubIndex},
     eeprom::types::{
-        CoeDetails, FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable,
+        CoeDetails, FmmuUsage, MailboxProtocols, Pdo, SiiOwner, SyncManager, SyncManagerEnable,
         SyncManagerType,
     },
     error::{Error, Item},
@@ -12,7 +12,7 @@ use crate::{
     register::RegisterAddress,
     slave::types::{Mailbox, MailboxConfig},
     slave_state::SlaveState,
-    sync_manager_channel::{self, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
+    sync_manager_channel::{Enable, Status, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
 use core::ops::DerefMut;
 
@@ -183,10 +183,10 @@ where
             // Bit length, rounded up to the nearest byte
             length_bytes,
             control: sync_manager.control,
-            status: Default::default(),
-            enable: sync_manager_channel::Enable {
+            status: Status::default(),
+            enable: Enable {
                 enable: sync_manager.enable.contains(SyncManagerEnable::ENABLE),
-                ..Default::default()
+                ..Enable::default()
             },
         };
 
@@ -275,7 +275,7 @@ where
             has_coe: mailbox_config
                 .supported_protocols
                 .contains(MailboxProtocols::COE)
-                && read_mailbox.map(|mbox| mbox.len > 0).unwrap_or(false),
+                && read_mailbox.is_some_and(|mbox| mbox.len > 0),
             complete_access: general
                 .coe_details
                 .contains(CoeDetails::ENABLE_COMPLETE_ACCESS),
@@ -290,7 +290,7 @@ where
         sync_managers: &[SyncManager],
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
-        gobal_offset: &mut PdiOffset,
+        global_offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
         if !self.state.config.mailbox.has_coe {
             fmt::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
@@ -307,7 +307,7 @@ where
         //     .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
         //     .await?;
 
-        let start_offset = *gobal_offset;
+        let start_offset = *global_offset;
         let mut total_bit_len = 0;
 
         for (sync_manager_index, sm_type) in self
@@ -423,7 +423,7 @@ where
                 self.write_fmmu_config(
                     sm_bit_len,
                     fmmu_index,
-                    gobal_offset,
+                    global_offset,
                     desired_sm_type,
                     &sm_config,
                 )
@@ -435,7 +435,7 @@ where
 
         Ok(PdiSegment {
             bit_len: total_bit_len.into(),
-            bytes: start_offset.up_to(*gobal_offset),
+            bytes: start_offset.up_to(*global_offset),
         })
     }
 
@@ -499,7 +499,7 @@ where
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
-        let pdos: heapless::Vec<crate::eeprom::types::Pdo, 16> = match direction {
+        let pdos: heapless::Vec<Pdo, 16> = match direction {
             PdoDirection::MasterRead => {
                 let read_pdos = self.eeprom().master_read_pdos().await?;
 
@@ -533,7 +533,7 @@ where
             let bit_len = pdos
                 .iter()
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
-                .map(|pdo| pdo.bit_len())
+                .map(Pdo::bit_len)
                 .sum();
 
             total_bit_len += bit_len;

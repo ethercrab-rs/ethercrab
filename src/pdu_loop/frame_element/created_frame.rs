@@ -64,9 +64,8 @@ impl<'sto> CreatedFrame<'sto> {
         len_override: Option<u16>,
         more_follows: bool,
     ) -> Result<PduResponseHandle<RX>, PduError> {
-        let data_length_usize = len_override
-            .map(|l| usize::from(l).max(data.packed_len()))
-            .unwrap_or(data.packed_len());
+        let data_length_usize =
+            len_override.map_or(data.packed_len(), |l| usize::from(l).max(data.packed_len()));
 
         let flags = PduFlags::new(data_length_usize as u16, more_follows);
 

@@ -90,8 +90,8 @@ pub fn parse_enum(
             _ => return Err(syn::Error::new(repr.span(), "Invalid discriminant format")),
         };
 
-        let is_default = variant_is_default(&variant.attrs)?;
-        let is_catch_all = attr_exists(&variant.attrs, "catch_all")?;
+        let is_default = variant_is_default(&variant.attrs);
+        let is_catch_all = attr_exists(&variant.attrs, "catch_all");
 
         let alternatives = variant_alternatives(&variant.attrs)?;
 

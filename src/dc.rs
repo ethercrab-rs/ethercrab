@@ -28,7 +28,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
     // Read receive times for all slaves and store on slave structs
     for slave in slaves.iter_mut().filter(|slave| slave.flags.dc_supported) {
-        let sl = SlaveRef::new(client, slave.configured_address, ());
+        let sl = SlaveRef::new(client, slave.configured_address(), ());
 
         let dc_receive_time = sl
             .read(RegisterAddress::DcReceiveTime)
@@ -43,7 +43,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
             .map_err(|e| {
                 fmt::error!(
                     "Failed to read DC times for slave {:#06x}: {}",
-                    slave.configured_address,
+                    slave.configured_address(),
                     e
                 );
 
@@ -54,7 +54,7 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
 
         fmt::trace!(
             "Slave {:#06x} DC receive time {} ns",
-            slave.configured_address,
+            slave.configured_address(),
             slave.dc_receive_time
         );
 
@@ -77,7 +77,7 @@ async fn write_dc_parameters(
 
     fmt::trace!(
         "Setting slave {:#06x} system time offset to {} ns (system time is {} ns, DC receive time is {}, now is {} ns)",
-        slave.configured_address,
+        slave.configured_address(),
         system_time_offset,
         dc_system_time,
         slave.dc_receive_time,
@@ -85,7 +85,7 @@ async fn write_dc_parameters(
     );
 
     Command::fpwr(
-        slave.configured_address,
+        slave.configured_address(),
         RegisterAddress::DcSystemTimeOffset.into(),
     )
     .ignore_wkc()
@@ -93,7 +93,7 @@ async fn write_dc_parameters(
     .await?;
 
     Command::fpwr(
-        slave.configured_address,
+        slave.configured_address(),
         RegisterAddress::DcSystemTimeTransmissionDelay.into(),
     )
     .ignore_wkc()
@@ -135,7 +135,7 @@ async fn write_dc_parameters(
 ///           │            │  │
 ///           └────────────┘◀─┘
 /// ```
-fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, Error> {
+fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<u16>, Error> {
     // No parent if we're first in the network, e.g. the EK1100 in the diagram above
     if parents.is_empty() {
         return Ok(None);
@@ -156,7 +156,7 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
                 .ok_or_else(|| {
                     fmt::error!(
                         "Did not find fork parent for slave {:#06x}",
-                        slave.configured_address
+                        slave.configured_address()
                     );
 
                     Error::Topology
@@ -171,7 +171,7 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<usize>, 
     } else {
         fmt::error!(
             "Did not find parent for slave {:#06x}",
-            slave.configured_address
+            slave.configured_address()
         );
 
         Err(Error::Topology)
@@ -296,7 +296,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
 
         fmt::debug!(
             "Slave {:#06x} {} {}",
-            slave.configured_address,
+            slave.configured_address(),
             slave.name,
             slave.flags
         );
@@ -318,7 +318,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
         } else {
             fmt::trace!(
                 "--> Skipping DC config for slave {:#06x}: DC not supported",
-                slave.configured_address
+                slave.configured_address()
             );
         }
     }
@@ -352,7 +352,11 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
                 dc_receive_time: {},
                 ..defaults.clone()
             }},"#,
-                slave.index, slave.configured_address, slave.name, ports, slave.dc_receive_time,
+                slave.index,
+                slave.configured_address(),
+                slave.name,
+                ports,
+                slave.dc_receive_time,
             );
         }
 
@@ -422,7 +426,7 @@ pub(crate) async fn run_dc_static_sync(
 ) -> Result<(), Error> {
     fmt::debug!(
         "Performing static drift compensation using slave {:#06x} {} as reference. This can take some time...",
-        dc_reference_slave.configured_address,
+        dc_reference_slave.configured_address(),
         dc_reference_slave.name
     );
 
@@ -430,7 +434,7 @@ pub(crate) async fn run_dc_static_sync(
     // settle
     for _ in 0..iterations {
         Command::frmw(
-            dc_reference_slave.configured_address,
+            dc_reference_slave.configured_address(),
             RegisterAddress::DcSystemTime.into(),
         )
         .receive_wkc::<u64>(client)

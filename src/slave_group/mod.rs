@@ -159,9 +159,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
         );
 
         // Configure master read PDI mappings in the first section of the PDI
-        for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
+        for slave in inner.slaves.iter_mut().map(AtomicRefCell::get_mut) {
             // We're in PRE-OP at this point
-            pdi_position = SlaveRef::new(client, slave.configured_address, slave)
+            pdi_position = SlaveRef::new(client, slave.configured_address(), slave)
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
@@ -177,8 +177,8 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
         // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
-        for slave in inner.slaves.iter_mut().map(|slave| slave.get_mut()) {
-            let addr = slave.configured_address;
+        for slave in inner.slaves.iter_mut().map(AtomicRefCell::get_mut) {
+            let addr = slave.configured_address();
 
             let mut slave_config = SlaveRef::new(client, addr, slave);
 
@@ -219,10 +219,11 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
     /// single reference to it at any one time. Multiple different slaves can be borrowed
     /// simultaneously, but multiple references to the same slave are not allowed.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Borrowing a slave across a [`SlaveGroup::iter`](crate::SlaveGroup::iter) call will cause the
-    /// returned iterator to panic as it tries to borrow the slave a second time.
+    /// This method will return an error if the given index is out of range of the current group, or
+    /// if the SubDevice at the given index is already borrowed.
+    #[deny(clippy::panic)]
     pub fn slave<'client, 'group>(
         &'group self,
         client: &'client Client<'client>,
@@ -243,7 +244,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
                 Error::Borrow
             })?;
 
-        Ok(SlaveRef::new(client, slave.configured_address, slave))
+        Ok(SlaveRef::new(client, slave.configured_address(), slave))
     }
 
     /// Transition the group from PRE-OP -> SAFE-OP -> OP.
@@ -526,7 +527,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC>
             .iter_mut()
             .map(|slave| slave.get_mut())
         {
-            SlaveRef::new(client, slave.configured_address, slave)
+            SlaveRef::new(client, slave.configured_address(), slave)
                 .request_slave_state_nowait(SlaveState::Op)
                 .await?;
         }
@@ -621,7 +622,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES
         desired_state: SlaveState,
     ) -> Result<bool, Error> {
         for slave in self.inner().slaves.iter().map(|slave| slave.borrow()) {
-            let s = SlaveRef::new(client, slave.configured_address, slave);
+            let s = SlaveRef::new(client, slave.configured_address(), slave);
 
             // TODO: Add a way to queue up a bunch of PDUs and send all at once
             let slave_state = s.state().await.map_err(|e| {
@@ -674,9 +675,9 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES
             .get_mut()
             .slaves
             .iter_mut()
-            .map(|slave| slave.get_mut())
+            .map(AtomicRefCell::get_mut)
         {
-            SlaveRef::new(client, slave.configured_address, slave)
+            SlaveRef::new(client, slave.configured_address(), slave)
                 .request_slave_state_nowait(desired_state)
                 .await?;
         }
@@ -709,11 +710,6 @@ where
     /// Each slave device in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
     /// single reference to it at any one time. Multiple different slaves can be borrowed
     /// simultaneously, but multiple references to the same slave are not allowed.
-    ///
-    /// # Panics
-    ///
-    /// Borrowing a slave across a [`SlaveGroup::iter`](crate::SlaveGroup::iter) call will cause the
-    /// returned iterator to panic as it tries to borrow the slave a second time.
     pub fn slave<'client, 'group>(
         &'group self,
         client: &'client Client<'client>,
@@ -745,7 +741,7 @@ where
 
         fmt::trace!(
             "Get slave {:#06x} IO ranges I: {}, O: {}",
-            slave.configured_address,
+            slave.configured_address(),
             input_range,
             output_range
         );
@@ -759,22 +755,22 @@ where
 
         // NOTE: Using panicking `[]` indexing as the indices and arrays should all be correct by
         // this point. If something isn't right, that's a bug.
-        let inputs = if !input_range.is_empty() {
-            &i_data[input_range.bytes.clone()]
-        } else {
+        let inputs = if input_range.is_empty() {
             EMPTY_PDI_SLICE
+        } else {
+            &i_data[input_range.bytes.clone()]
         };
 
-        let outputs = if !output_range.is_empty() {
-            &mut o_data[output_range.bytes.clone()]
-        } else {
+        let outputs = if output_range.is_empty() {
             // SAFETY: Slice is empty so can never be mutated
-            unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr() as *mut _, 0) }
+            unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr().cast_mut(), 0) }
+        } else {
+            &mut o_data[output_range.bytes.clone()]
         };
 
         Ok(SlaveRef::new(
             client,
-            slave.configured_address,
+            slave.configured_address(),
             // SAFETY: A given slave contained in a `SlavePdi` MUST only be borrowed once (currently
             // enforced by `AtomicRefCell`). If it is borrowed more than once, immutable APIs in
             // `SlaveRef<SlavePdi>` will be unsound.
@@ -796,6 +792,17 @@ where
     /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
     ///
     /// This method returns the working counter on success.
+    ///
+    /// # Errors
+    ///
+    /// This method will return with an error if the PDU could not be sent over the network, or the
+    /// response times out.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the frame data length of the group is too large to fit in the
+    /// configured maximum PDU length set by the `DATA` const generic of
+    /// [`PduStorage`](crate::PduStorage).
     pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<u16, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
@@ -816,7 +823,7 @@ where
             .send_receive_slice(client, self.pdi())
             .await?;
 
-        self.process_pdi_response(data)
+        self.process_pdi_response(&data)
     }
 
     /// Drive the slave group's inputs and outputs and synchronise EtherCAT system time with `FRMW`.
@@ -826,6 +833,17 @@ where
     ///
     /// This method returns the working counter and the current EtherCAT system time in nanoseconds
     /// on success.
+    ///
+    /// # Errors
+    ///
+    /// This method will return with an error if the PDU could not be sent over the network, or the
+    /// response times out.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the frame data length of the group is too large to fit in the
+    /// configured maximum PDU length set by the `DATA` const generic of
+    /// [`PduStorage`](crate::PduStorage).
     pub async fn tx_rx_sync_system_time<'sto>(
         &self,
         client: &'sto Client<'sto>,
@@ -866,8 +884,8 @@ where
                     },
                     |received, (dc, data)| {
                         self.process_pdi_response_with_time(
-                            received.take(dc)?,
-                            received.take(data)?,
+                            &received.take(dc)?,
+                            &received.take(data)?,
                         )
                     },
                 )
@@ -881,10 +899,10 @@ where
 
     fn process_pdi_response_with_time(
         &self,
-        dc: crate::pdu_loop::ReceivedPdu<'_, u64>,
-        data: crate::pdu_loop::ReceivedPdu<'_, ()>,
+        dc: &crate::pdu_loop::ReceivedPdu<'_, u64>,
+        data: &crate::pdu_loop::ReceivedPdu<'_, ()>,
     ) -> Result<(u64, u16), Error> {
-        let time = u64::unpack_from_slice(&dc)?;
+        let time = u64::unpack_from_slice(dc)?;
 
         Ok((time, self.process_pdi_response(data)?))
     }
@@ -894,7 +912,7 @@ where
     /// Returns working counter on success.
     fn process_pdi_response(
         &self,
-        data: crate::pdu_loop::ReceivedPdu<'_, ()>,
+        data: &crate::pdu_loop::ReceivedPdu<'_, ()>,
     ) -> Result<u16, Error> {
         if data.len() != self.pdi().len() {
             fmt::error!(
@@ -928,7 +946,18 @@ where
     /// This method returns the working counter and a [`CycleInfo`], containing values that can be
     /// used to synchronise the MainDevice to the network SYNC0 event.
     ///
-    /// ## Examples
+    /// # Errors
+    ///
+    /// This method will return with an error if the PDU could not be sent over the network, or the
+    /// response times out.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the frame data length of the group is too large to fit in the
+    /// configured maximum PDU length set by the `DATA` const generic of
+    /// [`PduStorage`](crate::PduStorage).
+    ///
+    /// # Examples
     ///
     /// This example sends process data at 2.5ms offset into a 5ms cycle.
     ///
@@ -1054,7 +1083,7 @@ where
                     Ok((dc_handle, pdu_handle))
                 },
                 |received, (dc, data)| {
-                    self.process_pdi_response_with_time(received.take(dc)?, received.take(data)?)
+                    self.process_pdi_response_with_time(&received.take(dc)?, &received.take(data)?)
                 },
             )
             .await?;

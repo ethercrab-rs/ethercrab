@@ -46,7 +46,7 @@ impl<'a> StateMachineContext for Ds402<'a> {
         //     .ok_or(())
 
         self.set_and_read(
-            ControlWord::STATE_SHUTDOWN,
+            &ControlWord::STATE_SHUTDOWN,
             StatusWord::STATE_READY_TO_SWITCH_ON,
         )
     }
@@ -60,7 +60,7 @@ impl<'a> StateMachineContext for Ds402<'a> {
         //     .then_some(())
         //     .ok_or(())
 
-        self.set_and_read(ControlWord::STATE_SWITCH_ON, StatusWord::STATE_SWITCHED_ON)
+        self.set_and_read(&ControlWord::STATE_SWITCH_ON, StatusWord::STATE_SWITCHED_ON)
     }
 
     fn enable_op(&mut self) -> Result<(), ()> {
@@ -72,23 +72,23 @@ impl<'a> StateMachineContext for Ds402<'a> {
         //     .then_some(())
         //     .ok_or(())
 
-        self.set_and_read(ControlWord::STATE_ENABLE_OP, StatusWord::STATE_OP_ENABLE)
+        self.set_and_read(&ControlWord::STATE_ENABLE_OP, StatusWord::STATE_OP_ENABLE)
     }
 
     // ---
 
     fn disable_op(&mut self) -> Result<(), ()> {
-        self.set_and_read(ControlWord::STATE_SWITCH_ON, StatusWord::STATE_SWITCHED_ON)
+        self.set_and_read(&ControlWord::STATE_SWITCH_ON, StatusWord::STATE_SWITCHED_ON)
     }
     fn switch_off(&mut self) -> Result<(), ()> {
         self.set_and_read(
-            ControlWord::STATE_SHUTDOWN,
+            &ControlWord::STATE_SHUTDOWN,
             StatusWord::STATE_READY_TO_SWITCH_ON,
         )
     }
     fn disable_switch_on(&mut self) -> Result<(), ()> {
         self.set_and_read(
-            ControlWord::STATE_DISABLE_VOLTAGE,
+            &ControlWord::STATE_DISABLE_VOLTAGE,
             StatusWord::STATE_SWITCH_ON_DISABLED,
         )
     }
@@ -96,7 +96,7 @@ impl<'a> StateMachineContext for Ds402<'a> {
     // ---
 
     fn clear_faults(&mut self) -> Result<(), ()> {
-        self.set_control_word(ControlWord::STATE_FAULT_RESET);
+        self.set_control_word(&ControlWord::STATE_FAULT_RESET);
 
         (!self.status_word().mandatory().contains(StatusWord::FAULT))
             .then_some(())
@@ -149,7 +149,7 @@ impl<'a> Ds402<'a> {
         Ok(Self { slave })
     }
 
-    fn set_and_read(&mut self, set: ControlWord, read: StatusWord) -> Result<(), ()> {
+    fn set_and_read(&mut self, set: &ControlWord, read: StatusWord) -> Result<(), ()> {
         self.set_control_word(set);
 
         self.status_word()
@@ -166,7 +166,7 @@ impl<'a> Ds402<'a> {
         StatusWord::from_bits_truncate(status)
     }
 
-    fn set_control_word(&mut self, state: ControlWord) {
+    fn set_control_word(&mut self, state: &ControlWord) {
         let (control, _rest) = self.slave.outputs_raw_mut().split_at_mut(2);
 
         let state = state.bits().to_le_bytes();

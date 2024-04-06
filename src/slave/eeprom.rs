@@ -29,12 +29,8 @@ where
     }
 
     /// Start a reader at the given address in words, returning at most `len` bytes.
-    async fn start_at(&self, word_addr: u16, len_bytes: u16) -> Result<ChunkReader<P>, Error> {
-        Ok(ChunkReader::new(
-            self.provider.clone(),
-            word_addr,
-            len_bytes / 2,
-        ))
+    fn start_at(&self, word_addr: u16, len_bytes: u16) -> ChunkReader<P> {
+        ChunkReader::new(self.provider.clone(), word_addr, len_bytes / 2)
     }
 
     /// Search for a given category and return a reader over the bytes contained within the category
@@ -102,9 +98,7 @@ where
     pub(crate) async fn mailbox_config(&self) -> Result<DefaultMailbox, Error> {
         // Start reading standard mailbox config. Raw start address defined in ETG2010 Table 2.
         // Mailbox config is 10 bytes long.
-        let mut reader = self
-            .start_at(0x0018, DefaultMailbox::PACKED_LEN as u16)
-            .await?;
+        let mut reader = self.start_at(0x0018, DefaultMailbox::PACKED_LEN as u16);
 
         fmt::trace!("Get mailbox config");
 
@@ -129,9 +123,7 @@ where
     }
 
     pub(crate) async fn identity(&self) -> Result<SlaveIdentity, Error> {
-        let mut reader = self
-            .start_at(0x0008, SlaveIdentity::PACKED_LEN as u16)
-            .await?;
+        let mut reader = self.start_at(0x0008, SlaveIdentity::PACKED_LEN as u16);
 
         fmt::trace!("Get identity");
 
@@ -243,7 +235,7 @@ where
             }
 
             for _ in 0..pdo.num_entries {
-                let entry = reader.read_exact(&mut entry_buf).await.and_then(|_| {
+                let entry = reader.read_exact(&mut entry_buf).await.and_then(|()| {
                     let entry = PdoEntry::unpack_from_slice(&entry_buf).map_err(|e| {
                         fmt::error!("PDO entry: {:?}", e);
 
@@ -336,7 +328,7 @@ where
             // TODO: Unit test this when an EEPROM shim is added
             let s = s.trim_end_matches('\0');
 
-            let s = heapless::String::<N>::from_str(s).map_err(|_| {
+            let s = heapless::String::<N>::from_str(s).map_err(|()| {
                 fmt::error!("String too long");
 
                 Error::Eeprom(EepromError::Decode)
@@ -398,7 +390,7 @@ where
             // Reached end of category
             Err(ReadExactError::UnexpectedEof) => return Ok(None),
             Err(ReadExactError::Other(e)) => return Err(e),
-            Ok(_) => (),
+            Ok(()) => (),
         }
 
         Ok(Some(T::unpack_from_slice(buf.as_ref())?))

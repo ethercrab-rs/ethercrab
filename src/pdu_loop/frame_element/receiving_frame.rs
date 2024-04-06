@@ -66,7 +66,7 @@ impl<'sto> ReceivingFrame<'sto> {
             // set after `RxDone`, the future is already being processed and likely doesn't even
             // need waking. In this case we can ignore the swap failure here.
             match self.inner.swap_state(FrameState::RxDone, FrameState::Sent) {
-                Ok(_) => (),
+                Ok(()) => (),
                 // Frame is being processed. We don't need to retry the receive
                 Err(bad_state)
                     if matches!(bad_state, FrameState::RxProcessing | FrameState::None) =>
@@ -143,13 +143,10 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> Poll<Self::Output> {
-        let rxin = match self.frame.take() {
-            Some(r) => r,
-            None => {
-                fmt::error!("Frame is taken");
+        let Some(rxin) = self.frame.take() else {
+            fmt::error!("Frame is taken");
 
-                return Poll::Ready(Err(PduError::InvalidFrameState.into()));
-            }
+            return Poll::Ready(Err(PduError::InvalidFrameState.into()));
         };
 
         rxin.replace_waker(cx.waker());
