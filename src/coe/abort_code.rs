@@ -5,78 +5,78 @@
 #[repr(u32)]
 pub enum CoeAbortCode {
     /// Toggle bit not changed
-    ToggleBit = 0x05030000,
+    ToggleBit = 0x0503_0000,
     /// SDO protocol timeout
-    SdoTimeout = 0x05040000,
+    SdoTimeout = 0x0504_0000,
     /// Client/Server command specifier not valid or unknown
-    InvalidCommand = 0x05040001,
+    InvalidCommand = 0x0504_0001,
     /// Out of memory
-    OutOfMemory = 0x05040005,
+    OutOfMemory = 0x0504_0005,
     /// Unsupported access to an object
-    UnsupportedAccess = 0x06010000,
+    UnsupportedAccess = 0x0601_0000,
     /// Attempt to read to a write only object
-    WriteOnlyRead = 0x06010001,
+    WriteOnlyRead = 0x0601_0001,
     /// Attempt to write to a read only object
-    ReadOnlyWrite = 0x06010002,
+    ReadOnlyWrite = 0x0601_0002,
     /// Subindex cannot be written, SI0 must be 0 for write access
-    IndexOnly = 0x06010003,
+    IndexOnly = 0x0601_0003,
     /// SDO Complete access not supported for objects of variable length such as ENUM object types
-    NoCompleteAccess = 0x06010004,
+    NoCompleteAccess = 0x0601_0004,
     /// Object length exceeds mailbox size
-    ObjectTooLarge = 0x06010005,
+    ObjectTooLarge = 0x0601_0005,
     /// Object mapped to RxPDO, SDO Download blocked
-    DownloadBlocked = 0x06010006,
+    DownloadBlocked = 0x0601_0006,
     /// The object does not exist in the object directory
-    NotFound = 0x06020000,
+    NotFound = 0x0602_0000,
     /// The object can not be mapped into the PDO
-    PdoMappingFailed = 0x06040041,
+    PdoMappingFailed = 0x0604_0041,
     /// The number and length of the objects to be mapped would exceed the PDO length
-    PdoTooSmall = 0x06040042,
+    PdoTooSmall = 0x0604_0042,
     /// General parameter incompatibility reason
-    Incompatible = 0x06040043,
+    Incompatible = 0x0604_0043,
     /// General internal incompatibility in the device
-    Internal = 0x06040047,
+    Internal = 0x0604_0047,
     /// Access failed due to a hardware error
-    HardwareFailure = 0x06060000,
+    HardwareFailure = 0x0606_0000,
     /// Data type does not match, length of service parameter does not match
-    DataLengthMismatch = 0x06070010,
+    DataLengthMismatch = 0x0607_0010,
     /// Data type does not match, length of service parameter too high
-    DataTooLong = 0x06070012,
+    DataTooLong = 0x0607_0012,
     /// Data type does not match, length of service parameter too low
-    DataTooShort = 0x06070013,
+    DataTooShort = 0x0607_0013,
     /// Subindex does not exist
-    SubIndexNotFound = 0x06090011,
+    SubIndexNotFound = 0x0609_0011,
     /// Value range of parameter exceeded (only for write access)
-    ValueOutOfRange = 0x06090030,
+    ValueOutOfRange = 0x0609_0030,
     /// Value of parameter written too high
-    ValueTooLarge = 0x06090031,
+    ValueTooLarge = 0x0609_0031,
     /// Value of parameter written too low
-    ValueTooSmall = 0x06090032,
+    ValueTooSmall = 0x0609_0032,
     /// Maximum value is less than minimum value
-    MaxMin = 0x06090036,
+    MaxMin = 0x0609_0036,
     /// General error
-    General = 0x08000000,
+    General = 0x0800_0000,
 
     /// Data cannot be transferred or stored to the application
     ///
     /// NOTE: This is the general Abort Code in case no further detail on the reason can determined.
     /// It is recommended to use one of the more detailed Abort Codes
     /// ([`CoeAbortCode::TransferFailedLocal`], [`CoeAbortCode::InvalidState`])
-    TransferFailed = 0x08000020,
+    TransferFailed = 0x0800_0020,
 
     /// Data cannot be transferred or stored to the application because of local control
     ///
     /// NOTE: “local control” means an application specific reason. It does not mean the
     /// ESM-specific control
-    TransferFailedLocal = 0x08000021,
+    TransferFailedLocal = 0x0800_0021,
 
     ///  Data cannot be transferred or stored to the application because of the present device state
     ///
     /// NOTE: “device state” means the ESM state
-    InvalidState = 0x08000022,
+    InvalidState = 0x0800_0022,
 
     /// Object dictionary dynamic generation fails or no object dictionary is present
-    NoObjectDictionary = 0x08000023,
+    NoObjectDictionary = 0x0800_0023,
 
     /// Unknown abort code.
     #[wire(catch_all)]

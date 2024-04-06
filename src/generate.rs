@@ -3,7 +3,6 @@
 //! Like cookie_factory but much simpler and will **quite happily panic**.
 
 /// Write a packed struct into the slice.
-#[inline(always)]
 pub fn write_packed<T>(value: T, buf: &mut [u8]) -> &mut [u8]
 where
     T: ethercrab_wire::EtherCrabWireWrite,

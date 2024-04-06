@@ -23,6 +23,7 @@ unsafe impl<'a> Send for SlaveGroupRef<'a> {}
 /// A reference to a [`SlaveGroup`](crate::SlaveGroup) returned by the closure passed to
 /// [`Client::init`](crate::Client::init).
 pub struct SlaveGroupRef<'a> {
+    /// Maximum PDI length in bytes.
     max_pdi_len: usize,
     inner: GroupInnerRef<'a>,
 }
@@ -67,7 +68,7 @@ impl<'a> SlaveGroupRef<'a> {
         for slave in inner.slaves.iter_mut() {
             let slave = slave.get_mut();
 
-            let mut slave_config = SlaveRef::new(client, slave.configured_address, slave);
+            let mut slave_config = SlaveRef::new(client, slave.configured_address(), slave);
 
             // TODO: Move PRE-OP transition out of this so we can do it for the group just once
             slave_config.configure_mailboxes().await?;

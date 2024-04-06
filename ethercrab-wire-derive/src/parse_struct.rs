@@ -82,7 +82,7 @@ pub fn parse_struct(
         let field_width = bit_width_attr(&field.attrs)?;
 
         // Whether to ignore this field when sending AND receiving
-        let skip = attr_exists(&field.attrs, "skip")?;
+        let skip = attr_exists(&field.attrs, "skip");
 
         let pre_skip = usize_attr(&field.attrs, "pre_skip")?
             .or(usize_attr(&field.attrs, "pre_skip_bytes")?.map(|bytes| bytes * 8))
@@ -97,9 +97,7 @@ pub fn parse_struct(
         }
 
         let bit_start = total_field_width;
-        let bit_end = field_width
-            .map(|w| total_field_width + w)
-            .unwrap_or(total_field_width);
+        let bit_end = field_width.map_or(total_field_width, |w| total_field_width + w);
         let byte_start = bit_start / 8;
         let byte_end = bit_end.div_ceil(8);
         let bytes = byte_start..byte_end;

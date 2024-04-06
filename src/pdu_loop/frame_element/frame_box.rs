@@ -161,9 +161,8 @@ impl<'sto> FrameBox<'sto> {
 
         fmt::trace!("Releasing PDUs from frame index {}", frame_index);
 
-        let states: &[PduMarker] = unsafe {
-            core::slice::from_raw_parts(self.pdu_markers.as_ptr() as *const _, PDU_SLOTS)
-        };
+        let states: &[PduMarker] =
+            unsafe { core::slice::from_raw_parts(self.pdu_markers.as_ptr().cast(), PDU_SLOTS) };
 
         states
             .iter()
@@ -182,7 +181,7 @@ impl<'sto> FrameBox<'sto> {
         let pdu_idx = self.next_pdu_idx();
 
         let marker = unsafe {
-            let base_ptr = self.pdu_markers.as_ptr() as *const PduMarker;
+            let base_ptr: *const PduMarker = self.pdu_markers.as_ptr().cast();
 
             let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
 

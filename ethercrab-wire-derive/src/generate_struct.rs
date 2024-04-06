@@ -4,10 +4,7 @@ use quote::quote;
 use std::str::FromStr;
 use syn::DeriveInput;
 
-pub fn generate_struct_write(
-    parsed: StructMeta,
-    input: &DeriveInput,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
+pub fn generate_struct_write(parsed: &StructMeta, input: &DeriveInput) -> proc_macro2::TokenStream {
     let name = input.ident.clone();
     let size_bytes = parsed.width_bits.div_ceil(8);
 
@@ -56,7 +53,7 @@ pub fn generate_struct_write(
         }
     });
 
-    let out = quote! {
+    quote! {
         impl ::ethercrab_wire::EtherCrabWireWrite for #name {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 let buf = match buf.get_mut(0..#size_bytes) {
@@ -87,15 +84,10 @@ pub fn generate_struct_write(
                 buf
             }
         }
-    };
-
-    Ok(out)
+    }
 }
 
-pub fn generate_struct_read(
-    parsed: StructMeta,
-    input: &DeriveInput,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
+pub fn generate_struct_read(parsed: &StructMeta, input: &DeriveInput) -> proc_macro2::TokenStream {
     let name = input.ident.clone();
     let size_bytes = parsed.width_bits.div_ceil(8);
 
@@ -152,7 +144,7 @@ pub fn generate_struct_read(
         }
     });
 
-    let out = quote! {
+    quote! {
         impl ::ethercrab_wire::EtherCrabWireRead for #name {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
                 let buf = buf.get(0..#size_bytes).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort {
@@ -165,19 +157,14 @@ pub fn generate_struct_read(
                 })
             }
         }
-    };
-
-    Ok(out)
+    }
 }
 
-pub fn generate_sized_impl(
-    parsed: StructMeta,
-    input: &DeriveInput,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
+pub fn generate_sized_impl(parsed: &StructMeta, input: &DeriveInput) -> proc_macro2::TokenStream {
     let name = input.ident.clone();
     let size_bytes = parsed.width_bits.div_ceil(8);
 
-    Ok(quote! {
+    quote! {
         impl ::ethercrab_wire::EtherCrabWireSized for #name {
             const PACKED_LEN: usize = #size_bytes;
 
@@ -187,5 +174,5 @@ pub fn generate_sized_impl(
                 [0u8; #size_bytes]
             }
         }
-    })
+    }
 }
