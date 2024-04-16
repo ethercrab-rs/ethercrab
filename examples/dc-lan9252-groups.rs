@@ -158,23 +158,21 @@ fn main() -> Result<(), Error> {
                     let diff = match s1
                         .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
                         .await
-                        // The returned value is NOT in two's compliment, rather the upper bit
-                        // specifies whether the number in the remaining bits is odd or even, so we
-                        // convert the value to `i32` using that logic here.
-                        .map(|value| {
+                    {
+                        Ok(value) =>
+                        // The returned value is NOT in two's compliment, rather the upper bit specifies
+                        // whether the number in the remaining bits is odd or even, so we convert the
+                        // value to `i32` using that logic here.
+                        {
                             let flag = 0b1u32 << 31;
 
-                            let less_than = value & flag > 0;
-
-                            let value = value & !flag;
-
-                            if less_than {
-                                -(value as i32)
+                            if value >= flag {
+                                // Strip off negative flag bit and negate value as normal
+                                -((value & !flag) as i32)
                             } else {
                                 value as i32
                             }
-                        }) {
-                        Ok(diff) => diff,
+                        }
                         Err(Error::WorkingCounter { .. }) => 0,
                         Err(e) => return Err(e),
                     };
