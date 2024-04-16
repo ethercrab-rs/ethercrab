@@ -6,7 +6,7 @@ use ethercrab::{
     error::Error,
     slave_group::{CycleInfo, DcConfiguration},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, DcSync, PduStorage, RegisterAddress, SlaveGroup, Timeouts,
+    Client, ClientConfig, DcSync, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
@@ -26,6 +26,27 @@ const PDI_LEN: usize = 64;
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
 const TICK_INTERVAL: Duration = Duration::from_millis(5);
+
+#[allow(unused)]
+#[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
+#[wire(bytes = 2)]
+pub struct SupportedModes {
+    /// Bit 0 = 1: free run is supported.
+    #[wire(bits = 1)]
+    free_run: bool,
+    /// Bit 1 = 1: Synchronous with SM 2 event is supported.
+    #[wire(bits = 1)]
+    sm2: bool,
+    /// Bit 2-3 = 01: DC mode is supported.
+    #[wire(bits = 2)]
+    dc_supported: bool,
+    /// Bit 4-5 = 10: Output shift with SYNC1 event (only DC mode).
+    #[wire(bits = 2)]
+    sync1: bool,
+    /// Bit 14 = 1: dynamic times (measurement through writing of 0x1C32:08).
+    #[wire(pre_skip = 8, bits = 1, post_skip = 1)]
+    dynamic: bool,
+}
 
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -62,34 +83,95 @@ fn main() -> Result<(), Error> {
             .expect("Init");
 
         for mut slave in group.iter(&client) {
-            // Sync mode 02 = SYNC0
-            slave
-                .sdo_write(0x1c32, 1, 2u16)
-                .await
-                .expect("Set sync mode");
+            if slave.name() == "LAN9252-EVB-HBI" {
+                // Sync mode 02 = SYNC0
+                slave
+                    .sdo_write(0x1c32, 1, 2u16)
+                    .await
+                    .expect("Set sync mode");
 
-            // ETG1020 calc and copy time
-            let cal_and_copy_time = slave
-                .sdo_read::<u16>(0x1c32, 6)
-                .await
-                .expect("Calc and copy time");
+                // ETG1020 calc and copy time
+                let cal_and_copy_time = slave
+                    .sdo_read::<u16>(0x1c32, 6)
+                    .await
+                    .expect("Calc and copy time");
 
-            // Delay time
-            let delay_time = slave.sdo_read::<u16>(0x1c32, 9).await.expect("Delay time");
+                // Delay time
+                let delay_time = slave.sdo_read::<u16>(0x1c32, 9).await.expect("Delay time");
 
-            log::info!(
-                "LAN9252 calc time {} ns, delay time {} ns",
-                cal_and_copy_time,
-                delay_time,
-            );
+                log::info!(
+                    "LAN9252 calc time {} ns, delay time {} ns",
+                    cal_and_copy_time,
+                    delay_time,
+                );
 
-            // Adding this seems to make the second LAN9252 converge much more quickly
-            slave
-                .sdo_write(0x1c32, 0x0a, TICK_INTERVAL.as_nanos() as u32)
-                .await
-                .expect("Set cycle time");
+                // Adding this seems to make the second LAN9252 converge much more quickly
+                slave
+                    .sdo_write(0x1c32, 0x0a, TICK_INTERVAL.as_nanos() as u32)
+                    .await
+                    .expect("Set cycle time");
 
-            slave.set_dc_sync(DcSync::Sync0);
+                let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
+                let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
+                let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
+                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
+                log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+
+                let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
+                let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
+                let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
+                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
+                log::info!("--> Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+            }
+
+            // EL4102 requires SYNC0 AND SYNC1 to operate
+            if slave.name() == "EL4102" {
+                log::info!("Found EL4102");
+
+                // Sync mode 02 = SYNC0
+                slave
+                    .sdo_write(0x1c32, 1, 2u16)
+                    .await
+                    .expect("Set sync mode");
+
+                slave
+                    .sdo_write(0x1c32, 0x02, TICK_INTERVAL.as_nanos() as u32)
+                    .await
+                    .expect("Set cycle time");
+
+                // ETG1020 calc and copy time
+                let cal_and_copy_time = slave
+                    .sdo_read::<u16>(0x1c32, 6)
+                    .await
+                    .expect("Calc and copy time");
+
+                // Delay time
+                let delay_time = slave.sdo_read::<u16>(0x1c32, 9).await.expect("Delay time");
+
+                log::info!(
+                    "--> Calc time {} ns, delay time {} ns",
+                    cal_and_copy_time,
+                    delay_time,
+                );
+
+                let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
+                let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
+                let shift_time = slave.sdo_read::<u32>(0x1c32, 3).await?;
+                let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
+                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
+                // NOTE: For EL4102, SupportedModes.sync1 is false, but the ESI file specifies it,
+                // and the 4102 won't go into OP without setting up SYNC1 with the correct offset.
+                // Brilliant.
+                log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), shift {shift_time} ns, supported modes {supported_sync_modes:?}");
+
+                slave.set_dc_sync(DcSync::Sync01 {
+                    // EL4102 ESI specifies SYNC1 with an offset of 100k ns
+                    sync1_period: Duration::from_nanos(100_000),
+                });
+            } else {
+                // Enable just SYNC0 for any other SubDevice
+                slave.set_dc_sync(DcSync::Sync0);
+            }
         }
 
         log::info!("Moving into PRE-OP with PDI");
