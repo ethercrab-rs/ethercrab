@@ -22,7 +22,6 @@ use std::{
 };
 use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
-use thread_priority::{ThreadPriority, ThreadPriorityValue};
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -88,8 +87,9 @@ fn main() -> Result<(), Error> {
     // Wait for TX/RX loop to start
     thread::sleep(Duration::from_millis(200));
 
-    thread_priority::set_current_thread_priority(ThreadPriority::Crossplatform(
-        ThreadPriorityValue::try_from(48u8).unwrap(),
+    #[cfg(target_os = "linux")]
+    thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Crossplatform(
+        thread_priority::ThreadPriorityValue::try_from(48u8).unwrap(),
     ))
     .expect("Main thread prio");
 
@@ -141,7 +141,10 @@ fn main() -> Result<(), Error> {
                 let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
                 let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
                 log::info!("--> Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
-            } else if slave.name() == "EL4102" {
+            }
+
+            // Configure SYNC0 AND SYNC1 for EL4102
+            if slave.name() == "EL4102" {
                 log::info!("Found EL4102");
 
                 // Sync mode 02 = SYNC0
@@ -185,7 +188,7 @@ fn main() -> Result<(), Error> {
                     sync1_period: Duration::from_nanos(100_000),
                 });
             } else {
-                // Enable SYNC0 for all other SubDevices
+                // Enable SYNC0 for any other SubDevice kind
                 slave.set_dc_sync(DcSync::Sync0);
             }
         }

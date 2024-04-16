@@ -16,7 +16,6 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use thread_priority::{ThreadPriority, ThreadPriorityValue};
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -51,8 +50,9 @@ fn main() -> Result<(), Error> {
 
     smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
-    thread_priority::set_current_thread_priority(ThreadPriority::Crossplatform(
-        ThreadPriorityValue::try_from(48u8).unwrap(),
+    #[cfg(target_os = "linux")]
+    thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Crossplatform(
+        thread_priority::ThreadPriorityValue::try_from(48u8).unwrap(),
     ))
     .expect("Main thread prio");
 
