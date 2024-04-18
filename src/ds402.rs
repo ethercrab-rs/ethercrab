@@ -37,14 +37,6 @@ smlang::statemachine! {
 
 impl<'a> StateMachineContext for Ds402<'a> {
     fn shutdown(&mut self) -> Result<(), ()> {
-        // self.set_control_word(ControlWord::STATE_SHUTDOWN);
-
-        // self.status_word()
-        //     .mandatory()
-        //     .eq(&StatusWord::STATE_READY_TO_SWITCH_ON)
-        //     .then_some(())
-        //     .ok_or(())
-
         self.set_and_read(
             &ControlWord::STATE_SHUTDOWN,
             StatusWord::STATE_READY_TO_SWITCH_ON,
@@ -52,26 +44,10 @@ impl<'a> StateMachineContext for Ds402<'a> {
     }
 
     fn switch_on(&mut self) -> Result<(), ()> {
-        // self.set_control_word(ControlWord::STATE_SWITCH_ON);
-
-        // self.status_word()
-        //     .mandatory()
-        //     .eq(&StatusWord::STATE_SWITCHED_ON)
-        //     .then_some(())
-        //     .ok_or(())
-
         self.set_and_read(&ControlWord::STATE_SWITCH_ON, StatusWord::STATE_SWITCHED_ON)
     }
 
     fn enable_op(&mut self) -> Result<(), ()> {
-        // self.set_control_word(ControlWord::STATE_ENABLE_OP);
-
-        // self.status_word()
-        //     .mandatory()
-        //     .eq(&StatusWord::STATE_OP_ENABLE)
-        //     .then_some(())
-        //     .ok_or(())
-
         self.set_and_read(&ControlWord::STATE_ENABLE_OP, StatusWord::STATE_OP_ENABLE)
     }
 
@@ -210,8 +186,8 @@ impl<'a> Ds402Sm<'a> {
     pub fn tick(&mut self) -> bool {
         let status = self.sm.context().status_word();
 
-        if self.sm.process_event(Events::EnableOp).is_ok() {
-            fmt::debug!("Edge {:?}", status);
+        if let Ok(s) = self.sm.process_event(Events::EnableOp) {
+            fmt::debug!("Edge {:?}, state {:?}", status, s);
         }
 
         self.sm.state == States::OpEnable
