@@ -186,8 +186,8 @@ impl<'a> Ds402Sm<'a> {
     pub fn tick(&mut self) -> bool {
         let status = self.sm.context().status_word();
 
-        if self.sm.process_event(Events::EnableOp).is_ok() {
-            fmt::debug!("Edge {:?}", status);
+        if let Ok(s) = self.sm.process_event(Events::EnableOp) {
+            fmt::debug!("Edge {:?}, state {:?}", status, s);
         }
 
         self.sm.state == States::OpEnable
