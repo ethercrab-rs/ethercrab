@@ -2,6 +2,7 @@
 //!
 //! Motor used for testing is AS5918M2804-E with 500PPR encoder.
 
+use crate::c5e::{C5Error, C5e};
 use anyhow::Context;
 use env_logger::Env;
 use ethercrab::{
@@ -18,6 +19,8 @@ use std::{
 };
 use tokio::time::MissedTickBehavior;
 
+mod c5e;
+
 /// Maximum number of slaves that can be stored.
 const MAX_SLAVES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
@@ -28,19 +31,6 @@ const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
-
-/// C5-E manual page 127 "Error number"
-#[derive(ethercrab::EtherCrabWireRead, Debug)]
-#[allow(unused)]
-#[wire(bytes = 4)]
-struct C5Error {
-    #[wire(bytes = 2)]
-    pub code: u16,
-    #[wire(bytes = 1)]
-    pub class: u8,
-    #[wire(bytes = 1)]
-    pub number: u8,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -73,80 +63,7 @@ async fn main() -> anyhow::Result<()> {
         .expect("Init");
 
     for slave in group.iter(&client) {
-        // Assuming all connected SubDevices are C5-Es here
-
-        // Manual section 4.8 Setting the motor data
-        // 1.8deg step, so 50 pole pairs
-        slave
-            .sdo_write(0x2030, 0, 50u32)
-            .await
-            .context("pole pairs")?;
-        // Max motor current in mA.
-        slave
-            .sdo_write(0x2031, 0, 1000u32)
-            .await
-            .context("max current")?;
-        // Rated motor current in mA
-        slave
-            .sdo_write(0x6075, 0, 2820u32)
-            .await
-            .context("rated currnet")?;
-        // Max motor current, % of rated current in milli-percent, i.e. 1000 is 100%
-        slave
-            .sdo_write(0x6073, 0, 1000u16)
-            .await
-            .context("current %")?;
-        // Max motor current max duration in ms
-        slave
-            .sdo_write(0x203b, 02, 100u32)
-            .await
-            .context("max current duration")?;
-        // Motor type: stepper
-        slave
-            .sdo_write(0x3202, 00, 0x08u32)
-            .await
-            .context("set motor type")?;
-        // Test motor has 500ppr incremental encoder, differential
-        slave
-            .sdo_write(0x2059, 00, 0x0u32)
-            .await
-            .context("encoder kind")?;
-        // Set velocity unit to RPM (factory default)
-        slave
-            .sdo_write(0x60a9, 00, 0x00B44700u32)
-            .await
-            .context("velocity unit RPM")?;
-
-        // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
-        slave.sdo_write(0x1600, 0, 0u8).await?;
-        // Control word, u16
-        // NOTE: The lower word specifies the field length
-        slave.sdo_write(0x1600, 1, 0x6040_0010u32).await?;
-        // Target velocity, i32
-        slave.sdo_write(0x1600, 2, 0x60ff_0020u32).await?;
-        slave.sdo_write(0x1600, 0, 2u8).await?;
-
-        slave.sdo_write(0x1a00, 0, 0u8).await?;
-        // Status word, u16
-        slave.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
-        // Actual position, i32
-        slave.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
-        // Actual velocity, i32
-        slave.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
-        slave.sdo_write(0x1a00, 0, 0x03u8).await?;
-
-        slave.sdo_write(0x1c12, 0, 0u8).await?;
-        slave.sdo_write(0x1c12, 1, 0x1600u16).await?;
-        slave.sdo_write(0x1c12, 0, 1u8).await?;
-
-        slave.sdo_write(0x1c13, 0, 0u8).await?;
-        slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-        slave.sdo_write(0x1c13, 0, 1u8).await?;
-
-        // Opmode - Cyclic Synchronous Position
-        // slave.write_sdo(0x6060, 0, 0x08).await?;
-        // Opmode - Cyclic Synchronous Velocity
-        slave.sdo_write(0x6060, 0, 0x09u8).await?;
+        C5e::configure(&slave).await?;
     }
 
     let mut group = group.into_op(&client).await.expect("PRE-OP -> OP");
