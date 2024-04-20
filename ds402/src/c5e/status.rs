@@ -70,21 +70,21 @@ impl StatusWord {
         }
 
         if switch_on_disabled {
-            if ready_to_switch_on {
-                if switched_on {
-                    if op_enabled {
-                        Ds402State::OpEnabled
-                    } else {
-                        Ds402State::SwitchedOn
-                    }
+            return Ds402State::NotReadyToSwitchOn;
+        }
+
+        if ready_to_switch_on {
+            if switched_on {
+                if op_enabled {
+                    Ds402State::OpEnabled
                 } else {
-                    Ds402State::ReadyToSwitchOn
+                    Ds402State::SwitchedOn
                 }
             } else {
-                Ds402State::SwitchOnDisabled
+                Ds402State::ReadyToSwitchOn
             }
         } else {
-            Ds402State::NotReadyToSwitchOn
+            Ds402State::SwitchOnDisabled
         }
     }
 }

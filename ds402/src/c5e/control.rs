@@ -1,5 +1,7 @@
+use super::Ds402State;
+
 /// ETG6010 5.2 Controlword Object
-#[derive(ethercrab::EtherCrabWireRead, Debug)]
+#[derive(ethercrab::EtherCrabWireWrite, Debug, Default, Copy, Clone)]
 #[wire(bytes = 2)]
 pub struct ControlWord {
     /// 0 Switch on, mandatory.
@@ -25,7 +27,7 @@ pub struct ControlWord {
     pub op_specific_2: bool,
     /// 7 Fault reset, mandatory.
     #[wire(bits = 1)]
-    pub reset_fault: bool,
+    pub fault_reset: bool,
     /// 8 Halt, optional.
     #[wire(bits = 1)]
     pub halt: bool,

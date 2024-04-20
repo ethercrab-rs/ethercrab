@@ -2,3 +2,8 @@ run-release *args:
     cargo build --release && \
     sudo setcap cap_net_raw=pe ../target/release/ds402 && \
     ../target/release/ds402 {{args}}
+
+run *args:
+    cargo build && \
+    sudo setcap cap_net_raw=pe ../target/debug/ds402 && \
+    ../target/debug/ds402 {{args}}

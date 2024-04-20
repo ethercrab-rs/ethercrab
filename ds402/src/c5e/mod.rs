@@ -4,7 +4,7 @@ mod control;
 mod status;
 
 pub use control::ControlWord;
-use ethercrab::{Slave, SlavePdi, SlaveRef};
+use ethercrab::{ds402::Ds402, EtherCrabWireRead, EtherCrabWireWrite, Slave, SlavePdi, SlaveRef};
 pub use status::StatusWord;
 use std::ops::Deref;
 
@@ -18,6 +18,17 @@ pub struct C5Error {
     pub class: u8,
     #[wire(bytes = 1)]
     pub number: u8,
+}
+
+#[derive(ethercrab::EtherCrabWireWrite, Debug, Default)]
+#[wire(bytes = 6)]
+pub struct C5Outputs {
+    #[wire(bytes = 2)]
+    pub control: ControlWord,
+
+    // FIXME: Should be target position
+    #[wire(bytes = 4)]
+    pub target_velocity: i32,
 }
 
 #[derive(ethercrab::EtherCrabWireRead, Debug)]
@@ -34,7 +45,7 @@ pub struct C5Inputs {
 }
 
 /// ETG6010 section 5.1 State Machine
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Ds402State {
     NotReadyToSwitchOn,
     SwitchOnDisabled,
@@ -48,11 +59,19 @@ pub enum Ds402State {
 
 pub struct C5e<'sd> {
     sd: SlaveRef<'sd, SlavePdi<'sd>>,
+    desired_state: Ds402State,
+    prev_state: Ds402State,
+    outputs: C5Outputs,
 }
 
 impl<'sd> C5e<'sd> {
     pub fn new(sd: SlaveRef<'sd, SlavePdi<'sd>>) -> Self {
-        Self { sd }
+        Self {
+            sd,
+            desired_state: Ds402State::NotReadyToSwitchOn,
+            prev_state: Ds402State::NotReadyToSwitchOn,
+            outputs: C5Outputs::default(),
+        }
     }
 
     pub async fn configure<'a>(
@@ -105,10 +124,122 @@ impl<'sd> C5e<'sd> {
         sd.sdo_write(0x1c13, 0, 1u8).await?;
 
         // FIXME: We want CSP!
+        // TODO: This should be configurable at some point, but we'll just leave it in CSP for now
         // Opmode - Cyclic Synchronous Position
         // sd.sdo_write(0x6060, 0, 0x08u8).await?;
         // Opmode - Cyclic Synchronous Velocity
         sd.sdo_write(0x6060, 0, 0x09u8).await?;
+
+        Ok(())
+    }
+
+    pub fn set_velocity(&mut self, velocity: i32) {
+        self.outputs.target_velocity = velocity;
+    }
+
+    /// Extract DS402 status word from PDI.
+    fn state(&self) -> Result<StatusWord, ethercrab::error::Error> {
+        let pdi = C5Inputs::unpack_from_slice(self.sd.inputs_raw())?;
+
+        Ok(pdi.status)
+    }
+
+    /// Update PDI with new output data.
+    pub fn update_outputs(&mut self) {
+        self.outputs
+            .pack_to_slice_unchecked(self.sd.outputs_raw_mut());
+    }
+
+    pub fn current_state(&self) -> Result<Ds402State, ethercrab::error::Error> {
+        self.state().map(|s| s.state())
+    }
+
+    pub fn desired_state(&self) -> Ds402State {
+        self.desired_state
+    }
+
+    pub fn set_state(&mut self, desired: Ds402State) {
+        self.desired_state = desired;
+    }
+
+    pub fn state_change(&mut self) -> Option<(Ds402State, Ds402State)> {
+        let new_state = self.current_state().ok()?;
+
+        if new_state != self.prev_state {
+            let prev_state = self.prev_state;
+
+            self.prev_state = new_state;
+
+            Some((prev_state, new_state))
+        } else {
+            None
+        }
+    }
+
+    /// Reset state machine and clear fault.
+    ///
+    /// This is infallible because any prior state can enter fault mode.
+    pub fn clear_fault(&mut self) {
+        self.outputs.control = ControlWord {
+            fault_reset: true,
+            ..ControlWord::default()
+        };
+    }
+
+    // TODO: Custom error type
+    pub fn shutdown(&mut self) -> Result<(), ()> {
+        let current_state = self.state().map_err(|_| ())?.state();
+
+        if current_state != Ds402State::SwitchOnDisabled
+            && current_state != Ds402State::NotReadyToSwitchOn
+        {
+            return Err(());
+        }
+
+        self.outputs.control = ControlWord {
+            quick_stop: true,
+            enable_voltage: true,
+            ..ControlWord::default()
+        };
+
+        Ok(())
+    }
+
+    /// Transition from ready to switch on to switched on.
+    // TODO: Custom error type
+    pub fn switch_on(&mut self) -> Result<(), ()> {
+        let current_state = self.state().map_err(|_| ())?.state();
+
+        if current_state != Ds402State::ReadyToSwitchOn {
+            return Err(());
+        }
+
+        self.outputs.control = ControlWord {
+            quick_stop: true,
+            switch_on: true,
+            enable_voltage: true,
+            ..ControlWord::default()
+        };
+
+        Ok(())
+    }
+
+    /// Transition from switched on to op
+    // TODO: Custom error type
+    pub fn enable_op(&mut self) -> Result<(), ()> {
+        let current_state = self.state().map_err(|_| ())?.state();
+
+        if current_state != Ds402State::SwitchedOn {
+            return Err(());
+        }
+
+        self.outputs.control = ControlWord {
+            switch_on: true,
+            enable_voltage: true,
+            enable_op: true,
+            quick_stop: true,
+            ..ControlWord::default()
+        };
 
         Ok(())
     }

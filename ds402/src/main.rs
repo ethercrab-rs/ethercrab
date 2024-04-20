@@ -2,11 +2,10 @@
 //!
 //! Motor used for testing is AS5918M2804-E with 500PPR encoder.
 
-use crate::c5e::{C5Error, C5e};
+use crate::c5e::{C5Error, C5e, Ds402State, StatusWord};
 use anyhow::Context;
 use env_logger::Env;
 use ethercrab::{
-    ds402::{Ds402, Ds402Sm, StatusWord},
     std::{ethercat_now, tx_rx_task},
     Client, ClientConfig, PduStorage, Timeouts,
 };
@@ -108,114 +107,156 @@ async fn main() -> anyhow::Result<()> {
     cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     let slave = group.slave(&client, 0).expect("No servo!");
-    let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
+    let mut servo = C5e::new(slave);
 
     let mut velocity: i32 = 0;
 
     let accel = 1;
-    let max_vel = 100;
+    let max_vel = 300;
 
     let term = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
         .expect("Register hook");
 
+    // Update state from drive
+    group.tx_rx(&client).await.expect("TX/RX");
+    log::info!("Current drive state {:?}", servo.current_state());
+
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
-        if servo.tick() {
-            let status = servo.status_word();
-            let (i, o) = servo.slave().io_raw_mut();
+        if let Some((prev_state, new_state)) = servo.state_change() {
+            log::info!("State change {:?} -> {:?}", prev_state, new_state);
 
-            let (pos, vel) = {
-                let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
-                let vel = i32::from_le_bytes(i[6..=9].try_into().unwrap());
+            match new_state {
+                Ds402State::Fault => {
+                    log::error!("Drive fault!");
 
-                (pos, vel)
-            };
+                    velocity = 0;
 
-            println!(
-                "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
-                o
-            );
-
-            let vel_cmd = &mut o[2..=5];
-
-            vel_cmd.copy_from_slice(&velocity.to_le_bytes());
-
-            if status.contains(StatusWord::FAULT) {
-                let sl = servo.slave();
-
-                let num_errors = sl
-                    .sdo_read::<u8>(0x1003, 0)
-                    .await
-                    .context("Read error count")?;
-
-                log::error!("Fault! ({})", num_errors);
-
-                for idx in 1..=num_errors {
-                    let code = sl
-                        .sdo_read::<C5Error>(0x1003, idx)
-                        .await
-                        .context("Read error code")?;
-
-                    log::error!("--> {:?}", code);
+                    servo.clear_fault();
                 }
-
-                break;
+                Ds402State::NotReadyToSwitchOn => {
+                    servo.shutdown().expect("Shutdown");
+                }
+                Ds402State::SwitchOnDisabled => {
+                    servo.shutdown().expect("Shutdown 2");
+                }
+                Ds402State::ReadyToSwitchOn => {
+                    servo.switch_on().expect("Switch on");
+                }
+                Ds402State::SwitchedOn => {
+                    servo.enable_op().expect("Switch on");
+                }
+                Ds402State::OpEnabled => {
+                    log::info!("Op is enabled");
+                }
+                // Ds402State::QuickStop => todo!(),
+                s => log::info!("Unhandled state {:?}", s),
             }
+        }
+
+        if servo.current_state()? == Ds402State::OpEnabled {
+            servo.set_velocity(velocity);
 
             // Normal operation: accelerate up to max speed
             if !term.load(Ordering::Relaxed) {
-                if vel < max_vel {
+                if velocity < max_vel {
                     velocity += accel;
                 }
             }
-            // Slow down to a stop when Ctrl + C is pressed
-            else if vel > 0 {
+            // Stopping: decelerate down to 0 velocity
+            else if velocity > 0 {
                 velocity -= accel;
             }
-            // Deceleration is done, we can now exit this loop
+            // Stopped; time to exit
             else {
-                log::info!("Stopping...");
+                log::info!("Motor stopped");
 
                 break;
             }
         }
+
+        servo.update_outputs();
+
+        // if servo.tick() {
+        //     let status = servo.status_word();
+        //     let (i, o) = servo.slave().io_raw_mut();
+
+        //     let (pos, vel) = {
+        //         let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
+        //         let vel = i32::from_le_bytes(i[6..=9].try_into().unwrap());
+
+        //         (pos, vel)
+        //     };
+
+        //     println!(
+        //         "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
+        //         o
+        //     );
+
+        //     let vel_cmd = &mut o[2..=5];
+
+        //     vel_cmd.copy_from_slice(&velocity.to_le_bytes());
+
+        //     if status.contains(StatusWord::FAULT) {
+        //         let sl = servo.slave();
+
+        //         let num_errors = sl
+        //             .sdo_read::<u8>(0x1003, 0)
+        //             .await
+        //             .context("Read error count")?;
+
+        //         log::error!("Fault! ({})", num_errors);
+
+        //         for idx in 1..=num_errors {
+        //             let code = sl
+        //                 .sdo_read::<C5Error>(0x1003, idx)
+        //                 .await
+        //                 .context("Read error code")?;
+
+        //             log::error!("--> {:?}", code);
+        //         }
+
+        //         break;
+        //     }
+
+        // }
 
         cyclic_interval.tick().await;
     }
 
     log::info!("Servo stopped, shutting drive down");
 
-    loop {
-        group.tx_rx(&client).await.expect("TX/RX");
+    // loop {
+    //     group.tx_rx(&client).await.expect("TX/RX");
 
-        if servo.tick_shutdown() {
-            break;
-        }
+    //     if servo.tick_shutdown() {
+    //         break;
+    //     }
 
-        let status = servo.status_word();
-        let (i, o) = servo.slave().io_raw_mut();
+    //     let status = servo.status_word();
+    //     let (i, o) = servo.slave().io_raw_mut();
 
-        // In fault state, so don't bother trying to shut down gracefully.
-        if status.contains(StatusWord::FAULT) {
-            break;
-        }
+    //     // In fault state, so don't bother trying to shut down gracefully.
+    //     if status.contains(StatusWord::FAULT) {
+    //         break;
+    //     }
 
-        let (pos, vel) = {
-            let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
-            let vel = i32::from_le_bytes(i[6..=9].try_into().unwrap());
+    //     let (pos, vel) = {
+    //         let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
+    //         let vel = i32::from_le_bytes(i[6..=9].try_into().unwrap());
 
-            (pos, vel)
-        };
+    //         (pos, vel)
+    //     };
 
-        println!(
-            "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
-            o
-        );
+    //     println!(
+    //         "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
+    //         o
+    //     );
 
-        cyclic_interval.tick().await;
-    }
+    //     cyclic_interval.tick().await;
+    // }
 
     log::info!("Drive is shut down");
 
