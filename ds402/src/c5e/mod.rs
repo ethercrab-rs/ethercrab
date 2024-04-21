@@ -1,10 +1,12 @@
 //! Nanotec C5-E.
 
 mod control;
+mod power;
 mod status;
 
 pub use control::ControlWord;
 use ethercrab::{EtherCrabWireRead, EtherCrabWireWrite, Slave, SlavePdi, SlaveRef};
+pub use power::Ds402State;
 pub use status::StatusWord;
 use std::ops::Deref;
 
@@ -42,19 +44,6 @@ pub struct C5Inputs {
 
     #[wire(bytes = 4)]
     pub actual_velocity: i32,
-}
-
-/// ETG6010 section 5.1 State Machine
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Ds402State {
-    NotReadyToSwitchOn,
-    SwitchOnDisabled,
-    ReadyToSwitchOn,
-    SwitchedOn,
-    OpEnabled,
-    QuickStop,
-    FaultReact,
-    Fault,
 }
 
 pub struct C5e<'sd> {
