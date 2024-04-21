@@ -2,8 +2,7 @@
 //!
 //! Motor used for testing is AS5918M2804-E with 500PPR encoder.
 
-use crate::c5e::{C5Error, C5e, Ds402State, StatusWord};
-use anyhow::Context;
+use crate::c5e::{C5e, Ds402State};
 use env_logger::Env;
 use ethercrab::{
     std::{ethercat_now, tx_rx_task},
@@ -146,7 +145,7 @@ async fn main() -> anyhow::Result<()> {
                     servo.switch_on().expect("Switch on");
                 }
                 Ds402State::SwitchedOn => {
-                    servo.enable_op().expect("Switch on");
+                    servo.enable_op().expect("Enable op");
                 }
                 Ds402State::OpEnabled => {
                     log::info!("Op is enabled");
@@ -179,26 +178,6 @@ async fn main() -> anyhow::Result<()> {
 
         servo.update_outputs();
 
-        // if servo.tick() {
-        //     let status = servo.status_word();
-        //     let (i, o) = servo.slave().io_raw_mut();
-
-        //     let (pos, vel) = {
-        //         let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
-        //         let vel = i32::from_le_bytes(i[6..=9].try_into().unwrap());
-
-        //         (pos, vel)
-        //     };
-
-        //     println!(
-        //         "Position: {pos}, velocity: {vel}, status: {status:?} | {:?}",
-        //         o
-        //     );
-
-        //     let vel_cmd = &mut o[2..=5];
-
-        //     vel_cmd.copy_from_slice(&velocity.to_le_bytes());
-
         //     if status.contains(StatusWord::FAULT) {
         //         let sl = servo.slave();
 
@@ -220,8 +199,6 @@ async fn main() -> anyhow::Result<()> {
 
         //         break;
         //     }
-
-        // }
 
         cyclic_interval.tick().await;
     }

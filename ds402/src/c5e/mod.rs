@@ -4,7 +4,7 @@ mod control;
 mod status;
 
 pub use control::ControlWord;
-use ethercrab::{ds402::Ds402, EtherCrabWireRead, EtherCrabWireWrite, Slave, SlavePdi, SlaveRef};
+use ethercrab::{EtherCrabWireRead, EtherCrabWireWrite, Slave, SlavePdi, SlaveRef};
 pub use status::StatusWord;
 use std::ops::Deref;
 
@@ -59,7 +59,6 @@ pub enum Ds402State {
 
 pub struct C5e<'sd> {
     sd: SlaveRef<'sd, SlavePdi<'sd>>,
-    desired_state: Ds402State,
     prev_state: Ds402State,
     outputs: C5Outputs,
 }
@@ -68,7 +67,6 @@ impl<'sd> C5e<'sd> {
     pub fn new(sd: SlaveRef<'sd, SlavePdi<'sd>>) -> Self {
         Self {
             sd,
-            desired_state: Ds402State::NotReadyToSwitchOn,
             prev_state: Ds402State::NotReadyToSwitchOn,
             outputs: C5Outputs::default(),
         }
@@ -152,14 +150,6 @@ impl<'sd> C5e<'sd> {
 
     pub fn current_state(&self) -> Result<Ds402State, ethercrab::error::Error> {
         self.state().map(|s| s.state())
-    }
-
-    pub fn desired_state(&self) -> Ds402State {
-        self.desired_state
-    }
-
-    pub fn set_state(&mut self, desired: Ds402State) {
-        self.desired_state = desired;
     }
 
     pub fn state_change(&mut self) -> Option<(Ds402State, Ds402State)> {
