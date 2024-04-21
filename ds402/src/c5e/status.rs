@@ -1,7 +1,7 @@
 use super::Ds402State;
 
 /// ETG6010 5.3 Statusword Object
-#[derive(ethercrab::EtherCrabWireRead, Debug)]
+#[derive(ethercrab::EtherCrabWireRead, Default, Debug)]
 #[wire(bytes = 2)]
 pub struct StatusWord {
     /// 0 Ready to switch on, mandatory
@@ -86,5 +86,20 @@ impl StatusWord {
         } else {
             Ds402State::SwitchOnDisabled
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn switch_on_disabled() {
+        let status = StatusWord {
+            switch_on_disabled: true,
+            ..StatusWord::default()
+        };
+
+        assert_eq!(status.state(), Ds402State::NotReadyToSwitchOn)
     }
 }

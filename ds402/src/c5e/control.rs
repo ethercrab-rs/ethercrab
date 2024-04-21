@@ -53,3 +53,39 @@ pub struct ControlWord {
     #[wire(bits = 1)]
     pub man_4: bool,
 }
+
+impl ControlWord {
+    pub fn clear_fault() -> Self {
+        Self {
+            fault_reset: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn shutdown() -> Self {
+        Self {
+            quick_stop: true,
+            enable_voltage: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn switch_on() -> Self {
+        Self {
+            quick_stop: true,
+            enable_voltage: true,
+            switch_on: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn enable_op() -> Self {
+        Self {
+            quick_stop: true,
+            enable_voltage: true,
+            switch_on: true,
+            enable_op: true,
+            ..Self::default()
+        }
+    }
+}

@@ -2,7 +2,7 @@
 //!
 //! Motor used for testing is AS5918M2804-E with 500PPR encoder.
 
-use crate::c5e::{C5e, Ds402State};
+use crate::c5e::{C5e, DesiredState, Ds402State};
 use env_logger::Env;
 use ethercrab::{
     std::{ethercat_now, tx_rx_task},
@@ -126,7 +126,9 @@ async fn main() -> anyhow::Result<()> {
 
         servo.power_state_machine();
 
-        if servo.current_state()? == Ds402State::OpEnabled {
+        if servo.current_state()? == Ds402State::OpEnabled
+            && servo.desired_state() == DesiredState::Op
+        {
             servo.set_velocity(velocity);
 
             // Normal operation: accelerate up to max speed
@@ -143,8 +145,15 @@ async fn main() -> anyhow::Result<()> {
             else {
                 log::info!("Motor stopped");
 
-                break;
+                servo.set_desired_state(DesiredState::Shutdown);
             }
+        } else if term.load(Ordering::Relaxed)
+            && servo.current_state()? == Ds402State::NotReadyToSwitchOn
+            && servo.desired_state() == DesiredState::Shutdown
+        {
+            log::info!("Drive is shut down");
+
+            break;
         }
 
         servo.update_outputs();

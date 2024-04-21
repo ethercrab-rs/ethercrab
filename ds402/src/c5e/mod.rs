@@ -4,11 +4,12 @@ mod control;
 mod power;
 mod status;
 
+pub use self::power::DesiredState;
 pub use control::ControlWord;
 use ethercrab::{EtherCrabWireRead, EtherCrabWireWrite, Slave, SlavePdi, SlaveRef};
 pub use power::Ds402State;
 pub use status::StatusWord;
-use std::ops::Deref;
+use std::{cell::Cell, ops::Deref};
 
 /// C5-E manual page 127 "Error number"
 #[derive(ethercrab::EtherCrabWireRead, Debug)]
@@ -49,7 +50,9 @@ pub struct C5Inputs {
 pub struct C5e<'sd> {
     sd: SlaveRef<'sd, SlavePdi<'sd>>,
     prev_state: Ds402State,
+    desired_state: DesiredState,
     outputs: C5Outputs,
+    desired_state_changed: Cell<bool>,
 }
 
 impl<'sd> C5e<'sd> {
@@ -58,6 +61,8 @@ impl<'sd> C5e<'sd> {
             sd,
             prev_state: Ds402State::NotReadyToSwitchOn,
             outputs: C5Outputs::default(),
+            desired_state: DesiredState::Op,
+            desired_state_changed: Cell::new(false),
         }
     }
 
@@ -141,15 +146,22 @@ impl<'sd> C5e<'sd> {
         self.state().map(|s| s.state())
     }
 
-    pub fn state_change(&mut self) -> Option<(Ds402State, Ds402State)> {
-        let new_state = self.current_state().ok()?;
+    /// Returns `Some` on a change of state.
+    pub fn state_change(&mut self) -> Option<Ds402State> {
+        let current_state = self.current_state().ok()?;
 
-        if new_state != self.prev_state {
-            let prev_state = self.prev_state;
+        if current_state != self.prev_state {
+            log::info!("State change {:?} -> {:?}", self.prev_state, current_state);
 
-            self.prev_state = new_state;
+            self.prev_state = current_state;
 
-            Some((prev_state, new_state))
+            Some(current_state)
+        }
+        // If SM state is the same but the desired state was changed, we need to trigger SM progress
+        // so we return `Some` in this case too.
+        else if self.desired_state_changed.take() {
+            // Actually current state, despite the name, because we checked for a different state above.
+            Some(self.prev_state)
         } else {
             None
         }
@@ -159,10 +171,7 @@ impl<'sd> C5e<'sd> {
     ///
     /// This is infallible because any prior state can enter fault mode.
     pub fn clear_fault(&mut self) {
-        self.outputs.control = ControlWord {
-            fault_reset: true,
-            ..ControlWord::default()
-        };
+        self.outputs.control = ControlWord::clear_fault();
     }
 
     // TODO: Custom error type
@@ -175,11 +184,7 @@ impl<'sd> C5e<'sd> {
             return Err(());
         }
 
-        self.outputs.control = ControlWord {
-            quick_stop: true,
-            enable_voltage: true,
-            ..ControlWord::default()
-        };
+        self.outputs.control = ControlWord::shutdown();
 
         Ok(())
     }
@@ -193,12 +198,7 @@ impl<'sd> C5e<'sd> {
             return Err(());
         }
 
-        self.outputs.control = ControlWord {
-            quick_stop: true,
-            switch_on: true,
-            enable_voltage: true,
-            ..ControlWord::default()
-        };
+        self.outputs.control = ControlWord::switch_on();
 
         Ok(())
     }
@@ -212,45 +212,76 @@ impl<'sd> C5e<'sd> {
             return Err(());
         }
 
-        self.outputs.control = ControlWord {
-            switch_on: true,
-            enable_voltage: true,
-            enable_op: true,
-            quick_stop: true,
-            ..ControlWord::default()
-        };
+        self.outputs.control = ControlWord::enable_op();
 
         Ok(())
     }
 
-    pub fn power_state_machine(&mut self) {
-        if let Some((prev_state, new_state)) = self.state_change() {
-            log::info!("State change {:?} -> {:?}", prev_state, new_state);
+    pub fn desired_state(&self) -> DesiredState {
+        self.desired_state
+    }
 
-            match new_state {
-                Ds402State::Fault => {
-                    log::error!("Drive fault!");
+    pub fn set_desired_state(&mut self, desired: DesiredState) {
+        log::info!("Set desired state to {:?}", desired);
 
-                    self.clear_fault();
-                }
-                Ds402State::NotReadyToSwitchOn => {
-                    self.shutdown().expect("Shutdown");
-                }
-                Ds402State::SwitchOnDisabled => {
-                    self.shutdown().expect("Shutdown 2");
-                }
-                Ds402State::ReadyToSwitchOn => {
-                    self.switch_on().expect("Switch on");
-                }
-                Ds402State::SwitchedOn => {
-                    self.enable_op().expect("Enable op");
-                }
-                Ds402State::OpEnabled => {
-                    log::info!("Op is enabled");
-                }
-                // Ds402State::QuickStop => todo!(),
-                s => log::info!("Unhandled state {:?}", s),
-            }
+        self.desired_state = desired;
+        self.desired_state_changed.set(true);
+    }
+
+    /// Returns current state if it has changed since the last process data cycle, otherwise `None`.
+    pub fn power_state_machine(&mut self) -> Option<Ds402State> {
+        if let Some(current_state) = self.state_change() {
+            match self.desired_state {
+                DesiredState::Op => match current_state {
+                    Ds402State::Fault => {
+                        log::error!("Drive fault!");
+
+                        self.clear_fault();
+                    }
+                    Ds402State::NotReadyToSwitchOn | Ds402State::SwitchOnDisabled => {
+                        self.shutdown().expect("Shutdown 2");
+                    }
+                    Ds402State::ReadyToSwitchOn => {
+                        self.switch_on().expect("Switch on");
+                    }
+                    Ds402State::SwitchedOn => {
+                        self.enable_op().expect("Enable op");
+                    }
+                    Ds402State::OpEnabled => {
+                        log::info!("Op is enabled");
+                    }
+                    // Ds402State::QuickStop => todo!(),
+                    s => log::info!("Unhandled state {:?}", s),
+                },
+                DesiredState::Shutdown => match current_state {
+                    Ds402State::Fault => {
+                        log::error!("Drive fault!");
+
+                        self.outputs.control = ControlWord::shutdown();
+                    }
+                    Ds402State::OpEnabled => {
+                        self.outputs.control = ControlWord::switch_on();
+                    }
+                    Ds402State::SwitchedOn => {
+                        self.outputs.control = ControlWord::shutdown();
+                    }
+                    Ds402State::ReadyToSwitchOn => {
+                        self.outputs.control = ControlWord::default();
+                    }
+                    Ds402State::SwitchOnDisabled => {
+                        self.outputs.control = ControlWord::default();
+                    }
+                    Ds402State::NotReadyToSwitchOn => {
+                        self.outputs.control = ControlWord::default();
+                    }
+                    // Ds402State::QuickStop => todo!(),
+                    s => log::info!("Unhandled state {:?}", s),
+                },
+            };
+
+            Some(current_state)
+        } else {
+            None
         }
     }
 }

@@ -1,3 +1,5 @@
+use super::ControlWord;
+
 /// DS402 power state machine.
 ///
 /// ETG6010 section 5.1 State Machine
@@ -14,7 +16,9 @@ pub enum Ds402State {
 }
 
 impl Ds402State {
-    pub fn next_state(&self, desired: &DesiredState) -> Ds402State {
+    /// Given `self` as the current state, get the next state the SM should transition to to reach
+    /// the given `DesiredState`.
+    pub fn next_state(&self, desired: &DesiredState) -> Self {
         match desired {
             DesiredState::Shutdown => match self {
                 Self::SwitchOnDisabled => Self::NotReadyToSwitchOn,
@@ -45,7 +49,7 @@ impl Ds402State {
 }
 
 /// Drive power state.
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub enum DesiredState {
     #[default]
     Shutdown,
