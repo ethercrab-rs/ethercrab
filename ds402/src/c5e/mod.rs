@@ -222,4 +222,35 @@ impl<'sd> C5e<'sd> {
 
         Ok(())
     }
+
+    pub fn power_state_machine(&mut self) {
+        if let Some((prev_state, new_state)) = self.state_change() {
+            log::info!("State change {:?} -> {:?}", prev_state, new_state);
+
+            match new_state {
+                Ds402State::Fault => {
+                    log::error!("Drive fault!");
+
+                    self.clear_fault();
+                }
+                Ds402State::NotReadyToSwitchOn => {
+                    self.shutdown().expect("Shutdown");
+                }
+                Ds402State::SwitchOnDisabled => {
+                    self.shutdown().expect("Shutdown 2");
+                }
+                Ds402State::ReadyToSwitchOn => {
+                    self.switch_on().expect("Switch on");
+                }
+                Ds402State::SwitchedOn => {
+                    self.enable_op().expect("Enable op");
+                }
+                Ds402State::OpEnabled => {
+                    log::info!("Op is enabled");
+                }
+                // Ds402State::QuickStop => todo!(),
+                s => log::info!("Unhandled state {:?}", s),
+            }
+        }
+    }
 }

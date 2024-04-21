@@ -124,36 +124,7 @@ async fn main() -> anyhow::Result<()> {
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
-        if let Some((prev_state, new_state)) = servo.state_change() {
-            log::info!("State change {:?} -> {:?}", prev_state, new_state);
-
-            match new_state {
-                Ds402State::Fault => {
-                    log::error!("Drive fault!");
-
-                    velocity = 0;
-
-                    servo.clear_fault();
-                }
-                Ds402State::NotReadyToSwitchOn => {
-                    servo.shutdown().expect("Shutdown");
-                }
-                Ds402State::SwitchOnDisabled => {
-                    servo.shutdown().expect("Shutdown 2");
-                }
-                Ds402State::ReadyToSwitchOn => {
-                    servo.switch_on().expect("Switch on");
-                }
-                Ds402State::SwitchedOn => {
-                    servo.enable_op().expect("Enable op");
-                }
-                Ds402State::OpEnabled => {
-                    log::info!("Op is enabled");
-                }
-                // Ds402State::QuickStop => todo!(),
-                s => log::info!("Unhandled state {:?}", s),
-            }
-        }
+        servo.power_state_machine();
 
         if servo.current_state()? == Ds402State::OpEnabled {
             servo.set_velocity(velocity);
