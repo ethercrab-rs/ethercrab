@@ -5,17 +5,20 @@
 use crate::c5e::{C5e, DesiredState, Ds402State};
 use env_logger::Env;
 use ethercrab::{
+    error::Error,
+    slave_group::{CycleInfo, DcConfiguration},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, Timeouts,
+    Client, ClientConfig, DcSync, PduStorage, RegisterAddress, Timeouts,
 };
+use futures_lite::StreamExt;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
-use tokio::time::MissedTickBehavior;
+use ta::{indicators::ExponentialMovingAverage, Next};
 
 mod c5e;
 
@@ -30,8 +33,10 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
+const TICK_INTERVAL: Duration = Duration::from_millis(1);
+
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), ethercrab::error::Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let interface = std::env::args()
@@ -53,6 +58,8 @@ async fn main() -> anyhow::Result<()> {
         ClientConfig::default(),
     ));
 
+    let mut tick_interval = smol::Timer::interval(TICK_INTERVAL);
+
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     let mut group = client
@@ -60,71 +67,233 @@ async fn main() -> anyhow::Result<()> {
         .await
         .expect("Init");
 
-    for slave in group.iter(&client) {
-        C5e::configure(&slave).await?;
+    for mut slave in group.iter(&client) {
+        // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
+        slave.sdo_write(0x1600, 0, 0u8).await?;
+        // Control word, u16
+        // NOTE: The lower word specifies the field length
+        slave.sdo_write(0x1600, 1, 0x6040_0010u32).await?;
+        // Target velocity, i32
+        slave.sdo_write(0x1600, 2, 0x60ff_0020u32).await?;
+        slave.sdo_write(0x1600, 0, 2u8).await?;
+
+        slave.sdo_write(0x1a00, 0, 0u8).await?;
+        // Status word, u16
+        slave.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
+        // Actual position, i32
+        slave.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
+        // Actual velocity, i32
+        slave.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
+        slave.sdo_write(0x1a00, 0, 0x03u8).await?;
+
+        slave.sdo_write(0x1c12, 0, 0u8).await?;
+        slave.sdo_write(0x1c12, 1, 0x1600u16).await?;
+        slave.sdo_write(0x1c12, 0, 1u8).await?;
+
+        slave.sdo_write(0x1c13, 0, 0u8).await?;
+        slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+        slave.sdo_write(0x1c13, 0, 1u8).await?;
+
+        // Opmode - Cyclic Synchronous Position
+        // slave.sdo_write(0x6060, 0, 0x08u8).await?;
+        // NOTE: ESI file only specifies CSP in `InitCmd`.
+        // Opmode - Cyclic Synchronous Velocity
+        slave.sdo_write(0x6060, 0, 0x09u8).await?;
+
+        // <InitCmd>s from ESI
+        slave.sdo_write(0x60C2, 1, 0x01u8).await?;
+        slave.sdo_write(0x60C2, 2, 0xFDu8).await?;
+
+        // Sync mode 02 = SYNC0
+        slave
+            .sdo_write(0x1c32, 1, 2u16)
+            .await
+            .expect("Set sync mode");
+
+        // Adding this seems to make the second LAN9252 converge much more quickly
+        slave
+            .sdo_write(0x1c32, 0x0a, TICK_INTERVAL.as_nanos() as u32)
+            .await
+            .expect("Set cycle time");
+
+        // 0x0300 in ESI file; enable only SYNC0 and DC
+        slave.set_dc_sync(DcSync::Sync0);
     }
 
-    let mut group = group.into_op(&client).await.expect("PRE-OP -> OP");
+    log::info!("Group has {} slaves", group.len());
 
-    log::info!("Slaves moved to OP state");
+    let mut averages = Vec::new();
 
-    log::info!("Discovered {} slaves", group.len());
-
-    for slave in group.iter(&client) {
-        let (i, o) = slave.io_raw();
-
-        log::info!(
-            "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
-            slave.configured_address(),
-            slave.name(),
-            i.len(),
-            o.len()
-        );
+    for _ in 0..group.len() {
+        averages.push(ExponentialMovingAverage::new(64).unwrap());
     }
 
-    // Run twice to prime PDI
-    group.tx_rx(&client).await.expect("TX/RX");
+    log::info!("Moving into PRE-OP with PDI");
 
-    // Read cycle time from servo drive
-    let cycle_time = {
-        let slave = group.slave(&client, 0).unwrap();
+    let mut group = group.into_pre_op_pdi(&client).await?;
 
-        let base = slave.sdo_read::<u8>(0x60c2, 1).await?;
-        let x10 = slave.sdo_read::<i8>(0x60c2, 2).await?;
+    log::info!("Done. PDI available. Waiting for SubDevices to align");
 
-        let base = f32::from(base);
-        let x10 = 10.0f32.powi(i32::from(x10));
+    let start = Instant::now();
 
-        let cycle_time_ms = (base * x10) * 1000.0;
+    // Repeatedly send group PDI and sync frame to align all SubDevice clocks. We use an
+    // exponential moving average of each SubDevice's deviation from the EtherCAT System Time
+    // (the time in the DC reference SubDevice) and take the maximum deviation. When that is
+    // below 100ns (arbitraily chosen value for this demo), we call the sync good enough and
+    // exit the loop.
+    loop {
+        group.tx_rx_sync_system_time(&client).await.expect("TX/RX");
 
-        Duration::from_millis(unsafe { cycle_time_ms.round().to_int_unchecked() })
-    };
+        let mut max_deviation = 0;
 
-    log::info!("Cycle time: {} ms", cycle_time.as_millis());
+        for (s1, ema) in group.iter(&client).zip(averages.iter_mut()) {
+            let diff = match s1
+                .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+                .await
+            {
+                Ok(value) =>
+                // The returned value is NOT in two's compliment, rather the upper bit specifies
+                // whether the number in the remaining bits is odd or even, so we convert the
+                // value to `i32` using that logic here.
+                {
+                    let flag = 0b1u32 << 31;
 
-    let mut cyclic_interval = tokio::time::interval(cycle_time);
-    cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                    if value >= flag {
+                        // Strip off negative flag bit and negate value as normal
+                        -((value & !flag) as i32)
+                    } else {
+                        value as i32
+                    }
+                }
+                Err(Error::WorkingCounter { .. }) => 0,
+                Err(e) => return Err(e),
+            };
 
-    let slave = group.slave(&client, 0).expect("No servo!");
-    let mut servo = C5e::new(slave);
+            let ema_next = ema.next(diff as f64);
 
-    let mut velocity: i32 = 0;
+            max_deviation = max_deviation.max(ema_next.abs() as u32);
+        }
 
-    let accel = 1;
-    let max_vel = 300;
+        log::debug!("--> Max deviation {} ns", max_deviation);
+
+        // Less than 100ns max deviation as an example threshold.
+        // <https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585>
+        // mentions less than 100us as a good enough value as well.
+        if max_deviation < 100 {
+            log::info!("Clocks settled after {} us", start.elapsed().as_micros());
+
+            break;
+        }
+
+        tick_interval.next().await;
+    }
+
+    log::info!("Alignment done");
+
+    // SubDevice clocks are aligned. We can turn DC on now.
+    let group = group
+        .configure_dc_sync(
+            &client,
+            DcConfiguration {
+                // Start SYNC0 100ms in the future
+                start_delay: Duration::from_millis(100),
+                // SYNC0 period should be the same as the process data loop in most cases
+                sync0_period: TICK_INTERVAL,
+                sync0_shift: Duration::from_micros(400),
+            },
+        )
+        .await?;
+
+    group
+        .tx_rx_sync_system_time(&client)
+        .await
+        .expect("Initial sync");
+
+    let group = group
+        .into_safe_op(&client)
+        .await
+        .expect("PRE-OP -> SAFE-OP");
+
+    log::info!("SAFE-OP");
 
     let term = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
         .expect("Register hook");
 
-    // Update state from drive
-    group.tx_rx(&client).await.expect("TX/RX");
-    log::info!("Current drive state {:?}", servo.current_state());
+    // Request OP state without waiting for all SubDevices to reach it. Allows the immediate
+    // start of the process data cycle, which is required when DC sync is used, otherwise
+    // SubDevices never reach OP, most often timing out with a SyncManagerWatchdog error.
+    let group = group.request_into_op(&client).await.expect("SAFE-OP -> OP");
+
+    log::info!("OP requested");
+
+    let op_request = Instant::now();
+
+    // Send PDI and check group state until all SubDevices enter OP state. At this point, we can
+    // exit this loop and enter the main process data loop that does not have the state check
+    // overhead present here.
+    while !group.all_op(&client).await? {
+        let now = Instant::now();
+
+        let (
+            _wkc,
+            CycleInfo {
+                next_cycle_wait, ..
+            },
+        ) = group.tx_rx_dc(&client).await.expect("TX/RX");
+
+        smol::Timer::at(now + next_cycle_wait).await;
+    }
+
+    log::info!(
+        "All SubDevices entered OP in {} us",
+        op_request.elapsed().as_micros()
+    );
+
+    let mut servo = C5e::new(group.slave(&client, 0).expect("No subdevice!"));
+
+    let accel = 1;
+    let max_vel = 300;
+    let mut velocity = 0;
 
     loop {
-        group.tx_rx(&client).await.expect("TX/RX");
+        let now = Instant::now();
 
-        servo.power_state_machine();
+        let (
+            _wkc,
+            CycleInfo {
+                next_cycle_wait, ..
+            },
+        ) = group.tx_rx_dc(&client).await.expect("TX/RX");
+
+        if let Some(Ds402State::Fault) = servo.power_state_machine() {
+            let sl = servo.subdevice();
+
+            log::error!(
+                "General error code {:#010b}",
+                sl.sdo_read::<u8>(0x1001, 0).await.unwrap_or(0xff)
+            );
+
+            // let num_errors = sl
+            //     .sdo_read::<u8>(0x1003, 0)
+            //     .await
+            //     .expect("Read error count");
+
+            // log::error!("Fault! ({})", num_errors);
+
+            // for idx in 1..=num_errors {
+            //     let code = sl
+            //         .sdo_read::<u32>(0x1003, idx)
+            //         .await
+            //         .expect("Read error code");
+
+            //     log::error!("--> {:#010x}", code);
+            // }
+
+            // log::info!("Clearing fault");
+
+            // servo.clear_fault();
+        }
 
         if servo.current_state()? == Ds402State::OpEnabled
             && servo.desired_state() == DesiredState::Op
@@ -134,7 +303,7 @@ async fn main() -> anyhow::Result<()> {
             // Normal operation: accelerate up to max speed
             if !term.load(Ordering::Relaxed) {
                 if velocity < max_vel {
-                    velocity += accel;
+                    // velocity += accel;
                 }
             }
             // Stopping: decelerate down to 0 velocity
@@ -152,6 +321,10 @@ async fn main() -> anyhow::Result<()> {
             && servo.desired_state() == DesiredState::Shutdown
         {
             log::info!("Drive is shut down");
+
+            break;
+        } else if term.load(Ordering::Relaxed) {
+            log::info!("Exiting");
 
             break;
         }
@@ -180,7 +353,7 @@ async fn main() -> anyhow::Result<()> {
         //         break;
         //     }
 
-        cyclic_interval.tick().await;
+        smol::Timer::at(now + next_cycle_wait).await;
     }
 
     log::info!("Servo stopped, shutting drive down");
@@ -212,7 +385,7 @@ async fn main() -> anyhow::Result<()> {
     //         o
     //     );
 
-    //     cyclic_interval.tick().await;
+    //     tick_interval.tick().await;
     // }
 
     log::info!("Drive is shut down");

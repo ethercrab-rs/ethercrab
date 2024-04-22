@@ -125,6 +125,10 @@ impl<'sd> C5e<'sd> {
         Ok(())
     }
 
+    pub fn subdevice(&self) -> &SlaveRef<'sd, SlavePdi<'sd>> {
+        &self.sd
+    }
+
     pub fn set_velocity(&mut self, velocity: i32) {
         self.outputs.target_velocity = velocity;
     }
