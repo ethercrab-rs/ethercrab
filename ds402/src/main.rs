@@ -8,7 +8,7 @@ use ethercrab::{
     error::Error,
     slave_group::{CycleInfo, DcConfiguration},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, DcSync, PduStorage, RegisterAddress, Timeouts,
+    Client, ClientConfig, Command, DcSync, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
@@ -118,6 +118,26 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
         // 0x0300 in ESI file; enable only SYNC0 and DC
         slave.set_dc_sync(DcSync::Sync0);
+
+        // ASDA-B3 DIx functional planning P2.010 - P2.017
+        for i in 0..8u8 {
+            // Mapping between Px.xxx and EtherCAT objects described in section 12.4.3.2.
+            let base = 0x2000;
+            // The Px part
+            let group = 0x0200;
+            // The value after the dot
+            let param = 10u8 + i;
+
+            let ecat_object = base | group | u16::from(param);
+
+            log::info!(
+                "DI{}, conv to ECAT obj {:#06x} -> {:#06x}",
+                i,
+                ecat_object,
+                // slave.register_read::<u16>(i).await.unwrap_or(u16::MAX)
+                slave.sdo_read::<u16>(ecat_object, 0).await.expect("Read")
+            );
+        }
     }
 
     log::info!("Group has {} slaves", group.len());
