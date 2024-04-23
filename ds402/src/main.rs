@@ -33,7 +33,7 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-const TICK_INTERVAL: Duration = Duration::from_millis(1);
+const TICK_INTERVAL: Duration = Duration::from_millis(2);
 
 /// Convert a Px.xxx parameter number into an EtherCAT SDO address according to 12.4.3.2 in the
 /// manual.
@@ -134,6 +134,27 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         // 0x0300 in ESI file; enable only SYNC0 and DC
         slave.set_dc_sync(DcSync::Sync0);
 
+        // ---
+        // DELETEME: DANGER: DISABLING EMERGENCY STOP DI3 INPUT FOR TESTING ONLY
+        // ---
+        log::warn!("DANGER: DISABLING EMERGENCY STOP INPUT. USE FOR TESTING ONLY.");
+        // A value of 0 disables the digital input
+        slave
+            .sdo_write(param_to_object(2, 10 + 3), 0, 0x0)
+            .await
+            .expect("Disable EMGS input");
+
+        // See diagram 3.10.8 in manual for EtherCAT default input settings
+        // DELETEME: Disable positive/negative limit inputs for testing
+        slave
+            .sdo_write(param_to_object(2, 10 + 1), 0, 0x0)
+            .await
+            .expect("Disable negative limit input");
+        slave
+            .sdo_write(param_to_object(2, 10 + 2), 0, 0x0)
+            .await
+            .expect("Disable positive limit input");
+
         // ASDA-B3 DIx functional planning P2.010 - P2.017
         for i in 0..8u8 {
             let ecat_object = param_to_object(2, 10 + i);
@@ -146,15 +167,6 @@ async fn main() -> Result<(), ethercrab::error::Error> {
                 slave.sdo_read::<u16>(ecat_object, 0).await.expect("Read")
             );
         }
-
-        // ---
-        // DELETEME: DANGER: DISABLING EMERGENCY STOP DI3 INPUT FOR TESTING ONLY
-        // ---
-        log::warn!("DANGER: DISABLING EMERGENCY STOP INPUT. USE FOR TESTING ONLY.");
-        slave
-            .sdo_write(param_to_object(2, 10 + 3), 0, 0x0100)
-            .await
-            .expect("Disable EMGS input");
     }
 
     log::info!("Group has {} slaves", group.len());
@@ -340,7 +352,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
             // Normal operation: accelerate up to max speed
             if !term.load(Ordering::Relaxed) {
                 if velocity < max_vel {
-                    // velocity += accel;
+                    velocity += accel;
                 }
             }
             // Stopping: decelerate down to 0 velocity
