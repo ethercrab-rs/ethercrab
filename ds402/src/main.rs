@@ -8,7 +8,7 @@ use ethercrab::{
     error::Error,
     slave_group::{CycleInfo, DcConfiguration},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, Command, DcSync, PduStorage, RegisterAddress, Timeouts,
+    Client, ClientConfig, DcSync, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
@@ -34,6 +34,21 @@ const PDI_LEN: usize = 64;
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
 const TICK_INTERVAL: Duration = Duration::from_millis(1);
+
+/// Convert a Px.xxx parameter number into an EtherCAT SDO address according to 12.4.3.2 in the
+/// manual.
+fn param_to_object(group: u8, param: u8) -> u16 {
+    // Mapping between Px.xxx and EtherCAT objects described in section 12.4.3.2.
+    let base = 0x2000;
+    // The Px part
+    let group = u16::from(group & 0x0f) << 8;
+    // The value after the dot
+    let param = param;
+
+    let ecat_object = base | group | u16::from(param);
+
+    ecat_object
+}
 
 #[tokio::main]
 async fn main() -> Result<(), ethercrab::error::Error> {
@@ -121,14 +136,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
         // ASDA-B3 DIx functional planning P2.010 - P2.017
         for i in 0..8u8 {
-            // Mapping between Px.xxx and EtherCAT objects described in section 12.4.3.2.
-            let base = 0x2000;
-            // The Px part
-            let group = 0x0200;
-            // The value after the dot
-            let param = 10u8 + i;
-
-            let ecat_object = base | group | u16::from(param);
+            let ecat_object = param_to_object(2, 10 + i);
 
             log::info!(
                 "DI{}, conv to ECAT obj {:#06x} -> {:#06x}",
@@ -138,6 +146,15 @@ async fn main() -> Result<(), ethercrab::error::Error> {
                 slave.sdo_read::<u16>(ecat_object, 0).await.expect("Read")
             );
         }
+
+        // ---
+        // DELETEME: DANGER: DISABLING EMERGENCY STOP DI3 INPUT FOR TESTING ONLY
+        // ---
+        log::warn!("DANGER: DISABLING EMERGENCY STOP INPUT. USE FOR TESTING ONLY.");
+        slave
+            .sdo_write(param_to_object(2, 10 + 3), 0, 0x0100)
+            .await
+            .expect("Disable EMGS input");
     }
 
     log::info!("Group has {} slaves", group.len());
