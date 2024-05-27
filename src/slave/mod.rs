@@ -240,6 +240,11 @@ impl Slave {
         self.configured_address
     }
 
+    /// Get alias address for the slave device.
+    pub fn alias_address(&self) -> u16 {
+        self.alias_address
+    }
+
     /// Get the network propagation delay of this device in nanoseconds.
     ///
     /// Note that before [`Client::init`](crate::client::Client::init) is called, this method will
