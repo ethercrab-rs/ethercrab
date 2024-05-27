@@ -52,6 +52,8 @@ pub struct Slave {
     /// Configured station address.
     pub(crate) configured_address: u16,
 
+    pub(crate) alias_address: u16,
+
     pub(crate) config: SlaveConfig,
 
     pub(crate) identity: SlaveIdentity,
@@ -94,6 +96,7 @@ pub struct Slave {
 impl PartialEq for Slave {
     fn eq(&self, other: &Self) -> bool {
         self.configured_address == other.configured_address
+            && self.alias_address == other.alias_address
             && self.config == other.config
             && self.identity == other.identity
             && self.name == other.name
@@ -115,6 +118,7 @@ impl Clone for Slave {
     fn clone(&self) -> Self {
         Self {
             configured_address: self.configured_address,
+            alias_address: self.alias_address,
             config: self.config.clone(),
             identity: self.identity,
             name: self.name.clone(),
@@ -173,6 +177,11 @@ impl Slave {
             .receive::<SupportFlags>(client)
             .await?;
 
+        let alias_address = slave_ref
+            .read(RegisterAddress::ConfiguredStationAlias)
+            .receive::<u16>(client)
+            .await?;
+
         let ports = slave_ref
             .read(RegisterAddress::DlStatus)
             .receive::<DlStatus>(client)
@@ -189,16 +198,18 @@ impl Slave {
             })?;
 
         fmt::debug!(
-            "Slave {:#06x} name {} {}, {}, {}",
+            "Slave {:#06x} name {} {}, {}, {}, alias address {:#06x}",
             configured_address,
             name,
             identity,
             flags,
-            ports
+            ports,
+            alias_address
         );
 
         Ok(Self {
             configured_address,
+            alias_address,
             config: SlaveConfig::default(),
             index,
             parent_index: None,
@@ -227,6 +238,11 @@ impl Slave {
     /// Get the configured station address of the slave device.
     pub fn configured_address(&self) -> u16 {
         self.configured_address
+    }
+
+    /// Get alias address for the slave device.
+    pub fn alias_address(&self) -> u16 {
+        self.alias_address
     }
 
     /// Get the network propagation delay of this device in nanoseconds.
@@ -318,6 +334,11 @@ where
     /// Get additional identifying details for the slave device.
     pub fn identity(&self) -> SlaveIdentity {
         self.state.identity
+    }
+
+    /// Get alias address for the slave device.
+    pub fn alias_address(&self) -> u16 {
+        self.state.alias_address
     }
 
     /// Get the network propagation delay of this device in nanoseconds.
