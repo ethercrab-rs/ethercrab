@@ -1,0 +1,28 @@
+[package]
+version = "0.1.0"
+name = "stm32-rtic"
+edition = "2021"
+resolver = "2"
+
+[dependencies]
+volatile-register = "0.2"
+aligned = "0.4"
+stm32f4xx-hal = { version = "0.14", features = ["stm32f429"] }
+stm32f4 = { version = "0.15" }
+ieee802_3_miim = "0.8"
+defmt = { version = "0.3" }
+futures = { version = "0.3", default-features = false, features = [
+    "async-await",
+] }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+fugit = "0.3"
+defmt-rtt = "0.4"
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+systick-monotonic = "1.0"
+rtic = { version = "2.0.1", features = ["thumbv7-backend"] }
+stm32-eth = { version = "0.5.2", default-features = false, features = ["defmt", "stm32f429", "async-await"] }
+
+[profile.release]
+debug = 2
+lto = true
