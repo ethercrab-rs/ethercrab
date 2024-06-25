@@ -54,6 +54,9 @@ pub struct ChunkReader<P> {
     /// base for skip offsets.
     pos: u16,
 
+    /// Starting byte address in the EEPROM.
+    start: u16,
+
     /// The last byte address we're allowed to access.
     end: u16,
 
@@ -73,6 +76,7 @@ where
         Self {
             reader,
             pos: start_word * 2,
+            start: start_word * 2,
             end: start_word * 2 + len_words * 2,
             read_pointer: start_word,
         }
@@ -103,6 +107,27 @@ where
             self.pos,
             self.read_pointer,
         );
+
+        Ok(())
+    }
+
+    /// Set offset in bytes from beginning of chunk.
+    pub(crate) fn set_offset(&mut self, offset_bytes: u16) -> Result<(), Error> {
+        fmt::trace!(
+            "Set EEPROM chunk reader position to {:#06x} + {} bytes ({:#06x})",
+            self.start / 2,
+            offset_bytes,
+            (self.start / 2) + (offset_bytes / 2)
+        );
+
+        if self.start + offset_bytes >= self.end {
+            return Err(Error::Eeprom(EepromError::SectionOverrun));
+        }
+
+        self.pos = offset_bytes;
+
+        // Round read pointer down to the nearest multiple of two (byte -> word conversion)
+        self.read_pointer = self.pos / 2;
 
         Ok(())
     }

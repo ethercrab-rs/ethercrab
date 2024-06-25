@@ -11,7 +11,7 @@ use crate::{
     fmt,
     slave::SlaveIdentity,
 };
-use core::{marker::PhantomData, ops::RangeInclusive};
+use core::{future::Future, marker::PhantomData, ops::RangeInclusive};
 use embedded_io_async::{Read, ReadExactError};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized};
 
@@ -80,7 +80,7 @@ where
     /// EEPROM `General` section.
     pub(crate) fn device_name<const N: usize>(
         &self,
-    ) -> impl core::future::Future<Output = Result<Option<heapless::String<N>>, Error>> + '_ {
+    ) -> impl Future<Output = Result<Option<heapless::String<N>>, Error>> + '_ {
         // Uncomment to read longer, but correct, name string from EEPROM
         // let general = self.general().await?;
         // let name_idx = general.name_string_idx;
@@ -134,22 +134,10 @@ where
         Ok(SlaveIdentity::unpack_from_slice(&buf)?)
     }
 
-    pub(crate) async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
-        let mut sync_managers = heapless::Vec::<_, 8>::new();
-
-        fmt::trace!("Get sync managers");
-
-        let mut cat = self.items::<SyncManager>(CategoryType::SyncManager).await?;
-
-        while let Some(sm) = cat.next().await? {
-            sync_managers
-                .push(sm)
-                .map_err(|_| Error::Capacity(Item::SyncManager))?;
-        }
-
-        fmt::debug!("Discovered sync managers:\n{:#?}", sync_managers);
-
-        Ok(sync_managers)
+    pub(crate) fn sync_managers_iter(
+        &self,
+    ) -> impl Future<Output = Result<CategoryIterator<P, SyncManager>, Error>> + '_ {
+        self.items::<SyncManager>(CategoryType::SyncManager)
     }
 
     pub(crate) async fn fmmus(&self) -> Result<heapless::Vec<FmmuUsage, 16>, Error> {
@@ -261,14 +249,14 @@ where
     /// Transmit PDOs (from device's perspective) - inputs
     pub(crate) fn master_read_pdos(
         &self,
-    ) -> impl core::future::Future<Output = Result<heapless::Vec<Pdo, 16>, Error>> + '_ {
+    ) -> impl Future<Output = Result<heapless::Vec<Pdo, 16>, Error>> + '_ {
         self.pdos(PdoType::Tx, TX_PDO_RANGE)
     }
 
     /// Receive PDOs (from device's perspective) - outputs
     pub(crate) fn master_write_pdos(
         &self,
-    ) -> impl core::future::Future<Output = Result<heapless::Vec<Pdo, 16>, Error>> + '_ {
+    ) -> impl Future<Output = Result<heapless::Vec<Pdo, 16>, Error>> + '_ {
         self.pdos(PdoType::Rx, RX_PDO_RANGE)
     }
 
@@ -395,6 +383,23 @@ where
 
         Ok(Some(T::unpack_from_slice(buf.as_ref())?))
     }
+
+    pub async fn get(&mut self, n: usize) -> Result<Option<T>, Error> {
+        let mut buf = T::buffer();
+
+        let byte_offset = n * T::PACKED_LEN;
+
+        self.reader.set_offset(byte_offset as u16)?;
+
+        match self.reader.read_exact(buf.as_mut()).await {
+            // Reached end of category
+            Err(ReadExactError::UnexpectedEof) => return Ok(None),
+            Err(ReadExactError::Other(e)) => return Err(e),
+            Ok(()) => (),
+        }
+
+        Ok(Some(T::unpack_from_slice(buf.as_ref())?))
+    }
 }
 
 #[cfg(test)]
@@ -485,10 +490,97 @@ mod tests {
             },
         ];
 
+        let collected = {
+            let mut sms = Vec::new();
+            let mut it = e.sync_managers_iter().await.expect("SM reader iter");
+
+            while let Some(sm) = it.next().await.expect("Failed to read SM") {
+                sms.push(sm);
+            }
+
+            sms
+        };
+
+        assert_eq!(collected.as_slice(), &expected);
+    }
+
+    #[tokio::test]
+    async fn sync_managers_iter() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+
+        let mut sms = e.sync_managers_iter().await.expect("SMs iter");
+
         assert_eq!(
-            e.sync_managers().await,
-            Ok(heapless::Vec::<SyncManager, 8>::from_slice(&expected).unwrap())
+            sms.next().await,
+            Ok(Some(SyncManager {
+                start_addr: 0x1800,
+                length: 0x0400,
+                control: Control {
+                    operation_mode: OperationMode::Mailbox,
+                    direction: Direction::MasterWrite,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::MailboxWrite,
+            }))
         );
+
+        assert_eq!(
+            sms.next().await,
+            Ok(Some(SyncManager {
+                start_addr: 0x1c00,
+                length: 0x0400,
+                control: Control {
+                    operation_mode: OperationMode::Mailbox,
+                    direction: Direction::MasterRead,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::MailboxRead,
+            }))
+        );
+
+        assert_eq!(
+            sms.next().await,
+            Ok(Some(SyncManager {
+                start_addr: 0x1100,
+                length: 0x0000,
+                control: Control {
+                    operation_mode: OperationMode::Normal,
+                    direction: Direction::MasterWrite,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::ProcessDataWrite,
+            }))
+        );
+
+        assert_eq!(
+            sms.next().await,
+            Ok(Some(SyncManager {
+                start_addr: 0x1140,
+                length: 0x0000,
+                control: Control {
+                    operation_mode: OperationMode::Normal,
+                    direction: Direction::MasterRead,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::ProcessDataRead,
+            }))
+        );
+
+        assert_eq!(sms.next().await, Ok(None));
     }
 
     #[tokio::test]
@@ -732,20 +824,20 @@ mod tests {
     async fn default_mailbox_config_matches_sms() {
         let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
-        let sms = e.sync_managers().await.expect("Read sync managers");
+        let mut sms = e.sync_managers_iter().await.expect("Read sync managers");
+
+        let sm0 = sms.next().await.expect("Load SM0").expect("SM0 presence");
+        let sm1 = sms.next().await.expect("Load SM1").expect("SM1 presence");
 
         let mbox = e.mailbox_config().await.expect("Read mailbox config");
 
         assert_eq!(
-            mbox.slave_receive_offset, sms[0].start_addr,
+            mbox.slave_receive_offset, sm0.start_addr,
             "slave_receive_offset"
         );
-        assert_eq!(mbox.slave_receive_size, sms[0].length, "slave_receive_size");
-        assert_eq!(
-            mbox.slave_send_offset, sms[1].start_addr,
-            "slave_send_offset"
-        );
-        assert_eq!(mbox.slave_send_size, sms[1].length, "slave_send_size");
+        assert_eq!(mbox.slave_receive_size, sm0.length, "slave_receive_size");
+        assert_eq!(mbox.slave_send_offset, sm1.start_addr, "slave_send_offset");
+        assert_eq!(mbox.slave_send_size, sm1.length, "slave_send_size");
     }
 
     #[tokio::test]

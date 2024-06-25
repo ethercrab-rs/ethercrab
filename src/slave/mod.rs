@@ -502,7 +502,7 @@ where
         // Send data to slave IN mailbox
         self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
-            .send(self.client, &request.pack().as_ref())
+            .send(self.client, request.pack().as_ref())
             .await?;
 
         let mut response = self.coe_response(&read_mailbox).await?;

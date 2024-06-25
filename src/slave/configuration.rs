@@ -30,10 +30,10 @@ where
         // to master mode here, now that the transition is complete.
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
-        let sync_managers = self.eeprom().sync_managers().await?;
+        // let sync_managers = self.eeprom().sync_managers().await?;
 
         // Mailboxes must be configured in INIT state
-        self.configure_mailbox_sms(&sync_managers).await?;
+        self.configure_mailbox_sms().await?;
 
         // Some slaves must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
@@ -107,7 +107,6 @@ where
         group_start_address: u32,
         direction: PdoDirection,
     ) -> Result<PdiOffset, Error> {
-        let sync_managers = self.eeprom().sync_managers().await?;
         let fmmu_usage = self.eeprom().fmmus().await?;
 
         let state = self.state().await?;
@@ -136,10 +135,10 @@ where
         );
 
         let range = if has_coe {
-            self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
+            self.configure_pdos_coe(&fmmu_usage, direction, &mut global_offset)
                 .await?
         } else {
-            self.configure_pdos_eeprom(&sync_managers, &fmmu_usage, direction, &mut global_offset)
+            self.configure_pdos_eeprom(&fmmu_usage, direction, &mut global_offset)
                 .await?
         };
 
@@ -206,7 +205,7 @@ where
     }
 
     /// Configure SM0 and SM1 for mailbox communication.
-    async fn configure_mailbox_sms(&mut self, sync_managers: &[SyncManager]) -> Result<(), Error> {
+    async fn configure_mailbox_sms(&mut self) -> Result<(), Error> {
         // Read default mailbox configuration from slave information area
         let mailbox_config = self.eeprom().mailbox_config().await?;
 
@@ -230,9 +229,10 @@ where
         let mut read_mailbox = None;
         let mut write_mailbox = None;
 
-        for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
-            let sync_manager_index = sync_manager_index as u8;
+        let mut sms = self.eeprom().sync_managers_iter().await?;
+        let mut sync_manager_index = 0;
 
+        while let Some(ref sync_manager) = sms.next().await? {
             // Mailboxes are configured in INIT state
             match sync_manager.usage_type {
                 SyncManagerType::MailboxWrite => {
@@ -265,6 +265,8 @@ where
                 }
                 _ => continue,
             }
+
+            sync_manager_index += 1;
         }
 
         self.state.config.mailbox = MailboxConfig {
@@ -287,7 +289,6 @@ where
     /// Configure PDOs from CoE registers.
     async fn configure_pdos_coe(
         &self,
-        sync_managers: &[SyncManager],
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         global_offset: &mut PdiOffset,
@@ -310,6 +311,8 @@ where
         let start_offset = *global_offset;
         let mut total_bit_len = 0;
 
+        let mut sms = self.eeprom().sync_managers_iter().await?;
+
         for (sync_manager_index, sm_type) in self
             .state
             .config
@@ -323,8 +326,8 @@ where
             let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
 
             let sync_manager =
-                sync_managers
-                    .get(usize::from(sync_manager_index))
+                sms.get(usize::from(sync_manager_index))
+                    .await?
                     .ok_or(Error::NotFound {
                         item: Item::SyncManager,
                         index: Some(usize::from(sync_manager_index)),
@@ -408,7 +411,7 @@ where
             );
 
             let sm_config = self
-                .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
+                .write_sm_config(sync_manager_index, &sync_manager, (sm_bit_len + 7) / 8)
                 .await?;
 
             if sm_bit_len > 0 {
@@ -494,7 +497,6 @@ where
     /// Configure PDOs from EEPROM
     async fn configure_pdos_eeprom(
         &self,
-        sync_managers: &[SyncManager],
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         offset: &mut PdiOffset,
@@ -523,14 +525,22 @@ where
 
         let (sm_type, fmmu_type) = direction.filter_terms();
 
-        for (sync_manager_index, sync_manager) in sync_managers
-            .iter()
-            .enumerate()
-            .filter(|(_idx, sm)| sm.usage_type == sm_type)
-        {
-            let sync_manager_index = sync_manager_index as u8;
+        let mut sms = self.eeprom().sync_managers_iter().await?;
+        let mut sync_manager_index = 0u8;
 
-            let bit_len = pdos
+        while let Some(ref sync_manager) = sms.next().await? {
+            fmt::debug!(
+                "SubDevice {:#06x}: Discovered sync manager {:#?}",
+                self.configured_address(),
+                sync_manager
+            );
+
+            // Only look for SM types we're interested in
+            if sync_manager.usage_type != sm_type {
+                continue;
+            }
+
+            let bit_len: u16 = pdos
                 .iter()
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
                 .map(Pdo::bit_len)
@@ -574,6 +584,8 @@ where
                 &sm_config,
             )
             .await?;
+
+            sync_manager_index += 1;
         }
 
         Ok(PdiSegment {
