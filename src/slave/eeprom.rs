@@ -45,9 +45,11 @@ where
 
             word_addr += 2;
 
-            let category_type =
-                CategoryType::from(u16::from_le_bytes(fmt::unwrap!(chunk[0..2].try_into())));
-            let len_words = u16::from_le_bytes(fmt::unwrap!(chunk[2..4].try_into()));
+            let (c1, chunk) = fmt::unwrap_opt!(chunk.split_first_chunk::<2>());
+            let (c2, _chunk) = fmt::unwrap_opt!(chunk.split_first_chunk::<2>());
+
+            let category_type = CategoryType::from(u16::from_le_bytes(*c1));
+            let len_words = u16::from_le_bytes(*c2);
 
             fmt::trace!(
                 "Found category {:?} at {:#06x} bytes, length {:#04x} ({}) words",
