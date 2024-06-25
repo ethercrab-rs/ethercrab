@@ -259,13 +259,17 @@ where
     }
 
     /// Transmit PDOs (from device's perspective) - inputs
-    pub(crate) async fn master_read_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
-        self.pdos(PdoType::Tx, TX_PDO_RANGE).await
+    pub(crate) fn master_read_pdos(
+        &self,
+    ) -> impl core::future::Future<Output = Result<heapless::Vec<Pdo, 16>, Error>> + '_ {
+        self.pdos(PdoType::Tx, TX_PDO_RANGE)
     }
 
     /// Receive PDOs (from device's perspective) - outputs
-    pub(crate) async fn master_write_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
-        self.pdos(PdoType::Rx, RX_PDO_RANGE).await
+    pub(crate) fn master_write_pdos(
+        &self,
+    ) -> impl core::future::Future<Output = Result<heapless::Vec<Pdo, 16>, Error>> + '_ {
+        self.pdos(PdoType::Rx, RX_PDO_RANGE)
     }
 
     /// Find a string in the device EEPROM.
