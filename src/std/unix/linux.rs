@@ -8,7 +8,8 @@ use crate::{
 use async_io::IoSafe;
 use core::ptr::addr_of;
 use std::{
-    io, mem,
+    io,
+    mem::size_of,
     os::{
         fd::{AsFd, BorrowedFd},
         unix::io::{AsRawFd, RawFd},
@@ -65,7 +66,7 @@ impl RawSocketDesc {
             let res = libc::bind(
                 self.lower,
                 addr_of!(sockaddr).cast(),
-                mem::size_of::<libc::sockaddr_ll>() as libc::socklen_t,
+                size_of::<libc::sockaddr_ll>() as libc::socklen_t,
             );
             if res == -1 {
                 return Err(io::Error::last_os_error());

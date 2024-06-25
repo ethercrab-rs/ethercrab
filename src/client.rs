@@ -15,6 +15,7 @@ use crate::{
     ClientConfig, SlaveGroup, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
+    mem::size_of,
     ops::Range,
     sync::atomic::{AtomicU16, Ordering},
 };
@@ -89,51 +90,30 @@ impl<'sto> Client<'sto> {
         self.blank_memory(RegisterAddress::Sm0, 0x7f).await?;
 
         // Set DC control back to EtherCAT
-        self.blank_memory(
-            RegisterAddress::DcCyclicUnitControl,
-            core::mem::size_of::<u8>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSystemTime,
-            core::mem::size_of::<u64>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSystemTimeOffset,
-            core::mem::size_of::<u64>() as u16,
-        )
-        .await?;
+        self.blank_memory(RegisterAddress::DcCyclicUnitControl, size_of::<u8>() as u16)
+            .await?;
+        self.blank_memory(RegisterAddress::DcSystemTime, size_of::<u64>() as u16)
+            .await?;
+        self.blank_memory(RegisterAddress::DcSystemTimeOffset, size_of::<u64>() as u16)
+            .await?;
         self.blank_memory(
             RegisterAddress::DcSystemTimeTransmissionDelay,
-            core::mem::size_of::<u32>() as u16,
+            size_of::<u32>() as u16,
         )
         .await?;
         self.blank_memory(
             RegisterAddress::DcSystemTimeDifference,
-            core::mem::size_of::<u32>() as u16,
+            size_of::<u32>() as u16,
         )
         .await?;
-        self.blank_memory(
-            RegisterAddress::DcSyncActive,
-            core::mem::size_of::<u8>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSyncStartTime,
-            core::mem::size_of::<u32>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSync0CycleTime,
-            core::mem::size_of::<u32>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSync1CycleTime,
-            core::mem::size_of::<u32>() as u16,
-        )
-        .await?;
+        self.blank_memory(RegisterAddress::DcSyncActive, size_of::<u8>() as u16)
+            .await?;
+        self.blank_memory(RegisterAddress::DcSyncStartTime, size_of::<u32>() as u16)
+            .await?;
+        self.blank_memory(RegisterAddress::DcSync0CycleTime, size_of::<u32>() as u16)
+            .await?;
+        self.blank_memory(RegisterAddress::DcSync1CycleTime, size_of::<u32>() as u16)
+            .await?;
 
         // ETG1020 Section 22.2.4 defines these initial parameters. The data types are defined in
         // ETG1000.4 Table 60 – Distributed clock local time parameter, helpfully named "Control
