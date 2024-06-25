@@ -323,12 +323,16 @@ where
             // Get rid of any C null terminators
             buf.retain(|char| *char != 0x00);
 
-            let s = heapless::String::<N>::from_utf8(buf).map_err(|_e| {
-                #[cfg(feature = "std")]
-                fmt::error!("Invalid UTF8: {}", _e);
+            // Invariant: EtherCAT "visible string"s are 0x20 to 0x7E
+            if !buf.is_ascii() {
+                fmt::error!("String at index {} is not valid ASCII", search_index);
 
-                Error::Eeprom(EepromError::Decode)
-            })?;
+                return Err(Error::Eeprom(EepromError::Decode));
+            }
+
+            // SAFETY: We've checked the buffer only contains ASCII characters above, so we don't
+            // need to check for valid UTF-8.
+            let s = unsafe { heapless::String::<N>::from_utf8_unchecked(buf) };
 
             fmt::trace!(
                 "--> String at search index {} with length {}: {}",
