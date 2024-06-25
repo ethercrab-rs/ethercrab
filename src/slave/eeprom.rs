@@ -78,9 +78,9 @@ where
     ///
     /// Note that the string index is hard coded to `1` instead of reading the string index from the
     /// EEPROM `General` section.
-    pub(crate) async fn device_name<const N: usize>(
+    pub(crate) fn device_name<const N: usize>(
         &self,
-    ) -> Result<Option<heapless::String<N>>, Error> {
+    ) -> impl core::future::Future<Output = Result<Option<heapless::String<N>>, Error>> + '_ {
         // Uncomment to read longer, but correct, name string from EEPROM
         // let general = self.general().await?;
         // let name_idx = general.name_string_idx;
@@ -92,7 +92,7 @@ where
         // longer.
         let name_idx = 1;
 
-        self.find_string(name_idx).await
+        self.find_string(name_idx)
     }
 
     pub(crate) async fn mailbox_config(&self) -> Result<DefaultMailbox, Error> {
