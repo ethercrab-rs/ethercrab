@@ -11,7 +11,7 @@ use crate::{
     fmt,
     slave::SlaveIdentity,
 };
-use core::{marker::PhantomData, ops::RangeInclusive, str::FromStr};
+use core::{marker::PhantomData, ops::RangeInclusive};
 use embedded_io_async::{Read, ReadExactError};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized};
 
@@ -302,34 +302,30 @@ where
                 reader.skip_ahead_bytes(string_len.into())?;
             }
 
-            let string_len = reader.read_byte().await?;
+            let string_len = usize::from(reader.read_byte().await?);
 
-            if usize::from(string_len) > N {
+            if string_len > N {
                 return Err(Error::StringTooLong {
                     max_length: N,
                     string_length: string_len.into(),
                 });
             }
 
-            let mut buf = [0u8; N];
-            let bytes = &mut buf[0..string_len.into()];
-            reader.read_exact(bytes).await?;
+            let mut buf = heapless::Vec::<u8, N>::new();
 
-            fmt::trace!("--> Raw string bytes {:?}", bytes);
+            // SAFETY: We MUST ensure that `string_len` is less than `N`
+            unsafe { buf.set_len(usize::from(string_len)) }
 
-            let s = core::str::from_utf8(bytes).map_err(|_e| {
+            reader.read_exact(&mut buf).await?;
+
+            fmt::trace!("--> Raw string bytes {:?}", buf);
+
+            // Get rid of any C null terminators
+            buf.retain(|char| *char != 0x00);
+
+            let s = heapless::String::<N>::from_utf8(buf).map_err(|_e| {
                 #[cfg(feature = "std")]
                 fmt::error!("Invalid UTF8: {}", _e);
-
-                Error::Eeprom(EepromError::Decode)
-            })?;
-
-            // Strip trailing null bytes from string.
-            // TODO: Unit test this when an EEPROM shim is added
-            let s = s.trim_end_matches('\0');
-
-            let s = heapless::String::<N>::from_str(s).map_err(|()| {
-                fmt::error!("String too long");
 
                 Error::Eeprom(EepromError::Decode)
             })?;
@@ -533,6 +529,34 @@ mod tests {
             }),
             "Read should fail if buffer is too small"
         );
+    }
+
+    #[tokio::test]
+    async fn single_null_terminator() -> Result<(), Error> {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd_null_strings.hex"));
+
+        // Index 4 was originally "AKD EtherCAT Drive (CoE)", now modified to "AKD EtherCA\0"
+        let s = e.find_string::<64>(4).await?;
+
+        assert_eq!(s.as_ref().map(|s| s.as_str()), Some("AKD EtherCA"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn null_terminators() -> Result<(), Error> {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd_null_strings.hex"));
+
+        // Index 10 was originally "Statusword", now modified to "Statu\0\0\0\0\0"
+        let s = e.find_string::<64>(10).await?;
+
+        assert_eq!(s.as_ref().map(|s| s.as_str()), Some("Statu"));
+
+        Ok(())
     }
 
     #[tokio::test]
