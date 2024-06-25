@@ -1,4 +1,5 @@
 use crate::{error::Error, pdu_loop::ReceivedPdu, Client};
+use core::future::Future;
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 
 /// Write commands.
@@ -101,18 +102,21 @@ impl WrappedWrite {
     }
 
     /// Send a value, returning the response returned from the network.
-    pub async fn send_receive<'data, 'client, T>(
+    pub fn send_receive<'data, 'client, T>(
         self,
         client: &'client Client<'client>,
-        value: impl EtherCrabWireWrite,
-    ) -> Result<T, Error>
+        value: impl EtherCrabWireWrite + 'data,
+    ) -> impl Future<Output = Result<T, Error>> + 'data
     where
         T: EtherCrabWireRead,
+        'client: 'data,
     {
-        self.common(client, value, None)
-            .await?
-            .maybe_wkc(self.wkc)
-            .and_then(|data| Ok(T::unpack_from_slice(&data)?))
+        async move {
+            self.common(client, value, None)
+                .await?
+                .maybe_wkc(self.wkc)
+                .and_then(|data| Ok(T::unpack_from_slice(&data)?))
+        }
     }
 
     /// Similar to [`send_receive`](WrappedWrite::send_receive) but returns a slice.
