@@ -40,11 +40,7 @@ where
             return None;
         }
 
-        let slave = fmt::unwrap!(self.group.slave(self.client, self.idx).map_err(|e| {
-            fmt::error!("Failed to get slave at index {} from group with {} slaves: {}. This is very wrong. Please open an issue.", self.idx, self.group.len(), e);
-
-            e
-        }));
+        let slave = fmt::unwrap!(self.group.slave(self.client, self.idx));
 
         self.idx += 1;
 
@@ -66,11 +62,7 @@ where
             return None;
         }
 
-        let slave = fmt::unwrap!(self.group.slave(self.client, self.idx).map_err(|e| {
-            fmt::error!("Failed to get slave at index {} from group with {} slaves: {}. This is very wrong. Please open an issue.", self.idx, self.group.len(), e);
-
-            e
-        }));
+        let slave = fmt::unwrap!(self.group.slave(self.client, self.idx));
 
         self.idx += 1;
 
