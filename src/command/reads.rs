@@ -93,7 +93,7 @@ impl WrappedRead {
         self.common(client, T::PACKED_LEN as u16)
             .await?
             .maybe_wkc(self.wkc)
-            .and_then(|data| Ok(T::unpack_from_slice(&data)?))
+            .and_then(|data| T::unpack_from_slice(&data).map_err(Error::from))
     }
 
     /// Receive a given number of bytes and return it as a slice.

@@ -115,7 +115,7 @@ impl WrappedWrite {
             self.common(client, value, None)
                 .await?
                 .maybe_wkc(self.wkc)
-                .and_then(|data| Ok(T::unpack_from_slice(&data)?))
+                .and_then(|data| T::unpack_from_slice(&data).map_err(Error::from))
         }
     }
 
