@@ -1,7 +1,7 @@
 //! EtherCrab error types.
 
 pub use crate::coe::abort_code::CoeAbortCode;
-use crate::{command::Command, fmt, AlStatusCode, SlaveState};
+use crate::{fmt, AlStatusCode, SlaveState};
 use core::{cell::BorrowError, num::TryFromIntError};
 
 /// An EtherCrab error.
@@ -369,13 +369,6 @@ pub enum PduValidationError {
         /// Received index.
         received: u8,
     },
-    /// The received command does not match the one sent.
-    CommandMismatch {
-        /// Sent command.
-        sent: Command,
-        /// Received command.
-        received: Command,
-    },
 }
 
 impl core::fmt::Display for PduValidationError {
@@ -385,13 +378,6 @@ impl core::fmt::Display for PduValidationError {
                 write!(
                     f,
                     "PDU index mismatch: sent {}, received {}",
-                    sent, received
-                )
-            }
-            Self::CommandMismatch { sent, received } => {
-                write!(
-                    f,
-                    "PDU command mismatch: sent {}, received {}",
                     sent, received
                 )
             }
