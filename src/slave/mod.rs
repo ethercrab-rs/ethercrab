@@ -29,6 +29,7 @@ use crate::{
 use core::{
     any::type_name,
     fmt::{Debug, Write},
+    future::Future,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicU8, Ordering},
 };
@@ -794,12 +795,12 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     /// Get the EtherCAT state machine state of the sub device.
-    pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
+    pub fn status(&self) -> impl Future<Output = Result<(SlaveState, AlStatusCode), Error>> + '_ {
         let code = self
             .read(RegisterAddress::AlStatusCode)
             .receive::<AlStatusCode>(self.client);
 
-        futures_lite::future::try_zip(self.state(), code).await
+        futures_lite::future::try_zip(self.state(), code)
     }
 
     fn eeprom(&self) -> SlaveEeprom<DeviceEeprom> {
@@ -810,28 +811,38 @@ impl<'a, S> SlaveRef<'a, S> {
     ///
     /// Note that while this method is marked safe, raw alterations to slave config or behaviour can
     /// break higher level interactions with EtherCrab.
-    pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
+    pub fn register_read<'v, T: 'v>(
+        &self,
+        register: impl Into<u16>,
+    ) -> impl Future<Output = Result<T, Error>> + 'v
     where
-        T: EtherCrabWireReadSized,
+        T: EtherCrabWireReadSized + 'v,
+        'a: 'v,
     {
-        self.read(register.into()).receive(self.client).await
+        self.read(register.into()).receive(self.client)
     }
 
     /// Write a register.
     ///
     /// Note that while this method is marked safe, raw alterations to slave config or behaviour can
     /// break higher level interactions with EtherCrab.
-    pub async fn register_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
+    pub fn register_write<'v, T: 'v>(
+        &self,
+        register: impl Into<u16>,
+        value: T,
+    ) -> impl Future<Output = Result<T, Error>> + 'v
     where
-        T: EtherCrabWireReadWrite,
+        T: EtherCrabWireReadWrite + 'v,
+        'a: 'v,
     {
-        self.write(register.into())
-            .send_receive(self.client, value)
-            .await
+        self.write(register.into()).send_receive(self.client, value)
     }
 
-    pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        async {
+    pub(crate) fn wait_for_state(
+        &self,
+        desired_state: SlaveState,
+    ) -> impl Future<Output = Result<(), Error>> + '_ {
+        async move {
             loop {
                 let status = self
                     .read(RegisterAddress::AlStatus)
@@ -847,7 +858,6 @@ impl<'a, S> SlaveRef<'a, S> {
             }
         }
         .timeout(self.client.timeouts.state_transition)
-        .await
     }
 
     pub(crate) fn write(&self, register: impl Into<u16>) -> WrappedWrite {
