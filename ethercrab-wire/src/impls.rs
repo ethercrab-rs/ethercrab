@@ -38,16 +38,12 @@ macro_rules! impl_primitive_wire_field {
 
         impl EtherCrabWireRead for $ty {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-                buf.get(0..$size)
-                    .ok_or(WireError::ReadBufferTooShort {
+                buf.split_first_chunk::<$size>()
+                    .map(|(buf, _rest)| Self::from_le_bytes(*buf))
+                    .ok_or_else(|| WireError::ReadBufferTooShort {
                         expected: $size,
                         got: buf.len(),
                     })
-                    .map(|raw| match raw.try_into() {
-                        Ok(res) => res,
-                        Err(_) => unreachable!(),
-                    })
-                    .map(Self::from_le_bytes)
             }
         }
 
@@ -309,6 +305,7 @@ where
 
 // --- heapless::Vec ---
 
+// MSRV: Specialise this for `u8`, maybe `u16` when Rust makes this possible
 impl<const N: usize, T> EtherCrabWireRead for heapless::Vec<T, N>
 where
     T: EtherCrabWireReadSized,
