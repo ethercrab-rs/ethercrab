@@ -221,7 +221,8 @@ impl Slave {
             flags,
             ports,
             dc_sync: DcSync::Disabled,
-            // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
+            // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7
+            // (inclusive).
             mailbox_counter: AtomicU8::new(1),
         })
     }
@@ -359,22 +360,12 @@ where
         self.state.dc_sync
     }
 
-    /// Return the current cyclic mailbox counter value, from 0-7.
+    /// Return the current cyclic mailbox counter value, from 1-7 (inclusive).
     ///
     /// Calling this method internally increments the counter, so subequent calls will produce a new
     /// value.
     fn mailbox_counter(&self) -> u8 {
-        fmt::unwrap!(self.state.mailbox_counter.fetch_update(
-            Ordering::Release,
-            Ordering::Acquire,
-            |n| {
-                if n >= 7 {
-                    Some(1)
-                } else {
-                    Some(n + 1)
-                }
-            }
-        ))
+        mailbox_counter(&self.state.mailbox_counter)
     }
 
     /// Get CoE read/write mailboxes.
@@ -921,5 +912,37 @@ impl<'a, S> SlaveRef<'a, S> {
             .await?;
 
         Ok(())
+    }
+}
+
+// Separate function so we can unit test it without having to construct a whole device
+fn mailbox_counter(value: &AtomicU8) -> u8 {
+    fmt::unwrap!(
+        value.fetch_update(Ordering::Release, Ordering::Acquire, |n| {
+            if n >= 7 {
+                Some(1)
+            } else {
+                Some(n + 1)
+            }
+        })
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mailbox_counter_wrap() {
+        let value = AtomicU8::new(1);
+
+        assert_eq!(mailbox_counter(&value), 1);
+        assert_eq!(mailbox_counter(&value), 2);
+        assert_eq!(mailbox_counter(&value), 3);
+        assert_eq!(mailbox_counter(&value), 4);
+        assert_eq!(mailbox_counter(&value), 5);
+        assert_eq!(mailbox_counter(&value), 6);
+        assert_eq!(mailbox_counter(&value), 7);
+        assert_eq!(mailbox_counter(&value), 1);
     }
 }
