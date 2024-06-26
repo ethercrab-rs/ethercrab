@@ -83,7 +83,7 @@ where
     }
 
     /// Skip N bytes (NOT words) ahead of the current position.
-    pub fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), Error> {
+    pub fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), EepromError> {
         fmt::trace!(
             "Skip EEPROM from pos {:#06x}, read pointer {:#06x}, by {} bytes to {:#06x}, end {:#06x}",
             self.pos,
@@ -94,7 +94,7 @@ where
         );
 
         if self.pos + skip >= self.end {
-            return Err(Error::Eeprom(EepromError::SectionOverrun));
+            return Err(EepromError::SectionOverrun);
         }
 
         self.pos += skip;
@@ -112,7 +112,7 @@ where
     }
 
     /// Set offset in bytes from beginning of chunk.
-    pub(crate) fn set_offset(&mut self, offset_bytes: u16) -> Result<(), Error> {
+    pub(crate) fn set_offset(&mut self, offset_bytes: u16) -> Result<(), EepromError> {
         fmt::trace!(
             "Set EEPROM chunk reader position to {:#06x} + {} bytes ({:#06x})",
             self.start / 2,
@@ -121,7 +121,7 @@ where
         );
 
         if self.start + offset_bytes >= self.end {
-            return Err(Error::Eeprom(EepromError::SectionOverrun));
+            return Err(EepromError::SectionOverrun);
         }
 
         self.pos = offset_bytes;
@@ -243,7 +243,7 @@ mod tests {
         // Off by one errors are always fun
         assert_eq!(
             r.skip_ahead_bytes(64),
-            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            Err(EepromError::SectionOverrun),
             "64 bytes"
         );
 
@@ -252,7 +252,7 @@ mod tests {
         // 65 is one byte off the end
         assert_eq!(
             r.skip_ahead_bytes(65),
-            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            Err(EepromError::SectionOverrun),
             "65 bytes"
         );
 
@@ -261,7 +261,7 @@ mod tests {
         // Madness
         assert_eq!(
             r.skip_ahead_bytes(10000),
-            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            Err(EepromError::SectionOverrun),
             "10000 bytes"
         );
     }
