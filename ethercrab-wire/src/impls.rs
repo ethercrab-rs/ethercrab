@@ -21,14 +21,18 @@ macro_rules! impl_primitive_wire_field {
             }
 
             fn pack_to_slice<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], WireError> {
-                if buf.len() < $size {
-                    return Err(WireError::WriteBufferTooShort {
-                        expected: $size,
-                        got: buf.len(),
-                    });
-                }
+                let len = buf.len();
 
-                Ok(self.pack_to_slice_unchecked(buf))
+                buf.split_first_chunk_mut::<$size>()
+                    .ok_or_else(|| WireError::WriteBufferTooShort {
+                        expected: $size,
+                        got: len,
+                    })
+                    .map(|(chunk, _rest)| {
+                        *chunk = self.to_le_bytes();
+
+                        chunk.as_slice()
+                    })
             }
 
             fn packed_len(&self) -> usize {
