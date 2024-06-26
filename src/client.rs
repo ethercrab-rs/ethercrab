@@ -482,39 +482,6 @@ impl<'sto> Client<'sto> {
 
         Err(Error::Timeout)
     }
-
-    /// Send a single PDU in a frame.
-    pub(crate) async fn single_pdu<T>(
-        &self,
-        command: Command,
-        data: impl EtherCrabWireWrite + Copy,
-        len_override: Option<u16>,
-    ) -> Result<ReceivedPdu<'_, T>, Error> {
-        for _ in 0..self.config.retry_behaviour.loop_counts() {
-            let mut frame = self.pdu_loop.alloc_frame()?;
-            let frame_idx = frame.frame_index();
-
-            let handle = frame.push_pdu(command, data, len_override, false)?;
-
-            let frame = frame.mark_sendable().timeout(self.timeouts.pdu);
-
-            self.pdu_loop.wake_sender();
-
-            let received = match frame.await {
-                Ok(received) => received,
-                Err(Error::Timeout) => {
-                    fmt::warn!("Frame index {} timed out", frame_idx);
-
-                    continue;
-                }
-                Err(e) => return Err(e),
-            };
-
-            return received.take(handle);
-        }
-
-        Err(Error::Timeout)
-    }
 }
 
 fn blank_mem_iter(

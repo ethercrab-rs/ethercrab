@@ -39,7 +39,7 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
         start_word: u16,
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
         Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
-            .send_receive(self.client, SiiRequest::read(start_word))
+            .send(self.client, SiiRequest::read(start_word))
             .await?;
 
         let status = poll_tick(

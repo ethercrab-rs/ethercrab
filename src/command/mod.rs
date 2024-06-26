@@ -3,10 +3,14 @@
 mod reads;
 mod writes;
 
-use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWriteSized};
+use core::task::Poll;
+
+use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized};
 
 pub use reads::{Reads, WrappedRead};
 pub use writes::{WrappedWrite, Writes};
+
+use crate::{error::Error, fmt, pdu_loop::ReceivedPdu, timer_factory::IntoTimeout, Client};
 
 const NOP: u8 = 0x00;
 const APRD: u8 = 0x01;
@@ -278,4 +282,36 @@ impl From<WrappedWrite> for Command {
     fn from(value: WrappedWrite) -> Self {
         Self::Write(value.command)
     }
+}
+
+async fn common<'client>(
+    client: &'client Client<'client>,
+    command: Command,
+    value: impl EtherCrabWireWrite,
+    len_override: Option<u16>,
+) -> Result<ReceivedPdu<'client, ()>, Error> {
+    for _ in 0..client.config.retry_behaviour.loop_counts() {
+        let mut frame = client.pdu_loop.alloc_frame()?;
+        let frame_idx = frame.frame_index();
+
+        let handle = frame.push_pdu(command, &value, len_override, false)?;
+
+        let frame = frame.mark_sendable().timeout(client.timeouts.pdu);
+
+        client.pdu_loop.wake_sender();
+
+        let received = match frame.await {
+            Ok(received) => received,
+            Err(Error::Timeout) => {
+                fmt::warn!("Frame index {} timed out", frame_idx);
+
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+
+        return received.take(handle);
+    }
+
+    Err(Error::Timeout)
 }

@@ -1,5 +1,5 @@
+use super::common;
 use crate::{error::Error, pdu_loop::ReceivedPdu, Client};
-use core::future::Future;
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// Read commands that send no data.
@@ -90,7 +90,7 @@ impl WrappedRead {
     where
         T: EtherCrabWireRead + EtherCrabWireSized,
     {
-        self.common(client, T::PACKED_LEN as u16)
+        common(client, self.command.into(), (), Some(T::PACKED_LEN as u16))
             .await?
             .maybe_wkc(self.wkc)
             .and_then(|data| T::unpack_from_slice(&data).map_err(Error::from))
@@ -102,7 +102,9 @@ impl WrappedRead {
         client: &'client Client<'client>,
         len: u16,
     ) -> Result<ReceivedPdu<'client, ()>, Error> {
-        self.common(client, len).await?.maybe_wkc(self.wkc)
+        common(client, self.command.into(), (), Some(len))
+            .await?
+            .maybe_wkc(self.wkc)
     }
 
     /// Receive only the working counter.
@@ -119,20 +121,8 @@ impl WrappedRead {
     where
         T: EtherCrabWireRead + EtherCrabWireSized,
     {
-        self.common(client, T::PACKED_LEN as u16)
+        common(client, self.command.into(), (), Some(T::PACKED_LEN as u16))
             .await
             .map(|res| res.working_counter)
-    }
-
-    // Some manual monomorphisation
-    fn common<'client, 'frame>(
-        &self,
-        client: &'client Client<'client>,
-        len: u16,
-    ) -> impl Future<Output = Result<ReceivedPdu<'client, ()>, Error>>
-    where
-        'client: 'frame,
-    {
-        client.single_pdu(self.command.into(), (), Some(len))
     }
 }

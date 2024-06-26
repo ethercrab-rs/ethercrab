@@ -49,7 +49,7 @@ pub enum RetryBehaviour {
 }
 
 impl RetryBehaviour {
-    pub(crate) fn loop_counts(&self) -> usize {
+    pub(crate) const fn loop_counts(&self) -> usize {
         match self {
             // Try at least once when used in a range like `for _ in 0..<counts>`.
             RetryBehaviour::None => 1,

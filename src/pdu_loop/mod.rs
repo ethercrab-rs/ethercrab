@@ -15,6 +15,8 @@ pub use storage::PduStorage;
 pub(crate) use self::frame_element::created_frame::CreatedFrame;
 pub(crate) use self::frame_element::received_frame::ReceivedFrame;
 pub(crate) use frame_element::received_frame::ReceivedPdu;
+// DELETEME
+pub(crate) use frame_element::receiving_frame::ReceiveFrameFut;
 
 pub use frame_element::sendable_frame::SendableFrame;
 

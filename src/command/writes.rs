@@ -1,4 +1,5 @@
-use crate::{error::Error, pdu_loop::ReceivedPdu, Client};
+use super::common;
+use crate::{error::Error, fmt, pdu_loop::ReceivedPdu, Client};
 use core::future::Future;
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 
@@ -50,6 +51,7 @@ pub enum Writes {
 pub struct WrappedWrite {
     /// EtherCAT command.
     pub command: Writes,
+
     /// Expected working counter.
     wkc: Option<u16>,
     len_override: Option<u16>,
@@ -96,7 +98,7 @@ impl WrappedWrite {
         client: &'client Client<'client>,
         data: impl EtherCrabWireWrite,
     ) -> Result<(), Error> {
-        self.common(client, data, self.len_override).await?;
+        let _ = common(client, self.command.into(), data, self.len_override).await?;
 
         Ok(())
     }
@@ -112,7 +114,7 @@ impl WrappedWrite {
         'client: 'data,
     {
         async move {
-            self.common(client, value, None)
+            common(client, self.command.into(), value, None)
                 .await?
                 .maybe_wkc(self.wkc)
                 .and_then(|data| T::unpack_from_slice(&data).map_err(Error::from))
@@ -128,18 +130,8 @@ impl WrappedWrite {
     where
         'client: 'data,
     {
-        self.common(client, value, None).await?.maybe_wkc(self.wkc)
-    }
-
-    // Some manual monomorphisation
-    async fn common<'client>(
-        &self,
-        client: &'client Client<'client>,
-        value: impl EtherCrabWireWrite,
-        len_override: Option<u16>,
-    ) -> Result<ReceivedPdu<'client, ()>, Error> {
-        client
-            .single_pdu(self.command.into(), &value, len_override)
-            .await
+        common(client, self.command.into(), value, None)
+            .await?
+            .maybe_wkc(self.wkc)
     }
 }
