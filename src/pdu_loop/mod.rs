@@ -89,18 +89,23 @@ impl<'sto> PduLoop<'sto> {
         register: u16,
         payload_length: u16,
     ) -> Result<(), Error> {
-        let mut frame = self.storage.alloc_frame()?;
+        // Using a block here to reduce stack size of future
+        let frame = {
+            let mut frame = self.storage.alloc_frame()?;
 
-        frame.push_pdu::<()>(
-            Command::bwr(register).into(),
-            (),
-            Some(payload_length),
-            false,
-        )?;
+            frame.push_pdu::<()>(
+                Command::bwr(register).into(),
+                (),
+                Some(payload_length),
+                false,
+            )?;
 
-        let frame = frame.mark_sendable();
+            let frame = frame.mark_sendable();
 
-        self.wake_sender();
+            self.wake_sender();
+
+            frame
+        };
 
         frame.await?;
 
