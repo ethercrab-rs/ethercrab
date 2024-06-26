@@ -11,7 +11,7 @@ use crate::{
     slave::Slave,
     slave_group::{self, SlaveGroupHandle},
     slave_state::SlaveState,
-    timer_factory::IntoTimeout,
+    timer_factory::{poll_tick, IntoTimeout},
     ClientConfig, SlaveGroup, Timeouts, BASE_SLAVE_ADDR,
 };
 use core::{
@@ -413,45 +413,38 @@ impl<'sto> Client<'sto> {
     pub async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         let num_slaves = self.num_slaves.load(Ordering::Relaxed);
 
-        async {
-            loop {
-                let status = Command::brd(RegisterAddress::AlStatus.into())
-                    .with_wkc(num_slaves)
-                    .receive::<AlControl>(self)
-                    .await?;
-
+        let status = poll_tick(
+            self,
+            Command::brd(RegisterAddress::AlStatus.into()).with_wkc(num_slaves),
+            |status: &AlControl| {
                 fmt::trace!("Global AL status {:?}", status);
 
-                if status.error {
-                    fmt::error!(
-                        "Error occurred transitioning all slaves to {:?}",
-                        desired_state,
-                    );
+                status.error || status.state == desired_state
+            },
+            self.timeouts.state_transition,
+        )
+        .await?;
 
-                    for slave_addr in BASE_SLAVE_ADDR..(BASE_SLAVE_ADDR + self.num_slaves() as u16)
-                    {
-                        let slave_status =
-                            Command::fprd(slave_addr, RegisterAddress::AlStatusCode.into())
-                                .ignore_wkc()
-                                .receive::<AlStatusCode>(self)
-                                .await
-                                .unwrap_or(AlStatusCode::UnspecifiedError);
+        if status.error {
+            fmt::error!(
+                "Error occurred transitioning all slaves to {:?}",
+                desired_state,
+            );
 
-                        fmt::error!("--> Slave {:#06x} status code {}", slave_addr, slave_status);
-                    }
+            for slave_addr in BASE_SLAVE_ADDR..(BASE_SLAVE_ADDR + self.num_slaves() as u16) {
+                let slave_status = Command::fprd(slave_addr, RegisterAddress::AlStatusCode.into())
+                    .ignore_wkc()
+                    .receive::<AlStatusCode>(self)
+                    .await
+                    .unwrap_or(AlStatusCode::UnspecifiedError);
 
-                    return Err(Error::StateTransition);
-                }
-
-                if status.state == desired_state {
-                    break Ok(());
-                }
-
-                self.timeouts.loop_tick().await;
+                fmt::error!("--> Slave {:#06x} status code {}", slave_addr, slave_status);
             }
+
+            return Err(Error::StateTransition);
+        } else {
+            Ok(())
         }
-        .timeout(self.timeouts.state_transition)
-        .await
     }
 
     pub(crate) fn max_frame_data(&self) -> usize {

@@ -1,3 +1,4 @@
+use crate::timer_factory::poll_tick;
 use crate::{
     eeprom::{
         types::{SiiControl, SiiRequest},
@@ -6,7 +7,6 @@ use crate::{
     error::{EepromError, Error},
     fmt,
     register::RegisterAddress,
-    timer_factory::IntoTimeout,
     Client, Command,
 };
 
@@ -42,21 +42,12 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
             .send_receive(self.client, SiiRequest::read(start_word))
             .await?;
 
-        let status = async {
-            loop {
-                let control: SiiControl =
-                    Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-                        .receive::<SiiControl>(self.client)
-                        .await?;
-
-                if !control.busy {
-                    break Ok(control);
-                }
-
-                self.client.timeouts.loop_tick().await;
-            }
-        }
-        .timeout(self.client.timeouts.eeprom)
+        let status = poll_tick(
+            self.client,
+            Command::fprd(self.configured_address, RegisterAddress::SiiControl.into()),
+            |control: &SiiControl| !control.busy,
+            self.client.timeouts.eeprom,
+        )
         .await?;
 
         Command::fprd(self.configured_address, RegisterAddress::SiiData.into())

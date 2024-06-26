@@ -23,7 +23,7 @@ use crate::{
     register::{DcSupport, RegisterAddress, SupportFlags},
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
-    timer_factory::IntoTimeout,
+    timer_factory::poll_tick,
     WrappedRead, WrappedWrite,
 };
 use core::{
@@ -417,22 +417,12 @@ where
             }
         }
 
-        // Wait for slave IN mailbox to be available to receive data from master
-        async {
-            loop {
-                let sm_status = self
-                    .read(mailbox_write_sm_status)
-                    .receive::<crate::sync_manager_channel::Status>(self.client)
-                    .await?;
-
-                if !sm_status.mailbox_full {
-                    break Ok(());
-                }
-
-                self.client.timeouts.loop_tick().await;
-            }
-        }
-        .timeout(self.client.timeouts.mailbox_echo)
+        poll_tick(
+            &self.client,
+            self.read(mailbox_write_sm_status),
+            |sm_status: &crate::sync_manager_channel::Status| !sm_status.mailbox_full,
+            self.client.timeouts.mailbox_echo,
+        )
         .await
         .map_err(|e| {
             fmt::error!(
@@ -452,21 +442,25 @@ where
         let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
 
         // Wait for slave OUT mailbox to be ready
-        async {
-            loop {
-                let sm_status = self
-                    .read(mailbox_read_sm)
-                    .receive::<crate::sync_manager_channel::Status>(self.client)
-                    .await?;
-
-                if sm_status.mailbox_full {
-                    break Ok(());
-                }
-
-                self.client.timeouts.loop_tick().await;
-            }
-        }
-        .timeout(self.client.timeouts.mailbox_echo)
+        poll_tick(
+            &self.client,
+            self.read(mailbox_read_sm),
+            |sm_status: &crate::sync_manager_channel::Status| sm_status.mailbox_full,
+            self.client.timeouts.mailbox_echo,
+        )
+        // async {
+        //     loop {
+        //         let sm_status = self
+        //             .read(mailbox_read_sm)
+        //             .receive::<crate::sync_manager_channel::Status>(self.client)
+        //             .await?;
+        //         if sm_status.mailbox_full {
+        //             break Ok(());
+        //         }
+        //         self.client.timeouts.loop_tick().await;
+        //     }
+        // }
+        // .timeout(self.client.timeouts.mailbox_echo)
         .await
         .map_err(|e| {
             fmt::error!(
@@ -832,23 +826,30 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) fn wait_for_state(
         &self,
         desired_state: SlaveState,
-    ) -> impl Future<Output = Result<(), Error>> + '_ {
-        async move {
-            loop {
-                let status = self
-                    .read(RegisterAddress::AlStatus)
-                    .ignore_wkc()
-                    .receive::<AlControl>(self.client)
-                    .await?;
+    ) -> impl Future<Output = Result<AlControl, Error>> + '_ {
+        // async move {
+        //     loop {
+        //         let status = self
+        //             .read(RegisterAddress::AlStatus)
+        //             .ignore_wkc()
+        //             .receive::<AlControl>(self.client)
+        //             .await?;
 
-                if status.state == desired_state {
-                    break Ok(());
-                }
+        //         if status.state == desired_state {
+        //             break Ok(());
+        //         }
 
-                self.client.timeouts.loop_tick().await;
-            }
-        }
-        .timeout(self.client.timeouts.state_transition)
+        //         self.client.timeouts.loop_tick().await;
+        //     }
+        // }
+        // .timeout(self.client.timeouts.state_transition)
+
+        poll_tick(
+            self.client,
+            self.read(RegisterAddress::AlStatus).ignore_wkc(),
+            move |status: &AlControl| status.state == desired_state,
+            self.client.timeouts.state_transition,
+        )
     }
 
     pub(crate) fn write(&self, register: impl Into<u16>) -> WrappedWrite {
@@ -897,7 +898,9 @@ impl<'a, S> SlaveRef<'a, S> {
     pub(crate) async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
         self.request_slave_state_nowait(desired_state).await?;
 
-        self.wait_for_state(desired_state).await
+        self.wait_for_state(desired_state).await?;
+
+        Ok(())
     }
 
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {

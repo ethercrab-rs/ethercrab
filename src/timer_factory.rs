@@ -1,20 +1,22 @@
-use crate::error::Error;
+use crate::{error::Error, Client, WrappedRead};
 use core::{future::Future, pin::Pin, task::Poll, time::Duration};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
+use futures_lite::FutureExt;
 
 #[cfg(not(feature = "std"))]
-type Timer = embassy_time::Timer;
+pub(crate) type Timer = embassy_time::Timer;
 #[cfg(feature = "std")]
-type Timer = async_io::Timer;
+pub(crate) type Timer = async_io::Timer;
 
 #[cfg(not(feature = "std"))]
-fn timer(duration: Duration) -> Timer {
+pub(crate) fn timer(duration: Duration) -> Timer {
     embassy_time::Timer::after(embassy_time::Duration::from_micros(
         duration.as_micros() as u64
     ))
 }
 
 #[cfg(feature = "std")]
-fn timer(duration: Duration) -> Timer {
+pub(crate) fn timer(duration: Duration) -> Timer {
     async_io::Timer::after(duration)
 }
 
@@ -108,4 +110,64 @@ impl Default for Timeouts {
             mailbox_response: Duration::from_millis(1000),
         }
     }
+}
+
+pub(crate) async fn poll_tick<T>(
+    client: &'_ Client<'_>,
+    command: WrappedRead,
+    pred: impl Fn(&T) -> bool,
+    timeout: Duration,
+) -> Result<T, Error>
+where
+    T: EtherCrabWireRead + EtherCrabWireSized,
+{
+    let mut timeout = timer(timeout);
+    let mut cmd_fut = core::pin::pin!(command.receive::<T>(client));
+    let mut tick_fut: Pin<&mut Option<Timer>> = core::pin::pin!(None);
+
+    core::future::poll_fn(|ctx| {
+        // Whole request timeout
+        if let Poll::Ready(_) = timeout.poll(ctx) {
+            return Poll::Ready(Err(Error::Timeout));
+        }
+
+        // Loop tick timer
+        if let Some(mut f) = tick_fut.take() {
+            match f.poll(ctx) {
+                Poll::Ready(_) => cmd_fut.set(command.receive::<T>(client)),
+                Poll::Pending => {
+                    tick_fut.set(Some(f));
+
+                    return Poll::Pending;
+                }
+            }
+        }
+
+        // See if we've received a response yet
+        match cmd_fut.as_mut().poll(ctx) {
+            Poll::Ready(result) => {
+                let result = match result {
+                    Ok(res) => res,
+                    Err(e) => return Poll::Ready(Err(e)),
+                };
+
+                match pred(&result) {
+                    // Condition is satisfied; we can quit the loop now
+                    true => Poll::Ready(Ok(result)),
+                    // Set a timer to wait for a bit before sending the command again
+                    false => {
+                        let mut t = timer(client.timeouts.wait_loop_delay);
+                        // Poll once to register with executor
+                        let _ = t.poll(ctx);
+                        tick_fut.set(Some(t));
+
+                        Poll::Pending
+                    }
+                }
+            }
+            // Command hasn't received response yet
+            Poll::Pending => Poll::Pending,
+        }
+    })
+    .await
 }
