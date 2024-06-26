@@ -68,18 +68,16 @@ impl<'slave> EepromDataProvider for DeviceEeprom<'slave> {
             .receive::<SiiControl>(self.client)
             .await?;
 
-        // Clear errors
-        if status.has_error() {
+        // Clear errors if there are any
+        let status = if status.has_error() {
             fmt::trace!("Resetting EEPROM error flags");
 
             Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
-                .send(self.client, status.error_reset())
-                .await?;
-        }
-
-        let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-            .receive::<SiiControl>(self.client)
-            .await?;
+                .send_receive(self.client, status.error_reset())
+                .await?
+        } else {
+            status
+        };
 
         if status.has_error() {
             Err(Error::Eeprom(EepromError::ClearErrors))
