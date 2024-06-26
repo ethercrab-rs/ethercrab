@@ -98,7 +98,7 @@ impl WrappedWrite {
         client: &'client Client<'client>,
         data: impl EtherCrabWireWrite,
     ) -> Result<(), Error> {
-        let _ = common(client, self.command.into(), data, self.len_override).await?;
+        let _ = common(client, self.command.into(), &data, self.len_override).await?;
 
         Ok(())
     }
@@ -114,7 +114,7 @@ impl WrappedWrite {
         'client: 'data,
     {
         async move {
-            common(client, self.command.into(), value, None)
+            common(client, self.command.into(), &value, None)
                 .await?
                 .maybe_wkc(self.wkc)
                 .and_then(|data| T::unpack_from_slice(&data).map_err(Error::from))
@@ -130,7 +130,7 @@ impl WrappedWrite {
     where
         'client: 'data,
     {
-        common(client, self.command.into(), value, None)
+        common(client, self.command.into(), &value, None)
             .await?
             .maybe_wkc(self.wkc)
     }
