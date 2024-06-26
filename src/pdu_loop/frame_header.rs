@@ -1,6 +1,6 @@
 //! An EtherCAT frame header.
 
-use crate::LEN_MASK;
+use crate::{fmt, LEN_MASK};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, ethercrab_wire::EtherCrabWireRead)]
@@ -50,7 +50,11 @@ impl EtherCrabWireWrite for EthercatFrameHeader {
         // Protocol in last 4 bits
         let raw = self.payload_len | (self.protocol as u16) << 12;
 
-        raw.pack_to_slice_unchecked(buf)
+        let (chunk, _rest) = fmt::unwrap_opt!(buf.split_first_chunk_mut::<{ Self::PACKED_LEN }>());
+
+        *chunk = raw.to_le_bytes();
+
+        chunk
     }
 
     fn packed_len(&self) -> usize {
