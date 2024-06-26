@@ -90,9 +90,8 @@ impl WrappedRead {
     where
         T: EtherCrabWireRead + EtherCrabWireSized,
     {
-        common(client, self.command.into(), (), Some(T::PACKED_LEN as u16))
-            .await?
-            .maybe_wkc(self.wkc)
+        self.receive_slice(client, T::PACKED_LEN as u16)
+            .await
             .and_then(|data| T::unpack_from_slice(&data).map_err(Error::from))
     }
 
@@ -113,13 +112,13 @@ impl WrappedRead {
     /// any value set by [`with_wkc`](WrappedRead::with_wkc).
     ///
     /// `T` determines the length of the read, which is required for valid reads. It is otherwise
-    /// ignored.
+    /// unused.
     pub(crate) async fn receive_wkc<'client, T>(
         &self,
         client: &'client Client<'client>,
     ) -> Result<u16, Error>
     where
-        T: EtherCrabWireRead + EtherCrabWireSized,
+        T: EtherCrabWireSized,
     {
         common(client, self.command.into(), (), Some(T::PACKED_LEN as u16))
             .await
