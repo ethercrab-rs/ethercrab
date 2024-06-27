@@ -29,7 +29,7 @@ fn do_bench(b: &mut Bencher) {
     b.iter(|| {
         //  --- Prepare frame
 
-        let mut frame_fut = pin!(Command::fpwr(0x5678, 0x1234).send_receive::<()>(&client, &DATA));
+        let mut frame_fut = pin!(Command::fpwr(0x5678, 0x1234).send_receive_slice(&client, &DATA));
 
         cassette::block_on(poll_fn(|ctx| {
             let _ = frame_fut.poll(ctx);

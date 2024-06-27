@@ -35,7 +35,7 @@ use core::{
 };
 use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
-    EtherCrabWireWrite,
+    EtherCrabWireWrite, EtherCrabWireWriteSized,
 };
 
 pub use self::pdi::SlavePdi;
@@ -496,7 +496,7 @@ where
         // Send data to slave IN mailbox
         self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
-            .send(self.client, request.pack().as_ref())
+            .send(self.client, request)
             .await?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
@@ -817,7 +817,7 @@ impl<'a, S> SlaveRef<'a, S> {
         value: T,
     ) -> impl Future<Output = Result<T, Error>> + 'v
     where
-        T: EtherCrabWireReadWrite + 'v,
+        T: EtherCrabWireReadWrite + EtherCrabWireWriteSized + 'v,
         'a: 'v,
     {
         self.write(register.into()).send_receive(self.client, value)

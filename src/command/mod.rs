@@ -287,7 +287,7 @@ impl From<WrappedWrite> for Command {
 async fn common<'client>(
     client: &'client Client<'client>,
     command: Command,
-    value: impl EtherCrabWireWrite,
+    value: &[u8],
     len_override: Option<u16>,
 ) -> Result<ReceivedPdu<'client, ()>, Error> {
     for _ in 0..client.config.retry_behaviour.loop_counts() {

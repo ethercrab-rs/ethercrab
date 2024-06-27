@@ -1,7 +1,7 @@
 use super::common;
 use crate::{error::Error, fmt, pdu_loop::ReceivedPdu, Client};
 use core::future::Future;
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite, EtherCrabWireWriteSized};
 
 /// Write commands.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
@@ -96,9 +96,15 @@ impl WrappedWrite {
     pub async fn send<'data, 'client>(
         self,
         client: &'client Client<'client>,
-        data: impl EtherCrabWireWrite,
+        data: impl EtherCrabWireWriteSized,
     ) -> Result<(), Error> {
-        let _ = common(client, self.command.into(), &data, self.len_override).await?;
+        let _ = common(
+            client,
+            self.command.into(),
+            data.pack().as_ref(),
+            self.len_override,
+        )
+        .await?;
 
         Ok(())
     }
@@ -107,14 +113,14 @@ impl WrappedWrite {
     pub fn send_receive<'data, 'client, T>(
         self,
         client: &'client Client<'client>,
-        value: impl EtherCrabWireWrite + 'data,
+        value: impl EtherCrabWireWriteSized + 'data,
     ) -> impl Future<Output = Result<T, Error>> + 'data
     where
         T: EtherCrabWireRead,
         'client: 'data,
     {
         async move {
-            common(client, self.command.into(), &value, None)
+            common(client, self.command.into(), value.pack().as_ref(), None)
                 .await?
                 .maybe_wkc(self.wkc)
                 .and_then(|data| T::unpack_from_slice(&data).map_err(Error::from))
@@ -125,12 +131,12 @@ impl WrappedWrite {
     pub async fn send_receive_slice<'data, 'client>(
         self,
         client: &'client Client<'client>,
-        value: impl EtherCrabWireWrite,
+        value: &[u8],
     ) -> Result<ReceivedPdu<'data, ()>, Error>
     where
         'client: 'data,
     {
-        common(client, self.command.into(), &value, None)
+        common(client, self.command.into(), value, None)
             .await?
             .maybe_wkc(self.wkc)
     }

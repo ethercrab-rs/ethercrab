@@ -101,7 +101,7 @@ impl WrappedRead {
         client: &'client Client<'client>,
         len: u16,
     ) -> Result<ReceivedPdu<'client, ()>, Error> {
-        common(client, self.command.into(), (), Some(len))
+        common(client, self.command.into(), &[], Some(len))
             .await?
             .maybe_wkc(self.wkc)
     }
@@ -120,7 +120,7 @@ impl WrappedRead {
     where
         T: EtherCrabWireSized,
     {
-        common(client, self.command.into(), (), Some(T::PACKED_LEN as u16))
+        common(client, self.command.into(), &[], Some(T::PACKED_LEN as u16))
             .await
             .map(|res| res.working_counter)
     }
