@@ -165,7 +165,9 @@ where
 
         // We can't read past the end of the chunk, so clamp the buffer's length to the remaining
         // part of the chunk if necessary.
-        let mut buf = &mut buf[0..requested_read_len.min(max_read)];
+        let mut buf = buf
+            .get_mut(0..requested_read_len.min(max_read))
+            .ok_or_else(|| Error::Internal)?;
 
         self.reader.clear_errors().await?;
 
