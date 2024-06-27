@@ -21,7 +21,7 @@ use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 use core::{
     cell::UnsafeCell, marker::PhantomData, slice, sync::atomic::AtomicUsize, time::Duration,
 };
-use ethercrab_wire::EtherCrabWireRead;
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWriteSized};
 
 pub use self::group_id::GroupId;
 pub use self::handle::SlaveGroupHandle;
@@ -868,7 +868,7 @@ where
                     |frame| {
                         let dc_handle = frame.push_pdu::<u64>(
                             Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into()).into(),
-                            0u64,
+                            0u64.pack().as_ref(),
                             None,
                             true,
                         )?;
@@ -1068,7 +1068,7 @@ where
                     let dc_handle = frame.push_pdu::<u64>(
                         Command::frmw(self.dc_conf.reference, RegisterAddress::DcSystemTime.into())
                             .into(),
-                        0u64,
+                        0u64.pack().as_ref(),
                         None,
                         true,
                     )?;

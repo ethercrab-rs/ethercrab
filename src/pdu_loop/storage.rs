@@ -300,7 +300,7 @@ mod tests {
         frame
             .push_pdu::<()>(
                 Command::bwr(0x1000).into(),
-                [0xaa, 0xbb, 0xcc, 0xdd],
+                &[0xaa, 0xbb, 0xcc, 0xdd],
                 None,
                 false,
             )
@@ -314,7 +314,7 @@ mod tests {
         const LEN: usize = 8;
 
         frame
-            .push_pdu::<()>(Command::Nop, (), Some(LEN as u16), false)
+            .push_pdu::<()>(Command::Nop, &[], Some(LEN as u16), false)
             .unwrap();
 
         let pdu_start = EthernetFrame::<&[u8]>::header_len()

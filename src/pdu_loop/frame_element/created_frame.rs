@@ -60,7 +60,7 @@ impl<'sto> CreatedFrame<'sto> {
     pub fn push_pdu<RX>(
         &mut self,
         command: Command,
-        data: impl EtherCrabWireWrite,
+        data: &[u8],
         len_override: Option<u16>,
         more_follows: bool,
     ) -> Result<PduResponseHandle<RX>, PduError> {
@@ -107,7 +107,8 @@ impl<'sto> CreatedFrame<'sto> {
         let pdu_buf = write_packed(header, pdu_buf);
 
         // Payload
-        let _pdu_buf = write_packed(data, pdu_buf);
+        // let _pdu_buf = write_packed(data, pdu_buf);
+        pdu_buf[0..data.len()].copy_from_slice(data);
 
         // Next two bytes are working counter, but they are always zero on send (and the buffer is
         // zero-initialised) so there's nothing to do.
@@ -194,7 +195,7 @@ mod tests {
 
         let handle = created.push_pdu::<u32>(
             Command::fpwr(0x1000, 0x0918).into(),
-            [0xffu8; 9],
+            &[0xffu8; 9],
             None,
             false,
         );
