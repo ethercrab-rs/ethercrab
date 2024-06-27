@@ -10,6 +10,7 @@ use crate::{
             created_frame::CreatedFrame, receiving_frame::ReceivingFrame, FrameElement,
         },
         pdu_flags::PduFlags,
+        PDU_UNUSED_SENTINEL,
     },
     PduLoop,
 };
@@ -116,8 +117,10 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
         let frames = UnsafeCell::new(MaybeUninit::zeroed());
 
         // MSRV: When `array::from_fn` is const-stabilised
-        // let pdu_states = array::from_fn(|_| AtomicU16::new(PDU_UNUSED_SENTINEL))
-        let pdu_states = UnsafeCell::new(unsafe { MaybeUninit::zeroed().assume_init() });
+        // let pdu_states = array::from_fn(|_| PduMarker::const_default())
+        let pdu_states: UnsafeCell<[PduMarker; PDU_SLOTS]> =
+            // SAFETY: `PduMarker` must EXACTLY match the layout of a single `u16`
+            unsafe { core::mem::transmute([PDU_UNUSED_SENTINEL; PDU_SLOTS]) };
 
         Self {
             frames,
@@ -156,10 +159,6 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     }
 
     fn as_ref(&self) -> PduStorageRef {
-        // Initialise all PDU markers as available
-        let markers: &[PduMarker] = unsafe { &*self.pdu_markers.get() };
-        markers.iter().for_each(PduMarker::init);
-
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             frame_element_stride: Layout::array::<FrameElement<DATA>>(N).unwrap().size() / N,

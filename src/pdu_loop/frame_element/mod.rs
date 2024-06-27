@@ -46,6 +46,8 @@ pub enum FrameState {
     RxProcessing = 7,
 }
 
+// SAFETY: The layout of this struct must EXACTLY match a `u16` as it is initialised as such in
+// `PduStorage::new`.
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct PduMarker {
@@ -88,13 +90,6 @@ impl PduMarker {
         assert_ne!(raw, PDU_UNUSED_SENTINEL);
 
         raw as u8
-    }
-
-    pub fn init(&self) {
-        assert!(self
-            .frame_index
-            .compare_exchange(0, PDU_UNUSED_SENTINEL, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok());
     }
 
     /// Reset this marker to unused if it belongs to the given frame index.

@@ -150,9 +150,16 @@ pub struct PduResponseHandle<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, PduMarker};
+    use crate::pdu_loop::{
+        frame_element::{AtomicFrameState, FrameElement, PduMarker},
+        PDU_UNUSED_SENTINEL,
+    };
     use atomic_waker::AtomicWaker;
-    use core::{cell::UnsafeCell, mem::MaybeUninit, ptr::NonNull, sync::atomic::AtomicU8};
+    use core::{
+        cell::UnsafeCell,
+        ptr::NonNull,
+        sync::atomic::{AtomicU16, AtomicU8},
+    };
 
     #[test]
     fn too_long() {
@@ -162,8 +169,9 @@ mod tests {
 
         let pdu_idx = AtomicU8::new(0);
 
-        let mut pdu_markers: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
-        pdu_markers[0].init();
+        let mut pdu_markers: [PduMarker; 1] = [PduMarker {
+            frame_index: AtomicU16::new(PDU_UNUSED_SENTINEL),
+        }; 1];
 
         let frames = UnsafeCell::new([FrameElement {
             frame_index: 0xab,
