@@ -72,7 +72,7 @@ where
     }
 
     /// Skip N bytes (NOT words) ahead of the current position.
-    pub fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), Error> {
+    pub fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), EepromError> {
         fmt::trace!(
             "Skip EEPROM from pos {:#06x} by {} bytes to {:#06x}",
             self.pos,
@@ -81,7 +81,7 @@ where
         );
 
         if self.pos + skip >= self.end {
-            return Err(Error::Eeprom(EepromError::SectionOverrun));
+            return Err(EepromError::SectionOverrun);
         }
 
         self.pos += skip;
@@ -202,7 +202,7 @@ mod tests {
         // Off by one errors are always fun
         assert_eq!(
             r.skip_ahead_bytes(64),
-            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            Err(EepromError::SectionOverrun),
             "64 bytes"
         );
 
@@ -211,7 +211,7 @@ mod tests {
         // 65 is one byte off the end
         assert_eq!(
             r.skip_ahead_bytes(65),
-            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            Err(EepromError::SectionOverrun),
             "65 bytes"
         );
 
@@ -220,7 +220,7 @@ mod tests {
         // Madness
         assert_eq!(
             r.skip_ahead_bytes(10000),
-            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            Err(EepromError::SectionOverrun),
             "10000 bytes"
         );
     }

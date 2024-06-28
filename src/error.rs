@@ -405,6 +405,12 @@ impl From<PduError> for Error {
     }
 }
 
+impl From<EepromError> for Error {
+    fn from(e: EepromError) -> Self {
+        Self::Eeprom(e)
+    }
+}
+
 impl From<DistributedClockError> for Error {
     fn from(e: DistributedClockError) -> Self {
         Self::DistributedClock(e)
