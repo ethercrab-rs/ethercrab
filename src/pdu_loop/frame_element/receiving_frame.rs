@@ -191,10 +191,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
                     self.retries_left
                 );
 
-                // No retries left
                 if self.retries_left == 0 {
-                    fmt::trace!("--> No retries left. Releasing frame for reuse");
-
                     // Release frame and PDU slots for reuse
                     Self::release(rxin);
 
@@ -208,14 +205,16 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
                 // Poll timer once to register with the executor
                 let _ = self.timeout_timer.poll(cx);
 
-                // Send frame again
+                // Mark frame as sendable once more
                 rxin.set_state(FrameState::Sendable);
+                // Wake frame sender so it picks up this frame we've just marked
                 self.pdu_loop.wake_sender();
 
                 self.retries_left -= 1;
             }
             Poll::Pending => {
-                // Haven't timed out yet. Do nothing
+                // Haven't timed out yet. Nothing to do - still waiting to be woken from the network
+                // response.
             }
         }
 
