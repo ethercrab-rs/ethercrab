@@ -5,19 +5,9 @@
 #[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 pub enum WireError {
     /// The buffer to extract a type from is too short to do so.
-    ReadBufferTooShort {
-        /// Minimum required buffer length.
-        expected: usize,
-        /// Actual length given.
-        got: usize,
-    },
+    ReadBufferTooShort,
     /// The buffer to write the packed data into is too short.
-    WriteBufferTooShort {
-        /// Minimum required buffer length.
-        expected: usize,
-        /// Actual length given.
-        got: usize,
-    },
+    WriteBufferTooShort,
     /// Invalid enum or struct value.
     ///
     /// If this comes from an enum, consider adding a variant with `#[wire(catch_all)]` or
@@ -35,16 +25,12 @@ impl std::error::Error for WireError {}
 impl core::fmt::Display for WireError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            WireError::ReadBufferTooShort { expected, got } => write!(
-                f,
-                "Need at least {} read buffer bytes, got {}",
-                expected, got
-            ),
-            WireError::WriteBufferTooShort { expected, got } => write!(
-                f,
-                "Need at least {} write buffer bytes, got {}",
-                expected, got
-            ),
+            WireError::ReadBufferTooShort => {
+                write!(f, "Read buffer too short to extract type from")
+            }
+            WireError::WriteBufferTooShort => {
+                write!(f, "Write buffer too short to pack type into")
+            }
             WireError::InvalidValue => f.write_str("Invalid decoded value"),
             WireError::ArrayLength => f.write_str("Incorrect array length"),
             WireError::InvalidUtf8 => f.write_str("Invalid UTF8"),
