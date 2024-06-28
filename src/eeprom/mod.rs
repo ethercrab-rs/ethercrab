@@ -56,12 +56,6 @@ pub struct ChunkReader<P> {
 
     /// The last byte address we're allowed to access.
     end: u16,
-
-    /// Position of last data that was actually asked for, e.g. the next byte after the current
-    /// cache.
-    ///
-    /// This is WORD based.
-    read_pointer: u16,
 }
 
 impl<P> ChunkReader<P>
@@ -74,19 +68,16 @@ where
             reader,
             pos: start_word * 2,
             end: start_word * 2 + len_words * 2,
-            read_pointer: start_word,
         }
     }
 
     /// Skip N bytes (NOT words) ahead of the current position.
     pub fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), Error> {
         fmt::trace!(
-            "Skip EEPROM from pos {:#06x}, read pointer {:#06x}, by {} bytes to {:#06x}, end {:#06x}",
+            "Skip EEPROM from pos {:#06x} by {} bytes to {:#06x}",
             self.pos,
-            self.read_pointer,
             skip,
             self.pos + skip,
-            self.end
         );
 
         if self.pos + skip >= self.end {
@@ -94,15 +85,6 @@ where
         }
 
         self.pos += skip;
-
-        // Round read pointer down to the nearest multiple of two (byte -> word conversion)
-        self.read_pointer = self.pos / 2;
-
-        fmt::trace!(
-            "--> After skip: pos {:#06x}, read pointer {:#06x}",
-            self.pos,
-            self.read_pointer,
-        );
 
         Ok(())
     }
@@ -129,10 +111,7 @@ where
     P: EepromDataProvider,
 {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        fmt::trace!(
-            "Read EEPROM chunk from read pointer byte {:#06x}",
-            self.read_pointer
-        );
+        fmt::trace!("Read EEPROM chunk from byte {:#06x}", self.pos);
 
         let requested_read_len = buf.len();
 
@@ -171,8 +150,6 @@ where
                 self.pos += chunk.len() as u16;
 
                 buf.copy_from_slice(chunk);
-
-                self.read_pointer += chunk.len() as u16 / 2;
 
                 break;
             }
