@@ -543,9 +543,16 @@ pub struct Pdo {
     #[wire(bytes = 2)]
     pub(crate) flags: PdoFlags,
 
-    // NOTE: This field is skipped during parsing from the wire and is populated later.
+    // NOTE: Field is only used to sum up `bit_len`, so we don't need to read or store it.
+    // Definition is left here in case we need it later.
+    // // NOTE: This field is skipped during parsing from the wire and is populated later.
+    // #[wire(skip)]
+    // pub(crate) entries: heapless::Vec<PdoEntry, 16>,
+
+    // NOTE: This field is skipped during parsing from the wire and is populated from all the
+    // `PdoEntry`s later.
     #[wire(skip)]
-    pub(crate) entries: heapless::Vec<PdoEntry, 16>,
+    pub(crate) bit_len: u16,
 }
 
 impl core::fmt::Debug for Pdo {
@@ -557,21 +564,22 @@ impl core::fmt::Debug for Pdo {
             .field("dc_sync", &self.dc_sync)
             .field("name_string_idx", &self.name_string_idx)
             .field("flags", &self.flags)
-            .field("entries", &self.entries)
+            // .field("entries", &self.entries)
+            .field("bit_len", &self.bit_len)
             .finish()
     }
 }
 
-impl Pdo {
-    /// Compute the total bit length of this PDO by iterating over and summing the bit length of
-    /// each entry contained within.
-    pub fn bit_len(&self) -> u16 {
-        self.entries
-            .iter()
-            .map(|entry| u16::from(entry.data_length_bits))
-            .sum()
-    }
-}
+// impl Pdo {
+//     /// Compute the total bit length of this PDO by iterating over and summing the bit length of
+//     /// each entry contained within.
+//     pub fn bit_len(&self) -> u16 {
+//         self.entries
+//             .iter()
+//             .map(|entry| u16::from(entry.data_length_bits))
+//             .sum()
+//     }
+// }
 
 #[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]

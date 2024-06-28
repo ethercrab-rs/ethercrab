@@ -56,12 +56,6 @@ pub struct ChunkReader<P> {
 
     /// The last byte address we're allowed to access.
     end: u16,
-
-    /// Position of last data that was actually asked for, e.g. the next byte after the current
-    /// cache.
-    ///
-    /// This is WORD based.
-    read_pointer: u16,
 }
 
 impl<P> ChunkReader<P>
@@ -74,46 +68,41 @@ where
             reader,
             pos: start_word * 2,
             end: start_word * 2 + len_words * 2,
-            read_pointer: start_word,
         }
     }
 
     /// Skip N bytes (NOT words) ahead of the current position.
-    pub fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), Error> {
+    pub fn skip_ahead_bytes(&mut self, skip: u16) -> Result<(), EepromError> {
         fmt::trace!(
-            "Skip EEPROM from pos {:#06x}, read pointer {:#06x}, by {} bytes to {:#06x}, end {:#06x}",
+            "Skip EEPROM from pos {:#06x} by {} bytes to {:#06x}",
             self.pos,
-            self.read_pointer,
             skip,
             self.pos + skip,
-            self.end
         );
 
         if self.pos + skip >= self.end {
-            return Err(Error::Eeprom(EepromError::SectionOverrun));
+            return Err(EepromError::SectionOverrun);
         }
 
         self.pos += skip;
-
-        // Round read pointer down to the nearest multiple of two (byte -> word conversion)
-        self.read_pointer = self.pos / 2;
-
-        fmt::trace!(
-            "--> After skip: pos {:#06x}, read pointer {:#06x}",
-            self.pos,
-            self.read_pointer,
-        );
 
         Ok(())
     }
 
     /// Read a single byte.
     pub async fn read_byte(&mut self) -> Result<u8, Error> {
-        let mut buf = [0u8; 1];
+        self.reader.clear_errors().await?;
 
-        self.read_exact(&mut buf).await?;
+        let res = self.reader.read_chunk(self.pos / 2).await?;
 
-        Ok(buf[0])
+        // pos is in bytes, but we're reading words. If the current pos is odd, we must skip the
+        // first byte of the returned word.
+        let skip = usize::from(self.pos % 2);
+
+        // Advance by one byte
+        self.pos += 1;
+
+        Ok(res[skip])
     }
 }
 
@@ -122,10 +111,7 @@ where
     P: EepromDataProvider,
 {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        fmt::trace!(
-            "Read EEPROM chunk from read pointer byte {:#06x}",
-            self.read_pointer
-        );
+        fmt::trace!("Read EEPROM chunk from byte {:#06x}", self.pos);
 
         let requested_read_len = buf.len();
 
@@ -164,8 +150,6 @@ where
                 self.pos += chunk.len() as u16;
 
                 buf.copy_from_slice(chunk);
-
-                self.read_pointer += chunk.len() as u16 / 2;
 
                 break;
             }
@@ -218,7 +202,7 @@ mod tests {
         // Off by one errors are always fun
         assert_eq!(
             r.skip_ahead_bytes(64),
-            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            Err(EepromError::SectionOverrun),
             "64 bytes"
         );
 
@@ -227,7 +211,7 @@ mod tests {
         // 65 is one byte off the end
         assert_eq!(
             r.skip_ahead_bytes(65),
-            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            Err(EepromError::SectionOverrun),
             "65 bytes"
         );
 
@@ -236,7 +220,7 @@ mod tests {
         // Madness
         assert_eq!(
             r.skip_ahead_bytes(10000),
-            Err(Error::Eeprom(EepromError::SectionOverrun)),
+            Err(EepromError::SectionOverrun),
             "10000 bytes"
         );
     }
