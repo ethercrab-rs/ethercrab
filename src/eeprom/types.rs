@@ -299,10 +299,7 @@ impl EtherCrabWireRead for PortStatuses {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
         // Remember: little endian
         let Some(&[lo, hi]) = buf.get(0..Self::PACKED_LEN) else {
-            return Err(ethercrab_wire::WireError::ReadBufferTooShort {
-                expected: Self::PACKED_LEN,
-                got: buf.len(),
-            });
+            return Err(ethercrab_wire::WireError::ReadBufferTooShort);
         };
 
         let p1 = lo & 0x0f;

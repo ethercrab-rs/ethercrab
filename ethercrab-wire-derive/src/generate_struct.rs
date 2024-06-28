@@ -147,10 +147,7 @@ pub fn generate_struct_read(parsed: &StructMeta, input: &DeriveInput) -> proc_ma
     quote! {
         impl ::ethercrab_wire::EtherCrabWireRead for #name {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
-                let buf = buf.get(0..#size_bytes).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort {
-                    expected: #size_bytes,
-                    got: buf.len(),
-                })?;
+                let buf = buf.get(0..#size_bytes).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort)?;
 
                 Ok(Self {
                     #(#fields_unpack),*
