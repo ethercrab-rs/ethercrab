@@ -14,6 +14,8 @@ An EtherCAT master written in Rust.
   as per the EtherCAT specification. UTF-8 strings will return an error when read.
 - **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Removed `expected` and
   `got` fields from `Error::Wire(WireError::{Read,Write}BufferTooShort)`.
+- **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Increase MSRV from 1.75
+  to 1.77.
 
 ## [0.4.2] - 2024-05-27
 
