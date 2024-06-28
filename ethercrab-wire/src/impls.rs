@@ -9,26 +9,28 @@ macro_rules! impl_primitive_wire_field {
     ($ty:ty, $size:expr) => {
         impl EtherCrabWireWrite for $ty {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-                // This unsafe doesn't save us any binary space at all in the stm32-embassy example
-                // so we won't use it.
-                // let chunk = unsafe { buf.get_unchecked_mut(0..$size) };
+                let Some(chunk) = buf.first_chunk_mut::<$size>() else {
+                    unreachable!()
+                };
 
-                let chunk = &mut buf[0..$size];
-
-                chunk.copy_from_slice(&self.to_le_bytes());
+                *chunk = self.to_le_bytes();
 
                 chunk
             }
 
             fn pack_to_slice<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], WireError> {
-                if buf.len() < $size {
+                let len = buf.len();
+
+                let Some(chunk) = buf.first_chunk_mut::<$size>() else {
                     return Err(WireError::WriteBufferTooShort {
                         expected: $size,
-                        got: buf.len(),
+                        got: len,
                     });
-                }
+                };
 
-                Ok(self.pack_to_slice_unchecked(buf))
+                *chunk = self.to_le_bytes();
+
+                Ok(chunk)
             }
 
             fn packed_len(&self) -> usize {
@@ -38,16 +40,12 @@ macro_rules! impl_primitive_wire_field {
 
         impl EtherCrabWireRead for $ty {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-                buf.get(0..$size)
-                    .ok_or(WireError::ReadBufferTooShort {
+                buf.first_chunk::<$size>()
+                    .ok_or_else(|| WireError::ReadBufferTooShort {
                         expected: $size,
                         got: buf.len(),
                     })
-                    .map(|raw| match raw.try_into() {
-                        Ok(res) => res,
-                        Err(_) => unreachable!(),
-                    })
-                    .map(Self::from_le_bytes)
+                    .map(|chunk| Self::from_le_bytes(*chunk))
             }
         }
 
