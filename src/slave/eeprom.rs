@@ -226,6 +226,8 @@ where
                 e
             })?;
 
+            fmt::debug!("Discovered PDO:\n{:#?}", pdo);
+
             fmt::trace!("Range {:?} value {}", valid_range, pdo.index);
 
             if !valid_range.contains(&pdo.index) {
@@ -245,15 +247,13 @@ where
                     Ok(entry)
                 })?;
 
-                pdo.entries
-                    .push(entry)
-                    .map_err(|_| Error::Capacity(Item::PdoEntry))?;
+                fmt::debug!("--> PDO entry:\n{:#?}", entry);
+
+                pdo.bit_len += u16::from(entry.data_length_bits);
             }
 
             pdos.push(pdo).map_err(|_| Error::Capacity(Item::Pdo))?;
         }
-
-        fmt::debug!("Discovered PDOs:\n{:#?}", pdos);
 
         Ok(pdos)
     }
@@ -401,7 +401,6 @@ where
 mod tests {
     use super::*;
     use crate::{
-        base_data_types::PrimitiveDataType,
         eeprom::{
             file_reader::EepromFile,
             types::{
@@ -624,15 +623,15 @@ mod tests {
     async fn output_pdos_only() {
         let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
 
-        fn pdo(index: u16, name_string_idx: u8, entry_idx: u16) -> Pdo {
-            let entry_defaults = PdoEntry {
-                index: 0x7000,
-                sub_index: 1,
-                name_string_idx: 6,
-                data_type: PrimitiveDataType::Bool,
-                data_length_bits: 1,
-                flags: 0,
-            };
+        fn pdo(index: u16, name_string_idx: u8, _entry_idx: u16) -> Pdo {
+            // let entry_defaults = PdoEntry {
+            //     index: 0x7000,
+            //     sub_index: 1,
+            //     name_string_idx: 6,
+            //     data_type: PrimitiveDataType::Bool,
+            //     data_length_bits: 1,
+            //     flags: 0,
+            // };
 
             let pdo_defaults = Pdo {
                 index: 0x1600,
@@ -643,21 +642,24 @@ mod tests {
                 dc_sync: 0,
                 flags: PdoFlags::PDO_MANDATORY | PdoFlags::PDO_FIXED_CONTENT,
 
-                entries: heapless::Vec::from_slice(&[PdoEntry {
-                    index: 0x7000,
-                    ..entry_defaults
-                }])
-                .unwrap(),
+                bit_len: 1,
+                // entries: heapless::Vec::from_slice(&[PdoEntry {
+                //     index: 0x7000,
+                //     ..entry_defaults
+                // }])
+                // .unwrap(),
             };
 
             Pdo {
                 index,
                 name_string_idx,
-                entries: heapless::Vec::from_slice(&[PdoEntry {
-                    index: entry_idx,
-                    ..entry_defaults
-                }])
-                .unwrap(),
+
+                bit_len: 1,
+                // entries: heapless::Vec::from_slice(&[PdoEntry {
+                //     index: entry_idx,
+                //     ..entry_defaults
+                // }])
+                // .unwrap(),
                 ..pdo_defaults
             }
         }

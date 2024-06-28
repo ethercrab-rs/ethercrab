@@ -533,7 +533,7 @@ where
             let bit_len = pdos
                 .iter()
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
-                .map(Pdo::bit_len)
+                .map(|pdo| pdo.bit_len)
                 .sum();
 
             total_bit_len += bit_len;
