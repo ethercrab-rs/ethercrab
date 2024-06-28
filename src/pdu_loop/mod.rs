@@ -8,6 +8,7 @@ mod pdu_tx;
 pub mod storage;
 
 use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
+use core::time::Duration;
 pub use pdu_rx::PduRx;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
@@ -86,6 +87,8 @@ impl<'sto> PduLoop<'sto> {
         &self,
         register: u16,
         payload_length: u16,
+        timeout: Duration,
+        retries: usize,
     ) -> Result<(), Error> {
         let mut frame = self.storage.alloc_frame()?;
 
@@ -96,7 +99,7 @@ impl<'sto> PduLoop<'sto> {
             false,
         )?;
 
-        let frame = frame.mark_sendable();
+        let frame = frame.mark_sendable(&self, timeout, retries);
 
         self.wake_sender();
 
@@ -146,7 +149,7 @@ mod tests {
             )
             .expect("Push PDU");
 
-        let fut = frame.mark_sendable();
+        let fut = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
 
         let res = cassette::block_on(fut.timeout(Duration::from_secs(0)));
 
@@ -179,7 +182,7 @@ mod tests {
             .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
             .expect("Push");
 
-        let frame = frame.mark_sendable();
+        let frame = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
 
         assert_eq!(
             frame.buf(),
@@ -223,7 +226,7 @@ mod tests {
                 .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), &data, None, false)
                 .expect("Push PDU");
 
-            let mut frame_fut = pin!(frame.mark_sendable());
+            let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -302,7 +305,7 @@ mod tests {
             .expect("Push PDU");
 
         // Drop frame future to reset its state to `FrameState::None`
-        drop(frame.mark_sendable());
+        drop(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
 
         // ---
 
@@ -314,7 +317,7 @@ mod tests {
             .push_pdu::<()>(Command::fpwr(0x6789, 0x1234).into(), data, None, false)
             .expect("Push second PDU");
 
-        let frame = frame.mark_sendable();
+        let frame = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
 
         // ---
 
@@ -376,7 +379,7 @@ mod tests {
                 )
                 .expect("Push PDU");
 
-            let mut frame_fut = pin!(frame.mark_sendable());
+            let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -476,7 +479,10 @@ mod tests {
                 .push_pdu::<()>(Command::fpwr(0x1000, 0x980).into(), data, None, false)
                 .expect("Push PDU");
 
-            let result = frame.mark_sendable().await.expect("Future");
+            let result = frame
+                .mark_sendable(&pdu_loop, Duration::MAX, usize::MAX)
+                .await
+                .expect("Future");
 
             let received_data = result.take(handle).expect("Take");
 
@@ -577,7 +583,8 @@ mod tests {
                         .push_pdu::<()>(Command::fpwr(0x1000, 0x980).into(), data, None, false)
                         .expect("Push PDU");
 
-                    let mut x = Cassette::new(frame.mark_sendable());
+                    let mut x =
+                        Cassette::new(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
 
                     let result = loop {
                         if let Some(res) = x.poll_on() {
