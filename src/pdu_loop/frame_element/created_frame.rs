@@ -10,9 +10,9 @@ use crate::{
         pdu_flags::PduFlags,
         pdu_header::PduHeader,
     },
-    Command,
+    Command, PduLoop,
 };
-use core::{marker::PhantomData, ptr::NonNull, sync::atomic::AtomicU8};
+use core::{marker::PhantomData, ptr::NonNull, sync::atomic::AtomicU8, time::Duration};
 use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized};
 
 /// A frame in a freshly allocated state.
@@ -46,7 +46,12 @@ impl<'sto> CreatedFrame<'sto> {
     ///
     /// This method returns a future that should be fulfilled when a response to the sent frame is
     /// received.
-    pub fn mark_sendable(mut self) -> ReceiveFrameFut<'sto> {
+    pub fn mark_sendable(
+        mut self,
+        pdu_loop: &'sto PduLoop<'sto>,
+        timeout: Duration,
+        retries: usize,
+    ) -> ReceiveFrameFut<'sto> {
         EthercatFrameHeader::pdu(self.inner.pdu_payload_len() as u16)
             .pack_to_slice_unchecked(self.inner.ecat_frame_header_mut());
 
@@ -54,6 +59,10 @@ impl<'sto> CreatedFrame<'sto> {
 
         ReceiveFrameFut {
             frame: Some(self.inner),
+            pdu_loop,
+            timeout_timer: crate::timer_factory::timer(timeout),
+            timeout,
+            retries_left: retries,
         }
     }
 

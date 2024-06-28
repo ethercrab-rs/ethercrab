@@ -4,8 +4,10 @@ use crate::{
     pdu_loop::frame_element::{
         received_frame::ReceivedFrame, FrameBox, FrameElement, FrameState, PduMarker,
     },
+    PduLoop,
 };
-use core::{future::Future, ptr::NonNull, sync::atomic::AtomicU8, task::Poll};
+use core::{future::Future, ptr::NonNull, sync::atomic::AtomicU8, task::Poll, time::Duration};
+use futures_lite::FutureExt;
 
 /// A frame has been sent and is now waiting for a response from the network.
 ///
@@ -106,6 +108,10 @@ impl<'sto> ReceivingFrame<'sto> {
 
 pub struct ReceiveFrameFut<'sto> {
     pub(in crate::pdu_loop::frame_element) frame: Option<FrameBox<'sto>>,
+    pub(in crate::pdu_loop::frame_element) pdu_loop: &'sto PduLoop<'sto>,
+    pub(in crate::pdu_loop::frame_element) timeout_timer: crate::timer_factory::Timer,
+    pub(in crate::pdu_loop::frame_element) timeout: Duration,
+    pub(in crate::pdu_loop::frame_element) retries_left: usize,
 }
 
 impl<'sto> ReceiveFrameFut<'sto> {
@@ -124,6 +130,13 @@ impl<'sto> ReceiveFrameFut<'sto> {
             + EthercatFrameHeader::PACKED_LEN;
 
         &b.into_inner()[0..len]
+    }
+
+    fn release(r: FrameBox<'sto>) {
+        r.release_pdu_claims();
+
+        // Make frame available for reuse if this future is dropped.
+        r.set_state(FrameState::None);
     }
 }
 
@@ -167,6 +180,45 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         fmt::trace!("frame index {} not ready yet ({:?})", frame_idx, was);
 
+        // Timeout checked after frame handling so we get at least one chance to receive reply from
+        // network. This should mitigate race conditions when timeout expires just as the frame is
+        // received.
+        match self.timeout_timer.poll(cx) {
+            Poll::Ready(_) => {
+                // We timed out
+                fmt::trace!(
+                    "PDU response timeout with {} retries remaining",
+                    self.retries_left
+                );
+
+                // No retries left
+                if self.retries_left == 0 {
+                    fmt::trace!("--> No retries left. Releasing frame for reuse");
+
+                    // Release frame and PDU slots for reuse
+                    Self::release(rxin);
+
+                    return Poll::Ready(Err(Error::Timeout));
+                }
+
+                // If we have retry loops left:
+
+                // Assign new timeout
+                self.timeout_timer = crate::timer_factory::timer(self.timeout);
+                // Poll timer once to register with the executor
+                let _ = self.timeout_timer.poll(cx);
+
+                // Send frame again
+                rxin.set_state(FrameState::Sendable);
+                self.pdu_loop.wake_sender();
+
+                self.retries_left -= 1;
+            }
+            Poll::Pending => {
+                // Haven't timed out yet. Do nothing
+            }
+        }
+
         match was {
             FrameState::Sendable | FrameState::Sending | FrameState::Sent | FrameState::RxBusy => {
                 self.frame = Some(rxin);
@@ -191,10 +243,7 @@ impl<'sto> Drop for ReceiveFrameFut<'sto> {
         if let Some(r) = self.frame.take() {
             fmt::debug!("Dropping in-flight future, possibly caused by timeout");
 
-            r.release_pdu_claims();
-
-            // Make frame available for reuse if this future is dropped.
-            r.set_state(FrameState::None);
+            Self::release(r);
         }
     }
 }
