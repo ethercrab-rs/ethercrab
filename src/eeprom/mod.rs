@@ -109,11 +109,18 @@ where
 
     /// Read a single byte.
     pub async fn read_byte(&mut self) -> Result<u8, Error> {
-        let mut buf = [0u8; 1];
+        self.reader.clear_errors().await?;
 
-        self.read_exact(&mut buf).await?;
+        let res = self.reader.read_chunk(self.pos / 2).await?;
 
-        Ok(buf[0])
+        // pos is in bytes, but we're reading words. If the current pos is odd, we must skip the
+        // first byte of the returned word.
+        let skip = usize::from(self.pos % 2);
+
+        // Advance by one byte
+        self.pos += 1;
+
+        Ok(res[skip])
     }
 }
 
