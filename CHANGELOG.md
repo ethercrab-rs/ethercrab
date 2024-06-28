@@ -10,6 +10,8 @@ An EtherCAT master written in Rust.
 
 - [#216](https://github.com/ethercrab-rs/ethercrab/pull/216) PDU retries now use the same PDU index
   instead of allocating a new frame for every resend.
+- [#217](https://github.com/ethercrab-rs/ethercrab/pull/217) EEPROM strings must now be valid ASCII
+  as per the EtherCAT specification. UTF-8 strings will return an error when read.
 
 ## [0.4.2] - 2024-05-27
 
