@@ -91,10 +91,17 @@ impl PduMarker {
     }
 
     pub fn init(&self) {
-        assert!(self
-            .frame_index
-            .compare_exchange(0, PDU_UNUSED_SENTINEL, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok());
+        // NOTE: Making this `debug_assert_eq` causes the frame to never be initialised. Maybe the
+        // compare_exchange gets optimised out completely?
+        assert_eq!(
+            self.frame_index.compare_exchange(
+                0,
+                PDU_UNUSED_SENTINEL,
+                Ordering::Relaxed,
+                Ordering::Relaxed
+            ),
+            Ok(0)
+        );
     }
 
     /// Reset this marker to unused if it belongs to the given frame index.

@@ -2,19 +2,19 @@ use crate::error::Error;
 use core::{future::Future, pin::Pin, task::Poll, time::Duration};
 
 #[cfg(not(feature = "std"))]
-type Timer = embassy_time::Timer;
+pub(crate) type Timer = embassy_time::Timer;
 #[cfg(feature = "std")]
-type Timer = async_io::Timer;
+pub(crate) type Timer = async_io::Timer;
 
 #[cfg(not(feature = "std"))]
-fn timer(duration: Duration) -> Timer {
+pub(crate) fn timer(duration: Duration) -> Timer {
     embassy_time::Timer::after(embassy_time::Duration::from_micros(
         duration.as_micros() as u64
     ))
 }
 
 #[cfg(feature = "std")]
-fn timer(duration: Duration) -> Timer {
+pub(crate) fn timer(duration: Duration) -> Timer {
     async_io::Timer::after(duration)
 }
 

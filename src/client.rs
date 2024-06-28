@@ -63,8 +63,12 @@ impl<'sto> Client<'sto> {
             let chunk_len = chunk.end - chunk.start;
 
             self.pdu_loop
-                .pdu_broadcast_zeros(chunk.start, chunk_len)
-                .timeout(self.timeouts.pdu)
+                .pdu_broadcast_zeros(
+                    chunk.start,
+                    chunk_len,
+                    self.timeouts.pdu,
+                    self.config.retry_behaviour.retry_count(),
+                )
                 .await?;
         }
 
@@ -484,63 +488,63 @@ impl<'sto> Client<'sto> {
         send: impl Fn(&mut CreatedFrame) -> Result<H, PduError>,
         take: impl Fn(ReceivedFrame<'_>, H) -> Result<T, Error>,
     ) -> Result<T, Error> {
-        for _ in 0..self.config.retry_behaviour.loop_counts() {
-            let mut frame = self.pdu_loop.alloc_frame()?;
-            let frame_idx = frame.frame_index();
+        let mut frame = self.pdu_loop.alloc_frame()?;
+        let frame_idx = frame.frame_index();
 
-            let handles = send(&mut frame)?;
+        let handles = send(&mut frame)?;
 
-            let frame = frame.mark_sendable().timeout(self.timeouts.pdu);
+        let frame = frame.mark_sendable(
+            &self.pdu_loop,
+            self.timeouts.pdu,
+            self.config.retry_behaviour.retry_count(),
+        );
 
-            self.pdu_loop.wake_sender();
+        self.pdu_loop.wake_sender();
 
-            let received = match frame.await {
-                Ok(received) => received,
-                Err(Error::Timeout) => {
-                    fmt::warn!("Frame index {} timed out", frame_idx);
+        let received = match frame.await {
+            Ok(received) => received,
+            Err(Error::Timeout) => {
+                fmt::error!("Frame index {} timed out", frame_idx);
 
-                    continue;
-                }
-                Err(e) => return Err(e),
-            };
+                return Err(Error::Timeout);
+            }
+            Err(e) => return Err(e),
+        };
 
-            return take(received, handles);
-        }
-
-        Err(Error::Timeout)
+        take(received, handles)
     }
 
     /// Send a single PDU in a frame.
     pub(crate) async fn single_pdu<T>(
         &self,
         command: Command,
-        data: impl EtherCrabWireWrite + Copy,
+        data: impl EtherCrabWireWrite,
         len_override: Option<u16>,
     ) -> Result<ReceivedPdu<'_, T>, Error> {
-        for _ in 0..self.config.retry_behaviour.loop_counts() {
-            let mut frame = self.pdu_loop.alloc_frame()?;
-            let frame_idx = frame.frame_index();
+        let mut frame = self.pdu_loop.alloc_frame()?;
+        let frame_idx = frame.frame_index();
 
-            let handle = frame.push_pdu(command, data, len_override, false)?;
+        let handle = frame.push_pdu(command, data, len_override, false)?;
 
-            let frame = frame.mark_sendable().timeout(self.timeouts.pdu);
+        let frame = frame.mark_sendable(
+            &self.pdu_loop,
+            self.timeouts.pdu,
+            self.config.retry_behaviour.retry_count(),
+        );
 
-            self.pdu_loop.wake_sender();
+        self.pdu_loop.wake_sender();
 
-            let received = match frame.await {
-                Ok(received) => received,
-                Err(Error::Timeout) => {
-                    fmt::warn!("Frame index {} timed out", frame_idx);
+        let received = match frame.await {
+            Ok(received) => received,
+            Err(Error::Timeout) => {
+                fmt::error!("Frame index {} timed out", frame_idx);
 
-                    continue;
-                }
-                Err(e) => return Err(e),
-            };
+                return Err(Error::Timeout);
+            }
+            Err(e) => return Err(e),
+        };
 
-            return received.take(handle);
-        }
-
-        Err(Error::Timeout)
+        received.take(handle)
     }
 }
 

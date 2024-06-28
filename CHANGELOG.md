@@ -6,6 +6,11 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- [#216](https://github.com/ethercrab-rs/ethercrab/pull/216) PDU retries now use the same PDU index
+  instead of allocating a new frame for every resend.
+
 ## [0.4.2] - 2024-05-27
 
 ### Added
@@ -377,8 +382,8 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...HEAD
 [0.4.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.1...ethercrab-v0.4.2
 [0.4.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.0...ethercrab-v0.4.1
 [0.4.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...ethercrab-v0.4.0

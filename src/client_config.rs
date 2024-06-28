@@ -40,19 +40,21 @@ pub enum RetryBehaviour {
     /// [`Error::Timeout`](crate::error::Error::Timeout).
     Count(usize),
 
-    /// Attempt to resend the PDU forever.
+    /// Attempt to resend the PDU forever(*).
     ///
     /// Note that this can soft-lock a program if for example the EtherCAT network cable is removed
     /// as EtherCrab will attempt to resend the packet forever. It may be preferable to use
     /// [`RetryBehaviour::Count`] to set an upper bound on retries.
+    ///
+    /// (*) Forever in this case means a retry count of `usize::MAX`.
     Forever,
 }
 
 impl RetryBehaviour {
-    pub(crate) fn loop_counts(&self) -> usize {
+    pub(crate) fn retry_count(&self) -> usize {
         match self {
             // Try at least once when used in a range like `for _ in 0..<counts>`.
-            RetryBehaviour::None => 1,
+            RetryBehaviour::None => 0,
             RetryBehaviour::Count(n) => *n,
             RetryBehaviour::Forever => usize::MAX,
         }
@@ -64,9 +66,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loop_counts_sanity_check() {
-        assert_eq!(RetryBehaviour::None.loop_counts(), 1);
-        assert_eq!(RetryBehaviour::Count(10).loop_counts(), 10);
-        assert_eq!(RetryBehaviour::Forever.loop_counts(), usize::MAX);
+    fn retry_count_sanity_check() {
+        assert_eq!(RetryBehaviour::None.retry_count(), 0);
+        assert_eq!(RetryBehaviour::Count(10).retry_count(), 10);
+        assert_eq!(RetryBehaviour::Forever.retry_count(), usize::MAX);
     }
 }

@@ -290,13 +290,17 @@ unsafe impl<'sto> Sync for PduStorageRef<'sto> {}
 mod tests {
     use super::*;
     use crate::{pdu_loop::pdu_header::PduHeader, Command};
+    use core::time::Duration;
 
     #[test]
     fn zeroed_data() {
-        let storage: PduStorage<1, { PduStorage::element_size(8) }> = PduStorage::new();
-        let s = storage.as_ref();
+        let _ = env_logger::builder().is_test(true).try_init();
 
-        let mut frame = s.alloc_frame().unwrap();
+        let storage: PduStorage<1, { PduStorage::element_size(8) }> = PduStorage::new();
+
+        let (_tx, _rx, pdu_loop) = storage.try_split().unwrap();
+
+        let mut frame = pdu_loop.alloc_frame().expect("Allocate first frame");
 
         frame
             .push_pdu::<()>(
@@ -308,9 +312,9 @@ mod tests {
             .unwrap();
 
         // Drop frame future to reset its state to `FrameState::None`
-        drop(frame.mark_sendable());
+        drop(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
 
-        let mut frame = s.alloc_frame().unwrap();
+        let mut frame = pdu_loop.alloc_frame().expect("Allocate second frame");
 
         const LEN: usize = 8;
 
@@ -322,7 +326,7 @@ mod tests {
             + EthercatFrameHeader::header_len()
             + PduHeader::PACKED_LEN;
 
-        let frame = frame.mark_sendable();
+        let frame = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
 
         // 10 byte PDU header, 8 byte payload, 2 byte WKC
         assert_eq!(
