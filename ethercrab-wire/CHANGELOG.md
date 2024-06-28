@@ -11,8 +11,8 @@ Primarily used by `ethercrab`.
 
 ### Changed
 
-- [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Removed `expected` and `got` fields
-  from `WireError::{Read,Write}BufferTooShort`.
+- **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Removed `expected` and
+  `got` fields from `WireError::{Read,Write}BufferTooShort`.
 
 ## [0.1.4] - 2024-03-31
 

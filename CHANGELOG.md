@@ -12,6 +12,8 @@ An EtherCAT master written in Rust.
   instead of allocating a new frame for every resend.
 - [#217](https://github.com/ethercrab-rs/ethercrab/pull/217) EEPROM strings must now be valid ASCII
   as per the EtherCAT specification. UTF-8 strings will return an error when read.
+- **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Removed `expected` and
+  `got` fields from `Error::Wire(WireError::{Read,Write}BufferTooShort)`.
 
 ## [0.4.2] - 2024-05-27
 
