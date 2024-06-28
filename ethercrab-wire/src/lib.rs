@@ -47,12 +47,8 @@ pub trait EtherCrabWireWrite {
     /// The default implementation of this method will return an error if the buffer is not long
     /// enough.
     fn pack_to_slice<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], WireError> {
-        if buf.len() < self.packed_len() {
-            return Err(WireError::WriteBufferTooShort {
-                expected: self.packed_len(),
-                got: buf.len(),
-            });
-        }
+        buf.get(0..self.packed_len())
+            .ok_or(WireError::WriteBufferTooShort)?;
 
         Ok(self.pack_to_slice_unchecked(buf))
     }

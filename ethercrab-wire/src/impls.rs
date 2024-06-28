@@ -19,13 +19,8 @@ macro_rules! impl_primitive_wire_field {
             }
 
             fn pack_to_slice<'buf>(&self, buf: &'buf mut [u8]) -> Result<&'buf [u8], WireError> {
-                let len = buf.len();
-
                 let Some(chunk) = buf.first_chunk_mut::<$size>() else {
-                    return Err(WireError::WriteBufferTooShort {
-                        expected: $size,
-                        got: len,
-                    });
+                    return Err(WireError::WriteBufferTooShort);
                 };
 
                 *chunk = self.to_le_bytes();
@@ -41,10 +36,7 @@ macro_rules! impl_primitive_wire_field {
         impl EtherCrabWireRead for $ty {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
                 buf.first_chunk::<$size>()
-                    .ok_or_else(|| WireError::ReadBufferTooShort {
-                        expected: $size,
-                        got: buf.len(),
-                    })
+                    .ok_or(WireError::ReadBufferTooShort)
                     .map(|chunk| Self::from_le_bytes(*chunk))
             }
         }
@@ -172,16 +164,9 @@ impl EtherCrabWireWrite for bool {
 
 impl EtherCrabWireRead for bool {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
-        if buf.is_empty() {
-            return Err(WireError::ReadBufferTooShort {
-                expected: 1,
-                got: 0,
-            });
-        }
-
         // NOTE: ETG1000.6 5.2.2 states the truthy value is 0xff and false is 0. We'll just check
         // for greater than zero to be sure.
-        Ok(buf[0] > 0)
+        Ok(*buf.get(0).ok_or(WireError::ReadBufferTooShort)? > 0)
     }
 }
 
@@ -293,10 +278,7 @@ where
 {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
         buf.get(0..(T::PACKED_LEN * N))
-            .ok_or(WireError::ReadBufferTooShort {
-                expected: T::PACKED_LEN * N,
-                got: buf.len(),
-            })?
+            .ok_or(WireError::ReadBufferTooShort)?
             .chunks_exact(T::PACKED_LEN)
             .take(N)
             .map(T::unpack_from_slice)
