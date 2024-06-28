@@ -11,7 +11,7 @@ use crate::{
     fmt,
     slave::SlaveIdentity,
 };
-use core::{marker::PhantomData, ops::RangeInclusive, str::FromStr};
+use core::{marker::PhantomData, ops::RangeInclusive};
 use embedded_io_async::{Read, ReadExactError};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized};
 
@@ -226,6 +226,8 @@ where
                 e
             })?;
 
+            fmt::debug!("Discovered PDO:\n{:#?}", pdo);
+
             fmt::trace!("Range {:?} value {}", valid_range, pdo.index);
 
             if !valid_range.contains(&pdo.index) {
@@ -245,15 +247,13 @@ where
                     Ok(entry)
                 })?;
 
-                pdo.entries
-                    .push(entry)
-                    .map_err(|_| Error::Capacity(Item::PdoEntry))?;
+                fmt::debug!("--> PDO entry:\n{:#?}", entry);
+
+                pdo.bit_len += u16::from(entry.data_length_bits);
             }
 
             pdos.push(pdo).map_err(|_| Error::Capacity(Item::Pdo))?;
         }
-
-        fmt::debug!("Discovered PDOs:\n{:#?}", pdos);
 
         Ok(pdos)
     }
@@ -302,37 +302,37 @@ where
                 reader.skip_ahead_bytes(string_len.into())?;
             }
 
-            let string_len = reader.read_byte().await?;
+            let string_len = usize::from(reader.read_byte().await?);
 
-            if usize::from(string_len) > N {
+            if string_len > N {
                 return Err(Error::StringTooLong {
                     max_length: N,
                     string_length: string_len.into(),
                 });
             }
 
-            let mut buf = [0u8; N];
-            let bytes = &mut buf[0..string_len.into()];
-            reader.read_exact(bytes).await?;
+            let mut buf = heapless::Vec::<u8, N>::new();
 
-            fmt::trace!("--> Raw string bytes {:?}", bytes);
+            // SAFETY: We MUST ensure that `string_len` is less than `N`
+            unsafe { buf.set_len(usize::from(string_len)) }
 
-            let s = core::str::from_utf8(bytes).map_err(|_e| {
-                #[cfg(feature = "std")]
-                fmt::error!("Invalid UTF8: {}", _e);
+            reader.read_exact(&mut buf).await?;
 
-                Error::Eeprom(EepromError::Decode)
-            })?;
+            fmt::trace!("--> Raw string bytes {:?}", buf);
 
-            // Strip trailing null bytes from string.
-            // TODO: Unit test this when an EEPROM shim is added
-            let s = s.trim_end_matches('\0');
+            // Get rid of any C null terminators
+            buf.retain(|char| *char != 0x00);
 
-            let s = heapless::String::<N>::from_str(s).map_err(|()| {
-                fmt::error!("String too long");
+            // Invariant: EtherCAT "visible string"s are 0x20 to 0x7E
+            if !buf.is_ascii() {
+                fmt::error!("String at index {} is not valid ASCII", search_index);
 
-                Error::Eeprom(EepromError::Decode)
-            })?;
+                return Err(Error::Eeprom(EepromError::Decode));
+            }
+
+            // SAFETY: We've checked the buffer only contains ASCII characters above, so we don't
+            // need to check for valid UTF-8.
+            let s = unsafe { heapless::String::<N>::from_utf8_unchecked(buf) };
 
             fmt::trace!(
                 "--> String at search index {} with length {}: {}",
@@ -401,7 +401,6 @@ where
 mod tests {
     use super::*;
     use crate::{
-        base_data_types::PrimitiveDataType,
         eeprom::{
             file_reader::EepromFile,
             types::{
@@ -537,6 +536,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn single_null_terminator() -> Result<(), Error> {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd_null_strings.hex"));
+
+        // Index 4 was originally "AKD EtherCAT Drive (CoE)", now modified to "AKD EtherCA\0"
+        let s = e.find_string::<64>(4).await?;
+
+        assert_eq!(s.as_ref().map(|s| s.as_str()), Some("AKD EtherCA"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn null_terminators() -> Result<(), Error> {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd_null_strings.hex"));
+
+        // Index 10 was originally "Statusword", now modified to "Statu\0\0\0\0\0"
+        let s = e.find_string::<64>(10).await?;
+
+        assert_eq!(s.as_ref().map(|s| s.as_str()), Some("Statu"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn strings() -> Result<(), Error> {
         let _ = env_logger::builder().is_test(true).try_init();
 
@@ -624,15 +651,15 @@ mod tests {
     async fn output_pdos_only() {
         let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
 
-        fn pdo(index: u16, name_string_idx: u8, entry_idx: u16) -> Pdo {
-            let entry_defaults = PdoEntry {
-                index: 0x7000,
-                sub_index: 1,
-                name_string_idx: 6,
-                data_type: PrimitiveDataType::Bool,
-                data_length_bits: 1,
-                flags: 0,
-            };
+        fn pdo(index: u16, name_string_idx: u8, _entry_idx: u16) -> Pdo {
+            // let entry_defaults = PdoEntry {
+            //     index: 0x7000,
+            //     sub_index: 1,
+            //     name_string_idx: 6,
+            //     data_type: PrimitiveDataType::Bool,
+            //     data_length_bits: 1,
+            //     flags: 0,
+            // };
 
             let pdo_defaults = Pdo {
                 index: 0x1600,
@@ -643,21 +670,24 @@ mod tests {
                 dc_sync: 0,
                 flags: PdoFlags::PDO_MANDATORY | PdoFlags::PDO_FIXED_CONTENT,
 
-                entries: heapless::Vec::from_slice(&[PdoEntry {
-                    index: 0x7000,
-                    ..entry_defaults
-                }])
-                .unwrap(),
+                bit_len: 1,
+                // entries: heapless::Vec::from_slice(&[PdoEntry {
+                //     index: 0x7000,
+                //     ..entry_defaults
+                // }])
+                // .unwrap(),
             };
 
             Pdo {
                 index,
                 name_string_idx,
-                entries: heapless::Vec::from_slice(&[PdoEntry {
-                    index: entry_idx,
-                    ..entry_defaults
-                }])
-                .unwrap(),
+
+                bit_len: 1,
+                // entries: heapless::Vec::from_slice(&[PdoEntry {
+                //     index: entry_idx,
+                //     ..entry_defaults
+                // }])
+                // .unwrap(),
                 ..pdo_defaults
             }
         }

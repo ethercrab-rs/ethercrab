@@ -1,9 +1,8 @@
 //! EtherCrab error types.
 
-use crate::{command::Command, fmt, AlStatusCode, SlaveState};
-use core::{cell::BorrowError, num::TryFromIntError, str::Utf8Error};
-
 pub use crate::coe::abort_code::CoeAbortCode;
+use crate::{command::Command, fmt, AlStatusCode, SlaveState};
+use core::{cell::BorrowError, num::TryFromIntError};
 
 /// An EtherCrab error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -337,8 +336,6 @@ impl core::fmt::Display for EepromError {
 /// An EtherCat "visible string" (i.e. a human readable string) error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum VisibleStringError {
-    /// The string could not be decoded.
-    Decode(Utf8Error),
     /// The source data is too long to fit in a given storage type.
     TooLong,
 }
@@ -347,7 +344,6 @@ pub enum VisibleStringError {
 impl defmt::Format for VisibleStringError {
     fn format(&self, f: defmt::Formatter) {
         match self {
-            VisibleStringError::Decode(_) => defmt::write!(f, "Decode"),
             VisibleStringError::TooLong => defmt::write!(f, "TooLong"),
         }
     }
@@ -356,7 +352,6 @@ impl defmt::Format for VisibleStringError {
 impl core::fmt::Display for VisibleStringError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            VisibleStringError::Decode(e) => write!(f, "failed to decode string: {}", e),
             VisibleStringError::TooLong => f.write_str("string is too long"),
         }
     }
@@ -407,6 +402,12 @@ impl core::fmt::Display for PduValidationError {
 impl From<PduError> for Error {
     fn from(e: PduError) -> Self {
         Self::Pdu(e)
+    }
+}
+
+impl From<EepromError> for Error {
+    fn from(e: EepromError) -> Self {
+        Self::Eeprom(e)
     }
 }
 
