@@ -8,8 +8,8 @@ An EtherCAT master written in Rust.
 
 ### Changed
 
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) PDU retries now use the same PDU
-  index instead of allocating a new frame for every resend.
+- [#216](https://github.com/ethercrab-rs/ethercrab/pull/216) PDU retries now use the same PDU index
+  instead of allocating a new frame for every resend.
 
 ## [0.4.2] - 2024-05-27
 
