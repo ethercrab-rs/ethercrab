@@ -188,8 +188,8 @@ impl EtherCrabWireWriteSized for bool {
 }
 
 impl EtherCrabWireWrite for () {
-    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        &buf[0..0]
+    fn pack_to_slice_unchecked<'buf>(&self, _buf: &'buf mut [u8]) -> &'buf [u8] {
+        &[]
     }
 
     fn packed_len(&self) -> usize {
