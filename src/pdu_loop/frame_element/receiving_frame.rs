@@ -1,9 +1,7 @@
 use crate::{
     error::{Error, PduError},
     fmt,
-    pdu_loop::frame_element::{
-        received_frame::ReceivedFrame, FrameBox, FrameElement, FrameState, PduMarker,
-    },
+    pdu_loop::frame_element::{received_frame::ReceivedFrame, FrameBox, FrameElement, FrameState},
     PduLoop,
 };
 use core::{future::Future, ptr::NonNull, sync::atomic::AtomicU8, task::Poll, time::Duration};

@@ -2,7 +2,7 @@ use crate::{
     error::Error,
     fmt,
     pdu_loop::{
-        frame_element::{FrameBox, FrameElement, FrameState, PduMarker},
+        frame_element::{FrameBox, FrameElement, FrameState},
         frame_header::EthercatFrameHeader,
     },
 };

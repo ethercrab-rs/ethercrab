@@ -6,7 +6,7 @@ use crate::{
         pdu_header::PduHeader,
     },
 };
-use core::{cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
+use core::{marker::PhantomData, ops::Deref, ptr::NonNull};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// A frame element where response data has been received from the EtherCAT network.
@@ -16,18 +16,11 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 #[derive(Debug)]
 pub struct ReceivedFrame<'sto> {
     pub(in crate::pdu_loop::frame_element) inner: FrameBox<'sto>,
-    /// Whether any PDU handles were `take()`n. If this is false, the frame was used in a send-only
-    /// capacity, and no [`ReceivedPdu`]s are held. This means `ReceivedFrame` must be responsible
-    /// for clearing all the PDU claims normally freed by `ReceivedPdu`'s drop impl.
-    unread: Cell<bool>,
 }
 
 impl<'sto> ReceivedFrame<'sto> {
     pub(in crate::pdu_loop) fn new(inner: FrameBox<'sto>) -> ReceivedFrame<'sto> {
-        Self {
-            inner,
-            unread: Cell::new(true),
-        }
+        Self { inner }
     }
 
     pub fn first_pdu(self, handle: PduResponseHandle) -> Result<ReceivedPdu<'sto>, Error> {

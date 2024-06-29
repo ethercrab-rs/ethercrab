@@ -14,7 +14,6 @@ pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
 
 pub(crate) use self::frame_element::created_frame::CreatedFrame;
-pub(crate) use self::frame_element::received_frame::ReceivedFrame;
 pub(crate) use frame_element::received_frame::ReceivedPdu;
 
 pub use frame_element::sendable_frame::SendableFrame;
@@ -23,14 +22,6 @@ pub use frame_element::sendable_frame::SendableFrame;
 pub use frame_header::EthercatFrameHeader;
 #[cfg(feature = "__internals")]
 pub use pdu_header::PduHeader;
-
-/// Unused PDU marker.
-///
-/// The value this is set to should be larger than `u8::MAX` to ensure no valid frame index can
-/// equal it.
-const PDU_UNUSED_SENTINEL: u16 = u16::MAX;
-
-const PDU_SLOTS: usize = 256;
 
 /// The core EtherCrab network communications driver.
 ///

@@ -1,16 +1,12 @@
 use crate::{
-    error::PduError,
-    fmt,
     pdu_loop::{
-        frame_element::{FrameElement, FrameState, PduMarker},
+        frame_element::{FrameElement, FrameState},
         frame_header::EthercatFrameHeader,
-        PDU_SLOTS,
     },
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use atomic_waker::AtomicWaker;
 use core::{
-    alloc::Layout,
     fmt::Debug,
     marker::PhantomData,
     ptr::{addr_of, addr_of_mut, NonNull},

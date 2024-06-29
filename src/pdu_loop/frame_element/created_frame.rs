@@ -3,9 +3,7 @@ use crate::{
     fmt,
     generate::write_packed,
     pdu_loop::{
-        frame_element::{
-            receiving_frame::ReceiveFrameFut, FrameBox, FrameElement, FrameState, PduMarker,
-        },
+        frame_element::{receiving_frame::ReceiveFrameFut, FrameBox, FrameElement, FrameState},
         frame_header::EthercatFrameHeader,
         pdu_flags::PduFlags,
         pdu_header::PduHeader,
@@ -164,9 +162,9 @@ pub struct PduResponseHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, PduMarker};
+    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement};
     use atomic_waker::AtomicWaker;
-    use core::{cell::UnsafeCell, mem::MaybeUninit, ptr::NonNull, sync::atomic::AtomicU8};
+    use core::{cell::UnsafeCell, ptr::NonNull, sync::atomic::AtomicU8};
 
     #[test]
     fn too_long() {
@@ -176,16 +174,12 @@ mod tests {
 
         let pdu_idx = AtomicU8::new(0);
 
-        let mut pdu_markers: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
-        pdu_markers[0].init();
-
         let frames = UnsafeCell::new([FrameElement {
             frame_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
             pdu_payload_len: 0,
-            marker_count: 0,
             pdu_count: 0,
             first_pdu: None,
         }]);
