@@ -937,8 +937,8 @@ where
 
     fn process_pdi_response_with_time(
         &self,
-        dc: &crate::pdu_loop::SimpleReceivedPdu,
-        data: &crate::pdu_loop::SimpleReceivedPdu,
+        dc: &crate::pdu_loop::ReceivedPdu,
+        data: &crate::pdu_loop::ReceivedPdu,
     ) -> Result<(u64, u16), Error> {
         let time = u64::unpack_from_slice(dc)?;
 
@@ -948,10 +948,7 @@ where
     /// Take a received PDI and copy its inputs into the group's memory.
     ///
     /// Returns working counter on success.
-    fn process_pdi_response(
-        &self,
-        data: &crate::pdu_loop::SimpleReceivedPdu,
-    ) -> Result<u16, Error> {
+    fn process_pdi_response(&self, data: &crate::pdu_loop::ReceivedPdu) -> Result<u16, Error> {
         if data.len() != self.pdi().len() {
             fmt::error!(
                 "Data length {} does not match value length {}",

@@ -1,4 +1,4 @@
-use crate::{error::Error, pdu_loop::SimpleReceivedPdu, Client};
+use crate::{error::Error, pdu_loop::ReceivedPdu, Client};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 
 /// Write commands.
@@ -120,7 +120,7 @@ impl WrappedWrite {
         self,
         client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
-    ) -> Result<SimpleReceivedPdu<'client>, Error> {
+    ) -> Result<ReceivedPdu<'client>, Error> {
         self.common(client, value, None).await?.maybe_wkc(self.wkc)
     }
 
@@ -130,7 +130,7 @@ impl WrappedWrite {
         client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-    ) -> Result<SimpleReceivedPdu<'client>, Error> {
+    ) -> Result<ReceivedPdu<'client>, Error> {
         client
             .single_pdu(self.command.into(), &value, len_override)
             .await

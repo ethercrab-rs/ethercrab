@@ -19,7 +19,7 @@ use crate::{
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::{MailboxHeader, MailboxType},
-    pdu_loop::{ReceivedPdu, SimpleReceivedPdu},
+    pdu_loop::ReceivedPdu,
     register::{DcSupport, RegisterAddress, SupportFlags},
     slave::{ports::Ports, types::SlaveConfig},
     slave_state::SlaveState,
@@ -456,7 +456,7 @@ where
     }
 
     /// Wait for a mailbox response
-    async fn coe_response(&self, read_mailbox: &Mailbox) -> Result<SimpleReceivedPdu, Error> {
+    async fn coe_response(&self, read_mailbox: &Mailbox) -> Result<ReceivedPdu, Error> {
         let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
 
         // Wait for slave OUT mailbox to be ready
@@ -499,7 +499,7 @@ where
 
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
     /// and return as a slice.
-    async fn send_coe_service<R>(&'a self, request: R) -> Result<(R, SimpleReceivedPdu), Error>
+    async fn send_coe_service<R>(&'a self, request: R) -> Result<(R, ReceivedPdu), Error>
     where
         R: CoeServiceRequest + Debug,
     {

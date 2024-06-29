@@ -15,7 +15,7 @@ pub use storage::PduStorage;
 
 pub(crate) use self::frame_element::created_frame::CreatedFrame;
 pub(crate) use self::frame_element::received_frame::ReceivedFrame;
-pub(crate) use frame_element::received_frame::{ReceivedPdu, SimpleReceivedPdu};
+pub(crate) use frame_element::received_frame::ReceivedPdu;
 
 pub use frame_element::sendable_frame::SendableFrame;
 
@@ -271,7 +271,7 @@ mod tests {
             // from
             match frame_fut.poll(ctx) {
                 Poll::Ready(Ok(frame)) => {
-                    let response = frame.take(handle).expect("Handle");
+                    let response = frame.first_pdu().expect("Handle");
 
                     assert_eq!(response.deref(), &data);
                 }
@@ -403,7 +403,7 @@ mod tests {
             // from
             match frame_fut.poll(ctx) {
                 Poll::Ready(Ok(frame)) => {
-                    assert_eq!(frame.take(handle).unwrap().deref(), &data_bytes);
+                    assert_eq!(frame.first_pdu().unwrap().deref(), &data_bytes);
                 }
                 Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
                 Poll::Pending => panic!("frame future still pending"),
@@ -484,7 +484,7 @@ mod tests {
                 .await
                 .expect("Future");
 
-            let received_data = result.take(handle).expect("Take");
+            let received_data = result.first_pdu().expect("Take");
 
             assert_eq!(&*received_data, &data);
         }
@@ -597,7 +597,7 @@ mod tests {
                     }
                     .expect("Future");
 
-                    let received_data = result.take(handle).expect("Take");
+                    let received_data = result.first_pdu().expect("Take");
 
                     assert_eq!(&*received_data, &data);
                 });
