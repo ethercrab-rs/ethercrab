@@ -490,11 +490,11 @@ impl<'sto> Client<'sto> {
         len_override: Option<u16>,
     ) -> Result<ReceivedPdu<'sto>, Error> {
         // Using a block to reduce future's stack size
-        let (frame, frame_idx) = {
+        let (frame, frame_idx, handle) = {
             let mut frame = self.pdu_loop.alloc_frame()?;
             let frame_idx = frame.frame_index();
 
-            frame.push_pdu(command, data, len_override, false)?;
+            let handle = frame.push_pdu(command, data, len_override, false)?;
 
             let frame = frame.mark_sendable(
                 &self.pdu_loop,
@@ -504,7 +504,7 @@ impl<'sto> Client<'sto> {
 
             self.pdu_loop.wake_sender();
 
-            (frame, frame_idx)
+            (frame, frame_idx, handle)
         };
 
         let received = match frame.await {
@@ -517,7 +517,7 @@ impl<'sto> Client<'sto> {
             Err(e) => return Err(e),
         };
 
-        received.first_pdu()
+        received.first_pdu(handle)
     }
 }
 

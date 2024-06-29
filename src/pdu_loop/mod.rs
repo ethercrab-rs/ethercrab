@@ -271,7 +271,7 @@ mod tests {
             // from
             match frame_fut.poll(ctx) {
                 Poll::Ready(Ok(frame)) => {
-                    let response = frame.first_pdu().expect("Handle");
+                    let response = frame.first_pdu(handle).expect("Handle");
 
                     assert_eq!(response.deref(), &data);
                 }
@@ -403,7 +403,7 @@ mod tests {
             // from
             match frame_fut.poll(ctx) {
                 Poll::Ready(Ok(frame)) => {
-                    assert_eq!(frame.first_pdu().unwrap().deref(), &data_bytes);
+                    assert_eq!(frame.first_pdu(handle).unwrap().deref(), &data_bytes);
                 }
                 Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
                 Poll::Pending => panic!("frame future still pending"),
@@ -484,7 +484,7 @@ mod tests {
                 .await
                 .expect("Future");
 
-            let received_data = result.first_pdu().expect("Take");
+            let received_data = result.first_pdu(handle).expect("Take");
 
             assert_eq!(&*received_data, &data);
         }
@@ -597,7 +597,7 @@ mod tests {
                     }
                     .expect("Future");
 
-                    let received_data = result.first_pdu().expect("Take");
+                    let received_data = result.first_pdu(handle).expect("Take");
 
                     assert_eq!(&*received_data, &data);
                 });

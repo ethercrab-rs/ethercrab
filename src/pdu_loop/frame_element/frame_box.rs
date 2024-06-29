@@ -199,34 +199,12 @@ impl<'sto> FrameBox<'sto> {
         Ok(pdu_idx)
     }
 
-    pub fn pdu_marker_at(&self, index: u8) -> &PduMarker {
-        unsafe {
-            let base_ptr = self.pdu_markers.as_ptr();
-
-            let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
-
-            let stride = layout.size() / PDU_SLOTS;
-
-            let this_marker = base_ptr.byte_add(usize::from(index) * stride);
-
-            &*this_marker
-        }
-    }
-
     pub fn set_state(&self, to: FrameState) {
         unsafe { FrameElement::set_state(self.frame, to) };
     }
 
     pub fn swap_state(&self, from: FrameState, to: FrameState) -> Result<(), FrameState> {
         unsafe { FrameElement::swap_state(self.frame, from, to) }.map(|_| ())
-    }
-
-    pub fn inc_refcount(&self) {
-        unsafe { FrameElement::<0>::inc_refcount(self.frame) };
-    }
-
-    pub fn dec_refcount(&self) -> u8 {
-        unsafe { FrameElement::<0>::dec_refcount(self.frame) }
     }
 
     pub fn add_pdu(&mut self, alloc_size: usize, pdu_idx: u8) {

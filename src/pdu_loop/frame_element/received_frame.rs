@@ -2,9 +2,7 @@ use crate::{
     error::{Error, PduError},
     fmt,
     pdu_loop::{
-        frame_element::{
-            created_frame::PduResponseHandle, FrameBox, FrameElement, FrameState, PduMarker,
-        },
+        frame_element::{created_frame::PduResponseHandle, FrameBox, FrameState},
         pdu_header::PduHeader,
     },
 };
@@ -32,7 +30,7 @@ impl<'sto> ReceivedFrame<'sto> {
         }
     }
 
-    pub fn first_pdu(self) -> Result<ReceivedPdu<'sto>, Error> {
+    pub fn first_pdu(self, handle: PduResponseHandle) -> Result<ReceivedPdu<'sto>, Error> {
         let buf = self.inner.pdu_buf();
 
         let pdu_header = PduHeader::unpack_from_slice(buf)?;
@@ -43,6 +41,14 @@ impl<'sto> ReceivedFrame<'sto> {
         // someone is committing epic haxx.
         if buf.len() < payload_len + 2 {
             return Err(Error::Pdu(PduError::TooLong));
+        }
+
+        if pdu_header.command_code != handle.command_code {
+            return Err(Error::Pdu(PduError::Decode));
+        }
+
+        if pdu_header.index != handle.pdu_idx {
+            return Err(Error::Pdu(PduError::InvalidIndex(pdu_header.index)));
         }
 
         let payload_ptr =
