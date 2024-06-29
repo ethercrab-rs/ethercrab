@@ -54,7 +54,7 @@ impl<'sto> ReceivedFrame<'sto> {
         Ok(ReceivedPdu {
             data_start: payload_ptr,
             len: payload_len,
-            working_counter: working_counter,
+            working_counter,
             _storage: PhantomData,
         })
     }
@@ -103,7 +103,7 @@ impl<'sto> ReceivedFrame<'sto> {
         Ok(ReceivedPdu {
             data_start: payload_ptr,
             len: payload_len,
-            working_counter: working_counter,
+            working_counter,
             _storage: PhantomData,
         })
     }
