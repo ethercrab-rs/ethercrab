@@ -116,14 +116,11 @@ impl WrappedWrite {
     }
 
     /// Similar to [`send_receive`](WrappedWrite::send_receive) but returns a slice.
-    pub async fn send_receive_slice<'data, 'client>(
+    pub async fn send_receive_slice<'client>(
         self,
         client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
-    ) -> Result<ReceivedPdu<'data, ()>, Error>
-    where
-        'client: 'data,
-    {
+    ) -> Result<ReceivedPdu<'client>, Error> {
         self.common(client, value, None).await?.maybe_wkc(self.wkc)
     }
 
@@ -133,7 +130,7 @@ impl WrappedWrite {
         client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-    ) -> Result<ReceivedPdu<'client, ()>, Error> {
+    ) -> Result<ReceivedPdu<'client>, Error> {
         client
             .single_pdu(self.command.into(), &value, len_override)
             .await

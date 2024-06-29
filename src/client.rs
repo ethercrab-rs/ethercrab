@@ -3,10 +3,10 @@ use crate::{
     al_status_code::AlStatusCode,
     command::Command,
     dc,
-    error::{Error, Item, PduError},
+    error::{Error, Item},
     fmt,
     pdi::PdiOffset,
-    pdu_loop::{CreatedFrame, PduLoop, ReceivedFrame, ReceivedPdu},
+    pdu_loop::{PduLoop, ReceivedPdu},
     register::RegisterAddress,
     slave::Slave,
     slave_group::{self, SlaveGroupHandle},
@@ -482,50 +482,13 @@ impl<'sto> Client<'sto> {
         self.pdu_loop.max_frame_data()
     }
 
-    /// Send one or more PDUs in a frame.
-    pub(crate) async fn multi_pdu<T, H>(
-        &self,
-        send: impl Fn(&mut CreatedFrame) -> Result<H, PduError>,
-        take: impl Fn(ReceivedFrame<'_>, H) -> Result<T, Error>,
-    ) -> Result<T, Error> {
-        // Using a block to reduce future's stack size
-        let (frame, frame_idx, handles) = {
-            let mut frame = self.pdu_loop.alloc_frame()?;
-            let frame_idx = frame.frame_index();
-
-            let handles = send(&mut frame)?;
-
-            let frame = frame.mark_sendable(
-                &self.pdu_loop,
-                self.timeouts.pdu,
-                self.config.retry_behaviour.retry_count(),
-            );
-
-            self.pdu_loop.wake_sender();
-
-            (frame, frame_idx, handles)
-        };
-
-        let received = match frame.await {
-            Ok(received) => received,
-            Err(Error::Timeout) => {
-                fmt::error!("Frame index {} timed out", frame_idx);
-
-                return Err(Error::Timeout);
-            }
-            Err(e) => return Err(e),
-        };
-
-        take(received, handles)
-    }
-
     /// Send a single PDU in a frame.
-    pub(crate) async fn single_pdu<T>(
-        &self,
+    pub(crate) async fn single_pdu(
+        &'sto self,
         command: Command,
         data: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-    ) -> Result<ReceivedPdu<'_, T>, Error> {
+    ) -> Result<ReceivedPdu<'sto>, Error> {
         // Using a block to reduce future's stack size
         let (frame, frame_idx, handle) = {
             let mut frame = self.pdu_loop.alloc_frame()?;
@@ -554,7 +517,7 @@ impl<'sto> Client<'sto> {
             Err(e) => return Err(e),
         };
 
-        received.take(handle)
+        received.first_pdu(handle)
     }
 }
 

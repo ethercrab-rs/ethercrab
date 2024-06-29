@@ -14,7 +14,6 @@ pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
 
 pub(crate) use self::frame_element::created_frame::CreatedFrame;
-pub(crate) use self::frame_element::received_frame::ReceivedFrame;
 pub(crate) use frame_element::received_frame::ReceivedPdu;
 
 pub use frame_element::sendable_frame::SendableFrame;
@@ -23,14 +22,6 @@ pub use frame_element::sendable_frame::SendableFrame;
 pub use frame_header::EthercatFrameHeader;
 #[cfg(feature = "__internals")]
 pub use pdu_header::PduHeader;
-
-/// Unused PDU marker.
-///
-/// The value this is set to should be larger than `u8::MAX` to ensure no valid frame index can
-/// equal it.
-const PDU_UNUSED_SENTINEL: u16 = u16::MAX;
-
-const PDU_SLOTS: usize = 256;
 
 /// The core EtherCrab network communications driver.
 ///
@@ -92,7 +83,7 @@ impl<'sto> PduLoop<'sto> {
     ) -> Result<(), Error> {
         let mut frame = self.storage.alloc_frame()?;
 
-        frame.push_pdu::<()>(
+        frame.push_pdu(
             Command::bwr(register).into(),
             (),
             Some(payload_length),
@@ -137,7 +128,7 @@ mod tests {
         let mut frame = pdu_loop.storage.alloc_frame().expect("Alloc");
 
         frame
-            .push_pdu::<()>(
+            .push_pdu(
                 Reads::Brd {
                     address: 0,
                     register: 0,
@@ -179,7 +170,7 @@ mod tests {
         let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
         let _handle = frame
-            .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
+            .push_pdu(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
             .expect("Push");
 
         let frame = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
@@ -223,7 +214,7 @@ mod tests {
             let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 
             let handle = frame
-                .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), &data, None, false)
+                .push_pdu(Command::fpwr(0x5678, 0x1234).into(), &data, None, false)
                 .expect("Push PDU");
 
             let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
@@ -271,7 +262,7 @@ mod tests {
             // from
             match frame_fut.poll(ctx) {
                 Poll::Ready(Ok(frame)) => {
-                    let response = frame.take(handle).expect("Handle");
+                    let response = frame.first_pdu(handle).expect("Handle");
 
                     assert_eq!(response.deref(), &data);
                 }
@@ -301,7 +292,7 @@ mod tests {
         let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
         let _handle = frame
-            .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
+            .push_pdu(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
             .expect("Push PDU");
 
         // Drop frame future to reset its state to `FrameState::None`
@@ -314,7 +305,7 @@ mod tests {
         let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
         let _handle = frame
-            .push_pdu::<()>(Command::fpwr(0x6789, 0x1234).into(), data, None, false)
+            .push_pdu(Command::fpwr(0x6789, 0x1234).into(), data, None, false)
             .expect("Push second PDU");
 
         let frame = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
@@ -371,7 +362,7 @@ mod tests {
             let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
             let handle = frame
-                .push_pdu::<()>(
+                .push_pdu(
                     Command::fpwr(0x6789, 0x1234).into(),
                     &data_bytes,
                     None,
@@ -403,7 +394,7 @@ mod tests {
             // from
             match frame_fut.poll(ctx) {
                 Poll::Ready(Ok(frame)) => {
-                    assert_eq!(frame.take(handle).unwrap().deref(), &data_bytes);
+                    assert_eq!(frame.first_pdu(handle).unwrap().deref(), &data_bytes);
                 }
                 Poll::Ready(other) => panic!("Expected Ready(Ok()), got {:?}", other),
                 Poll::Pending => panic!("frame future still pending"),
@@ -476,7 +467,7 @@ mod tests {
             let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 
             let handle = frame
-                .push_pdu::<()>(Command::fpwr(0x1000, 0x980).into(), data, None, false)
+                .push_pdu(Command::fpwr(0x1000, 0x980).into(), data, None, false)
                 .expect("Push PDU");
 
             let result = frame
@@ -484,7 +475,7 @@ mod tests {
                 .await
                 .expect("Future");
 
-            let received_data = result.take(handle).expect("Take");
+            let received_data = result.first_pdu(handle).expect("Take");
 
             assert_eq!(&*received_data, &data);
         }
@@ -580,7 +571,7 @@ mod tests {
                     let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 
                     let handle = frame
-                        .push_pdu::<()>(Command::fpwr(0x1000, 0x980).into(), data, None, false)
+                        .push_pdu(Command::fpwr(0x1000, 0x980).into(), data, None, false)
                         .expect("Push PDU");
 
                     let mut x =
@@ -597,7 +588,7 @@ mod tests {
                     }
                     .expect("Future");
 
-                    let received_data = result.take(handle).expect("Take");
+                    let received_data = result.first_pdu(handle).expect("Take");
 
                     assert_eq!(&*received_data, &data);
                 });

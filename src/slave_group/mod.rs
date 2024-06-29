@@ -863,33 +863,45 @@ where
         );
 
         if let Some(dc_ref) = client.dc_ref_address() {
-            let (time, wkc) = client
-                .multi_pdu(
-                    |frame| {
-                        let dc_handle = frame.push_pdu::<u64>(
-                            Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into()).into(),
-                            0u64,
-                            None,
-                            true,
-                        )?;
+            let mut frame = client.pdu_loop.alloc_frame()?;
+            let frame_idx = frame.frame_index();
 
-                        let pdu_handle = frame.push_pdu::<()>(
-                            Command::lrw(self.inner().pdi_start.start_address).into(),
-                            self.pdi(),
-                            None,
-                            false,
-                        )?;
+            let dc_handle = frame.push_pdu(
+                Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into()).into(),
+                0u64,
+                None,
+                true,
+            )?;
 
-                        Ok((dc_handle, pdu_handle))
-                    },
-                    |received, (dc, data)| {
-                        self.process_pdi_response_with_time(
-                            &received.take(dc)?,
-                            &received.take(data)?,
-                        )
-                    },
-                )
-                .await?;
+            let pdu_handle = frame.push_pdu(
+                Command::lrw(self.inner().pdi_start.start_address).into(),
+                self.pdi(),
+                None,
+                false,
+            )?;
+
+            let frame = frame.mark_sendable(
+                &client.pdu_loop,
+                client.timeouts.pdu,
+                client.config.retry_behaviour.retry_count(),
+            );
+
+            client.pdu_loop.wake_sender();
+
+            let received = match frame.await {
+                Ok(received) => received,
+                Err(Error::Timeout) => {
+                    fmt::error!("Frame index {} timed out", frame_idx);
+
+                    return Err(Error::Timeout);
+                }
+                Err(e) => return Err(e),
+            };
+
+            let (time, wkc) = self.process_pdi_response_with_time(
+                &received.pdu(dc_handle)?,
+                &received.pdu(pdu_handle)?,
+            )?;
 
             Ok((wkc, Some(time)))
         } else {
@@ -899,8 +911,8 @@ where
 
     fn process_pdi_response_with_time(
         &self,
-        dc: &crate::pdu_loop::ReceivedPdu<'_, u64>,
-        data: &crate::pdu_loop::ReceivedPdu<'_, ()>,
+        dc: &crate::pdu_loop::ReceivedPdu,
+        data: &crate::pdu_loop::ReceivedPdu,
     ) -> Result<(u64, u16), Error> {
         let time = u64::unpack_from_slice(dc)?;
 
@@ -910,10 +922,7 @@ where
     /// Take a received PDI and copy its inputs into the group's memory.
     ///
     /// Returns working counter on success.
-    fn process_pdi_response(
-        &self,
-        data: &crate::pdu_loop::ReceivedPdu<'_, ()>,
-    ) -> Result<u16, Error> {
+    fn process_pdi_response(&self, data: &crate::pdu_loop::ReceivedPdu) -> Result<u16, Error> {
         if data.len() != self.pdi().len() {
             fmt::error!(
                 "Data length {} does not match value length {}",
@@ -1062,31 +1071,45 @@ where
             self.read_pdi_len
         );
 
-        let (time, wkc) = client
-            .multi_pdu(
-                |frame| {
-                    let dc_handle = frame.push_pdu::<u64>(
-                        Command::frmw(self.dc_conf.reference, RegisterAddress::DcSystemTime.into())
-                            .into(),
-                        0u64,
-                        None,
-                        true,
-                    )?;
+        let mut frame = client.pdu_loop.alloc_frame()?;
+        let frame_idx = frame.frame_index();
 
-                    let pdu_handle = frame.push_pdu::<()>(
-                        Command::lrw(self.inner().pdi_start.start_address).into(),
-                        self.pdi(),
-                        None,
-                        false,
-                    )?;
+        let dc_handle = frame.push_pdu(
+            Command::frmw(self.dc_conf.reference, RegisterAddress::DcSystemTime.into()).into(),
+            0u64,
+            None,
+            true,
+        )?;
 
-                    Ok((dc_handle, pdu_handle))
-                },
-                |received, (dc, data)| {
-                    self.process_pdi_response_with_time(&received.take(dc)?, &received.take(data)?)
-                },
-            )
-            .await?;
+        let pdu_handle = frame.push_pdu(
+            Command::lrw(self.inner().pdi_start.start_address).into(),
+            self.pdi(),
+            None,
+            false,
+        )?;
+
+        let frame = frame.mark_sendable(
+            &client.pdu_loop,
+            client.timeouts.pdu,
+            client.config.retry_behaviour.retry_count(),
+        );
+
+        client.pdu_loop.wake_sender();
+
+        let received = match frame.await {
+            Ok(received) => received,
+            Err(Error::Timeout) => {
+                fmt::error!("Frame index {} timed out", frame_idx);
+
+                return Err(Error::Timeout);
+            }
+            Err(e) => return Err(e),
+        };
+
+        let (time, wkc) = self.process_pdi_response_with_time(
+            &received.pdu(dc_handle)?,
+            &received.pdu(pdu_handle)?,
+        )?;
 
         // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
         // time is rounded to a whole number of `sync0_period`-length cycles.
