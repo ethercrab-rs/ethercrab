@@ -29,13 +29,12 @@ impl<'sto> CreatedFrame<'sto> {
     pub(in crate::pdu_loop) fn claim_created(
         frame: NonNull<FrameElement<0>>,
         frame_index: u8,
-        pdu_markers: NonNull<PduMarker>,
         pdu_idx: &'sto AtomicU8,
         frame_data_len: usize,
     ) -> Result<Self, PduError> {
         let frame = unsafe { FrameElement::claim_created(frame, frame_index)? };
 
-        let mut inner = FrameBox::new(frame, pdu_markers, pdu_idx, frame_data_len);
+        let mut inner = FrameBox::new(frame, pdu_idx, frame_data_len);
 
         inner.init();
 
@@ -92,7 +91,7 @@ impl<'sto> CreatedFrame<'sto> {
         let buf_range = consumed..(consumed + alloc_size);
 
         // Establish mapping between this PDU index and the Ethernet frame it's being put in
-        let pdu_idx = self.inner.reserve_pdu_marker(self.frame_index())?;
+        let pdu_idx = self.inner.next_pdu_idx();
 
         fmt::trace!(
             "Write PDU {:#04x} into frame index {} ({}, {} bytes at {:?})",
@@ -126,7 +125,6 @@ impl<'sto> CreatedFrame<'sto> {
         // zero-initialised) so there's nothing to do.
 
         // Don't need to check length here as we do that with `pdu_buf_mut().get_mut()` above.
-        // DELETEME
         self.inner.add_pdu(alloc_size, pdu_idx);
 
         let index_in_frame = self.pdu_count;
@@ -195,7 +193,6 @@ mod tests {
         let mut created = CreatedFrame::claim_created(
             unsafe { NonNull::new_unchecked(frames.get().cast()) },
             0xab,
-            unsafe { NonNull::new_unchecked(pdu_markers.as_mut_ptr()) },
             &pdu_idx,
             BUF_LEN,
         )

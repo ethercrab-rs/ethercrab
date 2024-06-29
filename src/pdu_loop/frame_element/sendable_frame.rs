@@ -57,14 +57,13 @@ unsafe impl<'sto> Send for SendableFrame<'sto> {}
 impl<'sto> SendableFrame<'sto> {
     pub(crate) fn claim_sending(
         frame: NonNull<FrameElement<0>>,
-        pdu_markers: NonNull<PduMarker>,
         pdu_idx: &'sto AtomicU8,
         frame_data_len: usize,
     ) -> Option<Self> {
         let frame = unsafe { FrameElement::claim_sending(frame)? };
 
         Some(Self {
-            inner: FrameBox::new(frame, pdu_markers, pdu_idx, frame_data_len),
+            inner: FrameBox::new(frame, pdu_idx, frame_data_len),
         })
     }
 

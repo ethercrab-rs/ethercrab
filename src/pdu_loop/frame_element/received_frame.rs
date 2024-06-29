@@ -117,23 +117,11 @@ impl<'sto> ReceivedFrame<'sto> {
 
 impl<'sto> Drop for ReceivedFrame<'sto> {
     fn drop(&mut self) {
-        // No PDU results where `take()`n so we have to free the frame here, instead of relying on
-        // `ReceivedPdu::drop`.
-        if self.unread.get() {
-            fmt::trace!(
-                "Frame index {} was untouched, freeing",
-                self.inner.frame_index()
-            );
-
-            self.inner.release_pdu_claims();
-
-            // Invariant: the frame can only be in `RxProcessing` at this point, so if this
-            // swap fails there's either a logic bug, or we should panic anyway because the
-            // hardware failed.
-            fmt::unwrap!(self
-                .inner
-                .swap_state(FrameState::RxProcessing, FrameState::None));
-        }
+        // Invariant: the frame can only be in `RxProcessing` at this point, so if this swap fails
+        // there's either a logic bug, or we should panic anyway because the hardware failed.
+        fmt::unwrap!(self
+            .inner
+            .swap_state(FrameState::RxProcessing, FrameState::None));
     }
 }
 

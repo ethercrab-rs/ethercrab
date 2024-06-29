@@ -212,13 +212,8 @@ impl<'sto> PduStorageRef<'sto> {
             // variable in the frame, and the atomic index counter above.
             let frame = self.frame_at_index(usize::from(frame_idx));
 
-            let frame = CreatedFrame::claim_created(
-                frame,
-                frame_idx,
-                self.pdu_markers,
-                self.pdu_idx,
-                self.frame_data_len,
-            );
+            let frame =
+                CreatedFrame::claim_created(frame, frame_idx, self.pdu_idx, self.frame_data_len);
 
             if let Ok(f) = frame {
                 return Ok(f);
@@ -248,7 +243,6 @@ impl<'sto> PduStorageRef<'sto> {
 
         ReceivingFrame::claim_receiving(
             self.frame_at_index(frame_idx),
-            self.pdu_markers,
             self.pdu_idx,
             self.frame_data_len,
         )

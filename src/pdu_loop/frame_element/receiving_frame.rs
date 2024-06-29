@@ -20,14 +20,13 @@ pub struct ReceivingFrame<'sto> {
 impl<'sto> ReceivingFrame<'sto> {
     pub(in crate::pdu_loop) fn claim_receiving(
         frame: NonNull<FrameElement<0>>,
-        pdu_markers: NonNull<PduMarker>,
         pdu_idx: &'sto AtomicU8,
         frame_data_len: usize,
     ) -> Option<Self> {
         let frame = unsafe { FrameElement::claim_receiving(frame)? };
 
         Some(Self {
-            inner: FrameBox::new(frame, pdu_markers, pdu_idx, frame_data_len),
+            inner: FrameBox::new(frame, pdu_idx, frame_data_len),
         })
     }
 
@@ -133,8 +132,6 @@ impl<'sto> ReceiveFrameFut<'sto> {
     }
 
     fn release(r: FrameBox<'sto>) {
-        r.release_pdu_claims();
-
         // Make frame available for reuse if this future is dropped.
         r.set_state(FrameState::None);
     }

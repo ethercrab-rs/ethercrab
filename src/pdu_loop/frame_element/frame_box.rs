@@ -24,7 +24,6 @@ use smoltcp::wire::{EthernetAddress, EthernetFrame};
 #[derive(Copy, Clone)]
 pub struct FrameBox<'sto> {
     frame: NonNull<FrameElement<0>>,
-    pdu_markers: NonNull<PduMarker>,
     pdu_idx: &'sto AtomicU8,
     max_len: usize,
     _lifetime: PhantomData<&'sto mut FrameElement<0>>,
@@ -48,14 +47,12 @@ impl<'sto> FrameBox<'sto> {
     /// Wrap a [`FrameElement`] pointer in a `FrameBox` without modifying the underlying data.
     pub fn new(
         frame: NonNull<FrameElement<0>>,
-        pdu_markers: NonNull<PduMarker>,
         pdu_idx: &'sto AtomicU8,
         max_len: usize,
     ) -> FrameBox<'sto> {
         Self {
             frame,
             max_len,
-            pdu_markers,
             pdu_idx,
             _lifetime: PhantomData,
         }
@@ -76,7 +73,7 @@ impl<'sto> FrameBox<'sto> {
         ethernet_frame.payload_mut().fill(0);
     }
 
-    fn next_pdu_idx(&self) -> u8 {
+    pub fn next_pdu_idx(&self) -> u8 {
         self.pdu_idx.fetch_add(1, Ordering::Relaxed)
     }
 
@@ -158,45 +155,8 @@ impl<'sto> FrameBox<'sto> {
         }
     }
 
-    pub fn release_pdu_claims(&self) {
-        let frame_index = u16::from(self.frame_index());
-
-        fmt::trace!("Releasing PDUs from frame index {}", frame_index);
-
-        let states: &[PduMarker] =
-            unsafe { core::slice::from_raw_parts(self.pdu_markers.as_ptr().cast(), PDU_SLOTS) };
-
-        states
-            .iter()
-            .filter(|marker| marker.frame_index.load(Ordering::Relaxed) == frame_index)
-            .take(unsafe { usize::from(FrameElement::<0>::pdu_count(self.frame)) })
-            .for_each(|marker| {
-                marker.release();
-            });
-    }
-
     pub fn pdu_payload_len(&self) -> usize {
         unsafe { *addr_of!((*self.frame.as_ptr()).pdu_payload_len) }
-    }
-
-    pub fn reserve_pdu_marker(&self, frame_index: u8) -> Result<u8, PduError> {
-        let pdu_idx = self.next_pdu_idx();
-
-        let marker = unsafe {
-            let base_ptr: *const PduMarker = self.pdu_markers.as_ptr().cast();
-
-            let layout = Layout::array::<PduMarker>(PDU_SLOTS).unwrap();
-
-            let stride = layout.size() / PDU_SLOTS;
-
-            let this_marker = base_ptr.byte_add(usize::from(pdu_idx) * stride);
-
-            &*this_marker
-        };
-
-        marker.reserve(frame_index)?;
-
-        Ok(pdu_idx)
     }
 
     pub fn set_state(&self, to: FrameState) {
@@ -210,7 +170,6 @@ impl<'sto> FrameBox<'sto> {
     pub fn add_pdu(&mut self, alloc_size: usize, pdu_idx: u8) {
         unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += alloc_size };
 
-        unsafe { FrameElement::<0>::inc_pdu_count(self.frame) };
         unsafe { FrameElement::<0>::set_first_pdu(self.frame, pdu_idx) };
     }
 }
