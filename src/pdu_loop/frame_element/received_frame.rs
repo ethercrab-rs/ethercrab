@@ -2,7 +2,9 @@ use crate::{
     error::{Error, PduError},
     fmt,
     pdu_loop::{
-        frame_element::{created_frame::PduResponseHandle, FrameBox, FrameState, PduMarker},
+        frame_element::{
+            created_frame::PduResponseHandle, FrameBox, FrameElement, FrameState, PduMarker,
+        },
         pdu_header::PduHeader,
     },
 };
@@ -94,6 +96,74 @@ impl<'sto> ReceivedFrame<'sto> {
             _ty: PhantomData,
             _storage: PhantomData,
             pdu_idx: pdu_header.index,
+        })
+    }
+
+    pub fn first_pdu(self) -> Result<SimpleReceivedPdu<'sto>, Error> {
+        let mut buf = self.inner.pdu_buf();
+
+        let pdu_header = PduHeader::unpack_from_slice(buf)?;
+
+        let payload_len = usize::from(pdu_header.flags.len());
+
+        // If buffer isn't long enough to hold payload and WKC, this is probably a corrupt PDU or
+        // someone is committing epic haxx.
+        if buf.len() < payload_len + 2 {
+            return Err(Error::Pdu(PduError::TooLong));
+        }
+
+        let payload_ptr =
+            unsafe { NonNull::new_unchecked(buf[PduHeader::PACKED_LEN..].as_ptr().cast_mut()) };
+
+        let working_counter =
+            u16::unpack_from_slice(&buf[(PduHeader::PACKED_LEN + payload_len)..])?;
+
+        Ok(SimpleReceivedPdu {
+            data_start: payload_ptr,
+            len: payload_len,
+            working_counter: working_counter,
+            _storage: PhantomData,
+        })
+    }
+
+    pub fn pdu<'pdu>(&'sto self, index: u8) -> Result<SimpleReceivedPdu<'pdu>, Error>
+    where
+        'sto: 'pdu,
+    {
+        let mut buf = self.inner.pdu_buf();
+
+        // Skip over any preceding PDUs
+        for _ in 0..index {
+            let pdu_header = PduHeader::unpack_from_slice(buf)?;
+            let payload_len = usize::from(pdu_header.flags.len());
+            let this_pdu_len = PduHeader::PACKED_LEN + payload_len + 2;
+
+            // Start buffer at beginning of next PDU
+            buf = &buf[this_pdu_len..];
+        }
+
+        // This checks for buffer min length
+        let pdu_header = PduHeader::unpack_from_slice(buf)?;
+
+        let payload_len = usize::from(pdu_header.flags.len());
+
+        // If buffer isn't long enough to hold payload and WKC, this is probably a corrupt PDU or
+        // someone is committing epic haxx.
+        if buf.len() < payload_len + 2 {
+            return Err(Error::Pdu(PduError::TooLong));
+        }
+
+        let payload_ptr =
+            unsafe { NonNull::new_unchecked(buf[PduHeader::PACKED_LEN..].as_ptr().cast_mut()) };
+
+        let working_counter =
+            u16::unpack_from_slice(&buf[(PduHeader::PACKED_LEN + payload_len)..])?;
+
+        Ok(SimpleReceivedPdu {
+            data_start: payload_ptr,
+            len: payload_len,
+            working_counter: working_counter,
+            _storage: PhantomData,
         })
     }
 }
@@ -212,6 +282,65 @@ impl<'sto, T> Deref for ReceivedPdu<'sto, T> {
 
     // Temporally shorter borrow: This ref is the lifetime of ReceivedPdu, not 'sto. This is the
     // magic.
+    fn deref(&self) -> &Self::Target {
+        let len = self.len();
+
+        unsafe { core::slice::from_raw_parts(self.data_start.as_ptr(), len) }
+    }
+}
+
+// ---
+// ---
+// ---
+// ---
+
+#[derive(Debug)]
+pub struct SimpleReceivedPdu<'sto> {
+    data_start: NonNull<u8>,
+    len: usize,
+    pub(crate) working_counter: u16,
+    _storage: PhantomData<&'sto ()>,
+}
+
+impl<'sto> SimpleReceivedPdu<'sto> {
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn trim_front(&mut self, ct: usize) {
+        let ct = ct.min(self.len());
+
+        self.data_start = unsafe { NonNull::new_unchecked(self.data_start.as_ptr().add(ct)) };
+    }
+
+    pub fn wkc(self, expected: u16) -> Result<Self, Error> {
+        if self.working_counter == expected {
+            Ok(self)
+        } else {
+            Err(Error::WorkingCounter {
+                expected,
+                received: self.working_counter,
+            })
+        }
+    }
+
+    pub fn maybe_wkc(self, expected: Option<u16>) -> Result<Self, Error> {
+        match expected {
+            Some(expected) => self.wkc(expected),
+            None => Ok(self),
+        }
+    }
+}
+
+// SAFETY: This is ok because we respect the lifetime of the underlying data by carrying the 'sto
+// lifetime.
+unsafe impl<'sto> Send for SimpleReceivedPdu<'sto> {}
+
+impl<'sto> Deref for SimpleReceivedPdu<'sto> {
+    type Target = [u8];
+
+    // Temporally shorter borrow: This ref is the lifetime of SimpleReceivedPdu, not 'sto. This is
+    // the magic.
     fn deref(&self) -> &Self::Target {
         let len = self.len();
 

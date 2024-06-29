@@ -15,7 +15,7 @@ pub use storage::PduStorage;
 
 pub(crate) use self::frame_element::created_frame::CreatedFrame;
 pub(crate) use self::frame_element::received_frame::ReceivedFrame;
-pub(crate) use frame_element::received_frame::ReceivedPdu;
+pub(crate) use frame_element::received_frame::{ReceivedPdu, SimpleReceivedPdu};
 
 pub use frame_element::sendable_frame::SendableFrame;
 
@@ -92,7 +92,7 @@ impl<'sto> PduLoop<'sto> {
     ) -> Result<(), Error> {
         let mut frame = self.storage.alloc_frame()?;
 
-        frame.push_pdu::<()>(
+        frame.push_pdu(
             Command::bwr(register).into(),
             (),
             Some(payload_length),
@@ -137,7 +137,7 @@ mod tests {
         let mut frame = pdu_loop.storage.alloc_frame().expect("Alloc");
 
         frame
-            .push_pdu::<()>(
+            .push_pdu(
                 Reads::Brd {
                     address: 0,
                     register: 0,
@@ -179,7 +179,7 @@ mod tests {
         let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
         let _handle = frame
-            .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
+            .push_pdu(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
             .expect("Push");
 
         let frame = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
@@ -223,7 +223,7 @@ mod tests {
             let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 
             let handle = frame
-                .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), &data, None, false)
+                .push_pdu(Command::fpwr(0x5678, 0x1234).into(), &data, None, false)
                 .expect("Push PDU");
 
             let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
@@ -301,7 +301,7 @@ mod tests {
         let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
         let _handle = frame
-            .push_pdu::<()>(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
+            .push_pdu(Command::fpwr(0x5678, 0x1234).into(), data, None, false)
             .expect("Push PDU");
 
         // Drop frame future to reset its state to `FrameState::None`
@@ -314,7 +314,7 @@ mod tests {
         let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
         let _handle = frame
-            .push_pdu::<()>(Command::fpwr(0x6789, 0x1234).into(), data, None, false)
+            .push_pdu(Command::fpwr(0x6789, 0x1234).into(), data, None, false)
             .expect("Push second PDU");
 
         let frame = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
@@ -371,7 +371,7 @@ mod tests {
             let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
             let handle = frame
-                .push_pdu::<()>(
+                .push_pdu(
                     Command::fpwr(0x6789, 0x1234).into(),
                     &data_bytes,
                     None,
@@ -476,7 +476,7 @@ mod tests {
             let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 
             let handle = frame
-                .push_pdu::<()>(Command::fpwr(0x1000, 0x980).into(), data, None, false)
+                .push_pdu(Command::fpwr(0x1000, 0x980).into(), data, None, false)
                 .expect("Push PDU");
 
             let result = frame
@@ -580,7 +580,7 @@ mod tests {
                     let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 
                     let handle = frame
-                        .push_pdu::<()>(Command::fpwr(0x1000, 0x980).into(), data, None, false)
+                        .push_pdu(Command::fpwr(0x1000, 0x980).into(), data, None, false)
                         .expect("Push PDU");
 
                     let mut x =

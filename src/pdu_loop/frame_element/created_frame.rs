@@ -66,13 +66,13 @@ impl<'sto> CreatedFrame<'sto> {
         }
     }
 
-    pub fn push_pdu<RX>(
+    pub fn push_pdu(
         &mut self,
         command: Command,
         data: impl EtherCrabWireWrite,
         len_override: Option<u16>,
         more_follows: bool,
-    ) -> Result<PduResponseHandle<RX>, PduError> {
+    ) -> Result<PduResponseHandle<()>, PduError> {
         let data_length_usize =
             len_override.map_or(data.packed_len(), |l| usize::from(l).max(data.packed_len()));
 
@@ -194,7 +194,7 @@ mod tests {
         )
         .expect("Claim created");
 
-        let handle = created.push_pdu::<u32>(
+        let handle = created.push_pdu(
             Command::fpwr(0x1000, 0x0918).into(),
             [0xffu8; 9],
             None,

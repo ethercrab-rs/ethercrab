@@ -127,7 +127,8 @@ impl<'sto> FrameBox<'sto> {
         unsafe { core::slice::from_raw_parts_mut(ptr.as_ptr(), self.max_len - pdu_payload_start) }
     }
 
-    /// Get frame payload area.
+    /// Get frame payload area. This contains one or more PDUs and is located after the EtherCAT
+    /// frame header.
     pub fn pdu_buf(&self) -> &[u8] {
         let ptr = unsafe { FrameElement::<0>::ethercat_payload_ptr(self.frame) };
 

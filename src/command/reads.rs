@@ -1,4 +1,8 @@
-use crate::{error::Error, pdu_loop::ReceivedPdu, Client};
+use crate::{
+    error::Error,
+    pdu_loop::{ReceivedPdu, SimpleReceivedPdu},
+    Client,
+};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// Read commands that send no data.
@@ -100,7 +104,7 @@ impl WrappedRead {
         self,
         client: &'client Client<'client>,
         len: u16,
-    ) -> Result<ReceivedPdu<'client, ()>, Error> {
+    ) -> Result<SimpleReceivedPdu<'client>, Error> {
         self.common(client, len).await?.maybe_wkc(self.wkc)
     }
 
@@ -124,14 +128,11 @@ impl WrappedRead {
     }
 
     // Some manual monomorphisation
-    async fn common<'client, 'frame>(
+    async fn common<'client>(
         &self,
         client: &'client Client<'client>,
         len: u16,
-    ) -> Result<ReceivedPdu<'client, ()>, Error>
-    where
-        'client: 'frame,
-    {
+    ) -> Result<SimpleReceivedPdu<'client>, Error> {
         client.single_pdu(self.command.into(), (), Some(len)).await
     }
 }

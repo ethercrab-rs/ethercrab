@@ -6,7 +6,7 @@ use crate::{
     error::{Error, Item, PduError},
     fmt,
     pdi::PdiOffset,
-    pdu_loop::{CreatedFrame, PduLoop, ReceivedFrame, ReceivedPdu},
+    pdu_loop::{CreatedFrame, PduLoop, ReceivedFrame, ReceivedPdu, SimpleReceivedPdu},
     register::RegisterAddress,
     slave::Slave,
     slave_group::{self, SlaveGroupHandle},
@@ -520,18 +520,18 @@ impl<'sto> Client<'sto> {
     }
 
     /// Send a single PDU in a frame.
-    pub(crate) async fn single_pdu<T>(
-        &self,
+    pub(crate) async fn single_pdu(
+        &'sto self,
         command: Command,
         data: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-    ) -> Result<ReceivedPdu<'_, T>, Error> {
+    ) -> Result<SimpleReceivedPdu<'sto>, Error> {
         // Using a block to reduce future's stack size
-        let (frame, frame_idx, handle) = {
+        let (frame, frame_idx) = {
             let mut frame = self.pdu_loop.alloc_frame()?;
             let frame_idx = frame.frame_index();
 
-            let handle = frame.push_pdu(command, data, len_override, false)?;
+            frame.push_pdu(command, data, len_override, false)?;
 
             let frame = frame.mark_sendable(
                 &self.pdu_loop,
@@ -541,7 +541,7 @@ impl<'sto> Client<'sto> {
 
             self.pdu_loop.wake_sender();
 
-            (frame, frame_idx, handle)
+            (frame, frame_idx)
         };
 
         let received = match frame.await {
@@ -554,7 +554,7 @@ impl<'sto> Client<'sto> {
             Err(e) => return Err(e),
         };
 
-        received.take(handle)
+        received.first_pdu()
     }
 }
 
