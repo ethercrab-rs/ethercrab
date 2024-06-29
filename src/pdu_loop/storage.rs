@@ -1,7 +1,4 @@
-use super::{
-    frame_element::PduMarker, frame_header::EthercatFrameHeader, pdu_rx::PduRx, pdu_tx::PduTx,
-    PDU_SLOTS,
-};
+use super::{frame_header::EthercatFrameHeader, pdu_rx::PduRx, pdu_tx::PduTx};
 use crate::{
     error::{Error, PduError},
     fmt,
@@ -41,8 +38,6 @@ const MIN_DATA: usize = EthernetFrame::<&[u8]>::buffer_len(
 /// The number of storage elements `N` must be a power of 2.
 pub struct PduStorage<const N: usize, const DATA: usize> {
     frames: UnsafeCell<MaybeUninit<[FrameElement<DATA>; N]>>,
-    /// Maps PDUs to the frame that is holding their TX/RX data.
-    pdu_markers: UnsafeCell<[PduMarker; PDU_SLOTS]>,
     frame_idx: AtomicU8,
     pdu_idx: AtomicU8,
     is_split: AtomicBool,
@@ -94,6 +89,8 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     pub const fn new() -> Self {
         // MSRV: Make `N` a `u8` when `generic_const_exprs` is stablised
         // If possible, try using `NonZeroU8`.
+        // NOTE: Keep max frames in flight at 256 or under. This way, we can guarantee the first PDU
+        // in any frame has a unique index.
         assert!(
             N <= u8::MAX as usize,
             "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
@@ -115,15 +112,10 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
 
         let frames = UnsafeCell::new(MaybeUninit::zeroed());
 
-        // MSRV: When `array::from_fn` is const-stabilised
-        // let pdu_states = array::from_fn(|_| AtomicU16::new(PDU_UNUSED_SENTINEL))
-        let pdu_states = UnsafeCell::new(unsafe { MaybeUninit::zeroed().assume_init() });
-
         Self {
             frames,
             frame_idx: AtomicU8::new(0),
             pdu_idx: AtomicU8::new(0),
-            pdu_markers: pdu_states,
             is_split: AtomicBool::new(false),
             tx_waker: AtomicWaker::new(),
         }
@@ -156,10 +148,6 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     }
 
     fn as_ref(&self) -> PduStorageRef {
-        // Initialise all PDU markers as available
-        let markers: &[PduMarker] = unsafe { &*self.pdu_markers.get() };
-        markers.iter().for_each(PduMarker::init);
-
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             frame_element_stride: Layout::array::<FrameElement<DATA>>(N).unwrap().size() / N,
@@ -167,7 +155,6 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             frame_data_len: DATA,
             frame_idx: &self.frame_idx,
             pdu_idx: &self.pdu_idx,
-            pdu_markers: unsafe { NonNull::new_unchecked(self.pdu_markers.get().cast()) },
             tx_waker: &self.tx_waker,
             _lifetime: PhantomData,
         }
@@ -183,7 +170,6 @@ pub(crate) struct PduStorageRef<'sto> {
     pub frame_data_len: usize,
     frame_idx: &'sto AtomicU8,
     pub pdu_idx: &'sto AtomicU8,
-    pub pdu_markers: NonNull<PduMarker>,
     pub tx_waker: &'sto AtomicWaker,
     _lifetime: PhantomData<&'sto ()>,
 }
@@ -210,13 +196,8 @@ impl<'sto> PduStorageRef<'sto> {
             // variable in the frame, and the atomic index counter above.
             let frame = self.frame_at_index(usize::from(frame_idx));
 
-            let frame = CreatedFrame::claim_created(
-                frame,
-                frame_idx,
-                self.pdu_markers,
-                self.pdu_idx,
-                self.frame_data_len,
-            );
+            let frame =
+                CreatedFrame::claim_created(frame, frame_idx, self.pdu_idx, self.frame_data_len);
 
             if let Ok(f) = frame {
                 return Ok(f);
@@ -246,10 +227,33 @@ impl<'sto> PduStorageRef<'sto> {
 
         ReceivingFrame::claim_receiving(
             self.frame_at_index(frame_idx),
-            self.pdu_markers,
             self.pdu_idx,
             self.frame_data_len,
         )
+    }
+
+    pub(in crate::pdu_loop) fn frame_index_by_first_pdu_index(
+        &self,
+        search_pdu_idx: u8,
+    ) -> Option<u8> {
+        for frame_index in 0..self.num_frames {
+            // SAFETY: Frames pointer will always be non-null as it was created by Rust code.
+            let frame = unsafe {
+                NonNull::new_unchecked(
+                    self.frames
+                        .as_ptr()
+                        .byte_add(frame_index * self.frame_element_stride),
+                )
+            };
+
+            if let Some(pdu) = unsafe { FrameElement::<0>::first_pdu(frame) } {
+                if pdu == search_pdu_idx {
+                    return Some(frame_index as u8);
+                }
+            }
+        }
+
+        None
     }
 
     /// Retrieve a frame at the given index.
@@ -268,17 +272,6 @@ impl<'sto> PduStorageRef<'sto> {
                     .as_ptr()
                     .byte_add(idx * self.frame_element_stride),
             )
-        }
-    }
-
-    pub(crate) fn marker_at_index(&self, idx: u8) -> &PduMarker {
-        let stride = Layout::array::<PduMarker>(PDU_SLOTS).unwrap().size() / PDU_SLOTS;
-
-        unsafe {
-            &*self
-                .pdu_markers
-                .as_ptr()
-                .byte_add(usize::from(idx) * stride)
         }
     }
 }
@@ -303,7 +296,7 @@ mod tests {
         let mut frame = pdu_loop.alloc_frame().expect("Allocate first frame");
 
         frame
-            .push_pdu::<()>(
+            .push_pdu(
                 Command::bwr(0x1000).into(),
                 [0xaa, 0xbb, 0xcc, 0xdd],
                 None,
@@ -319,7 +312,7 @@ mod tests {
         const LEN: usize = 8;
 
         frame
-            .push_pdu::<()>(Command::Nop, (), Some(LEN as u16), false)
+            .push_pdu(Command::Nop, (), Some(LEN as u16), false)
             .unwrap();
 
         let pdu_start = EthernetFrame::<&[u8]>::header_len()

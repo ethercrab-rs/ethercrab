@@ -24,7 +24,6 @@ impl<'sto> PduTx<'sto> {
 
             let Some(sending) = SendableFrame::claim_sending(
                 frame,
-                self.storage.pdu_markers,
                 self.storage.pdu_idx,
                 self.storage.frame_data_len,
             ) else {

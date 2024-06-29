@@ -100,7 +100,7 @@ impl WrappedRead {
         self,
         client: &'client Client<'client>,
         len: u16,
-    ) -> Result<ReceivedPdu<'client, ()>, Error> {
+    ) -> Result<ReceivedPdu<'client>, Error> {
         self.common(client, len).await?.maybe_wkc(self.wkc)
     }
 
@@ -124,14 +124,11 @@ impl WrappedRead {
     }
 
     // Some manual monomorphisation
-    async fn common<'client, 'frame>(
+    async fn common<'client>(
         &self,
         client: &'client Client<'client>,
         len: u16,
-    ) -> Result<ReceivedPdu<'client, ()>, Error>
-    where
-        'client: 'frame,
-    {
+    ) -> Result<ReceivedPdu<'client>, Error> {
         client.single_pdu(self.command.into(), (), Some(len)).await
     }
 }

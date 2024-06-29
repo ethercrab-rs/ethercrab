@@ -3,16 +3,14 @@ use crate::{
     fmt,
     generate::write_packed,
     pdu_loop::{
-        frame_element::{
-            receiving_frame::ReceiveFrameFut, FrameBox, FrameElement, FrameState, PduMarker,
-        },
+        frame_element::{receiving_frame::ReceiveFrameFut, FrameBox, FrameElement, FrameState},
         frame_header::EthercatFrameHeader,
         pdu_flags::PduFlags,
         pdu_header::PduHeader,
     },
     Command, PduLoop,
 };
-use core::{marker::PhantomData, ptr::NonNull, sync::atomic::AtomicU8, time::Duration};
+use core::{ptr::NonNull, sync::atomic::AtomicU8, time::Duration};
 use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized};
 
 /// A frame in a freshly allocated state.
@@ -22,23 +20,26 @@ use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteS
 #[derive(Debug)]
 pub struct CreatedFrame<'sto> {
     inner: FrameBox<'sto>,
+    pdu_count: u8,
 }
 
 impl<'sto> CreatedFrame<'sto> {
     pub(in crate::pdu_loop) fn claim_created(
         frame: NonNull<FrameElement<0>>,
         frame_index: u8,
-        pdu_markers: NonNull<PduMarker>,
         pdu_idx: &'sto AtomicU8,
         frame_data_len: usize,
     ) -> Result<Self, PduError> {
         let frame = unsafe { FrameElement::claim_created(frame, frame_index)? };
 
-        let mut inner = FrameBox::new(frame, pdu_markers, pdu_idx, frame_data_len);
+        let mut inner = FrameBox::new(frame, pdu_idx, frame_data_len);
 
         inner.init();
 
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            pdu_count: 0,
+        })
     }
 
     /// The frame has been initialised, filled with a data payload (if required), and is now ready
@@ -66,13 +67,13 @@ impl<'sto> CreatedFrame<'sto> {
         }
     }
 
-    pub fn push_pdu<RX>(
+    pub fn push_pdu(
         &mut self,
         command: Command,
         data: impl EtherCrabWireWrite,
         len_override: Option<u16>,
         more_follows: bool,
-    ) -> Result<PduResponseHandle<RX>, PduError> {
+    ) -> Result<PduResponseHandle, PduError> {
         let data_length_usize =
             len_override.map_or(data.packed_len(), |l| usize::from(l).max(data.packed_len()));
 
@@ -88,7 +89,7 @@ impl<'sto> CreatedFrame<'sto> {
         let buf_range = consumed..(consumed + alloc_size);
 
         // Establish mapping between this PDU index and the Ethernet frame it's being put in
-        let pdu_idx = self.inner.reserve_pdu_marker(self.frame_index())?;
+        let pdu_idx = self.inner.next_pdu_idx();
 
         fmt::trace!(
             "Write PDU {:#04x} into frame index {} ({}, {} bytes at {:?})",
@@ -122,11 +123,14 @@ impl<'sto> CreatedFrame<'sto> {
         // zero-initialised) so there's nothing to do.
 
         // Don't need to check length here as we do that with `pdu_buf_mut().get_mut()` above.
-        self.inner.add_pdu(alloc_size);
+        self.inner.add_pdu(alloc_size, pdu_idx);
+
+        let index_in_frame = self.pdu_count;
+
+        self.pdu_count += 1;
 
         Ok(PduResponseHandle {
-            _ty: PhantomData,
-            buf_start: buf_range.start,
+            index_in_frame,
             pdu_idx,
             command_code: command.code(),
         })
@@ -147,11 +151,10 @@ impl<'sto> CreatedFrame<'sto> {
 unsafe impl<'sto> Send for CreatedFrame<'sto> {}
 
 #[derive(Debug)]
-pub struct PduResponseHandle<T> {
-    _ty: PhantomData<T>,
-    /// Offset relative to end of EtherCAT header.
-    pub buf_start: usize,
-    /// PDU index and command used to validate response match
+pub struct PduResponseHandle {
+    pub index_in_frame: u8,
+
+    /// PDU wire index and command used to validate response match.
     pub pdu_idx: u8,
     pub command_code: u8,
 }
@@ -159,9 +162,9 @@ pub struct PduResponseHandle<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, PduMarker};
+    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement};
     use atomic_waker::AtomicWaker;
-    use core::{cell::UnsafeCell, mem::MaybeUninit, ptr::NonNull, sync::atomic::AtomicU8};
+    use core::{cell::UnsafeCell, ptr::NonNull, sync::atomic::AtomicU8};
 
     #[test]
     fn too_long() {
@@ -171,29 +174,25 @@ mod tests {
 
         let pdu_idx = AtomicU8::new(0);
 
-        let mut pdu_markers: [PduMarker; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
-        pdu_markers[0].init();
-
         let frames = UnsafeCell::new([FrameElement {
             frame_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
             pdu_payload_len: 0,
-            marker_count: 0,
             pdu_count: 0,
+            first_pdu: None,
         }]);
 
         let mut created = CreatedFrame::claim_created(
             unsafe { NonNull::new_unchecked(frames.get().cast()) },
             0xab,
-            unsafe { NonNull::new_unchecked(pdu_markers.as_mut_ptr()) },
             &pdu_idx,
             BUF_LEN,
         )
         .expect("Claim created");
 
-        let handle = created.push_pdu::<u32>(
+        let handle = created.push_pdu(
             Command::fpwr(0x1000, 0x0918).into(),
             [0xffu8; 9],
             None,
