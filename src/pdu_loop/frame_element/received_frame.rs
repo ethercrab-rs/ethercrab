@@ -33,7 +33,7 @@ impl<'sto> ReceivedFrame<'sto> {
     }
 
     pub fn first_pdu(self) -> Result<ReceivedPdu<'sto>, Error> {
-        let mut buf = self.inner.pdu_buf();
+        let buf = self.inner.pdu_buf();
 
         let pdu_header = PduHeader::unpack_from_slice(buf)?;
 
@@ -59,14 +59,14 @@ impl<'sto> ReceivedFrame<'sto> {
         })
     }
 
-    pub fn pdu<'pdu>(&'sto self, index: u8) -> Result<ReceivedPdu<'pdu>, Error>
+    pub fn pdu<'pdu>(&'sto self, handle: PduResponseHandle) -> Result<ReceivedPdu<'pdu>, Error>
     where
         'sto: 'pdu,
     {
         let mut buf = self.inner.pdu_buf();
 
         // Skip over any preceding PDUs
-        for _ in 0..index {
+        for _ in 0..handle.index_in_frame {
             let pdu_header = PduHeader::unpack_from_slice(buf)?;
             let payload_len = usize::from(pdu_header.flags.len());
             let this_pdu_len = PduHeader::PACKED_LEN + payload_len + 2;
@@ -77,6 +77,14 @@ impl<'sto> ReceivedFrame<'sto> {
 
         // This checks for buffer min length
         let pdu_header = PduHeader::unpack_from_slice(buf)?;
+
+        if pdu_header.command_code != handle.command_code {
+            return Err(Error::Pdu(PduError::Decode));
+        }
+
+        if pdu_header.index != handle.pdu_idx {
+            return Err(Error::Pdu(PduError::InvalidIndex(pdu_header.index)));
+        }
 
         let payload_len = usize::from(pdu_header.flags.len());
 

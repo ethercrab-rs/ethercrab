@@ -12,7 +12,7 @@ use crate::{
     },
     Command, PduLoop,
 };
-use core::{marker::PhantomData, ptr::NonNull, sync::atomic::AtomicU8, time::Duration};
+use core::{ptr::NonNull, sync::atomic::AtomicU8, time::Duration};
 use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized};
 
 /// A frame in a freshly allocated state.
@@ -22,6 +22,7 @@ use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteS
 #[derive(Debug)]
 pub struct CreatedFrame<'sto> {
     inner: FrameBox<'sto>,
+    pdu_count: u8,
 }
 
 impl<'sto> CreatedFrame<'sto> {
@@ -38,7 +39,10 @@ impl<'sto> CreatedFrame<'sto> {
 
         inner.init();
 
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            pdu_count: 0,
+        })
     }
 
     /// The frame has been initialised, filled with a data payload (if required), and is now ready
@@ -72,7 +76,7 @@ impl<'sto> CreatedFrame<'sto> {
         data: impl EtherCrabWireWrite,
         len_override: Option<u16>,
         more_follows: bool,
-    ) -> Result<PduResponseHandle<()>, PduError> {
+    ) -> Result<PduResponseHandle, PduError> {
         let data_length_usize =
             len_override.map_or(data.packed_len(), |l| usize::from(l).max(data.packed_len()));
 
@@ -122,11 +126,15 @@ impl<'sto> CreatedFrame<'sto> {
         // zero-initialised) so there's nothing to do.
 
         // Don't need to check length here as we do that with `pdu_buf_mut().get_mut()` above.
+        // DELETEME
         self.inner.add_pdu(alloc_size, pdu_idx);
 
+        let index_in_frame = self.pdu_count;
+
+        self.pdu_count += 1;
+
         Ok(PduResponseHandle {
-            _ty: PhantomData,
-            buf_start: buf_range.start,
+            index_in_frame,
             pdu_idx,
             command_code: command.code(),
         })
@@ -147,11 +155,10 @@ impl<'sto> CreatedFrame<'sto> {
 unsafe impl<'sto> Send for CreatedFrame<'sto> {}
 
 #[derive(Debug)]
-pub struct PduResponseHandle<T> {
-    _ty: PhantomData<T>,
-    /// Offset relative to end of EtherCAT header.
-    pub buf_start: usize,
-    /// PDU index and command used to validate response match
+pub struct PduResponseHandle {
+    pub index_in_frame: u8,
+
+    /// PDU wire index and command used to validate response match.
     pub pdu_idx: u8,
     pub command_code: u8,
 }
