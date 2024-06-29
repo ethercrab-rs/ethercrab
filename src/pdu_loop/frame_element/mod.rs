@@ -12,7 +12,7 @@ use crate::{
 use atomic_waker::AtomicWaker;
 use core::{
     ptr::{addr_of, addr_of_mut, NonNull},
-    sync::atomic::{AtomicU16, Ordering},
+    sync::atomic::{AtomicU16, AtomicU8, Ordering},
 };
 use frame_box::FrameBox;
 use smoltcp::wire::EthernetFrame;
@@ -82,14 +82,6 @@ impl PduMarker {
         Ok(())
     }
 
-    pub fn frame_index(&self) -> u8 {
-        let raw = self.frame_index.load(Ordering::Relaxed);
-
-        assert_ne!(raw, PDU_UNUSED_SENTINEL);
-
-        raw as u8
-    }
-
     pub fn init(&self) {
         // NOTE: Making this `debug_assert_eq` causes the frame to never be initialised. Maybe the
         // compare_exchange gets optimised out completely?
@@ -156,6 +148,13 @@ pub struct FrameElement<const N: usize> {
     /// Number of PDUs inserted into this frame element
     pdu_count: u8,
 
+    // Atomic as we iterate over all `FrameElement`s and read this field when receiving a frame.
+    /// Stores the PDU index of the first PDU written into this frame (if any).
+    ///
+    /// Used by the network RX code to do a linear search in the frame storage to find the storage
+    /// behind the received frame.
+    first_pdu: Option<AtomicU8>,
+
     // MUST be the last element otherwise pointer arithmetic doesn't work for
     // `NonNull<FrameElement<0>>`.
     ethernet_frame: [u8; N],
@@ -170,6 +169,7 @@ impl<const N: usize> Default for FrameElement<N> {
             pdu_payload_len: 0,
             marker_count: 0,
             pdu_count: 0,
+            first_pdu: None,
             waker: AtomicWaker::default(),
         }
     }
@@ -297,5 +297,18 @@ impl<const N: usize> FrameElement<N> {
 
     unsafe fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
         *addr_of!((*this.as_ptr()).frame_index)
+    }
+
+    pub(in crate::pdu_loop) unsafe fn first_pdu(this: NonNull<FrameElement<0>>) -> Option<u8> {
+        (*addr_of!((*this.as_ptr()).first_pdu))
+            .as_ref()
+            .map(|idx| idx.load(Ordering::Relaxed))
+    }
+    unsafe fn set_first_pdu(this: NonNull<FrameElement<0>>, value: u8) {
+        let first_pdu = &mut *addr_of_mut!((*this.as_ptr()).first_pdu);
+
+        if first_pdu.is_none() {
+            *first_pdu = Some(AtomicU8::new(value));
+        }
     }
 }

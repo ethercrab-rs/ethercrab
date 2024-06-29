@@ -65,6 +65,7 @@ impl<'sto> FrameBox<'sto> {
     pub fn init(&mut self) {
         unsafe {
             addr_of_mut!((*self.frame.as_ptr()).waker).write(AtomicWaker::new());
+            addr_of_mut!((*self.frame.as_ptr()).first_pdu).write(None);
         }
 
         let mut ethernet_frame = self.ethernet_frame_mut();
@@ -227,9 +228,10 @@ impl<'sto> FrameBox<'sto> {
         unsafe { FrameElement::<0>::dec_refcount(self.frame) }
     }
 
-    pub fn add_pdu(&mut self, alloc_size: usize) {
+    pub fn add_pdu(&mut self, alloc_size: usize, pdu_idx: u8) {
         unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += alloc_size };
 
         unsafe { FrameElement::<0>::inc_pdu_count(self.frame) };
+        unsafe { FrameElement::<0>::set_first_pdu(self.frame, pdu_idx) };
     }
 }

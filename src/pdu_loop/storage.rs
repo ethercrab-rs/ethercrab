@@ -94,6 +94,8 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     pub const fn new() -> Self {
         // MSRV: Make `N` a `u8` when `generic_const_exprs` is stablised
         // If possible, try using `NonZeroU8`.
+        // NOTE: Keep max frames in flight at 256 or under. This way, we can guarantee the first PDU
+        // in any frame has a unique index.
         assert!(
             N <= u8::MAX as usize,
             "Packet indexes are u8s, so cache array cannot be any bigger than u8::MAX"
@@ -252,6 +254,30 @@ impl<'sto> PduStorageRef<'sto> {
         )
     }
 
+    pub(in crate::pdu_loop) fn frame_index_by_first_pdu_index(
+        &self,
+        search_pdu_idx: u8,
+    ) -> Option<u8> {
+        for frame_index in 0..self.num_frames {
+            // SAFETY: Frames pointer will always be non-null as it was created by Rust code.
+            let frame = unsafe {
+                NonNull::new_unchecked(
+                    self.frames
+                        .as_ptr()
+                        .byte_add(frame_index * self.frame_element_stride),
+                )
+            };
+
+            if let Some(pdu) = unsafe { FrameElement::<0>::first_pdu(frame) } {
+                if pdu == search_pdu_idx {
+                    return Some(frame_index as u8);
+                }
+            }
+        }
+
+        None
+    }
+
     /// Retrieve a frame at the given index.
     ///
     /// If the given index is greater than the value in `PduStorage::N`, this will return garbage
@@ -268,17 +294,6 @@ impl<'sto> PduStorageRef<'sto> {
                     .as_ptr()
                     .byte_add(idx * self.frame_element_stride),
             )
-        }
-    }
-
-    pub(crate) fn marker_at_index(&self, idx: u8) -> &PduMarker {
-        let stride = Layout::array::<PduMarker>(PDU_SLOTS).unwrap().size() / PDU_SLOTS;
-
-        unsafe {
-            &*self
-                .pdu_markers
-                .as_ptr()
-                .byte_add(usize::from(idx) * stride)
         }
     }
 }

@@ -122,7 +122,7 @@ impl<'sto> CreatedFrame<'sto> {
         // zero-initialised) so there's nothing to do.
 
         // Don't need to check length here as we do that with `pdu_buf_mut().get_mut()` above.
-        self.inner.add_pdu(alloc_size);
+        self.inner.add_pdu(alloc_size, pdu_idx);
 
         Ok(PduResponseHandle {
             _ty: PhantomData,
@@ -182,6 +182,7 @@ mod tests {
             pdu_payload_len: 0,
             marker_count: 0,
             pdu_count: 0,
+            first_pdu: None,
         }]);
 
         let mut created = CreatedFrame::claim_created(
