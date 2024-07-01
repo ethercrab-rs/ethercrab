@@ -180,7 +180,6 @@ mod tests {
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
             pdu_payload_len: 0,
-            pdu_count: 0,
             first_pdu: None,
         }]);
 

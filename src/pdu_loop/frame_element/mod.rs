@@ -73,9 +73,6 @@ pub struct FrameElement<const N: usize> {
     waker: AtomicWaker,
     pdu_payload_len: usize,
 
-    /// Number of PDUs inserted into this frame element
-    pdu_count: u8,
-
     // Atomic as we iterate over all `FrameElement`s and read this field when receiving a frame.
     /// Stores the PDU index of the first PDU written into this frame (if any).
     ///
@@ -95,7 +92,6 @@ impl<const N: usize> Default for FrameElement<N> {
             ethernet_frame: [0; N],
             frame_index: 0,
             pdu_payload_len: 0,
-            pdu_count: 0,
             first_pdu: None,
             waker: AtomicWaker::default(),
         }
@@ -175,7 +171,6 @@ impl<const N: usize> FrameElement<N> {
 
         (*addr_of_mut!((*this.as_ptr()).frame_index)) = frame_index;
         (*addr_of_mut!((*this.as_ptr()).pdu_payload_len)) = 0;
-        (*addr_of_mut!((*this.as_ptr()).pdu_count)) = 0;
 
         Ok(this)
     }
