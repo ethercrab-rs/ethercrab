@@ -490,7 +490,6 @@ impl<'sto> Client<'sto> {
         len_override: Option<u16>,
     ) -> Result<ReceivedPdu<'sto>, Error> {
         let mut frame = self.pdu_loop.alloc_frame()?;
-        let frame_idx = frame.frame_index();
 
         let handle = frame.push_pdu(command, data, len_override, false)?;
 
@@ -502,17 +501,7 @@ impl<'sto> Client<'sto> {
 
         self.pdu_loop.wake_sender();
 
-        let received = match frame.await {
-            Ok(received) => received,
-            Err(Error::Timeout) => {
-                fmt::error!("Frame index {} timed out", frame_idx);
-
-                return Err(Error::Timeout);
-            }
-            Err(e) => return Err(e),
-        };
-
-        received.first_pdu(handle)
+        frame.await?.first_pdu(handle)
     }
 }
 

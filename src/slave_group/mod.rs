@@ -864,7 +864,6 @@ where
 
         if let Some(dc_ref) = client.dc_ref_address() {
             let mut frame = client.pdu_loop.alloc_frame()?;
-            let frame_idx = frame.frame_index();
 
             let dc_handle = frame.push_pdu(
                 Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into()).into(),
@@ -888,15 +887,7 @@ where
 
             client.pdu_loop.wake_sender();
 
-            let received = match frame.await {
-                Ok(received) => received,
-                Err(Error::Timeout) => {
-                    fmt::error!("Frame index {} timed out", frame_idx);
-
-                    return Err(Error::Timeout);
-                }
-                Err(e) => return Err(e),
-            };
+            let received = frame.await?;
 
             let (time, wkc) = self.process_pdi_response_with_time(
                 &received.pdu(dc_handle)?,
@@ -1072,7 +1063,6 @@ where
         );
 
         let mut frame = client.pdu_loop.alloc_frame()?;
-        let frame_idx = frame.frame_index();
 
         let dc_handle = frame.push_pdu(
             Command::frmw(self.dc_conf.reference, RegisterAddress::DcSystemTime.into()).into(),
@@ -1096,15 +1086,7 @@ where
 
         client.pdu_loop.wake_sender();
 
-        let received = match frame.await {
-            Ok(received) => received,
-            Err(Error::Timeout) => {
-                fmt::error!("Frame index {} timed out", frame_idx);
-
-                return Err(Error::Timeout);
-            }
-            Err(e) => return Err(e),
-        };
+        let received = frame.await?;
 
         let (time, wkc) = self.process_pdi_response_with_time(
             &received.pdu(dc_handle)?,
