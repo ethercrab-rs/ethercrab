@@ -135,10 +135,6 @@ impl<'sto> CreatedFrame<'sto> {
             command_code: command.code(),
         })
     }
-
-    pub fn frame_index(&self) -> u8 {
-        self.inner.frame_index()
-    }
 }
 
 // SAFETY: This unsafe impl is required due to `FrameBox` containing a `NonNull`, however this impl

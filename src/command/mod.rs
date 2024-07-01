@@ -114,10 +114,7 @@ impl EtherCrabWireWriteSized for Command {
             | Command::Write(Writes::Apwr { address, register })
             | Command::Write(Writes::Fpwr { address, register })
             | Command::Write(Writes::Bwr { address, register }) => {
-                let address = address.to_le_bytes();
-                let register = register.to_le_bytes();
-
-                [address[0], address[1], register[0], register[1]]
+                u32::to_le_bytes((u32::from(register) << 16) + u32::from(address))
             }
             Command::Read(Reads::Lrd { address })
             | Command::Write(Writes::Lwr { address })
@@ -277,5 +274,24 @@ impl From<WrappedRead> for Command {
 impl From<WrappedWrite> for Command {
     fn from(value: WrappedWrite) -> Self {
         Self::Write(value.command)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pack_command_data() {
+        let address = 0x1004;
+        let register = 0x0980;
+
+        // Two little endian u16s
+        let expected = [0x04, 0x10, 0x80, 0x09];
+
+        assert_eq!(
+            Command::Write(Command::fpwr(address, register).command).pack(),
+            expected
+        );
     }
 }

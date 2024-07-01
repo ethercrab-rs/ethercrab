@@ -124,11 +124,11 @@ impl WrappedRead {
     }
 
     // Some manual monomorphisation
-    async fn common<'client>(
+    fn common<'client>(
         &self,
         client: &'client Client<'client>,
         len: u16,
-    ) -> Result<ReceivedPdu<'client>, Error> {
-        client.single_pdu(self.command.into(), (), Some(len)).await
+    ) -> impl core::future::Future<Output = Result<ReceivedPdu<'client>, Error>> {
+        client.single_pdu(self.command.into(), (), Some(len))
     }
 }
