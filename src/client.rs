@@ -489,35 +489,19 @@ impl<'sto> Client<'sto> {
         data: impl EtherCrabWireWrite,
         len_override: Option<u16>,
     ) -> Result<ReceivedPdu<'sto>, Error> {
-        // Using a block to reduce future's stack size
-        let (frame, frame_idx, handle) = {
-            let mut frame = self.pdu_loop.alloc_frame()?;
-            let frame_idx = frame.frame_index();
+        let mut frame = self.pdu_loop.alloc_frame()?;
 
-            let handle = frame.push_pdu(command, data, len_override, false)?;
+        let handle = frame.push_pdu(command, data, len_override, false)?;
 
-            let frame = frame.mark_sendable(
-                &self.pdu_loop,
-                self.timeouts.pdu,
-                self.config.retry_behaviour.retry_count(),
-            );
+        let frame = frame.mark_sendable(
+            &self.pdu_loop,
+            self.timeouts.pdu,
+            self.config.retry_behaviour.retry_count(),
+        );
 
-            self.pdu_loop.wake_sender();
+        self.pdu_loop.wake_sender();
 
-            (frame, frame_idx, handle)
-        };
-
-        let received = match frame.await {
-            Ok(received) => received,
-            Err(Error::Timeout) => {
-                fmt::error!("Frame index {} timed out", frame_idx);
-
-                return Err(Error::Timeout);
-            }
-            Err(e) => return Err(e),
-        };
-
-        received.first_pdu(handle)
+        frame.await?.first_pdu(handle)
     }
 }
 

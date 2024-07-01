@@ -90,7 +90,7 @@ impl WrappedWrite {
 
     /// Send a payload with a length set by [`with_len`](WrappedWrite::with_len), ignoring the
     /// response.
-    pub async fn send<'data, 'client>(
+    pub async fn send<'client>(
         self,
         client: &'client Client<'client>,
         data: impl EtherCrabWireWrite,
@@ -125,14 +125,12 @@ impl WrappedWrite {
     }
 
     // Some manual monomorphisation
-    async fn common<'client>(
+    fn common<'client>(
         &self,
         client: &'client Client<'client>,
         value: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-    ) -> Result<ReceivedPdu<'client>, Error> {
-        client
-            .single_pdu(self.command.into(), &value, len_override)
-            .await
+    ) -> impl core::future::Future<Output = Result<ReceivedPdu<'client>, Error>> {
+        client.single_pdu(self.command.into(), value, len_override)
     }
 }
