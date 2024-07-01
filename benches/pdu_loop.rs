@@ -31,6 +31,7 @@ fn do_bench(b: &mut Bencher) {
 
         let mut frame_fut = pin!(Command::fpwr(0x5678, 0x1234).send_receive::<()>(&client, &DATA));
 
+        // Poll future once to register it with sender
         cassette::block_on(poll_fn(|ctx| {
             let _ = frame_fut.poll(ctx);
 
@@ -67,9 +68,20 @@ pub fn tx_rx(c: &mut Criterion) {
 
     group.bench_function("elements", do_bench);
 
-    group.throughput(Throughput::Bytes(DATA.len() as u64));
+    let overhead = {
+        // Ethernet header
+        (6 + 6 + 2) +
+        // EtherCAT header
+        2 +
+        // PDU header
+        10 +
+        // Working counter
+        2
+    };
 
-    group.bench_function("payload bytes", do_bench);
+    group.throughput(Throughput::Bytes(DATA.len() as u64 + overhead));
+
+    group.bench_function("ethernet frame bytes", do_bench);
 
     group.finish();
 }
