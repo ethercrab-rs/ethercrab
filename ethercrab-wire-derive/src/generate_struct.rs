@@ -113,20 +113,20 @@ pub fn generate_struct_read(parsed: &StructMeta, input: &DeriveInput) -> proc_ma
 
             if ty_name == "bool" {
                 quote! {
-                    #name: ((buf[#byte_start] & #mask) >> #bit_start) > 0
+                    #name: ((buf.get(#byte_start).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort)? & #mask) >> #bit_start) > 0
                 }
             }
             // Small optimisation
             else if ty_name == "u8" {
                 quote! {
-                    #name: (buf[#byte_start] & #mask) >> #bit_start
+                    #name: (buf.get(#byte_start).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort)? & #mask) >> #bit_start
                 }
             }
             // Anything else will be a struct or an enum
             else {
                 quote! {
                     #name: {
-                        let masked = (buf[#byte_start] & #mask) >> #bit_start;
+                        let masked = (buf.get(#byte_start).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort)? & #mask) >> #bit_start;
 
                         <#ty as ::ethercrab_wire::EtherCrabWireRead>::unpack_from_slice(&[masked])?
                     }
@@ -139,7 +139,7 @@ pub fn generate_struct_read(parsed: &StructMeta, input: &DeriveInput) -> proc_ma
             let end_byte = field.bytes.end;
 
             quote! {
-                #name: <#ty as ::ethercrab_wire::EtherCrabWireRead>::unpack_from_slice(&buf[#start_byte..#end_byte])?
+                #name: <#ty as ::ethercrab_wire::EtherCrabWireRead>::unpack_from_slice(buf.get(#start_byte..#end_byte).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort)?)?
             }
         }
     });
