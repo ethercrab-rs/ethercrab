@@ -166,7 +166,8 @@ where
             // Read entire category using its discovered length.
             let fmmus = reader.read(&mut buf).await?;
 
-            buf[0..fmmus]
+            buf.get(0..fmmus)
+                .ok_or(Error::Internal)?
                 .iter()
                 .map(|raw| {
                     FmmuUsage::try_from(*raw).map_err(|e| {

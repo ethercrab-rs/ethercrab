@@ -111,7 +111,10 @@ pub fn tx_rx_task_io_uring<'sto>(
                     .user_data(tx_key as u64 | WRITE_MASK);
 
                     // TODO: Zero copy
-                    tx_buf[0..data.len()].copy_from_slice(data);
+                    tx_buf
+                        .get_mut(0..data.len())
+                        .ok_or(Error::Internal)?
+                        .copy_from_slice(data);
 
                     while unsafe { ring.submission().push(tx_entry).is_err() } {
                         // If the submission queue is full, flush it to the kernel
@@ -220,7 +223,9 @@ pub fn tx_rx_task_io_uring<'sto>(
             } else {
                 let (_entry, frame) = bufs.remove(key as usize);
 
-                let frame_index = frame[0x11];
+                let frame_index = frame
+                    .get(0x11)
+                    .ok_or_else(|| io::Error::other(Error::Internal))?;
 
                 fmt::trace!(
                     "Raw frame {:#04x} result {} buffer key {}",

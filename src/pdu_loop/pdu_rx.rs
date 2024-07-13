@@ -73,7 +73,7 @@ impl<'sto> PduRx<'sto> {
         // their headers and payloads.
 
         // Second byte of first PDU header is the index
-        let pdu_idx = i[1];
+        let pdu_idx = *i.get(1).ok_or(Error::Internal)?;
 
         // We're assuming all PDUs in the returned frame have the same frame index, so we can just
         // use the first one.
@@ -97,7 +97,10 @@ impl<'sto> PduRx<'sto> {
 
         let frame_data = frame.buf_mut();
 
-        frame_data[0..i.len()].copy_from_slice(i);
+        frame_data
+            .get_mut(0..i.len())
+            .ok_or(Error::Internal)?
+            .copy_from_slice(i);
 
         frame.mark_received()?;
 

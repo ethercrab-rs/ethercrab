@@ -77,7 +77,7 @@ impl Future for TxRxFut<'_> {
                 // is removed, PDU response frames are missed, causing timeout errors.
                 ctx.waker().wake_by_ref();
 
-                let packet = &buf[0..n];
+                let packet = buf.get(0..n).ok_or(Error::Internal)?;
 
                 if n == 0 {
                     fmt::warn!("Received zero bytes");
