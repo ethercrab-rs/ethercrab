@@ -50,7 +50,7 @@ miri_steps: &miri_steps
         key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
-    - run: rustup toolchain add nightly-2024-03-08 --target $TARGET --component miri
+    - run: rustup toolchain add nightly-2024-07-13 --target $TARGET --component miri
     - run: |
         binaries=( "cargo-nextest" )
 
@@ -65,9 +65,8 @@ miri_steps: &miri_steps
           fi
         done
     - run: |
-        export MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation"
-
-        cargo +nightly-2024-03-08 miri nextest run --features '__internals' --target $TARGET --test-threads=num-cpus
+        MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" \
+        cargo +nightly-2024-07-13 miri nextest run --features '__internals' --target $TARGET --test-threads=num-cpus
 
     - save_cache:
         key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
