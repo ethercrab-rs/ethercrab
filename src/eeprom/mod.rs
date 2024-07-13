@@ -102,7 +102,7 @@ where
         // Advance by one byte
         self.pos += 1;
 
-        res.get(skip).map(|res| *res).ok_or(Error::Internal)
+        res.get(skip).copied().ok_or(Error::Internal)
     }
 }
 
