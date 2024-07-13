@@ -220,3 +220,122 @@ impl<const N: usize> FrameElement<N> {
         first_pdu.store(u16::from(value), Ordering::Relaxed)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, FIRST_PDU_EMPTY};
+    use atomic_waker::AtomicWaker;
+    use core::{ptr::NonNull, sync::atomic::AtomicU16};
+
+    #[test]
+    fn find_empty_frame() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const BUF_LEN: usize = 16;
+
+        let frame = FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::None),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
+        };
+
+        let frame_ptr = NonNull::from(&frame);
+
+        assert_eq!(
+            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr.cast(), 0) },
+            false
+        );
+    }
+
+    #[test]
+    fn find_frame_zero() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const BUF_LEN: usize = 16;
+
+        let frame = FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::None),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
+        };
+
+        let frame_ptr = NonNull::from(&frame);
+
+        unsafe { FrameElement::<0>::set_first_pdu(frame_ptr.cast(), 0) }
+
+        assert_eq!(
+            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr.cast(), 0) },
+            true
+        );
+    }
+
+    #[test]
+    fn find_frame_1() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const BUF_LEN: usize = 16;
+
+        let frame_0 = FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::None),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
+        };
+
+        let frame_ptr_0 = NonNull::from(&frame_0);
+
+        unsafe { FrameElement::<0>::set_first_pdu(frame_ptr_0.cast(), 123) }
+
+        // ---
+
+        let frame_1 = FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::None),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
+        };
+
+        let frame_ptr_1 = NonNull::from(&frame_1);
+
+        unsafe { FrameElement::<0>::set_first_pdu(frame_ptr_1.cast(), 0xff) }
+
+        // ---
+
+        assert_eq!(
+            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 0) },
+            false
+        );
+        assert_eq!(
+            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 123) },
+            true
+        );
+        assert_eq!(
+            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 0xff) },
+            false
+        );
+
+        assert_eq!(
+            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0) },
+            false
+        );
+        assert_eq!(
+            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 123) },
+            false
+        );
+        assert_eq!(
+            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0xff) },
+            true
+        );
+    }
+}
