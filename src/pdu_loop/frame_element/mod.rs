@@ -208,16 +208,26 @@ impl<const N: usize> FrameElement<N> {
         this: NonNull<FrameElement<0>>,
         search: u8,
     ) -> bool {
-        let raw = (*addr_of!((*this.as_ptr()).first_pdu)).load(Ordering::Relaxed);
+        let raw = (*addr_of!((*this.as_ptr()).first_pdu)).load(Ordering::Acquire);
 
         // Unused sentinel value occupies upper byte, so this equality will never hold for empty
         // frames
         u16::from(search) == raw
     }
+
+    /// If no PDUs are present in the frame, set the first PDU index to the given value.
     unsafe fn set_first_pdu(this: NonNull<FrameElement<0>>, value: u8) {
         let first_pdu = &mut *addr_of_mut!((*this.as_ptr()).first_pdu);
 
-        first_pdu.store(u16::from(value), Ordering::Relaxed)
+        // Only set first PDU index if the frame is empty, as denoted by the `FIRST_PDU_EMPTY`
+        // sentinel. Failures are ignored as we want a noop when the first PDU value was already
+        // set.
+        let _ = first_pdu.compare_exchange(
+            FIRST_PDU_EMPTY,
+            u16::from(value),
+            Ordering::Release,
+            Ordering::Relaxed,
+        );
     }
 }
 
@@ -227,6 +237,29 @@ mod tests {
     use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, FIRST_PDU_EMPTY};
     use atomic_waker::AtomicWaker;
     use core::{ptr::NonNull, sync::atomic::AtomicU16};
+
+    #[test]
+    fn set_first_pdu_only_once() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const BUF_LEN: usize = 16;
+
+        let frame = FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::None),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
+        };
+
+        let frame_ptr = NonNull::from(&frame);
+
+        unsafe { FrameElement::<0>::set_first_pdu(frame_ptr.cast(), 0xab) };
+        unsafe { FrameElement::<0>::set_first_pdu(frame_ptr.cast(), 0xcd) };
+
+        assert_eq!(frame.first_pdu.load(Ordering::Relaxed), 0xab);
+    }
 
     #[test]
     fn find_empty_frame() {
