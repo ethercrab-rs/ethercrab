@@ -158,9 +158,13 @@ pub struct PduResponseHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement};
+    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, FIRST_PDU_EMPTY};
     use atomic_waker::AtomicWaker;
-    use core::{cell::UnsafeCell, ptr::NonNull, sync::atomic::AtomicU8};
+    use core::{
+        cell::UnsafeCell,
+        ptr::NonNull,
+        sync::atomic::{AtomicU16, AtomicU8},
+    };
 
     #[test]
     fn too_long() {
@@ -176,7 +180,7 @@ mod tests {
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
             pdu_payload_len: 0,
-            first_pdu: None,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
         }]);
 
         let mut created = CreatedFrame::claim_created(
