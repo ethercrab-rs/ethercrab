@@ -16,6 +16,8 @@ use core::{
 use ethercrab_wire::EtherCrabWireSized;
 use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
+use super::FIRST_PDU_EMPTY;
+
 /// Frame data common to all typestates.
 #[derive(Copy, Clone)]
 pub struct FrameBox<'sto> {
@@ -58,7 +60,8 @@ impl<'sto> FrameBox<'sto> {
     pub fn init(&mut self) {
         unsafe {
             addr_of_mut!((*self.frame.as_ptr()).waker).write(AtomicWaker::new());
-            addr_of_mut!((*self.frame.as_ptr()).first_pdu).write(None);
+            (&*addr_of_mut!((*self.frame.as_ptr()).first_pdu))
+                .store(FIRST_PDU_EMPTY, Ordering::Relaxed);
         }
 
         let mut ethernet_frame = self.ethernet_frame_mut();

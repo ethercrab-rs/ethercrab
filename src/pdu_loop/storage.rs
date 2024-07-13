@@ -246,10 +246,8 @@ impl<'sto> PduStorageRef<'sto> {
                 )
             };
 
-            if let Some(pdu) = unsafe { FrameElement::<0>::first_pdu(frame) } {
-                if pdu == search_pdu_idx {
-                    return Some(frame_index as u8);
-                }
+            if unsafe { FrameElement::<0>::first_pdu_is(frame, search_pdu_idx) } {
+                return Some(frame_index as u8);
             }
         }
 
