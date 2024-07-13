@@ -758,14 +758,18 @@ where
         let inputs = if input_range.is_empty() {
             EMPTY_PDI_SLICE
         } else {
-            &i_data[input_range.bytes.clone()]
+            i_data
+                .get(input_range.bytes.clone())
+                .ok_or(Error::Internal)?
         };
 
         let outputs = if output_range.is_empty() {
             // SAFETY: Slice is empty so can never be mutated
             unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr().cast_mut(), 0) }
         } else {
-            &mut o_data[output_range.bytes.clone()]
+            o_data
+                .get_mut(output_range.bytes.clone())
+                .ok_or(Error::Internal)?
         };
 
         Ok(SlaveRef::new(
@@ -926,7 +930,10 @@ where
 
         let wkc = data.working_counter;
 
-        self.pdi_mut()[0..self.read_pdi_len].copy_from_slice(&data[0..self.read_pdi_len]);
+        self.pdi_mut()
+            .get_mut(0..self.read_pdi_len)
+            .ok_or(Error::Internal)?
+            .copy_from_slice(data.get(0..self.read_pdi_len).ok_or(Error::Internal)?);
 
         Ok(wkc)
     }

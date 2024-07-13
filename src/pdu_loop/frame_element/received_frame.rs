@@ -44,11 +44,19 @@ impl<'sto> ReceivedFrame<'sto> {
             return Err(Error::Pdu(PduError::InvalidIndex(pdu_header.index)));
         }
 
-        let payload_ptr =
-            unsafe { NonNull::new_unchecked(buf[PduHeader::PACKED_LEN..].as_ptr().cast_mut()) };
+        let payload_ptr = unsafe {
+            NonNull::new_unchecked(
+                buf.get(PduHeader::PACKED_LEN..)
+                    .ok_or(Error::Internal)?
+                    .as_ptr()
+                    .cast_mut(),
+            )
+        };
 
-        let working_counter =
-            u16::unpack_from_slice(&buf[(PduHeader::PACKED_LEN + payload_len)..])?;
+        let working_counter = u16::unpack_from_slice(
+            buf.get((PduHeader::PACKED_LEN + payload_len)..)
+                .ok_or(Error::Internal)?,
+        )?;
 
         Ok(ReceivedPdu {
             data_start: payload_ptr,
@@ -71,7 +79,7 @@ impl<'sto> ReceivedFrame<'sto> {
             let this_pdu_len = PduHeader::PACKED_LEN + payload_len + 2;
 
             // Start buffer at beginning of next PDU
-            buf = &buf[this_pdu_len..];
+            buf = buf.get(this_pdu_len..).ok_or(Error::Internal)?;
         }
 
         // This checks for buffer min length
@@ -93,11 +101,19 @@ impl<'sto> ReceivedFrame<'sto> {
             return Err(Error::Pdu(PduError::TooLong));
         }
 
-        let payload_ptr =
-            unsafe { NonNull::new_unchecked(buf[PduHeader::PACKED_LEN..].as_ptr().cast_mut()) };
+        let payload_ptr = unsafe {
+            NonNull::new_unchecked(
+                buf.get(PduHeader::PACKED_LEN..)
+                    .ok_or(Error::Internal)?
+                    .as_ptr()
+                    .cast_mut(),
+            )
+        };
 
-        let working_counter =
-            u16::unpack_from_slice(&buf[(PduHeader::PACKED_LEN + payload_len)..])?;
+        let working_counter = u16::unpack_from_slice(
+            buf.get((PduHeader::PACKED_LEN + payload_len)..)
+                .ok_or(Error::Internal)?,
+        )?;
 
         Ok(ReceivedPdu {
             data_start: payload_ptr,

@@ -166,7 +166,8 @@ where
             // Read entire category using its discovered length.
             let fmmus = reader.read(&mut buf).await?;
 
-            buf[0..fmmus]
+            buf.get(0..fmmus)
+                .ok_or(Error::Internal)?
                 .iter()
                 .map(|raw| {
                     FmmuUsage::try_from(*raw).map_err(|e| {
@@ -309,14 +310,14 @@ where
             if string_len > N {
                 return Err(Error::StringTooLong {
                     max_length: N,
-                    string_length: string_len.into(),
+                    string_length: string_len,
                 });
             }
 
             let mut buf = heapless::Vec::<u8, N>::new();
 
             // SAFETY: We MUST ensure that `string_len` is less than `N`
-            unsafe { buf.set_len(usize::from(string_len)) }
+            unsafe { buf.set_len(string_len) }
 
             reader.read_exact(&mut buf).await?;
 

@@ -166,7 +166,7 @@ impl EtherCrabWireRead for bool {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, WireError> {
         // NOTE: ETG1000.6 5.2.2 states the truthy value is 0xff and false is 0. We'll just check
         // for greater than zero to be sure.
-        Ok(*buf.get(0).ok_or(WireError::ReadBufferTooShort)? > 0)
+        Ok(*buf.first().ok_or(WireError::ReadBufferTooShort)? > 0)
     }
 }
 
