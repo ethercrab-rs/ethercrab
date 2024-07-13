@@ -646,7 +646,9 @@ where
         if headers.sdo_header.expedited_transfer {
             let data_len = 4usize.saturating_sub(usize::from(headers.sdo_header.size));
 
-            Ok(T::unpack_from_slice(&data[0..data_len])?)
+            Ok(T::unpack_from_slice(
+                data.get(0..data_len).ok_or(Error::Internal)?,
+            )?)
         } else {
             Err(Error::Internal)
         }
@@ -674,14 +676,14 @@ where
         let response_payload = if headers.sdo_header.expedited_transfer {
             let data_len = 4usize.saturating_sub(usize::from(headers.sdo_header.size));
 
-            &data[0..data_len]
+            data.get(0..data_len).ok_or(Error::Internal)?
         }
         // Data is either a normal upload or a segmented upload
         else {
             let data_length = headers.header.length.saturating_sub(0x0a);
 
             let complete_size = u32::unpack_from_slice(data)?;
-            let data = &data[u32::PACKED_LEN..];
+            let data = data.get(u32::PACKED_LEN..).ok_or(Error::Internal)?;
 
             // The provided buffer isn't long enough to contain all mailbox data.
             if complete_size > buf.len() as u32 {
@@ -693,7 +695,8 @@ where
 
             // If it's a normal upload, the response payload is returned in the initial mailbox read
             if complete_size <= u32::from(data_length) {
-                &data[0..usize::from(data_length)]
+                data.get(0..usize::from(data_length))
+                    .ok_or(Error::Internal)?
             }
             // If it's a segmented upload, we must make subsequent requests to load all segment data
             // from the read mailbox.
@@ -719,9 +722,12 @@ where
                         chunk_len -= usize::from(headers.sdo_header.segment_data_size);
                     }
 
-                    let data = &data[0..chunk_len];
+                    let data = data.get(0..chunk_len).ok_or(Error::Internal)?;
 
-                    buf[total_len..][..chunk_len].copy_from_slice(data);
+                    buf.get_mut(total_len..(total_len + chunk_len))
+                        .ok_or(Error::Internal)?
+                        .copy_from_slice(data);
+
                     total_len += chunk_len;
 
                     if headers.sdo_header.is_last_segment {
@@ -731,7 +737,7 @@ where
                     toggle = !toggle;
                 }
 
-                &buf[0..total_len]
+                buf.get(0..total_len).ok_or(Error::Internal)?
             }
         };
 

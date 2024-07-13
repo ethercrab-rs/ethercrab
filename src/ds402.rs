@@ -13,6 +13,7 @@ use crate::{
     fmt,
     slave::{pdi::SlavePdi, SlaveRef},
 };
+use ethercrab_wire::EtherCrabWireRead;
 
 smlang::statemachine! {
     transitions: {
@@ -137,7 +138,7 @@ impl<'a> Ds402<'a> {
 
     /// Get the DS402 status word.
     pub fn status_word(&self) -> StatusWord {
-        let status = u16::from_le_bytes(fmt::unwrap!(self.slave.inputs_raw()[0..=1].try_into()));
+        let status = fmt::unwrap!(u16::unpack_from_slice(self.slave.inputs_raw()));
 
         StatusWord::from_bits_truncate(status)
     }

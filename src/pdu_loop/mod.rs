@@ -90,7 +90,7 @@ impl<'sto> PduLoop<'sto> {
             false,
         )?;
 
-        let frame = frame.mark_sendable(&self, timeout, retries);
+        let frame = frame.mark_sendable(self, timeout, retries);
 
         self.wake_sender();
 
