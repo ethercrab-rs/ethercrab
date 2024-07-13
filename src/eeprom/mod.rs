@@ -102,7 +102,7 @@ where
         // Advance by one byte
         self.pos += 1;
 
-        Ok(res[skip])
+        res.get(skip).map(|res| *res).ok_or(Error::Internal)
     }
 }
 
@@ -126,7 +126,9 @@ where
 
         // We can't read past the end of the chunk, so clamp the buffer's length to the remaining
         // part of the chunk if necessary.
-        let mut buf = &mut buf[0..requested_read_len.min(max_read)];
+        let mut buf = buf
+            .get_mut(0..requested_read_len.min(max_read))
+            .ok_or(Error::Internal)?;
 
         self.reader.clear_errors().await?;
 
@@ -140,7 +142,7 @@ where
             let skip = usize::from(self.pos % 2);
 
             // Fix any odd addressing offsets
-            let chunk = &chunk[skip..];
+            let chunk = chunk.get(skip..).ok_or(Error::Internal)?;
 
             // Buffer is full after reading this chunk into it. We're done.
             if buf.len() < chunk.len() {

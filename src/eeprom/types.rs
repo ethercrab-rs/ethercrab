@@ -707,7 +707,9 @@ impl EtherCrabWireSized for MailboxProtocols {
 impl EtherCrabWireRead for MailboxProtocols {
     fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
         // NOTE: Is actually a u16, but only the lower byte has any data in it
-        Self::from_bits(buf[0]).ok_or(ethercrab_wire::WireError::InvalidValue)
+        buf.get(0)
+            .ok_or(ethercrab_wire::WireError::ReadBufferTooShort)
+            .and_then(|res| Self::from_bits(*res).ok_or(ethercrab_wire::WireError::InvalidValue))
     }
 }
 
