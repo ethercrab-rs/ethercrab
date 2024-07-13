@@ -25,7 +25,7 @@ pub use pdu_header::PduHeader;
 
 /// The core EtherCrab network communications driver.
 ///
-/// TODO: Update the following docs. The current text is out of date.
+// TODO: Update the following docs. The current text is out of date.
 // This item orchestrates queuing, sending and receiving responses to individual PDUs. It uses a
 // fixed length list of frame slots which are cycled through sequentially to ensure each PDU packet
 // has a unique ID (by using the slot index).
