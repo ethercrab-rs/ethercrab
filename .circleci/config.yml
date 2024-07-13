@@ -51,22 +51,22 @@ miri_steps: &miri_steps
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
     - run: rustup toolchain add nightly-2024-07-13 --target $TARGET --component miri
-    - run: |
-        binaries=( "cargo-nextest" )
+    # - run: |
+    #     binaries=( "cargo-nextest" )
 
-        for binary in "${binaries[@]}"
-        do
-          echo "Checking for $binary"
-          if ! type "$binary" > /dev/null; then
-            echo "--> $binary is not installed. Installing..."
-            cargo install "$binary" --target x86_64-unknown-linux-gnu --locked
-          else
-            echo "--> $binary already installed"
-          fi
-        done
+    #     for binary in "${binaries[@]}"
+    #     do
+    #       echo "Checking for $binary"
+    #       if ! type "$binary" > /dev/null; then
+    #         echo "--> $binary is not installed. Installing..."
+    #         cargo install "$binary" --target x86_64-unknown-linux-gnu --locked
+    #       else
+    #         echo "--> $binary already installed"
+    #       fi
+    #     done
     - run: |
         MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" \
-        cargo +nightly-2024-07-13 miri nextest run --features '__internals' --target $TARGET --test-threads=num-cpus
+        cargo +nightly-2024-07-13 miri test --features '__internals' --target $TARGET
 
     - save_cache:
         key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
