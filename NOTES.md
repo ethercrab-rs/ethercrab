@@ -1260,3 +1260,35 @@ Note
 # Ultimate Linux networking guide
 
 <https://ntk148v.github.io/posts/linux-network-performance-ultimate-guide>
+# XDP stuff
+
+- List of supporting drivers:
+  <https://github.com/iovisor/bcc/blob/master/docs/kernel-versions.md#xdp> as well as
+  <https://github.com/xdp-project/xdp-project/blob/master/areas/drivers/README.org#xdp-driver-support-status>
+- Intel docs on offload: <https://eci.intel.com/docs/3.0.2/development/tsnrefsw/bpf-xdp.html>. Even
+  mentions EtherCAT
+  [here](https://eci.intel.com/docs/3.0.2/development/tsnrefsw/bpf-xdp.html#linux-express-data-path-xdp)
+  which is cool
+- See what and where system libs are: `sudo ldconfig -p | rg bpf`
+- Bidir AF_XDP explanation <https://hpnpl.net/posts/recapituatling-af-xdp/> (Medium backup
+  <https://medium.com/high-performance-network-programming/recapitulating-af-xdp-ef6c1ebead8>)
+- Busy polling seems to be good for running driver and app on same core?
+  <https://github.com/xdp-project/bpf-examples/tree/5343ed3377471c7b7ef2237526c8bdc0f00a0cef/AF_XDP-example#busy-poll-mode>
+- `libbpf` can (does?) load a default program if one is not provided
+- `xsk` functions are provided by `libxdp`, which builds on top of `libbpf`. Mentioned
+  [here](https://www.mankier.com/3/libxdp#Using_AF_XDP_sockets).
+- `afxdp-rs` uses XDP stuff from `libbpf-sys` 0.7.0, however this is pretty out of date
+- [`xsk-rs`](https://github.com/DouglasGray/xsk-rs) switched to `libxdp` a while back in
+  <https://github.com/DouglasGray/xsk-rs/issues/21>
+- Link errors when compiling with system-provided `libbpf-dev` _might_ be caused by the fact that
+  it's ancient. Only some functions can't be found which might've been added in newer versions.
+  Latest on Github is 1.4.2 at time of writing. Repo version is 0.5.0:
+
+  ```
+  ❯ apt-cache madison libbpf-dev
+  libbpf-dev | 1:0.5.0-1ubuntu22.04.1 | http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+  libbpf-dev | 1:0.5.0-1ubuntu22.04.1 | http://security.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+  libbpf-dev |  1:0.5.0-1 | http://archive.ubuntu.com/ubuntu jammy/main amd64 Packages
+  ```
+
+- Polling with a timeout of zero makes `libc::poll` return instantly
