@@ -67,7 +67,7 @@ pub fn tx_rx_task_xdp<'sto>(
     let signal = Arc::new(ParkSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
 
-    let mut xsk_tx = build_socket_and_umem(
+    let mut xsk = build_socket_and_umem(
         UmemConfig::default(),
         // TODO: Config option to use `XDP_FLAGS_DRV_MODE` or `XDP_FLAGS_HW_MODE` (driver and NIC
         // mode respectively)
@@ -79,8 +79,9 @@ pub fn tx_rx_task_xdp<'sto>(
         0,
     );
 
-    let tx_umem = &xsk_tx.umem;
-    let mut tx_descs = &mut xsk_tx.descs;
+    let umem = &xsk.umem;
+    let mid = xsk.descs.len() / 2;
+    let (tx_descs, mut rx_descs) = xsk.descs.split_at_mut(mid);
 
     let mut in_flight = 0u32;
 
@@ -104,7 +105,7 @@ pub fn tx_rx_task_xdp<'sto>(
                         Error::SendFrame
                     })?;
 
-                    unsafe { tx_umem.data_mut(descriptor) }
+                    unsafe { umem.data_mut(descriptor) }
                         .cursor()
                         .write_all(data)
                         .map_err(|e| {
@@ -122,13 +123,9 @@ pub fn tx_rx_task_xdp<'sto>(
             tx_frame_count += 1;
         }
 
-        // let tx_frames_sent =
-        //     unsafe { xsk_tx.tx_q.produce_and_wakeup(&tx_descs[0..tx_frame_count]) }?;
-
         // Add consumed frames back to the tx queue
         while unsafe {
-            xsk_tx
-                .tx_q
+            xsk.tx_q
                 .produce_and_wakeup(&tx_descs[0..tx_frame_count])
                 .unwrap()
         } != tx_frame_count
@@ -140,21 +137,24 @@ pub fn tx_rx_task_xdp<'sto>(
         if tx_frame_count > 0 {
             fmt::trace!("Sent {} frame(s)", tx_frame_count,);
 
-            let frames_filled = unsafe { xsk_tx.fq.produce(&tx_descs[0..tx_frame_count]) };
+            let frames_filled = unsafe { xsk.cq.consume(&mut tx_descs[0..tx_frame_count]) };
 
-            fmt::trace!("--> Filled queue with {} frames", frames_filled);
+            fmt::trace!("--> Completion queue filled with {} frames", frames_filled);
+
+            // TODO: Do I need to check the return value here?
+            unsafe { xsk.fq.produce(&rx_descs) };
         }
 
         // ---
         // Receive
         // ---
 
-        let pkts_recvd = unsafe { xsk_tx.rx_q.poll_and_consume(&mut tx_descs, 0).unwrap() };
+        let pkts_recvd = unsafe { xsk.rx_q.poll_and_consume(&mut rx_descs, 0).unwrap() };
 
-        for recv_desc in tx_descs.iter_mut().take(pkts_recvd) {
+        for recv_desc in rx_descs.iter_mut().take(pkts_recvd) {
             let received = Instant::now();
 
-            let data = unsafe { tx_umem.data(recv_desc) };
+            let data = unsafe { umem.data(recv_desc) };
 
             let frame_index = data
                 .get(0x11)
@@ -163,8 +163,8 @@ pub fn tx_rx_task_xdp<'sto>(
             loop {
                 match pdu_rx.receive_frame(&data) {
                     Ok(action) => {
-                        // Consume anything we've received, whether it's an EtherCAT frame or not
-                        unsafe { xsk_tx.cq.consume_one(recv_desc) };
+                        // // Release packet for reuse whether it's an EtherCAT frame or not
+                        // assert_eq!(unsafe { xsk.fq.produce_one(recv_desc) }, 1, "Consume frame");
 
                         if action == ReceiveAction::Processed {
                             fmt::trace!(
@@ -177,7 +177,7 @@ pub fn tx_rx_task_xdp<'sto>(
                                 .checked_sub(1)
                                 .expect("Can't have fewer than 0 frames in flight");
                         } else {
-                            fmt::error!("Frame ignored");
+                            fmt::trace!("Frame ignored");
                         }
 
                         break;
