@@ -7,6 +7,7 @@ use crate::{
 use core::{mem::MaybeUninit, num::NonZeroU32, str::FromStr, task::Waker};
 use io_uring::{opcode, IoUring};
 use smallvec::{smallvec, SmallVec};
+use smoltcp::wire::EthernetProtocol;
 use std::{
     io::{self, Write},
     os::fd::AsRawFd,
@@ -16,7 +17,7 @@ use std::{
     time::Instant,
 };
 use xsk_rs::{
-    config::{Interface, SocketConfig, UmemConfig},
+    config::{Interface, SocketConfig, UmemConfig, XdpFlags},
     CompQueue, FillQueue, FrameDesc, RxQueue, TxQueue, Umem,
 };
 
@@ -64,20 +65,31 @@ pub fn tx_rx_task_xdp<'sto>(
 
     // MTU is payload size. We need to add the layer 2 header which is 18 bytes.
     let mtu = mtu + 18;
+    let frame_count = 32.try_into().expect("Non-zero frame count required");
 
     let signal = Arc::new(ParkSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
 
     let mut xsk_tx = build_socket_and_umem(
         UmemConfig::default(),
-        SocketConfig::default(),
-        32.try_into().expect("Non-zero frame count required"),
+        // TODO: Config option to use `XDP_FLAGS_DRV_MODE` or `XDP_FLAGS_HW_MODE` (driver and NIC
+        // mode respectively)
+        SocketConfig::builder()
+            .xdp_flags(XdpFlags::XDP_FLAGS_SKB_MODE)
+            .build(),
+        frame_count,
         &Interface::from_str(interface)?,
         0,
     );
 
     let tx_umem = &xsk_tx.umem;
-    let tx_descs = &mut xsk_tx.descs;
+    let mut tx_descs = &mut xsk_tx.descs;
+
+    let frames_filled = unsafe { xsk_tx.fq.produce(&tx_descs[0..frame_count.get() as usize]) };
+
+    fmt::debug!("Filled queue with {} frames", frames_filled);
+
+    let mut in_flight = 0u32;
 
     loop {
         pdu_tx.replace_waker(&waker);
@@ -110,64 +122,61 @@ pub fn tx_rx_task_xdp<'sto>(
                 })
                 .expect("Send blocking");
 
+            in_flight += 1;
+
             tx_frame_count += 1;
         }
 
-        let tx_frames_sent =
-            unsafe { xsk_tx.tx_q.produce_and_wakeup(&tx_descs[0..tx_frame_count]) }?;
+        // let tx_frames_sent =
+        //     unsafe { xsk_tx.tx_q.produce_and_wakeup(&tx_descs[0..tx_frame_count]) }?;
 
-        fmt::debug!(
-            "Wanted to send {} frames, actually sent {}",
-            tx_frame_count,
-            tx_frames_sent
-        );
+        // Add consumed frames back to the tx queue
+        while unsafe {
+            xsk_tx
+                .tx_q
+                .produce_and_wakeup(&tx_descs[0..tx_frame_count])
+                .unwrap()
+        } != tx_frame_count
+        {
+            // Loop until frames added to the tx ring.
+            log::debug!("Sender TX queue failed to allocate");
+        }
 
-        // // Handle tx
-        // match unsafe { xsk_tx.cq.consume(&mut tx_descs[..]) } {
-        //     0 => {
-        //         fmt::debug!("Sender completion queue consumed 0 frames");
+        if tx_frame_count > 0 {
+            fmt::debug!("Sent {} frame(s)", tx_frame_count,);
+        }
 
-        //         if xsk_tx.tx_q.needs_wakeup() {
-        //             fmt::debug!("Waking sender TX queue");
+        // ---
+        // Receive
+        // ---
 
-        //             xsk_tx.tx_q.wakeup().unwrap();
-        //         }
-        //     }
-        //     frames_rcvd => {
-        //         fmt::debug!("Sender comp queue consumed {} frames", frames_rcvd);
+        let pkts_recvd = unsafe { xsk_tx.rx_q.poll_and_consume(&mut tx_descs, 100).unwrap() };
 
-        //         // Wait until we're ok to write
-        //         while !xsk_tx.tx_q.poll(0).unwrap() {
-        //             fmt::debug!("Sender socket not ready to write");
+        for recv_desc in tx_descs.iter().take(pkts_recvd) {
+            let data = unsafe { tx_umem.data(recv_desc) };
 
-        //             continue;
-        //         }
+            let f = smoltcp::wire::EthernetFrame::new_checked(data).expect("Bad frame");
 
-        //         // TODO: Configurable batch size
-        //         let frames_to_send = frames_rcvd.min(64);
+            if f.ethertype() == EthernetProtocol::Unknown(0x88a4) {
+                fmt::debug!("Received ECAT frame");
 
-        //         // Add consumed frames back to the tx queue
-        //         while unsafe {
-        //             xsk_tx
-        //                 .tx_q
-        //                 .produce_and_wakeup(&tx_descs[..frames_to_send])
-        //                 .unwrap()
-        //         } != frames_to_send
-        //         {
-        //             // Loop until frames added to the tx ring.
-        //             fmt::debug!("Sender tx queue failed to allocate");
-        //         }
-        //         fmt::debug!("Submitted {} frames to sender TX queue", frames_to_send);
-        //     }
-        // }
+                in_flight = in_flight
+                    .checked_sub(1)
+                    .expect("Can't have fewer than zero frames in flight");
+            } else {
+                fmt::debug!("Received other frame");
+            }
+        }
 
-        // TODO: Receive
+        if in_flight == 0 {
+            fmt::trace!("Nothing to send, waiting for wakeup");
 
-        let start = Instant::now();
+            let start = Instant::now();
 
-        signal.wait();
+            signal.wait();
 
-        fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
+            fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
+        }
     }
 }
 
