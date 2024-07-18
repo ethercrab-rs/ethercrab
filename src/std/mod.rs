@@ -6,6 +6,8 @@ mod io_uring;
 mod unix;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "linux")]
+mod xdp;
 
 #[cfg(target_os = "windows")]
 pub use self::windows::{ethercat_now, tx_rx_task};
@@ -14,3 +16,5 @@ pub use unix::{ethercat_now, tx_rx_task};
 // io_uring is Linux-only
 #[cfg(target_os = "linux")]
 pub use io_uring::tx_rx_task_io_uring;
+#[cfg(target_os = "linux")]
+pub use xdp::tx_rx_task_xdp;
