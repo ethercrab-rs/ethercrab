@@ -60,8 +60,8 @@ pub fn tx_rx_task_xdp<'sto>(
         mtu
     );
 
-    // MTU is payload size. We need to add the layer 2 header which is 18 bytes.
-    let mtu = mtu + 18;
+    // // MTU is payload size. We need to add the layer 2 header which is 18 bytes.
+    // let mtu = mtu + 18;
     let frame_count = 32.try_into().expect("Non-zero frame count required");
 
     let signal = Arc::new(ParkSignal::new());
@@ -123,7 +123,7 @@ pub fn tx_rx_task_xdp<'sto>(
             tx_frame_count += 1;
         }
 
-        // Add consumed frames back to the tx queue
+        // Pass frames over to kernel for sending
         while unsafe {
             xsk.tx_q
                 .produce_and_wakeup(&tx_descs[0..tx_frame_count])
@@ -137,10 +137,13 @@ pub fn tx_rx_task_xdp<'sto>(
         if tx_frame_count > 0 {
             fmt::trace!("Sent {} frame(s)", tx_frame_count,);
 
+            // Packets have been sent. Return slots for reuse
             let frames_filled = unsafe { xsk.cq.consume(&mut tx_descs[0..tx_frame_count]) };
 
             fmt::trace!("--> Completion queue filled with {} frames", frames_filled);
 
+            // Hand over a bunch of frames to the kernel to wait for received responses to what we
+            // just sent.
             // TODO: Do I need to check the return value here?
             unsafe { xsk.fq.produce(&rx_descs) };
         }
@@ -149,6 +152,11 @@ pub fn tx_rx_task_xdp<'sto>(
         // Receive
         // ---
 
+        // Take ownership of any received descriptors back from the kernel and mark them as ready
+        // for reuse.
+        // SAFETY: The descriptors could potentially be reused from underneath us if we don't do
+        // this on a single thread; the code below parses the frames and copies their contents into
+        // other memory, so as long as it's done by the time more packets are received, we're good.
         let pkts_recvd = unsafe { xsk.rx_q.poll_and_consume(&mut rx_descs, 0).unwrap() };
 
         for recv_desc in rx_descs.iter_mut().take(pkts_recvd) {
@@ -163,9 +171,6 @@ pub fn tx_rx_task_xdp<'sto>(
             loop {
                 match pdu_rx.receive_frame(&data) {
                     Ok(action) => {
-                        // // Release packet for reuse whether it's an EtherCAT frame or not
-                        // assert_eq!(unsafe { xsk.fq.produce_one(recv_desc) }, 1, "Consume frame");
-
                         if action == ReceiveAction::Processed {
                             fmt::trace!(
                                 "Processed received frame {:#04x} in {} ns",
