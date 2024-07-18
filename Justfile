@@ -6,7 +6,8 @@ linux-example example *args:
 linux-example-release example *args:
     cargo build --example {{example}} --release && \
     sudo setcap cap_net_raw=pe ./target/release/examples/{{example}} && \
-    ./target/release/examples/{{example}} {{args}}
+    sudo setcap cap_net_admin=pe ./target/release/examples/{{example}} && \
+    sudo -E ./target/release/examples/{{example}} {{args}}
 
 linux-test *args:
     #!/usr/bin/env bash
