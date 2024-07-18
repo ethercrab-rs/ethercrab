@@ -1,16 +1,13 @@
 use crate::{
     error::{Error, PduError},
     fmt,
+    pdu_loop::ReceiveAction,
     std::unix::RawSocketDesc,
     PduRx, PduTx,
 };
-use core::{mem::MaybeUninit, num::NonZeroU32, str::FromStr, task::Waker};
-use io_uring::{opcode, IoUring};
-use smallvec::{smallvec, SmallVec};
-use smoltcp::wire::EthernetProtocol;
+use core::{num::NonZeroU32, str::FromStr, task::Waker};
 use std::{
     io::{self, Write},
-    os::fd::AsRawFd,
     sync::Arc,
     task::Wake,
     thread::{self, Thread},
@@ -93,13 +90,13 @@ pub fn tx_rx_task_xdp<'sto>(
         let mut tx_frame_count = 0;
 
         while let Some(frame) = pdu_tx.next_sendable_frame() {
-            let idx = frame.index();
-
             let mut it = tx_descs.iter_mut();
+
+            let idx = frame.index();
 
             frame
                 .send_blocking(|data: &[u8]| {
-                    fmt::trace!("Queuing frame to send");
+                    fmt::trace!("Queuing frame {:#04x} to send", idx);
 
                     let descriptor = it.next().ok_or_else(|| {
                         fmt::error!("Not enough send slots available");
@@ -141,11 +138,11 @@ pub fn tx_rx_task_xdp<'sto>(
         }
 
         if tx_frame_count > 0 {
-            fmt::debug!("Sent {} frame(s)", tx_frame_count,);
+            fmt::trace!("Sent {} frame(s)", tx_frame_count,);
 
             let frames_filled = unsafe { xsk_tx.fq.produce(&tx_descs[0..tx_frame_count]) };
 
-            fmt::debug!("--> Filled queue with {} frames", frames_filled);
+            fmt::trace!("--> Filled queue with {} frames", frames_filled);
         }
 
         // ---
@@ -165,7 +162,26 @@ pub fn tx_rx_task_xdp<'sto>(
 
             loop {
                 match pdu_rx.receive_frame(&data) {
-                    Ok(()) => break,
+                    Ok(action) => {
+                        // Consume anything we've received, whether it's an EtherCAT frame or not
+                        unsafe { xsk_tx.cq.consume_one(recv_desc) };
+
+                        if action == ReceiveAction::Processed {
+                            fmt::trace!(
+                                "Processed received frame {:#04x} in {} ns",
+                                frame_index,
+                                received.elapsed().as_nanos()
+                            );
+
+                            in_flight = in_flight
+                                .checked_sub(1)
+                                .expect("Can't have fewer than 0 frames in flight");
+                        } else {
+                            fmt::error!("Frame ignored");
+                        }
+
+                        break;
+                    }
                     Err(Error::Pdu(PduError::NoWaker)) => {
                         fmt::trace!(
                             "No waker for received frame {:#04x}, retrying receive",
@@ -177,14 +193,6 @@ pub fn tx_rx_task_xdp<'sto>(
                     Err(e) => return Err(io::Error::other(e)),
                 }
             }
-
-            unsafe { xsk_tx.cq.consume_one(recv_desc) };
-
-            fmt::trace!("Received frame in {} ns", received.elapsed().as_nanos());
-
-            in_flight = in_flight
-                .checked_sub(1)
-                .expect("Can't have fewer than 0 frames in flight");
         }
 
         if in_flight == 0 {

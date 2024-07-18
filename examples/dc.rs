@@ -3,11 +3,12 @@
 //! Please note this example uses experimental features and should not be used as a reference for
 //! other code. It is here (currently) primarily to help develop EtherCrab.
 
+use core_affinity::CoreId;
 use env_logger::Env;
 use ethercrab::{
     error::Error,
     slave_group::{CycleInfo, DcConfiguration},
-    std::{ethercat_now, tx_rx_task},
+    std::{ethercat_now, tx_rx_task, tx_rx_task_xdp},
     Client, ClientConfig, DcSync, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
@@ -22,6 +23,9 @@ use std::{
 };
 use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
+use thread_priority::{
+    RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
+};
 
 /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
 const MAX_SLAVES: usize = 16;
@@ -82,7 +86,28 @@ fn main() -> Result<(), Error> {
 
     let mut tick_interval = smol::Timer::interval(TICK_INTERVAL);
 
-    smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
+    // smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
+
+    thread_priority::ThreadBuilder::default()
+        .name("tx-rx-thread")
+        // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
+        // Check limits with `ulimit -Hr` or `ulimit -Sr`
+        .priority(ThreadPriority::Crossplatform(
+            ThreadPriorityValue::try_from(49u8).unwrap(),
+        ))
+        // NOTE: Requires a realtime kernel
+        .policy(ThreadSchedulePolicy::Realtime(
+            RealtimeThreadSchedulePolicy::Fifo,
+        ))
+        .spawn(move |_| {
+            // core_affinity::set_for_current(CoreId { id: 0 })
+            //     .then_some(())
+            //     .expect("Set TX/RX thread core");
+
+            // Blocking io_uring
+            tx_rx_task_xdp(&interface, tx, rx).expect("TX/RX task");
+        })
+        .unwrap();
 
     // Wait for TX/RX loop to start
     thread::sleep(Duration::from_millis(200));
