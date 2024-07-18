@@ -50,7 +50,7 @@ async fn main() -> Result<(), Error> {
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
-            pdu: Duration::from_millis(10_000),
+            pdu: Duration::from_millis(2_000),
             ..Default::default()
         },
         ClientConfig::default(),
