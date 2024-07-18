@@ -85,10 +85,6 @@ pub fn tx_rx_task_xdp<'sto>(
     let tx_umem = &xsk_tx.umem;
     let mut tx_descs = &mut xsk_tx.descs;
 
-    let frames_filled = unsafe { xsk_tx.fq.produce(&tx_descs[0..frame_count.get() as usize]) };
-
-    fmt::debug!("Filled queue with {} frames", frames_filled);
-
     let mut in_flight = 0u32;
 
     loop {
@@ -103,6 +99,8 @@ pub fn tx_rx_task_xdp<'sto>(
 
             frame
                 .send_blocking(|data: &[u8]| {
+                    fmt::trace!("Queuing frame to send");
+
                     let descriptor = it.next().ok_or_else(|| {
                         fmt::error!("Not enough send slots available");
 
@@ -144,28 +142,49 @@ pub fn tx_rx_task_xdp<'sto>(
 
         if tx_frame_count > 0 {
             fmt::debug!("Sent {} frame(s)", tx_frame_count,);
+
+            let frames_filled = unsafe { xsk_tx.fq.produce(&tx_descs[0..tx_frame_count]) };
+
+            fmt::debug!("--> Filled queue with {} frames", frames_filled);
         }
 
         // ---
         // Receive
         // ---
 
-        let pkts_recvd = unsafe { xsk_tx.rx_q.poll_and_consume(&mut tx_descs, 100).unwrap() };
+        let pkts_recvd = unsafe { xsk_tx.rx_q.poll_and_consume(&mut tx_descs, 0).unwrap() };
 
-        for recv_desc in tx_descs.iter().take(pkts_recvd) {
+        for recv_desc in tx_descs.iter_mut().take(pkts_recvd) {
+            let received = Instant::now();
+
             let data = unsafe { tx_umem.data(recv_desc) };
 
-            let f = smoltcp::wire::EthernetFrame::new_checked(data).expect("Bad frame");
+            let frame_index = data
+                .get(0x11)
+                .ok_or_else(|| io::Error::other(Error::Internal))?;
 
-            if f.ethertype() == EthernetProtocol::Unknown(0x88a4) {
-                fmt::debug!("Received ECAT frame");
+            loop {
+                match pdu_rx.receive_frame(&data) {
+                    Ok(()) => break,
+                    Err(Error::Pdu(PduError::NoWaker)) => {
+                        fmt::trace!(
+                            "No waker for received frame {:#04x}, retrying receive",
+                            frame_index
+                        );
 
-                in_flight = in_flight
-                    .checked_sub(1)
-                    .expect("Can't have fewer than zero frames in flight");
-            } else {
-                fmt::debug!("Received other frame");
+                        thread::yield_now();
+                    }
+                    Err(e) => return Err(io::Error::other(e)),
+                }
             }
+
+            unsafe { xsk_tx.cq.consume_one(recv_desc) };
+
+            fmt::trace!("Received frame in {} ns", received.elapsed().as_nanos());
+
+            in_flight = in_flight
+                .checked_sub(1)
+                .expect("Can't have fewer than 0 frames in flight");
         }
 
         if in_flight == 0 {
