@@ -92,7 +92,7 @@ impl Future for TxRxFut<'_> {
 
                             return Poll::Ready(Err(Error::ReceiveFrame));
                         }
-                        Ok(()) => break,
+                        Ok(_) => break,
                     }
                 }
             }

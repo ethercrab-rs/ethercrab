@@ -236,7 +236,7 @@ pub fn tx_rx_task_io_uring<'sto>(
 
                 loop {
                     match pdu_rx.receive_frame(&frame) {
-                        Ok(()) => break,
+                        Ok(_) => break,
                         Err(Error::Pdu(PduError::NoWaker)) => {
                             fmt::trace!(
                                 "No waker for received frame {:#04x}, retrying receive",
