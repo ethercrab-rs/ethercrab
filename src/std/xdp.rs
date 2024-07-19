@@ -62,7 +62,12 @@ pub fn tx_rx_task_xdp<'sto>(
 
     // // MTU is payload size. We need to add the layer 2 header which is 18 bytes.
     // let mtu = mtu + 18;
-    let frame_count = 32.try_into().expect("Non-zero frame count required");
+
+    let frame_count = (pdu_tx.capacity() as u32)
+        .try_into()
+        .expect("Non-zero frame count required");
+
+    fmt::debug!("Frame count {}", frame_count);
 
     let signal = Arc::new(ParkSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
