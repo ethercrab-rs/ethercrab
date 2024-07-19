@@ -67,15 +67,22 @@ pub fn tx_rx_task_xdp<'sto>(
     let signal = Arc::new(ParkSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
 
+    let basic_config = SocketConfig::builder()
+        .xdp_flags(XdpFlags::XDP_FLAGS_SKB_MODE)
+        .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
+        .build();
+
+    let i210_config = SocketConfig::builder()
+        .xdp_flags(XdpFlags::XDP_FLAGS_HW_MODE)
+        .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
+        // .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
+        .build();
+
     let mut xsk = build_socket_and_umem(
         UmemConfig::default(),
         // TODO: Config option to use `XDP_FLAGS_DRV_MODE` or `XDP_FLAGS_HW_MODE` (driver and NIC
         // mode respectively)
-        SocketConfig::builder()
-            .xdp_flags(XdpFlags::XDP_FLAGS_HW_MODE)
-            // .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP|BindFlags::XDP_ZEROCOPY)
-            .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
-            .build(),
+        i210_config,
         frame_count,
         &Interface::from_str(interface)?,
         0,
