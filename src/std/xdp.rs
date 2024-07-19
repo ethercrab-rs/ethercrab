@@ -92,6 +92,9 @@ pub fn tx_rx_task_xdp<'sto>(
     let mid = xsk.descs.len() / 2;
     let (tx_descs, mut rx_descs) = xsk.descs.split_at_mut(mid);
 
+    // Clear RX buffers before starting up
+    while unsafe { xsk.rx_q.poll_and_consume(&mut rx_descs, 0).unwrap() } > 0 {}
+
     let mut in_flight = 0u32;
 
     loop {
