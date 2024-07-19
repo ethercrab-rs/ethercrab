@@ -56,7 +56,7 @@ pub struct SupportedModes {
     dynamic: bool,
 }
 
-const TICK_INTERVAL: Duration = Duration::from_micros(500);
+const TICK_INTERVAL: Duration = Duration::from_micros(150);
 
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -111,6 +111,10 @@ fn main() -> Result<(), Error> {
 
     // Wait for TX/RX loop to start
     thread::sleep(Duration::from_millis(200));
+
+    core_affinity::set_for_current(CoreId { id: 1 })
+        .then_some(())
+        .expect("Set main task core");
 
     #[cfg(target_os = "linux")]
     thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Crossplatform(

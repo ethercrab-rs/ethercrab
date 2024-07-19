@@ -78,7 +78,7 @@ pub fn tx_rx_task_xdp<'sto>(
         .build();
 
     let i210_config = SocketConfig::builder()
-        .xdp_flags(XdpFlags::XDP_FLAGS_HW_MODE)
+        .xdp_flags(XdpFlags::XDP_FLAGS_DRV_MODE)
         .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
         // .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
         .build();
@@ -97,6 +97,9 @@ pub fn tx_rx_task_xdp<'sto>(
     let mid = xsk.descs.len() / 2;
     let (tx_descs, mut rx_descs) = xsk.descs.split_at_mut(mid);
 
+    // Make receive slots available
+    unsafe { xsk.fq.produce(&mut rx_descs) };
+
     // Clear RX buffers before starting up
     while unsafe { xsk.rx_q.poll_and_consume(&mut rx_descs, 0).unwrap() } > 0 {}
 
@@ -114,13 +117,18 @@ pub fn tx_rx_task_xdp<'sto>(
 
             frame
                 .send_blocking(|data: &[u8]| {
-                    fmt::trace!("Queuing frame {:#04x} to send", idx);
-
                     let descriptor = it.next().ok_or_else(|| {
                         fmt::error!("Not enough send slots available");
 
                         Error::SendFrame
                     })?;
+
+                    fmt::debug!(
+                        "Queuing frame at index {} (EtherCAT PDU {:#04x}) to send in descriptor {}",
+                        idx,
+                        data[0x11],
+                        descriptor.addr()
+                    );
 
                     unsafe { umem.data_mut(descriptor) }
                         .cursor()
@@ -166,9 +174,11 @@ pub fn tx_rx_task_xdp<'sto>(
             }
 
             // Hand over a bunch of frames to the kernel to wait for received responses to what we
-            // just sent.
+            // just sent. This should be more than the number of EtherCAT frames sent so any
+            // non-EtherCAT traffic can be received and ignored.
+            // TODO: Make a custom BPF program to filter EtherCAT only
             // TODO: Do I need to check the return value here?
-            unsafe { xsk.fq.produce(&rx_descs[0..tx_frame_count]) };
+            // unsafe { xsk.fq.produce(&rx_descs) };
         }
 
         // ---
@@ -180,6 +190,7 @@ pub fn tx_rx_task_xdp<'sto>(
         // SAFETY: The descriptors could potentially be reused from underneath us if we don't do
         // this on a single thread; the code below parses the frames and copies their contents into
         // other memory, so as long as it's done by the time more packets are received, we're good.
+        // TODO: Remove poll timeout, but do something that means the whole PC doesn't lock up
         let pkts_recvd = unsafe { xsk.rx_q.poll_and_consume(&mut rx_descs, 0).unwrap() };
 
         for recv_desc in rx_descs.iter_mut().take(pkts_recvd) {
@@ -187,26 +198,26 @@ pub fn tx_rx_task_xdp<'sto>(
 
             let data = unsafe { umem.data(recv_desc) };
 
-            let frame_index = data
+            let frame_first_pdu_index = data
                 .get(0x11)
                 .ok_or_else(|| io::Error::other(Error::Internal))?;
 
-            fmt::trace!(
+            fmt::debug!(
                 "Received frame {:#04x} in descriptor {}",
-                frame_index,
+                frame_first_pdu_index,
                 recv_desc.addr()
             );
 
             loop {
                 match pdu_rx.receive_frame(&data) {
                     Ok(action) => {
-                        // // Return descriptor back to XDP machinery for reuse
-                        // unsafe { xsk.fq.produce_one(&recv_desc) };
+                        // Return descriptor back to fill queue to receive another packet with
+                        unsafe { xsk.fq.produce_one(&recv_desc) };
 
                         if action == ReceiveAction::Processed {
                             fmt::trace!(
-                                "--> Processed received frame {:#04x} in {} ns",
-                                frame_index,
+                                "--> Processed received frame with PDU {:#04x} in {} ns",
+                                frame_first_pdu_index,
                                 received.elapsed().as_nanos()
                             );
 
@@ -221,8 +232,8 @@ pub fn tx_rx_task_xdp<'sto>(
                     }
                     Err(Error::Pdu(PduError::NoWaker)) => {
                         fmt::trace!(
-                            "--> No waker for received frame {:#04x}, retrying receive",
-                            frame_index
+                            "--> No waker for received frame PDU {:#04x}, retrying receive",
+                            frame_first_pdu_index
                         );
 
                         thread::yield_now();
@@ -232,10 +243,8 @@ pub fn tx_rx_task_xdp<'sto>(
             }
         }
 
-        unsafe { xsk.fq.produce(&rx_descs[0..pkts_recvd]) };
-
         if in_flight == 0 {
-            fmt::trace!("Nothing to send, waiting for wakeup");
+            fmt::debug!("Nothing to send, waiting for wakeup");
 
             let start = Instant::now();
 

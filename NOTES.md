@@ -1292,3 +1292,5 @@ Note
   ```
 
 - Polling with a timeout of zero makes `libc::poll` return instantly
+- Running the XDP TX/RX task on the same core as the main task locks it up, or at least makes it run
+  very slowly. Pinning TX/RX to core 0, and running the main thread on core 1 fixes this.
