@@ -3,8 +3,8 @@
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    std::{ethercat_now, tx_rx_task, tx_rx_task_xdp},
-    Client, ClientConfig, PduStorage, Timeouts,
+    std::{ethercat_now, tx_rx_task_xdp},
+    MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
 use std::{
     sync::{

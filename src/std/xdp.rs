@@ -14,7 +14,7 @@ use std::{
     time::Instant,
 };
 use xsk_rs::{
-    config::{Interface, SocketConfig, UmemConfig, XdpFlags},
+    config::{BindFlags, Interface, SocketConfig, UmemConfig, XdpFlags},
     CompQueue, FillQueue, FrameDesc, RxQueue, TxQueue, Umem,
 };
 
@@ -72,7 +72,9 @@ pub fn tx_rx_task_xdp<'sto>(
         // TODO: Config option to use `XDP_FLAGS_DRV_MODE` or `XDP_FLAGS_HW_MODE` (driver and NIC
         // mode respectively)
         SocketConfig::builder()
-            .xdp_flags(XdpFlags::XDP_FLAGS_SKB_MODE)
+            .xdp_flags(XdpFlags::XDP_FLAGS_HW_MODE)
+            // .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP|BindFlags::XDP_ZEROCOPY)
+            .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
             .build(),
         frame_count,
         &Interface::from_str(interface)?,
@@ -137,15 +139,21 @@ pub fn tx_rx_task_xdp<'sto>(
         if tx_frame_count > 0 {
             fmt::trace!("Sent {} frame(s)", tx_frame_count,);
 
-            // Packets have been sent. Return slots for reuse
-            let frames_filled = unsafe { xsk.cq.consume(&mut tx_descs[0..tx_frame_count]) };
+            // Wait until all packets have been sent
+            loop {
+                let frames_filled = unsafe { xsk.cq.consume(&mut tx_descs[0..tx_frame_count]) };
 
-            fmt::trace!("--> Completion queue filled with {} frames", frames_filled);
+                fmt::trace!("--> Completion queue filled with {} frames", frames_filled);
+
+                if frames_filled == tx_frame_count {
+                    break;
+                }
+            }
 
             // Hand over a bunch of frames to the kernel to wait for received responses to what we
             // just sent.
             // TODO: Do I need to check the return value here?
-            unsafe { xsk.fq.produce(&rx_descs) };
+            unsafe { xsk.fq.produce(&rx_descs[0..tx_frame_count]) };
         }
 
         // ---
@@ -168,12 +176,21 @@ pub fn tx_rx_task_xdp<'sto>(
                 .get(0x11)
                 .ok_or_else(|| io::Error::other(Error::Internal))?;
 
+            fmt::trace!(
+                "Received frame {:#04x} in descriptor {}",
+                frame_index,
+                recv_desc.addr()
+            );
+
             loop {
                 match pdu_rx.receive_frame(&data) {
                     Ok(action) => {
+                        // // Return descriptor back to XDP machinery for reuse
+                        // unsafe { xsk.fq.produce_one(&recv_desc) };
+
                         if action == ReceiveAction::Processed {
                             fmt::trace!(
-                                "Processed received frame {:#04x} in {} ns",
+                                "--> Processed received frame {:#04x} in {} ns",
                                 frame_index,
                                 received.elapsed().as_nanos()
                             );
@@ -182,14 +199,14 @@ pub fn tx_rx_task_xdp<'sto>(
                                 .checked_sub(1)
                                 .expect("Can't have fewer than 0 frames in flight");
                         } else {
-                            fmt::trace!("Frame ignored");
+                            fmt::trace!("--> Frame ignored");
                         }
 
                         break;
                     }
                     Err(Error::Pdu(PduError::NoWaker)) => {
                         fmt::trace!(
-                            "No waker for received frame {:#04x}, retrying receive",
+                            "--> No waker for received frame {:#04x}, retrying receive",
                             frame_index
                         );
 
@@ -199,6 +216,8 @@ pub fn tx_rx_task_xdp<'sto>(
                 }
             }
         }
+
+        unsafe { xsk.fq.produce(&rx_descs[0..pkts_recvd]) };
 
         if in_flight == 0 {
             fmt::trace!("Nothing to send, waiting for wakeup");

@@ -3,6 +3,7 @@
 //! Please note this example uses experimental features and should not be used as a reference for
 //! other code. It is here (currently) primarily to help develop EtherCrab.
 
+use core_affinity::CoreId;
 use env_logger::Env;
 use ethercrab::{
     error::Error,
@@ -55,7 +56,7 @@ pub struct SupportedModes {
     dynamic: bool,
 }
 
-const TICK_INTERVAL: Duration = Duration::from_millis(5);
+const TICK_INTERVAL: Duration = Duration::from_micros(500);
 
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -99,9 +100,9 @@ fn main() -> Result<(), Error> {
             RealtimeThreadSchedulePolicy::Fifo,
         ))
         .spawn(move |_| {
-            // core_affinity::set_for_current(CoreId { id: 0 })
-            //     .then_some(())
-            //     .expect("Set TX/RX thread core");
+            core_affinity::set_for_current(CoreId { id: 0 })
+                .then_some(())
+                .expect("Set TX/RX thread core");
 
             // Blocking io_uring
             tx_rx_task_xdp(&interface, tx, rx).expect("TX/RX task");
