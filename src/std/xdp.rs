@@ -80,7 +80,6 @@ pub fn tx_rx_task_xdp<'sto>(
     let i210_config = SocketConfig::builder()
         .xdp_flags(XdpFlags::XDP_FLAGS_DRV_MODE)
         .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
-        // .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
         .build();
 
     let mut xsk = build_socket_and_umem(
@@ -110,9 +109,9 @@ pub fn tx_rx_task_xdp<'sto>(
 
         let mut tx_frame_count = 0;
 
-        while let Some(frame) = pdu_tx.next_sendable_frame() {
-            let mut it = tx_descs.iter_mut();
+        let mut it = tx_descs.iter_mut();
 
+        while let Some(frame) = pdu_tx.next_sendable_frame() {
             let idx = frame.index();
 
             frame
@@ -139,6 +138,8 @@ pub fn tx_rx_task_xdp<'sto>(
                             Error::SendFrame
                         })?;
 
+                    unsafe { xsk.tx_q.produce_one(descriptor) };
+
                     Ok(data.len())
                 })
                 .expect("Send blocking");
@@ -148,23 +149,24 @@ pub fn tx_rx_task_xdp<'sto>(
             tx_frame_count += 1;
         }
 
-        // Pass frames over to kernel for sending
-        while unsafe {
-            xsk.tx_q
-                .produce_and_wakeup(&tx_descs[0..tx_frame_count])
-                .unwrap()
-        } != tx_frame_count
-        {
-            // Loop until frames added to the tx ring.
-            log::debug!("Sender TX queue failed to allocate");
-        }
+        let sent_descs = &mut tx_descs[0..tx_frame_count];
+
+        // // Pass frames over to kernel for sending
+        // while unsafe { xsk.tx_q.produce_and_wakeup(sent_descs).unwrap() } != tx_frame_count {
+        //     // Loop until frames added to the tx ring.
+        //     log::debug!("Sender TX queue failed to allocate");
+        // }
 
         if tx_frame_count > 0 {
-            fmt::trace!("Sent {} frame(s)", tx_frame_count,);
+            if xsk.tx_q.needs_wakeup() {
+                xsk.tx_q.wakeup()?;
+            }
+
+            fmt::trace!("Sent {} frame(s)", tx_frame_count);
 
             // Wait until all packets have been sent
             loop {
-                let frames_filled = unsafe { xsk.cq.consume(&mut tx_descs[0..tx_frame_count]) };
+                let frames_filled = unsafe { xsk.cq.consume(sent_descs) };
 
                 fmt::trace!("--> Completion queue filled with {} frames", frames_filled);
 
@@ -190,7 +192,6 @@ pub fn tx_rx_task_xdp<'sto>(
         // SAFETY: The descriptors could potentially be reused from underneath us if we don't do
         // this on a single thread; the code below parses the frames and copies their contents into
         // other memory, so as long as it's done by the time more packets are received, we're good.
-        // TODO: Remove poll timeout, but do something that means the whole PC doesn't lock up
         let pkts_recvd = unsafe { xsk.rx_q.poll_and_consume(&mut rx_descs, 0).unwrap() };
 
         for recv_desc in rx_descs.iter_mut().take(pkts_recvd) {
