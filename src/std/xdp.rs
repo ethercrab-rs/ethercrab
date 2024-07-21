@@ -50,13 +50,18 @@ impl Wake for ParkSignal {
 /// Use [`core_affinity`] or other means to move the thread that executes this function to a
 /// different core.
 ///
-/// Using XDP requires some build-time dependencies. These can be installed on `deb`-based distros as follows:
+/// Using XDP requires some build-time dependencies. These can be installed on `deb`-based distros
+/// as follows:
 ///
 /// ```bash
 /// sudo apt install build-essential m4 clang bpftool libelf-dev libpcap-dev
 /// ```
 ///
-/// It may also be necessary to symlink some folders to mitigate an error around `asm/types.h` not being found:
+/// Ubuntu 22.04 does not provide a `bpftool` package. Instead, install `linux-tools-common
+/// linux-tools-$(uname -r)`.
+///
+/// It may also be necessary to symlink some folders to mitigate an error around `asm/types.h` not
+/// being found:
 ///
 /// ```bash
 /// sudo ln -s /usr/include/asm-generic/ /usr/include/asm
