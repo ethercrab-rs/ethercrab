@@ -9,7 +9,10 @@ pub mod storage;
 
 use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
 use core::time::Duration;
-pub use pdu_rx::{PduRx, ReceiveAction};
+pub use pdu_rx::PduRx;
+// NOTE: Allowing unused because `ReceiveAction` isn't used when `xdp` is not enabled.
+#[allow(unused)]
+pub use pdu_rx::ReceiveAction;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
 

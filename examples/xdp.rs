@@ -1,7 +1,8 @@
 //! Run example with Distributed Clocks, using experimental XDP driver on Linux for better network
-//! performance.
+//! performance. The cycle time is 100us, which can be challenging for some machines to run, but is
+//! easily possible on a Raspberry Pi 5 with some tuning.
 //!
-//! Requires a decent amount of Linux system tuning, including but not limited to
+//! Requires a decent amount of Linux system tuning, including but not limited to:
 //!
 //! - PREEMPT-RT patches
 //! - `tuned-adm profile realtime`
@@ -22,7 +23,6 @@ use ethercrab::{
 };
 use futures_lite::StreamExt;
 use std::{
-    fs::File,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -44,28 +44,7 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-#[allow(unused)]
-#[derive(Debug, ethercrab_wire::EtherCrabWireRead)]
-#[wire(bytes = 2)]
-pub struct SupportedModes {
-    /// Bit 0 = 1: free run is supported.
-    #[wire(bits = 1)]
-    free_run: bool,
-    /// Bit 1 = 1: Synchronous with SM 2 event is supported.
-    #[wire(bits = 1)]
-    sm2: bool,
-    /// Bit 2-3 = 01: DC mode is supported.
-    #[wire(bits = 2)]
-    dc_supported: bool,
-    /// Bit 4-5 = 10: Output shift with SYNC1 event (only DC mode).
-    #[wire(bits = 2)]
-    sync1: bool,
-    /// Bit 14 = 1: dynamic times (measurement through writing of 0x1C32:08).
-    #[wire(pre_skip = 8, bits = 1, post_skip = 1)]
-    dynamic: bool,
-}
-
-const TICK_INTERVAL: Duration = Duration::from_micros(250);
+const TICK_INTERVAL: Duration = Duration::from_micros(100);
 
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -168,18 +147,6 @@ fn main() -> Result<(), Error> {
                     .sdo_write(0x1c32, 0x0a, TICK_INTERVAL.as_nanos() as u32)
                     .await
                     .expect("Set cycle time");
-
-                let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
-                let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
-                let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
-                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
-                log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
-
-                let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
-                let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
-                let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
-                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
-                log::info!("--> Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
             }
 
             // Configure SYNC0 AND SYNC1 for EL4102
@@ -211,16 +178,6 @@ fn main() -> Result<(), Error> {
                     cal_and_copy_time,
                     delay_time,
                 );
-
-                let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
-                let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
-                let shift_time = slave.sdo_read::<u32>(0x1c32, 3).await?;
-                let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
-                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
-                // NOTE: For EL4102, SupportedModes.sync1 is false, but the ESI file specifies it,
-                // and the 4102 won't go into OP without setting up SYNC1 with the correct offset.
-                // Brilliant.
-                log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), shift {shift_time} ns, supported modes {supported_sync_modes:?}");
 
                 slave.set_dc_sync(DcSync::Sync01 {
                     // EL4102 ESI specifies SYNC1 with an offset of 100k ns
@@ -329,16 +286,6 @@ fn main() -> Result<(), Error> {
 
         log::info!("SAFE-OP");
 
-        #[derive(serde::Serialize)]
-        struct ProcessStat {
-            ecat_time: u64,
-            cycle_start_offset: u64,
-            next_iter_wait: u64,
-        }
-
-        let mut process_stats =
-            csv::Writer::from_writer(File::create("dc-pd.csv").expect("Open CSV"));
-
         let term = Arc::new(AtomicBool::new(false));
         signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
             .expect("Register hook");
@@ -414,11 +361,9 @@ fn main() -> Result<(), Error> {
 
             smol::Timer::at(now + next_cycle_wait).await;
 
-            // Hook signal so we can write CSV data before exiting
+            // Hook exit signal so we can shutdown gracefully
             if term.load(Ordering::Relaxed) {
                 log::info!("Exiting...");
-
-                process_stats.flush().ok();
 
                 break;
             }

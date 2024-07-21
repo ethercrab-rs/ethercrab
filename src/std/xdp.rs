@@ -14,7 +14,7 @@ use std::{
     time::Instant,
 };
 use xsk_rs::{
-    config::{BindFlags, Interface, SocketConfig, UmemConfig, XdpFlags},
+    config::{BindFlags, Interface, SocketConfig, UmemConfig},
     CompQueue, FillQueue, FrameDesc, RxQueue, TxQueue, Umem,
 };
 
@@ -44,7 +44,23 @@ impl Wake for ParkSignal {
     }
 }
 
-/// TODO: Docs
+/// Start a TX/RX task using XDP (Linux only).
+///
+/// Note that running this function on the same core as other EtherCrab code will cause a lockup.
+/// Use [`core_affinity`] or other means to move the thread that executes this function to a
+/// different core.
+///
+/// Using XDP requires some build-time dependencies. These can be installed on `deb`-based distros as follows:
+///
+/// ```bash
+/// sudo apt install build-essential m4 clang bpftool libelf-dev libpcap-dev
+/// ```
+///
+/// It may also be necessary to symlink some folders to mitigate an error around `asm/types.h` not being found:
+///
+/// ```bash
+/// sudo ln -s /usr/include/asm-generic/ /usr/include/asm
+/// ```
 pub fn tx_rx_task_xdp<'sto>(
     interface: &str,
     mut pdu_tx: PduTx<'sto>,
@@ -60,9 +76,6 @@ pub fn tx_rx_task_xdp<'sto>(
         mtu
     );
 
-    // // MTU is payload size. We need to add the layer 2 header which is 18 bytes.
-    // let mtu = mtu + 18;
-
     let frame_count = (pdu_tx.capacity() as u32)
         .try_into()
         .expect("Non-zero frame count required");
@@ -72,21 +85,13 @@ pub fn tx_rx_task_xdp<'sto>(
     let signal = Arc::new(ParkSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
 
-    let basic_config = SocketConfig::builder()
-        .xdp_flags(XdpFlags::XDP_FLAGS_SKB_MODE)
-        .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
-        .build();
-
-    let i210_config = SocketConfig::builder()
-        .xdp_flags(XdpFlags::XDP_FLAGS_DRV_MODE)
+    let config = SocketConfig::builder()
         .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
         .build();
 
     let mut xsk = build_socket_and_umem(
         UmemConfig::default(),
-        // TODO: Config option to use `XDP_FLAGS_DRV_MODE` or `XDP_FLAGS_HW_MODE` (driver and NIC
-        // mode respectively)
-        i210_config,
+        config,
         frame_count,
         &Interface::from_str(interface)?,
         0,
@@ -151,12 +156,6 @@ pub fn tx_rx_task_xdp<'sto>(
 
         let sent_descs = &mut tx_descs[0..tx_frame_count];
 
-        // // Pass frames over to kernel for sending
-        // while unsafe { xsk.tx_q.produce_and_wakeup(sent_descs).unwrap() } != tx_frame_count {
-        //     // Loop until frames added to the tx ring.
-        //     log::debug!("Sender TX queue failed to allocate");
-        // }
-
         if tx_frame_count > 0 {
             if xsk.tx_q.needs_wakeup() {
                 xsk.tx_q.wakeup()?;
@@ -174,13 +173,6 @@ pub fn tx_rx_task_xdp<'sto>(
                     break;
                 }
             }
-
-            // Hand over a bunch of frames to the kernel to wait for received responses to what we
-            // just sent. This should be more than the number of EtherCAT frames sent so any
-            // non-EtherCAT traffic can be received and ignored.
-            // TODO: Make a custom BPF program to filter EtherCAT only
-            // TODO: Do I need to check the return value here?
-            // unsafe { xsk.fq.produce(&rx_descs) };
         }
 
         // ---

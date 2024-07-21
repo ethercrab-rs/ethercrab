@@ -65,6 +65,8 @@ An EtherCAT master written in Rust.
 
 - [#162](https://github.com/ethercrab-rs/ethercrab/pull/162) Add support for FreeBSD and NetBSD
   using BPF.
+- **(breaking)** [#224](https://github.com/ethercrab-rs/ethercrab/pull/224) `PduRx::receive_frame`
+  now returns `Result<ReceiveAction, Error>` instead of `Result<(), Error>`.
 
 ## [0.4.2] - 2024-05-27
 

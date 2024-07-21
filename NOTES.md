@@ -1274,7 +1274,7 @@ Note
   <https://medium.com/high-performance-network-programming/recapitulating-af-xdp-ef6c1ebead8>)
 - Busy polling seems to be good for running driver and app on same core?
   <https://github.com/xdp-project/bpf-examples/tree/5343ed3377471c7b7ef2237526c8bdc0f00a0cef/AF_XDP-example#busy-poll-mode>
-- `libbpf` can (does?) load a default program if one is not provided
+- `libbpf` loads a default program if one is not provided
 - `xsk` functions are provided by `libxdp`, which builds on top of `libbpf`. Mentioned
   [here](https://www.mankier.com/3/libxdp#Using_AF_XDP_sockets).
 - `afxdp-rs` uses XDP stuff from `libbpf-sys` 0.7.0, however this is pretty out of date
@@ -1294,3 +1294,14 @@ Note
 - Polling with a timeout of zero makes `libc::poll` return instantly
 - Running the XDP TX/RX task on the same core as the main task locks it up, or at least makes it run
   very slowly. Pinning TX/RX to core 0, and running the main thread on core 1 fixes this.
+- Build dependencies (tested on Pi 5 Debian):
+
+  ```bash
+  sudo apt install build-essential m4 clang bpftool libelf-dev libpcap-dev
+  ```
+
+  Raspberry Pi OS needs `sudo ln -s /usr/include/asm-generic/ /usr/include/asm` to squelch
+  `asm/types.h` error.
+
+- Raspberry Pi kernel build needs an additional `./scripts/config --enable CONFIG_XDP_SOCKETS`
+- XDP will try and pick the most performant options automatically (i.e. zerocopy, HW mode).

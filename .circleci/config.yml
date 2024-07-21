@@ -1,4 +1,4 @@
-target_steps_std: &target_steps_std
+target_steps_linux: &target_steps_linux
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
     - image: cimg/rust:1.72
@@ -9,6 +9,12 @@ target_steps_std: &target_steps_std
 
     # For docs gen
     - run: rustup target add x86_64-unknown-linux-gnu || true
+    # For XDP
+    - run:
+        sudo apt update && sudo apt install -qq build-essential m4 clang bpftool libelf-dev
+        libpcap-dev
+    # For XDP
+    - run: sudo ln -s /usr/include/asm-generic/ /usr/include/asm
     - run: |
         binaries=( "cargo-deadlinks" "cargo-readme" "just" )
 
@@ -30,6 +36,7 @@ target_steps_std: &target_steps_std
     - run: cargo bench --workspace --no-run --target $TARGET
     - run: cargo build --target $TARGET --examples --release
     - run: cargo build --target $TARGET --no-default-features
+    - run: cargo build --target $TARGET --features xdp
     - run: cargo deadlinks --ignore-fragments
 
     - save_cache:
@@ -132,19 +139,38 @@ basic_steps: &basic_steps
           - ./target
           - /home/circleci/.cargo/registry
 
+linux_steps: &linux_steps
+  resource_class: large
+  docker:
+    # NOTE: Exact version is overridden in `rust-toolchain.toml`
+    - image: cimg/rust:1.72
+  steps:
+    - checkout
+    - restore_cache:
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+
+    - run: rustup target add $TARGET
+    - run: cargo check --target $TARGET --release --examples
+
+    - save_cache:
+        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        paths:
+          - ./target
+          - /home/circleci/.cargo/registry
+
 version: 2
 jobs:
   target-x86_64-unknown-linux-gnu:
     resource_class: large
     environment:
       - TARGET: "x86_64-unknown-linux-gnu"
-    <<: *target_steps_std
+    <<: *target_steps_linux
 
   target-x86_64-unknown-linux-musl:
     resource_class: large
     environment:
       - TARGET: "x86_64-unknown-linux-musl"
-    <<: *target_steps_std
+    <<: *target_steps_linux
 
   miri-x86_64-unknown-linux-gnu:
     resource_class: large

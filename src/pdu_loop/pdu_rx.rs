@@ -8,9 +8,16 @@ use crate::{
 };
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
+/// What happened to a received Ethernet frame.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum ReceiveAction {
+    /// The frame was ignored.
+    ///
+    /// This can be caused by other, non-EtherCAT traffic on the chosen network interface, e.g. if
+    /// sending EtherCAT packets through a switch.
     Ignored,
+
+    /// The frame was successfully processed as an EtherCAT packet.
     Processed,
 }
 
