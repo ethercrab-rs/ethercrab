@@ -12,7 +12,7 @@ target_steps_linux: &target_steps_linux
     # For XDP
     - run:
         sudo apt update && sudo apt install -qq build-essential m4 clang libelf-dev libpcap-dev
-        linux-hwe-6.5-tools-common
+        linux-tools-common linux-tools-$(uname -r)
     # For XDP
     - run: sudo ln -s /usr/include/asm-generic/ /usr/include/asm
     - run: |
