@@ -206,7 +206,7 @@ pub use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
     EtherCrabWireWrite, EtherCrabWireWriteSized,
 };
-pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
+pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, ReceiveAction, SendableFrame};
 pub use register::{DcSupport, RegisterAddress};
 pub use slave::{DcSync, Slave, SlaveIdentity, SlavePdi, SlaveRef};
 pub use slave_group::{GroupId, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle};
