@@ -11,8 +11,8 @@ target_steps_linux: &target_steps_linux
     - run: rustup target add x86_64-unknown-linux-gnu || true
     # For XDP
     - run:
-        sudo apt update && sudo apt install -qq build-essential m4 clang bpftool libelf-dev
-        libpcap-dev
+        sudo apt update && sudo apt install -qq build-essential m4 clang libelf-dev libpcap-dev
+        linux-hwe-6.5-tools-common
     # For XDP
     - run: sudo ln -s /usr/include/asm-generic/ /usr/include/asm
     - run: |
