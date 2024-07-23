@@ -906,7 +906,7 @@ sudo setcap cap_net_raw=pe ./target/profiling/examples/<example name>
 sudo perf record --call-graph=dwarf -g ./target/profiling/examples/<example name> <example args>
 
 # To record benchmarks
-sudo perf record --call-graph=dwarf -g -o bench.data ./target/release/deps/pdu_loop-597b19205907e408 --baseline master --bench
+sudo perf record --call-graph=dwarf -g -o bench.data ./target/release/deps/pdu_loop-597b19205907e408 --bench --profile-time 5 'bench filter here'
 
 # Ctrl + C when you're done
 
@@ -915,7 +915,7 @@ sudo perf report -i perf.data
 
 # This won't show kernel symbols (possibly only when over SSH?)
 sudo chown $USER perf.data
-samply load perf.data
+samply import perf.data
 
 # Forward the port on a remote machine with
 ssh -L 3000:localhost:3000 ethercrab
