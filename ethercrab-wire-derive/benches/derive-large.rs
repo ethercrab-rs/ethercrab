@@ -111,10 +111,10 @@ pub fn nested(c: &mut Criterion) {
     ];
 
     c.bench_function("nested struct unpack", |b| {
-        b.iter(|| NormalTypes::unpack_from_slice(black_box(&input_data)))
+        b.iter(|| LotsOfNesting::unpack_from_slice(black_box(&input_data)))
     });
 
-    let instance = NormalTypes::unpack_from_slice(&input_data).unwrap();
+    let instance = LotsOfNesting::unpack_from_slice(&input_data).unwrap();
 
     c.bench_function("nested struct pack array", |b| {
         b.iter(|| black_box(instance.pack()))
