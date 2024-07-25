@@ -3,7 +3,7 @@
 
 use crate::{
     std::unix::{ifreq, ifreq_for},
-    ETHERCAT_ETHERTYPE_RAW,
+    ETHERCAT_ETHERTYPE,
 };
 use async_io::IoSafe;
 use core::ptr::addr_of;
@@ -22,7 +22,7 @@ pub struct RawSocketDesc {
 
 impl RawSocketDesc {
     pub fn new(name: &str) -> io::Result<Self> {
-        let protocol = ETHERCAT_ETHERTYPE_RAW as i16;
+        let protocol = ETHERCAT_ETHERTYPE as i16;
 
         let lower = unsafe {
             let lower = libc::socket(
@@ -48,7 +48,7 @@ impl RawSocketDesc {
     }
 
     fn bind_interface(&mut self) -> io::Result<()> {
-        let protocol = ETHERCAT_ETHERTYPE_RAW as i16;
+        let protocol = ETHERCAT_ETHERTYPE as i16;
 
         let sockaddr = libc::sockaddr_ll {
             sll_family: libc::AF_PACKET as u16,

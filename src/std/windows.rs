@@ -1,12 +1,12 @@
 //! Items to use when not in `no_std` environments.
 
+use crate::ethernet::EthernetFrame;
 use crate::{
     error::Error,
     pdu_loop::{PduRx, PduTx},
 };
 use core::future::Future;
 use pnet_datalink::{self, channel, Channel, DataLinkReceiver, DataLinkSender};
-use smoltcp::wire::EthernetFrame;
 use std::{thread, time::SystemTime};
 
 /// Get a TX/RX pair.

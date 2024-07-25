@@ -4,11 +4,11 @@
 //! handling multiple frames. Thank you, SmolTCP maintainers!
 
 use crate::{
+    ethernet::{EthernetAddress, ETHERNET_HEADER_LEN},
     fmt,
     std::unix::{ifreq, ifreq_for},
 };
 use async_io::IoSafe;
-use smoltcp::wire::{EthernetAddress, ETHERNET_HEADER_LEN};
 use std::{
     io, mem,
     os::unix::io::{AsFd, AsRawFd, BorrowedFd, RawFd},

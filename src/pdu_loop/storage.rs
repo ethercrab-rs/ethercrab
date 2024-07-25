@@ -1,4 +1,5 @@
 use super::{frame_header::EthercatFrameHeader, pdu_rx::PduRx, pdu_tx::PduTx};
+use crate::ethernet::EthernetFrame;
 use crate::{
     error::{Error, PduError},
     fmt,
@@ -20,7 +21,6 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 use ethercrab_wire::EtherCrabWireSized;
-use smoltcp::wire::EthernetFrame;
 
 /// Smallest frame size with a data payload of 0 length
 const MIN_DATA: usize = EthernetFrame::<&[u8]>::buffer_len(

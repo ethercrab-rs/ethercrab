@@ -423,18 +423,6 @@ impl From<PduValidationError> for PduError {
     }
 }
 
-impl From<smoltcp::wire::Error> for PduError {
-    fn from(_: smoltcp::wire::Error) -> Self {
-        Self::Ethernet
-    }
-}
-
-impl From<smoltcp::wire::Error> for Error {
-    fn from(e: smoltcp::wire::Error) -> Self {
-        Self::Pdu(e.into())
-    }
-}
-
 impl From<TryFromIntError> for Error {
     fn from(_e: TryFromIntError) -> Self {
         fmt::error!("Integer conversion error");
