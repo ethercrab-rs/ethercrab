@@ -35,11 +35,6 @@ log = { version = "0.4.20", optional = true, default-features = false }
 sealed = "0.5.0"
 serde = { version = "1.0.190", features = ["derive"], optional = true }
 smlang = "0.6.0"
-smoltcp = { version = "0.11.0", default-features = false, features = [
-    "proto-ipv4",
-    "socket-raw",
-    "medium-ethernet",
-] }
 ethercrab-wire = { version = "0.1.4", path = "./ethercrab-wire" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -85,7 +80,6 @@ anyhow = "1.0.82"
 default = ["std"]
 defmt = [
     "dep:defmt",
-    "smoltcp/defmt",
     "embedded-io-async/defmt-03",
     "heapless/defmt-03",
     "ethercrab-wire/defmt-03",
@@ -94,7 +88,6 @@ log = ["dep:log"]
 std = [
     "dep:pnet_datalink",
     "dep:async-io",
-    "smoltcp/phy-raw_socket",
     "log",
     "futures-lite/std",
     "embedded-io-async/std",

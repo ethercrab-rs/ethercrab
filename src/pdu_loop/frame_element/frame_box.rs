@@ -1,4 +1,5 @@
 use crate::{
+    ethernet::{EthernetAddress, EthernetFrame},
     pdu_loop::{
         frame_element::{FrameElement, FrameState},
         frame_header::EthercatFrameHeader,
@@ -14,7 +15,6 @@ use core::{
     task::Waker,
 };
 use ethercrab_wire::EtherCrabWireSized;
-use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 use super::FIRST_PDU_EMPTY;
 

@@ -1,5 +1,6 @@
 use crate::{
     error::Error,
+    ethernet::EthernetFrame,
     fmt,
     pdu_loop::{
         frame_element::{FrameBox, FrameElement, FrameState},
@@ -8,7 +9,6 @@ use crate::{
 };
 use core::{ptr::NonNull, sync::atomic::AtomicU8};
 use ethercrab_wire::EtherCrabWireSized;
-use smoltcp::wire::EthernetFrame;
 
 /// An EtherCAT frame that is ready to be sent over the network.
 ///

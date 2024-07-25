@@ -115,9 +115,8 @@ impl<'sto> ReceiveFrameFut<'sto> {
     /// Get entire frame buffer. Only really useful for assertions in tests.
     #[cfg(test)]
     pub fn buf(&self) -> &[u8] {
-        use crate::pdu_loop::frame_header::EthercatFrameHeader;
+        use crate::{ethernet::EthernetFrame, pdu_loop::frame_header::EthercatFrameHeader};
         use ethercrab_wire::EtherCrabWireSized;
-        use smoltcp::wire::EthernetFrame;
 
         let frame = self.frame.as_ref().unwrap();
 

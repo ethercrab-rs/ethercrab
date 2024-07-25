@@ -106,6 +106,7 @@ impl<'sto> PduLoop<'sto> {
 
 #[cfg(test)]
 mod tests {
+    use crate::ethernet::{EthernetAddress, EthernetFrame};
     use crate::{
         error::{Error, PduError},
         fmt,
@@ -116,7 +117,6 @@ mod tests {
     use cassette::Cassette;
     use core::{future::poll_fn, ops::Deref, pin::pin, task::Poll, time::Duration};
     use futures_lite::Future;
-    use smoltcp::wire::{EthernetAddress, EthernetFrame};
     use std::{sync::Arc, thread};
 
     #[test]

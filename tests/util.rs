@@ -2,13 +2,12 @@
 
 use ethercrab::{
     error::Error,
-    internals::{EthercatFrameHeader, PduHeader},
+    internals::{EthercatFrameHeader, EthernetAddress, EthernetFrame, PduHeader},
     std::tx_rx_task,
     PduRx, PduTx,
 };
 use ethercrab_wire::EtherCrabWireRead;
 use pcap_file::pcapng::{Block, PcapNgReader};
-use smoltcp::wire::{EthernetAddress, EthernetFrame};
 use std::{
     collections::{HashMap, VecDeque},
     fs::File,
