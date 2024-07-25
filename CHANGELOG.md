@@ -17,6 +17,11 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Increase MSRV from 1.75
   to 1.77.
 
+### Added
+
+- [#162](https://github.com/ethercrab-rs/ethercrab/pull/162) Add support for FreeBSD and NetBSD
+  using BPF.
+
 ## [0.4.2] - 2024-05-27
 
 ### Added
@@ -113,8 +118,6 @@ An EtherCAT master written in Rust.
 - [#198](https://github.com/ethercrab-rs/ethercrab/pull/#198) Add
   `SlaveGroup::tx_rx_sync_system_time`, `SlaveGroup::tx_rx_dc`, `SlaveRef::set_dc_sync` and
   `SlaveGroup::configure_dc_sync` to support EtherCAT Distributed Clocks.
-- [#162](https://github.com/ethercrab-rs/ethercrab/pull/162) Add support for FreeBSD and NetBSD
-  using BPF.
 
 ### Fixed
 
