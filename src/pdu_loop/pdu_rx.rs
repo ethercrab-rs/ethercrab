@@ -1,4 +1,5 @@
 use super::storage::PduStorageRef;
+use crate::ethernet::{EthernetAddress, EthernetFrame};
 use crate::{
     error::{Error, PduError},
     fmt,
@@ -6,7 +7,6 @@ use crate::{
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
-use smoltcp::wire::{EthernetAddress, EthernetFrame};
 
 /// EtherCAT frame receive adapter.
 pub struct PduRx<'sto> {

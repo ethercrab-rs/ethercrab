@@ -4,14 +4,15 @@ pub mod received_frame;
 pub mod receiving_frame;
 pub mod sendable_frame;
 
-use crate::{error::PduError, fmt, pdu_loop::frame_header::EthercatFrameHeader};
+use crate::{
+    error::PduError, ethernet::EthernetFrame, fmt, pdu_loop::frame_header::EthercatFrameHeader,
+};
 use atomic_waker::AtomicWaker;
 use core::{
     ptr::{addr_of, addr_of_mut, NonNull},
     sync::atomic::{AtomicU16, Ordering},
 };
 use frame_box::FrameBox;
-use smoltcp::wire::EthernetFrame;
 
 /// A marker value for empty frames with no pushed PDUs.
 ///
