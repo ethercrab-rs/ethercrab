@@ -5,6 +5,7 @@ use atomic_refcell::AtomicRefMut;
 /// An iterator over all SubDevices in a group.
 ///
 /// Created by calling [`SubDeviceGroup::iter`](crate::subdevice_group::SubDeviceGroup::iter).
+#[doc(alias = "GroupSlaveIterator")]
 pub struct GroupSubDeviceIterator<
     'group,
     'maindevice,

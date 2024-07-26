@@ -22,6 +22,7 @@ unsafe impl<'a> Send for SubDeviceGroupRef<'a> {}
 
 /// A reference to a [`SubDeviceGroup`](crate::SubDeviceGroup) returned by the closure passed to
 /// [`MainDevice::init`](crate::MainDevice::init).
+#[doc(alias = "SlaveGroupRef")]
 pub struct SubDeviceGroupRef<'a> {
     /// Maximum PDI length in bytes.
     max_pdi_len: usize,

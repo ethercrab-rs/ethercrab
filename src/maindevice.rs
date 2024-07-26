@@ -25,6 +25,8 @@ use heapless::FnvIndexMap;
 ///
 /// The `MainDevice` is passed by reference to [`SubDeviceGroup`]s to drive their TX/RX methods. It
 /// also provides direct access to EtherCAT PDUs like `BRD`, `LRW`, etc.
+#[doc(alias = "Client")]
+#[doc(alias = "Master")]
 #[derive(Debug)]
 pub struct MainDevice<'sto> {
     pub(crate) pdu_loop: PduLoop<'sto>,

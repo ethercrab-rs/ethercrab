@@ -8,6 +8,7 @@ use core::fmt::{self, Debug};
 #[derive(Default, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 16)]
+#[doc(alias = "SlaveIdentity")]
 pub struct SubDeviceIdentity {
     /// Vendor ID.
     #[wire(bytes = 4)]

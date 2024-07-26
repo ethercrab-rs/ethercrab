@@ -6,6 +6,7 @@ use core::ops::Deref;
 ///
 /// Used in conjunction with [`SubDeviceRef`].
 #[derive(Debug)]
+#[doc(alias = "SlavePdi")]
 pub struct SubDevicePdi<'group> {
     subdevice: AtomicRefMut<'group, SubDevice>,
 

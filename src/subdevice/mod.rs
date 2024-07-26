@@ -44,6 +44,7 @@ use self::{eeprom::SubDeviceEeprom, types::Mailbox};
 pub use dc::DcSync;
 
 /// SubDevice device metadata. See [`SubDeviceRef`] for richer behaviour.
+#[doc(alias = "Slave")]
 #[derive(Debug)]
 // Gated by test feature so we can easily create test cases, but not expose a `Default`-ed
 // `SubDevice` to the user as this is an invalid state.
@@ -297,6 +298,7 @@ impl SubDevice {
 /// [`SubDeviceGroup`](crate::subdevice_group::SubDeviceGroup) methods to allow the reading and
 /// writing of a SubDevice's process data.
 #[derive(Debug)]
+#[doc(alias = "SlaveRef")]
 pub struct SubDeviceRef<'a, S> {
     pub(crate) maindevice: &'a MainDevice<'a>,
     pub(crate) configured_address: u16,

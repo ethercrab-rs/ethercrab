@@ -135,6 +135,7 @@ pub struct CycleInfo {
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
 /// SubDevice PDI sections.
+#[doc(alias = "SlaveGroup")]
 pub struct SubDeviceGroup<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S = PreOp, DC = NoDc> {
     id: GroupId,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
@@ -228,6 +229,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     /// This method will return an error if the given index is out of range of the current group, or
     /// if the SubDevice at the given index is already borrowed.
     #[deny(clippy::panic)]
+    #[doc(alias = "slave")]
     pub fn subdevice<'maindevice, 'group>(
         &'group self,
         maindevice: &'maindevice MainDevice<'maindevice>,
@@ -731,6 +733,7 @@ where
     /// Each SubDevice in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
     /// single reference to it at any one time. Multiple different SubDevices can be borrowed
     /// simultaneously, but multiple references to the same SubDevice are not allowed.
+    #[doc(alias = "slave")]
     pub fn subdevice<'maindevice, 'group>(
         &'group self,
         maindevice: &'maindevice MainDevice<'maindevice>,
