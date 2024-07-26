@@ -4,9 +4,9 @@
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    slave_group::{CycleInfo, DcConfiguration},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, DcSync, PduStorage, RegisterAddress, SlaveGroup, Timeouts,
+    subdevice_group::{CycleInfo, DcConfiguration},
+    Client, ClientConfig, DcSync, PduStorage, RegisterAddress, SubDeviceGroup, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
@@ -17,8 +17,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-const MAX_SLAVES: usize = 16;
+/// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
+const MAX_SUBDEVICES: usize = 16;
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 const MAX_FRAMES: usize = 32;
 
@@ -58,7 +58,7 @@ fn main() -> Result<(), Error> {
 
     smol::block_on(async {
         let (mut slow_group, mut fast_group) = client
-            .init::<MAX_SLAVES, (SlaveGroup<1, 32>, SlaveGroup<1, 32>)>(
+            .init::<MAX_SUBDEVICES, (SubDeviceGroup<1, 32>, SubDeviceGroup<1, 32>)>(
                 ethercat_now,
                 |groups, s| {
                     if s.configured_address() == 0x1000 {
@@ -71,21 +71,24 @@ fn main() -> Result<(), Error> {
             .await
             .expect("Init");
 
-        for mut slave in slow_group.iter(&client) {
+        for mut subdevice in slow_group.iter(&client) {
             // Sync mode 02 = SYNC0
-            slave
+            subdevice
                 .sdo_write(0x1c32, 1, 2u16)
                 .await
                 .expect("Set sync mode");
 
             // ETG1020 calc and copy time
-            let cal_and_copy_time = slave
+            let cal_and_copy_time = subdevice
                 .sdo_read::<u16>(0x1c32, 6)
                 .await
                 .expect("Calc and copy time");
 
             // Delay time
-            let delay_time = slave.sdo_read::<u16>(0x1c32, 9).await.expect("Delay time");
+            let delay_time = subdevice
+                .sdo_read::<u16>(0x1c32, 9)
+                .await
+                .expect("Delay time");
 
             log::info!(
                 "LAN9252 calc time {} ns, delay time {} ns",
@@ -94,29 +97,32 @@ fn main() -> Result<(), Error> {
             );
 
             // Adding this seems to make the second LAN9252 converge much more quickly
-            slave
+            subdevice
                 .sdo_write(0x1c32, 0x0a, SLOW_TICK_INTERVAL.as_nanos() as u32)
                 .await
                 .expect("Set cycle time");
 
-            slave.set_dc_sync(DcSync::Sync0);
+            subdevice.set_dc_sync(DcSync::Sync0);
         }
 
-        for mut slave in fast_group.iter(&client) {
+        for mut subdevice in fast_group.iter(&client) {
             // Sync mode 02 = SYNC0
-            slave
+            subdevice
                 .sdo_write(0x1c32, 1, 2u16)
                 .await
                 .expect("Set sync mode");
 
             // ETG1020 calc and copy time
-            let cal_and_copy_time = slave
+            let cal_and_copy_time = subdevice
                 .sdo_read::<u16>(0x1c32, 6)
                 .await
                 .expect("Calc and copy time");
 
             // Delay time
-            let delay_time = slave.sdo_read::<u16>(0x1c32, 9).await.expect("Delay time");
+            let delay_time = subdevice
+                .sdo_read::<u16>(0x1c32, 9)
+                .await
+                .expect("Delay time");
 
             log::info!(
                 "LAN9252 calc time {} ns, delay time {} ns",
@@ -125,12 +131,12 @@ fn main() -> Result<(), Error> {
             );
 
             // Adding this seems to make the second LAN9252 converge much more quickly
-            slave
+            subdevice
                 .sdo_write(0x1c32, 0x0a, FAST_TICK_INTERVAL.as_nanos() as u32)
                 .await
                 .expect("Set cycle time");
 
-            slave.set_dc_sync(DcSync::Sync0);
+            subdevice.set_dc_sync(DcSync::Sync0);
         }
 
         log::info!("Moving into PRE-OP with PDI");
@@ -373,8 +379,8 @@ fn main() -> Result<(), Error> {
                         },
                     ) = slow_group.tx_rx_dc(&client).await.expect("TX/RX");
 
-                    for mut slave in slow_group.iter(&client) {
-                        let (_i, o) = slave.io_raw_mut();
+                    for mut subdevice in slow_group.iter(&client) {
+                        let (_i, o) = subdevice.io_raw_mut();
 
                         for byte in o.iter_mut() {
                             *byte = byte.wrapping_add(1);
@@ -401,8 +407,8 @@ fn main() -> Result<(), Error> {
                         },
                     ) = fast_group.tx_rx_dc(&client).await.expect("TX/RX");
 
-                    for mut slave in fast_group.iter(&client) {
-                        let (_i, o) = slave.io_raw_mut();
+                    for mut subdevice in fast_group.iter(&client) {
+                        let (_i, o) = subdevice.io_raw_mut();
 
                         for byte in o.iter_mut() {
                             *byte = byte.wrapping_add(1);

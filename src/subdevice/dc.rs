@@ -15,7 +15,7 @@ pub enum DcSync {
     /// Both SYNC0 and SYNC1 are enabled.
     ///
     /// SubDevices with an `AssignActivate` value of `0x0700` in their ESI definition should set
-    /// this value as well as [`sync0_period`](crate::slave_group::DcConfiguration::sync0_period) in
+    /// this value as well as [`sync0_period`](crate::subdevice_group::DcConfiguration::sync0_period) in
     /// the SubDevice group DC configuration.
     Sync01 {
         /// SYNC1 cycle time.

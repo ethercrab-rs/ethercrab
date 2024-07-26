@@ -6,8 +6,8 @@
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    slave_group::{CycleInfo, DcConfiguration},
     std::{ethercat_now, tx_rx_task},
+    subdevice_group::{CycleInfo, DcConfiguration},
     Client, ClientConfig, DcSync, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
@@ -23,8 +23,8 @@ use std::{
 use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
 
-/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-const MAX_SLAVES: usize = 16;
+/// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
+const MAX_SUBDEVICES: usize = 16;
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 const MAX_FRAMES: usize = 32;
 const PDI_LEN: usize = 64;
@@ -95,28 +95,31 @@ fn main() -> Result<(), Error> {
 
     smol::block_on(async {
         let mut group = client
-            .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
+            .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
             .await
             .expect("Init");
 
         // The group will be in PRE-OP at this point
 
-        for mut slave in group.iter(&client) {
-            if slave.name() == "LAN9252-EVB-HBI" {
+        for mut subdevice in group.iter(&client) {
+            if subdevice.name() == "LAN9252-EVB-HBI" {
                 // Sync mode 02 = SYNC0
-                slave
+                subdevice
                     .sdo_write(0x1c32, 1, 2u16)
                     .await
                     .expect("Set sync mode");
 
                 // ETG1020 calc and copy time
-                let cal_and_copy_time = slave
+                let cal_and_copy_time = subdevice
                     .sdo_read::<u16>(0x1c32, 6)
                     .await
                     .expect("Calc and copy time");
 
                 // Delay time
-                let delay_time = slave.sdo_read::<u16>(0x1c32, 9).await.expect("Delay time");
+                let delay_time = subdevice
+                    .sdo_read::<u16>(0x1c32, 9)
+                    .await
+                    .expect("Delay time");
 
                 log::info!(
                     "LAN9252 calc time {} ns, delay time {} ns",
@@ -125,47 +128,50 @@ fn main() -> Result<(), Error> {
                 );
 
                 // Adding this seems to make the second LAN9252 converge much more quickly
-                slave
+                subdevice
                     .sdo_write(0x1c32, 0x0a, TICK_INTERVAL.as_nanos() as u32)
                     .await
                     .expect("Set cycle time");
 
-                let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
-                let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
-                let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
-                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
+                let sync_type = subdevice.sdo_read::<u16>(0x1c32, 1).await?;
+                let cycle_time = subdevice.sdo_read::<u32>(0x1c32, 2).await?;
+                let min_cycle_time = subdevice.sdo_read::<u32>(0x1c32, 5).await?;
+                let supported_sync_modes = subdevice.sdo_read::<SupportedModes>(0x1c32, 4).await?;
                 log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
 
-                let sync_type = slave.sdo_read::<u16>(0x1c33, 1).await?;
-                let cycle_time = slave.sdo_read::<u32>(0x1c33, 2).await?;
-                let min_cycle_time = slave.sdo_read::<u32>(0x1c33, 5).await?;
-                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c33, 4).await?;
+                let sync_type = subdevice.sdo_read::<u16>(0x1c33, 1).await?;
+                let cycle_time = subdevice.sdo_read::<u32>(0x1c33, 2).await?;
+                let min_cycle_time = subdevice.sdo_read::<u32>(0x1c33, 5).await?;
+                let supported_sync_modes = subdevice.sdo_read::<SupportedModes>(0x1c33, 4).await?;
                 log::info!("--> Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
             }
 
             // Configure SYNC0 AND SYNC1 for EL4102
-            if slave.name() == "EL4102" {
+            if subdevice.name() == "EL4102" {
                 log::info!("Found EL4102");
 
                 // Sync mode 02 = SYNC0
-                slave
+                subdevice
                     .sdo_write(0x1c32, 1, 2u16)
                     .await
                     .expect("Set sync mode");
 
-                slave
+                subdevice
                     .sdo_write(0x1c32, 0x02, TICK_INTERVAL.as_nanos() as u32)
                     .await
                     .expect("Set cycle time");
 
                 // ETG1020 calc and copy time
-                let cal_and_copy_time = slave
+                let cal_and_copy_time = subdevice
                     .sdo_read::<u16>(0x1c32, 6)
                     .await
                     .expect("Calc and copy time");
 
                 // Delay time
-                let delay_time = slave.sdo_read::<u16>(0x1c32, 9).await.expect("Delay time");
+                let delay_time = subdevice
+                    .sdo_read::<u16>(0x1c32, 9)
+                    .await
+                    .expect("Delay time");
 
                 log::info!(
                     "--> Calc time {} ns, delay time {} ns",
@@ -173,27 +179,27 @@ fn main() -> Result<(), Error> {
                     delay_time,
                 );
 
-                let sync_type = slave.sdo_read::<u16>(0x1c32, 1).await?;
-                let cycle_time = slave.sdo_read::<u32>(0x1c32, 2).await?;
-                let shift_time = slave.sdo_read::<u32>(0x1c32, 3).await?;
-                let min_cycle_time = slave.sdo_read::<u32>(0x1c32, 5).await?;
-                let supported_sync_modes = slave.sdo_read::<SupportedModes>(0x1c32, 4).await?;
+                let sync_type = subdevice.sdo_read::<u16>(0x1c32, 1).await?;
+                let cycle_time = subdevice.sdo_read::<u32>(0x1c32, 2).await?;
+                let shift_time = subdevice.sdo_read::<u32>(0x1c32, 3).await?;
+                let min_cycle_time = subdevice.sdo_read::<u32>(0x1c32, 5).await?;
+                let supported_sync_modes = subdevice.sdo_read::<SupportedModes>(0x1c32, 4).await?;
                 // NOTE: For EL4102, SupportedModes.sync1 is false, but the ESI file specifies it,
                 // and the 4102 won't go into OP without setting up SYNC1 with the correct offset.
                 // Brilliant.
                 log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), shift {shift_time} ns, supported modes {supported_sync_modes:?}");
 
-                slave.set_dc_sync(DcSync::Sync01 {
+                subdevice.set_dc_sync(DcSync::Sync01 {
                     // EL4102 ESI specifies SYNC1 with an offset of 100k ns
                     sync1_period: Duration::from_nanos(100_000),
                 });
             } else {
                 // Enable SYNC0 for any other SubDevice kind
-                slave.set_dc_sync(DcSync::Sync0);
+                subdevice.set_dc_sync(DcSync::Sync0);
             }
         }
 
-        log::info!("Group has {} slaves", group.len());
+        log::info!("Group has {} SubDevices", group.len());
 
         let mut averages = Vec::new();
 
@@ -403,8 +409,8 @@ fn main() -> Result<(), Error> {
                 process_stats.serialize(stat).ok();
             }
 
-            for mut slave in group.iter(&client) {
-                let (_i, o) = slave.io_raw_mut();
+            for mut subdevice in group.iter(&client) {
+                let (_i, o) = subdevice.io_raw_mut();
 
                 for byte in o.iter_mut() {
                     *byte = byte.wrapping_add(1);

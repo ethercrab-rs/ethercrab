@@ -32,8 +32,8 @@ cargo add --no-default-features --features defmt
 
 ## Examples
 
-This example increments the output bytes of all detected slaves every tick. It is tested on an
-EK1100 with output modules but may work on other basic slave devices.
+This example increments the output bytes of all detected SubDevices every tick. It is tested on an
+EK1100 with output modules but may work on other basic SubDevices.
 
 Run with e.g.
 
@@ -52,14 +52,13 @@ $env:RUST_LOG="debug" ; cargo run --example ek1100 --release -- '\Device\NPF_{FF
 ```rust
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::{ethercat_now, tx_rx_task}, Client, ClientConfig, PduStorage, SlaveGroup,
-    Timeouts, slave_group
+    error::Error, std::{ethercat_now, tx_rx_task}, Client, ClientConfig, PduStorage, Timeouts
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
 
-/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-const MAX_SLAVES: usize = 16;
+/// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
+const MAX_SUBDEVICES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = 1100;
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
@@ -78,7 +77,7 @@ async fn main() -> Result<(), Error> {
         .expect("Provide network interface as first argument.");
 
     log::info!("Starting EK1100 demo...");
-    log::info!("Ensure an EK1100 is the first slave, with any number of modules connected after");
+    log::info!("Ensure an EK1100 is the first SubDevice, with any number of modules connected after");
     log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
@@ -96,38 +95,38 @@ async fn main() -> Result<(), Error> {
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     let mut group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
+        .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
 
-    log::info!("Discovered {} slaves", group.len());
+    log::info!("Discovered {} SubDevices", group.len());
 
-    for slave in group.iter(&client) {
+    for subdevice in group.iter(&client) {
         // Special case: if an EL3004 module is discovered, it needs some specific config during
         // init to function properly
-        if slave.name() == "EL3004" {
+        if subdevice.name() == "EL3004" {
             log::info!("Found EL3004. Configuring...");
 
-            slave.sdo_write(0x1c12, 0, 0u8).await?;
-            slave.sdo_write(0x1c13, 0, 0u8).await?;
+            subdevice.sdo_write(0x1c12, 0, 0u8).await?;
+            subdevice.sdo_write(0x1c13, 0, 0u8).await?;
 
-            slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-            slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
-            slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
-            slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
-            slave.sdo_write(0x1c13, 0, 4u8).await?;
+            subdevice.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+            subdevice.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+            subdevice.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+            subdevice.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+            subdevice.sdo_write(0x1c13, 0, 4u8).await?;
         }
     }
 
     let mut group = group.into_op(&client).await.expect("PRE-OP -> OP");
 
-    for slave in group.iter(&client) {
-        let (i, o) = slave.io_raw();
+    for subdevice in group.iter(&client) {
+        let (i, o) = subdevice.io_raw();
 
         log::info!(
-            "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
-            slave.configured_address(),
-            slave.name(),
+            "-> SubDevice {:#06x} {} inputs: {} bytes, outputs: {} bytes",
+            subdevice.configured_address(),
+            subdevice.name(),
             i.len(),
             o.len()
         );
@@ -139,9 +138,9 @@ async fn main() -> Result<(), Error> {
     loop {
         group.tx_rx(&client).await.expect("TX/RX");
 
-        // Increment every output byte for every slave device by one
-        for mut slave in group.iter(&client) {
-            let (_i, o) = slave.io_raw_mut();
+        // Increment every output byte for every SubDevice by one
+        for mut subdevice in group.iter(&client) {
+            let (_i, o) = subdevice.io_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);
@@ -163,14 +162,14 @@ async fn main() -> Result<(), Error> {
 - [x] Usable in `no_std` contexts with no allocator required, as long as an `async` executor is available.
   - [x] Tested with [Embassy](https://embassy.dev)
   - [ ] Tested with [RTIC](https://rtic.rs/2/book/en/)
-- [x] Autoconfigure slaves from their EEPROM (SII) data during startup
+- [x] Autoconfigure SubDevices from their EEPROM (SII) data during startup
   - [x] Supports configuration using CoE data
 - [x] Safely usable in multi-threaded Linux systems with e.g. `smol`, `tokio` or `std::thread` and
       `block_on`.
 - [x] Support for `io_uring` on Linux systems to improve performance and latency
-- [x] Support for SDO read/writes to configure slave devices
+- [x] Support for SDO read/writes to configure SubDevices
 - [x] Distributed clocks
-  - [x] Detection of delays between slave devices in topology
+  - [x] Detection of delays between SubDevices in topology
   - [x] Static drift compensation on startup
   - [x] Cyclic synchronisation during OP
 - [x] Basic support for [CiA402](https://www.can-cia.org/can-knowledge/canopen/cia402/)/DS402 drives
@@ -178,7 +177,7 @@ async fn main() -> Result<(), Error> {
         a more abstract way.
 - [ ] Integration with LinuxCNC as a HAL component using
       [the `linuxcnc-hal` crate](https://github.com/jamwaffles/linuxcnc-hal-rs).
-- [ ] Load slave configurations from ESI XML files
+- [ ] Load SubDevice configurations from ESI XML files
 
 ## Sponsors
 

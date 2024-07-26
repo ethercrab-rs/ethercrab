@@ -15,7 +15,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
     use ethercrab::{
         error::Error,
         std::{ethercat_now, tx_rx_task},
-        Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+        Client, ClientConfig, PduStorage, SubDeviceGroup, Timeouts,
     };
     use smol::LocalExecutor;
     use std::{
@@ -27,8 +27,8 @@ async fn main() -> Result<(), ethercrab::error::Error> {
     };
     use tokio::time::MissedTickBehavior;
 
-    /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-    const MAX_SLAVES: usize = 16;
+    /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
+    const MAX_SUBDEVICES: usize = 16;
     /// Maximum PDU data payload size - set this to the max PDI size or higher.
     const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
     /// Maximum number of EtherCAT frames that can be in flight at any one time.
@@ -43,9 +43,9 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         ///
         /// We'll keep the EK1100/EK1501 in here as it has no useful PDI but still needs to live
         /// somewhere.
-        slow_outputs: SlaveGroup<2, 4>,
+        slow_outputs: SubDeviceGroup<2, 4>,
         /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-        fast_outputs: SlaveGroup<1, 1>,
+        fast_outputs: SubDeviceGroup<1, 1>,
     }
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -56,7 +56,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
     log::info!("Starting multiple groups demo...");
     log::info!(
-        "Ensure an EK1100/EK1501 is the first slave device, with an EL2828 and EL2889 following it"
+        "Ensure an EK1100/EK1501 is the first SubDevice, with an EL2828 and EL2889 following it"
     );
     log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
@@ -99,12 +99,14 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
     let client = Arc::new(client);
 
-    // Read configurations from slave EEPROMs and configure devices.
+    // Read configurations from SubDevice EEPROMs and configure devices.
     let groups = client
-        .init::<MAX_SLAVES, _>(ethercat_now, |groups: &Groups, slave| match slave.name() {
-            "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
-            "EL2828" => Ok(&groups.fast_outputs),
-            _ => Err(Error::UnknownSlave),
+        .init::<MAX_SUBDEVICES, _>(ethercat_now, |groups: &Groups, subdevice| {
+            match subdevice.name() {
+                "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
+                "EL2828" => Ok(&groups.fast_outputs),
+                _ => Err(Error::UnknownSubDevice),
+            }
         })
         .await
         .expect("Init");
@@ -130,9 +132,9 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         // Only update "slow" outputs every 250ms using this instant
         let mut tick = Instant::now();
 
-        // EK1100 is first slave, EL2889 is second
+        // EK1100 is first SubDevice, EL2889 is second
         let mut el2889 = slow_outputs
-            .slave(&client_slow, 1)
+            .subdevice(&client_slow, 1)
             .expect("EL2889 not present!");
 
         // Set initial output state
@@ -142,7 +144,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         loop {
             slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
 
-            // Increment every output byte for every slave device by one
+            // Increment every output byte for every SubDevice by one
             if tick.elapsed() > slow_duration {
                 tick = Instant::now();
 
@@ -166,9 +168,9 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         loop {
             fast_outputs.tx_rx(&client).await.expect("TX/RX");
 
-            // Increment every output byte for every slave device by one
-            for mut slave in fast_outputs.iter(&client) {
-                let (_i, o) = slave.io_raw_mut();
+            // Increment every output byte for every SubDevice by one
+            for mut subdevice in fast_outputs.iter(&client) {
+                let (_i, o) = subdevice.io_raw_mut();
 
                 for byte in o.iter_mut() {
                     *byte = byte.wrapping_add(1);

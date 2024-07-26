@@ -1,4 +1,4 @@
-/// AL (application layer) state for a single device.
+/// AL (application layer) state for a single SubDevice.
 ///
 /// Read from register `0x0130` ([`RegisterAddress::AlStatus`](crate::register::RegisterAddress::AlStatus)).
 ///
@@ -7,7 +7,7 @@
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[repr(u8)]
-pub enum SlaveState {
+pub enum SubDeviceState {
     /// No state recorded/read/known.
     None = 0x00,
     /// EtherCAT `INIT` state.
@@ -25,22 +25,22 @@ pub enum SlaveState {
     Other(u8),
 }
 
-impl Default for SlaveState {
+impl Default for SubDeviceState {
     fn default() -> Self {
         Self::None
     }
 }
 
-impl core::fmt::Display for SlaveState {
+impl core::fmt::Display for SubDeviceState {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            SlaveState::None => f.write_str("None"),
-            SlaveState::Init => f.write_str("Init"),
-            SlaveState::PreOp => f.write_str("Pre-Operational"),
-            SlaveState::Bootstrap => f.write_str("Bootstrap"),
-            SlaveState::SafeOp => f.write_str("Safe-Operational"),
-            SlaveState::Op => f.write_str("Operational"),
-            SlaveState::Other(value) => write!(f, "Other({:01x})", value),
+            SubDeviceState::None => f.write_str("None"),
+            SubDeviceState::Init => f.write_str("Init"),
+            SubDeviceState::PreOp => f.write_str("Pre-Operational"),
+            SubDeviceState::Bootstrap => f.write_str("Bootstrap"),
+            SubDeviceState::SafeOp => f.write_str("Safe-Operational"),
+            SubDeviceState::Op => f.write_str("Operational"),
+            SubDeviceState::Other(value) => write!(f, "Other({:01x})", value),
         }
     }
 }

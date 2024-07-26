@@ -25,8 +25,8 @@
 //!
 //! # Examples
 //!
-//! This example increments the output bytes of all detected slaves every tick. It is tested on an
-//! EK1100 with output modules but may work on other basic slave devices.
+//! This example increments the output bytes of all detected SubDevices every tick. It is tested on an
+//! EK1100 with output modules but may work on other basic SubDevices.
 //!
 //! Run with e.g.
 //!
@@ -45,14 +45,13 @@
 //! ```rust,no_run
 //! use env_logger::Env;
 //! use ethercrab::{
-//!     error::Error, std::{ethercat_now, tx_rx_task}, Client, ClientConfig, PduStorage, SlaveGroup,
-//!     Timeouts, slave_group
+//!     error::Error, std::{ethercat_now, tx_rx_task}, Client, ClientConfig, PduStorage, Timeouts
 //! };
 //! use std::{sync::Arc, time::Duration};
 //! use tokio::time::MissedTickBehavior;
 //!
-//! /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-//! const MAX_SLAVES: usize = 16;
+//! /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
+//! const MAX_SUBDEVICES: usize = 16;
 //! /// Maximum PDU data payload size - set this to the max PDI size or higher.
 //! const MAX_PDU_DATA: usize = 1100;
 //! /// Maximum number of EtherCAT frames that can be in flight at any one time.
@@ -71,7 +70,7 @@
 //!         .expect("Provide network interface as first argument.");
 //!
 //!     log::info!("Starting EK1100 demo...");
-//!     log::info!("Ensure an EK1100 is the first slave, with any number of modules connected after");
+//!     log::info!("Ensure an EK1100 is the first SubDevice, with any number of modules connected after");
 //!     log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 //!
 //!     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
@@ -89,38 +88,38 @@
 //!     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 //!
 //!     let mut group = client
-//!         .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
+//!         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
 //!         .await
 //!         .expect("Init");
 //!
-//!     log::info!("Discovered {} slaves", group.len());
+//!     log::info!("Discovered {} SubDevices", group.len());
 //!
-//!     for slave in group.iter(&client) {
+//!     for subdevice in group.iter(&client) {
 //!         // Special case: if an EL3004 module is discovered, it needs some specific config during
 //!         // init to function properly
-//!         if slave.name() == "EL3004" {
+//!         if subdevice.name() == "EL3004" {
 //!             log::info!("Found EL3004. Configuring...");
 //!
-//!             slave.sdo_write(0x1c12, 0, 0u8).await?;
-//!             slave.sdo_write(0x1c13, 0, 0u8).await?;
+//!             subdevice.sdo_write(0x1c12, 0, 0u8).await?;
+//!             subdevice.sdo_write(0x1c13, 0, 0u8).await?;
 //!
-//!             slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-//!             slave.sdo_write(0x1c13, 2, 0x1a02u16).await?;
-//!             slave.sdo_write(0x1c13, 3, 0x1a04u16).await?;
-//!             slave.sdo_write(0x1c13, 4, 0x1a06u16).await?;
-//!             slave.sdo_write(0x1c13, 0, 4u8).await?;
+//!             subdevice.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+//!             subdevice.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+//!             subdevice.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+//!             subdevice.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+//!             subdevice.sdo_write(0x1c13, 0, 4u8).await?;
 //!         }
 //!     }
 //!
 //!     let mut group = group.into_op(&client).await.expect("PRE-OP -> OP");
 //!
-//!     for slave in group.iter(&client) {
-//!         let (i, o) = slave.io_raw();
+//!     for subdevice in group.iter(&client) {
+//!         let (i, o) = subdevice.io_raw();
 //!
 //!         log::info!(
-//!             "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
-//!             slave.configured_address(),
-//!             slave.name(),
+//!             "-> SubDevice {:#06x} {} inputs: {} bytes, outputs: {} bytes",
+//!             subdevice.configured_address(),
+//!             subdevice.name(),
 //!             i.len(),
 //!             o.len()
 //!         );
@@ -132,9 +131,9 @@
 //!     loop {
 //!         group.tx_rx(&client).await.expect("TX/RX");
 //!
-//!         // Increment every output byte for every slave device by one
-//!         for mut slave in group.iter(&client) {
-//!             let (_i, o) = slave.io_raw_mut();
+//!         // Increment every output byte for every SubDevice by one
+//!         for mut subdevice in group.iter(&client) {
+//!             let (_i, o) = subdevice.io_raw_mut();
 //!
 //!             for byte in o.iter_mut() {
 //!                 *byte = byte.wrapping_add(1);
@@ -183,9 +182,9 @@ mod mailbox;
 mod pdi;
 mod pdu_loop;
 mod register;
-mod slave;
-pub mod slave_group;
-mod slave_state;
+mod subdevice;
+pub mod subdevice_group;
+mod subdevice_state;
 mod sync_manager_channel;
 mod timer_factory;
 mod vendors;
@@ -208,14 +207,14 @@ pub use ethercrab_wire::{
 use ethernet::EthernetAddress;
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::{DcSupport, RegisterAddress};
-pub use slave::{DcSync, Slave, SlaveIdentity, SlavePdi, SlaveRef};
-pub use slave_group::{GroupId, GroupSlaveIterator, SlaveGroup, SlaveGroupHandle};
-pub use slave_state::SlaveState;
+pub use subdevice::{DcSync, SubDevice, SubDeviceIdentity, SubDevicePdi, SubDeviceRef};
+pub use subdevice_group::{GroupId, GroupSubDeviceIterator, SubDeviceGroup, SubDeviceGroupHandle};
+pub use subdevice_state::SubDeviceState;
 pub use timer_factory::Timeouts;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: u16 = 0x88a4;
 const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
 
-/// Starting address for discovered slaves.
-const BASE_SLAVE_ADDR: u16 = 0x1000;
+/// Starting address for discovered subdevices.
+const BASE_SUBDEVICE_ADDRESS: u16 = 0x1000;

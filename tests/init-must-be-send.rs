@@ -18,7 +18,7 @@ fn init_must_be_send() {
     let _ = spawn(init());
 }
 
-const MAX_SLAVES: usize = 16;
+const MAX_SUBDEVICES: usize = 16;
 const MAX_PDU_DATA: usize = 1100;
 const MAX_FRAMES: usize = 16;
 const PDI_LEN: usize = 64;
@@ -39,7 +39,7 @@ async fn init() {
     ));
 
     let _group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
+        .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
 }

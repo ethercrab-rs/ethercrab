@@ -24,7 +24,7 @@ pub enum Reads {
     },
     /// Broadcast Read (BRD).
     Brd {
-        /// Autoincremented by each slave visited.
+        /// Autoincremented by each SubDevice visited.
         address: u16,
 
         /// Memory location to read from.

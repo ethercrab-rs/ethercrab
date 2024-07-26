@@ -2,14 +2,14 @@ use crate::{
     error::Error,
     fmt,
     pdi::PdiOffset,
-    slave::{Slave, SlaveRef},
-    Client, SlaveGroup,
+    subdevice::{SubDevice, SubDeviceRef},
+    Client, SubDeviceGroup,
 };
 use atomic_refcell::AtomicRefCell;
 
 #[derive(Debug)]
 struct GroupInnerRef<'a> {
-    slaves: &'a mut [AtomicRefCell<Slave>],
+    subdevices: &'a mut [AtomicRefCell<SubDevice>],
     pdi_start: &'a mut PdiOffset,
 }
 
@@ -17,20 +17,20 @@ struct GroupInnerRef<'a> {
 // we might be ok... lol probably not :(.
 //
 // This is in response to <https://github.com/ethercrab-rs/ethercrab/issues/56#issuecomment-1618904531>
-unsafe impl<'a> Sync for SlaveGroupRef<'a> {}
-unsafe impl<'a> Send for SlaveGroupRef<'a> {}
+unsafe impl<'a> Sync for SubDeviceGroupRef<'a> {}
+unsafe impl<'a> Send for SubDeviceGroupRef<'a> {}
 
-/// A reference to a [`SlaveGroup`](crate::SlaveGroup) returned by the closure passed to
+/// A reference to a [`SubDeviceGroup`](crate::SubDeviceGroup) returned by the closure passed to
 /// [`Client::init`](crate::Client::init).
-pub struct SlaveGroupRef<'a> {
+pub struct SubDeviceGroupRef<'a> {
     /// Maximum PDI length in bytes.
     max_pdi_len: usize,
     inner: GroupInnerRef<'a>,
 }
 
-impl<'a> SlaveGroupRef<'a> {
-    pub(in crate::slave_group) fn new<const MAX_SLAVES: usize, const MAX_PDI: usize, S>(
-        group: &'a SlaveGroup<MAX_SLAVES, MAX_PDI, S>,
+impl<'a> SubDeviceGroupRef<'a> {
+    pub(in crate::subdevice_group) fn new<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S>(
+        group: &'a SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S>,
     ) -> Self {
         Self {
             max_pdi_len: MAX_PDI,
@@ -38,14 +38,14 @@ impl<'a> SlaveGroupRef<'a> {
                 let inner = unsafe { fmt::unwrap_opt!(group.inner.get().as_mut()) };
 
                 GroupInnerRef {
-                    slaves: &mut inner.slaves,
+                    subdevices: &mut inner.subdevices,
                     pdi_start: &mut inner.pdi_start,
                 }
             },
         }
     }
 
-    /// Initialise all slaves in the group and place them in PRE-OP.
+    /// Initialise all SubDevices in the group and place them in PRE-OP.
     // Clippy: shush
     #[allow(clippy::wrong_self_convention)]
     pub(crate) async fn into_pre_op<'sto>(
@@ -59,19 +59,20 @@ impl<'a> SlaveGroupRef<'a> {
         *inner.pdi_start = pdi_position;
 
         fmt::debug!(
-            "Going to configure group with {} slave(s), starting PDI offset {:#08x}",
-            inner.slaves.len(),
+            "Going to configure group with {} SubDevice(s), starting PDI offset {:#08x}",
+            inner.subdevices.len(),
             inner.pdi_start.start_address
         );
 
         // Configure master read PDI mappings in the first section of the PDI
-        for slave in inner.slaves.iter_mut() {
-            let slave = slave.get_mut();
+        for subdevice in inner.subdevices.iter_mut() {
+            let subdevice = subdevice.get_mut();
 
-            let mut slave_config = SlaveRef::new(client, slave.configured_address(), slave);
+            let mut subdevice_config =
+                SubDeviceRef::new(client, subdevice.configured_address(), subdevice);
 
             // TODO: Move PRE-OP transition out of this so we can do it for the group just once
-            slave_config.configure_mailboxes().await?;
+            subdevice_config.configure_mailboxes().await?;
         }
 
         Ok(pdi_position.increment(self.max_pdi_len as u16))

@@ -1,4 +1,4 @@
-/// Slave device register address abstraction.
+/// SubDevice device register address abstraction.
 ///
 /// This enum makes it easier to work with raw EtherCAT addresses by giving them nice names.
 ///
@@ -10,7 +10,7 @@ pub enum RegisterAddress {
     Type = 0x0000u16,
     /// EtherCAT revision.
     Revision = 0x0001,
-    /// Slave build.
+    /// SubDevice build.
     Build = 0x0002,
     /// Number of supported FMMU entities.
     FmmuCount = 0x0004,
@@ -20,11 +20,11 @@ pub enum RegisterAddress {
     RamSize = 0x0006,
     /// EtherCAT port descriptors 0-3, `u8`.
     PortDescriptors = 0x0007,
-    /// Different EtherCAT features supported by the slave, `u16`.
+    /// Different EtherCAT features supported by the SubDevice, `u16`.
     SupportFlags = 0x0008,
-    /// The slave's configured station address, `u16`.
+    /// The SubDevice's configured station address, `u16`.
     ConfiguredStationAddress = 0x0010,
-    /// The slave's address alias, `u16`.
+    /// The SubDevice's address alias, `u16`.
     ConfiguredStationAlias = 0x0012,
 
     /// Defined in ETG1000.4 Table 34 - DL status, `u16`.

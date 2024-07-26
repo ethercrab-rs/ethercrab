@@ -21,8 +21,8 @@ use crate::{
     mailbox::{MailboxHeader, MailboxType},
     pdu_loop::ReceivedPdu,
     register::{DcSupport, RegisterAddress, SupportFlags},
-    slave::{ports::Ports, types::SlaveConfig},
-    slave_state::SlaveState,
+    subdevice::{ports::Ports, types::SubDeviceConfig},
+    subdevice_state::SubDeviceState,
     timer_factory::IntoTimeout,
     WrappedRead, WrappedWrite,
 };
@@ -37,26 +37,26 @@ use ethercrab_wire::{
     EtherCrabWireWrite,
 };
 
-pub use self::pdi::SlavePdi;
+pub use self::pdi::SubDevicePdi;
 pub use self::types::IoRanges;
-pub use self::types::SlaveIdentity;
-use self::{eeprom::SlaveEeprom, types::Mailbox};
+pub use self::types::SubDeviceIdentity;
+use self::{eeprom::SubDeviceEeprom, types::Mailbox};
 pub use dc::DcSync;
 
-/// Slave device metadata. See [`SlaveRef`] for richer behaviour.
+/// SubDevice device metadata. See [`SubDeviceRef`] for richer behaviour.
 #[derive(Debug)]
-// Gated by test feature so we can easily create test cases, but not expose a `Default`-ed `Slave`
-// to the user as this is an invalid state.
+// Gated by test feature so we can easily create test cases, but not expose a `Default`-ed
+// `SubDevice` to the user as this is an invalid state.
 #[cfg_attr(test, derive(Default))]
-pub struct Slave {
+pub struct SubDevice {
     /// Configured station address.
     pub(crate) configured_address: u16,
 
     pub(crate) alias_address: u16,
 
-    pub(crate) config: SlaveConfig,
+    pub(crate) config: SubDeviceConfig,
 
-    pub(crate) identity: SlaveIdentity,
+    pub(crate) identity: SubDeviceIdentity,
 
     // NOTE: Default length in SOEM is 40 bytes
     pub(crate) name: heapless::String<64>,
@@ -68,17 +68,17 @@ pub struct Slave {
     /// Distributed Clock latch receive time.
     pub(crate) dc_receive_time: u64,
 
-    /// The index of the slave in the EtherCAT tree.
+    /// The index of the SubDevice in the EtherCAT tree.
     pub(crate) index: u16,
 
-    /// The index of the previous slave in the EtherCAT tree.
+    /// The index of the previous SubDevice in the EtherCAT tree.
     ///
-    /// For the first slave in the network, this will always be `None`.
+    /// For the first SubDevice in the network, this will always be `None`.
     pub(crate) parent_index: Option<u16>,
 
     /// Propagation delay in nanoseconds.
     ///
-    /// `u32::MAX` gives a maximum propagation delay of ~4.2 seconds for the last slave in the
+    /// `u32::MAX` gives a maximum propagation delay of ~4.2 seconds for the last SubDevice in the
     /// network.
     pub(crate) propagation_delay: u32,
 
@@ -90,10 +90,10 @@ pub struct Slave {
 }
 
 // Only required for tests, also doesn't make much sense - consumers of EtherCrab should be
-// comparing e.g. `slave.identity()`, names, configured address or something other than the whole
+// comparing e.g. `subdevice.identity()`, names, configured address or something other than the whole
 // struct.
 #[cfg(test)]
-impl PartialEq for Slave {
+impl PartialEq for SubDevice {
     fn eq(&self, other: &Self) -> bool {
         self.configured_address == other.configured_address
             && self.alias_address == other.alias_address
@@ -111,10 +111,10 @@ impl PartialEq for Slave {
     }
 }
 
-// Slaves shouldn't really be clonable (IMO), but the tests need them to be, so this impl is feature
-// gated.
+// SubDevices shouldn't really be clonable (IMO), but the tests need them to be, so this impl is
+// feature gated.
 #[cfg(test)]
-impl Clone for Slave {
+impl Clone for SubDevice {
     fn clone(&self) -> Self {
         Self {
             configured_address: self.configured_address,
@@ -134,55 +134,59 @@ impl Clone for Slave {
     }
 }
 
-impl Slave {
-    /// Create a slave instance using the given configured address.
+impl SubDevice {
+    /// Create a SubDevice instance using the given configured address.
     ///
-    /// This method reads the slave's name and other identifying information, but does not configure
-    /// the slave.
+    /// This method reads the SubDevices's name and other identifying information, but does not
+    /// configure it.
     pub(crate) async fn new<'sto>(
         client: &'sto Client<'sto>,
         index: u16,
         configured_address: u16,
     ) -> Result<Self, Error> {
-        let slave_ref = SlaveRef::new(client, configured_address, ());
+        let subdevice_ref = SubDeviceRef::new(client, configured_address, ());
 
         fmt::debug!(
-            "Waiting for slave {:#06x} to enter {}",
+            "Waiting for SubDevice {:#06x} to enter {}",
             configured_address,
-            SlaveState::Init
+            SubDeviceState::Init
         );
 
-        slave_ref.wait_for_state(SlaveState::Init).await?;
+        subdevice_ref.wait_for_state(SubDeviceState::Init).await?;
 
-        // Make sure master has access to slave EEPROM
-        slave_ref.set_eeprom_mode(SiiOwner::Master).await?;
+        // Make sure master has access to SubDevice EEPROM
+        subdevice_ref.set_eeprom_mode(SiiOwner::Master).await?;
 
-        let identity = slave_ref.eeprom().identity().await?;
+        let identity = subdevice_ref.eeprom().identity().await?;
 
-        let name = slave_ref.eeprom().device_name().await?.unwrap_or_else(|| {
-            let mut s = heapless::String::new();
+        let name = subdevice_ref
+            .eeprom()
+            .device_name()
+            .await?
+            .unwrap_or_else(|| {
+                let mut s = heapless::String::new();
 
-            fmt::unwrap!(write!(
-                s,
-                "manu. {:#010x}, device {:#010x}, serial {:#010x}",
-                identity.vendor_id, identity.product_id, identity.serial
-            )
-            .map_err(|_| ()));
+                fmt::unwrap!(write!(
+                    s,
+                    "manu. {:#010x}, device {:#010x}, serial {:#010x}",
+                    identity.vendor_id, identity.product_id, identity.serial
+                )
+                .map_err(|_| ()));
 
-            s
-        });
+                s
+            });
 
-        let flags = slave_ref
+        let flags = subdevice_ref
             .read(RegisterAddress::SupportFlags)
             .receive::<SupportFlags>(client)
             .await?;
 
-        let alias_address = slave_ref
+        let alias_address = subdevice_ref
             .read(RegisterAddress::ConfiguredStationAlias)
             .receive::<u16>(client)
             .await?;
 
-        let ports = slave_ref
+        let ports = subdevice_ref
             .read(RegisterAddress::DlStatus)
             .receive::<DlStatus>(client)
             .await
@@ -198,7 +202,7 @@ impl Slave {
             })?;
 
         fmt::debug!(
-            "Slave {:#06x} name {} {}, {}, {}, alias address {:#06x}",
+            "SubDevice {:#06x} name {} {}, {}, {}, alias address {:#06x}",
             configured_address,
             name,
             identity,
@@ -210,7 +214,7 @@ impl Slave {
         Ok(Self {
             configured_address,
             alias_address,
-            config: SlaveConfig::default(),
+            config: SubDeviceConfig::default(),
             index,
             parent_index: None,
             propagation_delay: 0,
@@ -225,22 +229,22 @@ impl Slave {
         })
     }
 
-    /// Get the slave device's human readable name.
+    /// Get the SubDevice's human readable name.
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
 
-    /// Get additional identifying details for the slave device.
-    pub fn identity(&self) -> SlaveIdentity {
+    /// Get additional identifying details for the SubDevice.
+    pub fn identity(&self) -> SubDeviceIdentity {
         self.identity
     }
 
-    /// Get the configured station address of the slave device.
+    /// Get the configured station address of the SubDevice.
     pub fn configured_address(&self) -> u16 {
         self.configured_address
     }
 
-    /// Get alias address for the slave device.
+    /// Get alias address for the SubDevice.
     pub fn alias_address(&self) -> u16 {
         self.alias_address
     }
@@ -262,9 +266,9 @@ impl Slave {
         &self.config.io
     }
 
-    /// Check if the current slave device is a child of `parent`.
+    /// Check if the current SubDevice is a child of `parent`.
     ///
-    /// A slave device is a child of a parent if it is connected to an intermediate port of the
+    /// A SubDevice is a child of a parent if it is connected to an intermediate port of the
     /// parent device, i.e. is not connected to the last open port. In the latter case, this is a
     /// "downstream" device.
     ///
@@ -272,7 +276,7 @@ impl Slave {
     ///
     /// An EK1100 (parent) with an EL2004 module connected (child) as well as another EK1914 coupler
     /// (downstream) connected has one child: the EL2004.
-    pub(crate) fn is_child_of(&self, parent: &Slave) -> bool {
+    pub(crate) fn is_child_of(&self, parent: &SubDevice) -> bool {
         // Only forks or crosses in the network can have child devices. Passthroughs only have
         // downstream devices.
         let parent_is_fork = parent.ports.topology().is_junction();
@@ -287,19 +291,19 @@ impl Slave {
     }
 }
 
-/// A wrapper around a [`Slave`] and additional state for richer behaviour.
+/// A wrapper around a [`SubDevice`] and additional state for richer behaviour.
 ///
-/// For example, a `SlaveRef<SlavePdi>` is returned by
-/// [`SlaveGroup`](crate::slave_group::SlaveGroup) methods to allow the reading and writing of a
-/// slave device's process data.
+/// For example, a `SubDeviceRef<SubDevicePdi>` is returned by
+/// [`SubDeviceGroup`](crate::subdevice_group::SubDeviceGroup) methods to allow the reading and
+/// writing of a SubDevice's process data.
 #[derive(Debug)]
-pub struct SlaveRef<'a, S> {
+pub struct SubDeviceRef<'a, S> {
     pub(crate) client: &'a Client<'a>,
     pub(crate) configured_address: u16,
     state: S,
 }
 
-impl<'a> Clone for SlaveRef<'a, ()> {
+impl<'a> Clone for SubDeviceRef<'a, ()> {
     fn clone(&self) -> Self {
         Self {
             client: self.client,
@@ -309,34 +313,34 @@ impl<'a> Clone for SlaveRef<'a, ()> {
     }
 }
 
-impl<'a, S> SlaveRef<'a, S>
+impl<'a, S> SubDeviceRef<'a, S>
 where
-    S: DerefMut<Target = Slave>,
+    S: DerefMut<Target = SubDevice>,
 {
     /// Set DC sync configuration for this SubDevice.
     ///
     /// Note that this will not configure the SubDevice itself, but sets the configuration to be
-    /// used by [`SlaveGroup::configure_dc_sync`](crate::SlaveGroup::configure_dc_sync).
+    /// used by [`SubDeviceGroup::configure_dc_sync`](crate::SubDeviceGroup::configure_dc_sync).
     pub fn set_dc_sync(&mut self, dc_sync: DcSync) {
         self.state.dc_sync = dc_sync;
     }
 }
 
-impl<'a, S> SlaveRef<'a, S>
+impl<'a, S> SubDeviceRef<'a, S>
 where
-    S: Deref<Target = Slave>,
+    S: Deref<Target = SubDevice>,
 {
-    /// Get the human readable name of the slave device.
+    /// Get the human readable name of the SubDevice.
     pub fn name(&self) -> &str {
         self.state.name.as_str()
     }
 
-    /// Get additional identifying details for the slave device.
-    pub fn identity(&self) -> SlaveIdentity {
+    /// Get additional identifying details for the SubDevice.
+    pub fn identity(&self) -> SubDeviceIdentity {
         self.state.identity
     }
 
-    /// Get alias address for the slave device.
+    /// Get alias address for the SubDevice.
     pub fn alias_address(&self) -> u16 {
         self.state.alias_address
     }
@@ -385,7 +389,7 @@ where
             .write
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))
             .map_err(|e| {
-                fmt::error!("No write (slave IN) mailbox found but one is required");
+                fmt::error!("No write (SubDevice IN) mailbox found but one is required");
                 e
             })?;
         let read_mailbox = self
@@ -395,7 +399,7 @@ where
             .read
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))
             .map_err(|e| {
-                fmt::error!("No read (slave OUT) mailbox found but one is required");
+                fmt::error!("No read (SubDevice OUT) mailbox found but one is required");
                 e
             })?;
 
@@ -404,7 +408,7 @@ where
         let mailbox_write_sm_status =
             RegisterAddress::sync_manager_status(write_mailbox.sync_manager);
 
-        // Ensure slave OUT (master IN) mailbox is empty
+        // Ensure SubDevice OUT (master IN) mailbox is empty
         {
             let sm_status = self
                 .read(mailbox_read_sm_status)
@@ -414,7 +418,7 @@ where
             // If flag is set, read entire mailbox to clear it
             if sm_status.mailbox_full {
                 fmt::debug!(
-                    "Slave {:#06x} OUT mailbox not empty. Clearing.",
+                    "SubDevice {:#06x} OUT mailbox not empty. Clearing.",
                     self.configured_address()
                 );
 
@@ -425,7 +429,7 @@ where
             }
         }
 
-        // Wait for slave IN mailbox to be available to receive data from master
+        // Wait for SubDevice IN mailbox to be available to receive data from master
         async {
             loop {
                 let sm_status = self
@@ -444,7 +448,7 @@ where
         .await
         .map_err(|e| {
             fmt::error!(
-                "Mailbox IN ready error for slave {:#06x}: {}",
+                "Mailbox IN ready error for SubDevice {:#06x}: {}",
                 self.configured_address,
                 e
             );
@@ -459,7 +463,7 @@ where
     async fn coe_response(&self, read_mailbox: &Mailbox) -> Result<ReceivedPdu, Error> {
         let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
 
-        // Wait for slave OUT mailbox to be ready
+        // Wait for SubDevice OUT mailbox to be ready
         async {
             loop {
                 let sm_status = self
@@ -478,7 +482,7 @@ where
         .await
         .map_err(|e| {
             fmt::error!(
-                "Response mailbox IN error for slave {:#06x}: {}",
+                "Response mailbox IN error for SubDevice {:#06x}: {}",
                 self.configured_address,
                 e
             );
@@ -486,7 +490,7 @@ where
             e
         })?;
 
-        // Read acknowledgement from slave OUT mailbox
+        // Read acknowledgement from SubDevice OUT mailbox
         let response = self
             .read(read_mailbox.address)
             .receive_slice(self.client, read_mailbox.len)
@@ -507,7 +511,7 @@ where
 
         let counter = request.counter();
 
-        // Send data to slave IN mailbox
+        // Send data to SubDevice IN mailbox
         self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
             .send(self.client, &request.pack().as_ref())
@@ -542,7 +546,7 @@ where
             let code = CoeAbortCode::Incompatible;
 
             fmt::error!(
-                "Mailbox error for slave {:#06x} (supports complete access: {}): {}",
+                "Mailbox error for SubDevice {:#06x} (supports complete access: {}): {}",
                 self.configured_address,
                 self.state.config.mailbox.complete_access,
                 code
@@ -756,7 +760,7 @@ where
 }
 
 // General impl with no bounds
-impl<'a, S> SlaveRef<'a, S> {
+impl<'a, S> SubDeviceRef<'a, S> {
     pub(crate) fn new(client: &'a Client<'a>, configured_address: u16, state: S) -> Self {
         Self {
             client,
@@ -765,13 +769,13 @@ impl<'a, S> SlaveRef<'a, S> {
         }
     }
 
-    /// Get the configured station address of the slave device.
+    /// Get the configured station address of the SubDevice.
     pub fn configured_address(&self) -> u16 {
         self.configured_address
     }
 
     /// Get the sub device status.
-    pub(crate) async fn state(&self) -> Result<SlaveState, Error> {
+    pub(crate) async fn state(&self) -> Result<SubDeviceState, Error> {
         match self
             .read(RegisterAddress::AlStatus)
             .receive::<AlControl>(self.client)
@@ -800,7 +804,7 @@ impl<'a, S> SlaveRef<'a, S> {
     }
 
     /// Get the EtherCAT state machine state of the sub device.
-    pub async fn status(&self) -> Result<(SlaveState, AlStatusCode), Error> {
+    pub async fn status(&self) -> Result<(SubDeviceState, AlStatusCode), Error> {
         let code = self
             .read(RegisterAddress::AlStatusCode)
             .receive::<AlStatusCode>(self.client);
@@ -808,13 +812,13 @@ impl<'a, S> SlaveRef<'a, S> {
         futures_lite::future::try_zip(self.state(), code).await
     }
 
-    fn eeprom(&self) -> SlaveEeprom<DeviceEeprom> {
-        SlaveEeprom::new(DeviceEeprom::new(self.client, self.configured_address))
+    fn eeprom(&self) -> SubDeviceEeprom<DeviceEeprom> {
+        SubDeviceEeprom::new(DeviceEeprom::new(self.client, self.configured_address))
     }
 
     /// Read a register.
     ///
-    /// Note that while this method is marked safe, raw alterations to slave config or behaviour can
+    /// Note that while this method is marked safe, raw alterations to SubDevice config or behaviour can
     /// break higher level interactions with EtherCrab.
     pub async fn register_read<T>(&self, register: impl Into<u16>) -> Result<T, Error>
     where
@@ -825,7 +829,7 @@ impl<'a, S> SlaveRef<'a, S> {
 
     /// Write a register.
     ///
-    /// Note that while this method is marked safe, raw alterations to slave config or behaviour can
+    /// Note that while this method is marked safe, raw alterations to SubDevice config or behaviour can
     /// break higher level interactions with EtherCrab.
     pub async fn register_write<T>(&self, register: impl Into<u16>, value: T) -> Result<T, Error>
     where
@@ -836,7 +840,7 @@ impl<'a, S> SlaveRef<'a, S> {
             .await
     }
 
-    pub(crate) async fn wait_for_state(&self, desired_state: SlaveState) -> Result<(), Error> {
+    pub(crate) async fn wait_for_state(&self, desired_state: SubDeviceState) -> Result<(), Error> {
         async {
             loop {
                 let status = self
@@ -864,12 +868,12 @@ impl<'a, S> SlaveRef<'a, S> {
         Command::fprd(self.configured_address, register.into())
     }
 
-    pub(crate) async fn request_slave_state_nowait(
+    pub(crate) async fn request_subdevice_state_nowait(
         &self,
-        desired_state: SlaveState,
+        desired_state: SubDeviceState,
     ) -> Result<(), Error> {
         fmt::debug!(
-            "Set state {} for slave address {:#04x}",
+            "Set state {} for SubDevice address {:#04x}",
             desired_state,
             self.configured_address
         );
@@ -887,7 +891,7 @@ impl<'a, S> SlaveRef<'a, S> {
                 .await?;
 
             fmt::error!(
-                "Error occurred transitioning slave {:#06x} to {:?}: {}",
+                "Error occurred transitioning SubDevice {:#06x} to {:?}: {}",
                 self.configured_address,
                 desired_state,
                 error,
@@ -899,14 +903,17 @@ impl<'a, S> SlaveRef<'a, S> {
         Ok(())
     }
 
-    pub(crate) async fn request_slave_state(&self, desired_state: SlaveState) -> Result<(), Error> {
-        self.request_slave_state_nowait(desired_state).await?;
+    pub(crate) async fn request_subdevice_state(
+        &self,
+        desired_state: SubDeviceState,
+    ) -> Result<(), Error> {
+        self.request_subdevice_state_nowait(desired_state).await?;
 
         self.wait_for_state(desired_state).await
     }
 
     pub(crate) async fn set_eeprom_mode(&self, mode: SiiOwner) -> Result<(), Error> {
-        // ETG1000.4 Table 48 – Slave information interface access
+        // ETG1000.4 Table 48 – SubDevice information interface access
         // A value of 2 sets owner to Master (not PDI) and cancels access
         self.write(RegisterAddress::SiiConfig)
             .send(self.client, 2u16)

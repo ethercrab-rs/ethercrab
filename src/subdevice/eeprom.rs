@@ -9,18 +9,18 @@ use crate::{
     },
     error::{EepromError, Error, Item},
     fmt,
-    slave::SlaveIdentity,
+    subdevice::SubDeviceIdentity,
 };
 use core::{marker::PhantomData, ops::RangeInclusive};
 use embedded_io_async::{Read, ReadExactError};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized};
 
-pub struct SlaveEeprom<P> {
+pub struct SubDeviceEeprom<P> {
     provider: P,
 }
 
 /// EEPROM methods.
-impl<P> SlaveEeprom<P>
+impl<P> SubDeviceEeprom<P>
 where
     P: EepromDataProvider,
 {
@@ -124,16 +124,16 @@ where
         Ok(SiiGeneral::unpack_from_slice(&buf)?)
     }
 
-    pub(crate) async fn identity(&self) -> Result<SlaveIdentity, Error> {
-        let mut reader = self.start_at(0x0008, SlaveIdentity::PACKED_LEN as u16);
+    pub(crate) async fn identity(&self) -> Result<SubDeviceIdentity, Error> {
+        let mut reader = self.start_at(0x0008, SubDeviceIdentity::PACKED_LEN as u16);
 
         fmt::trace!("Get identity");
 
-        let mut buf = SlaveIdentity::buffer();
+        let mut buf = SubDeviceIdentity::buffer();
 
         reader.read_exact(&mut buf).await?;
 
-        Ok(SlaveIdentity::unpack_from_slice(&buf)?)
+        Ok(SubDeviceIdentity::unpack_from_slice(&buf)?)
     }
 
     pub(crate) async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
@@ -291,7 +291,7 @@ where
         if let Some(mut reader) = self.category(CategoryType::Strings).await? {
             let num_strings = reader.read_byte().await?;
 
-            fmt::trace!("--> Slave has {} strings", num_strings);
+            fmt::trace!("--> SubDevice has {} strings", num_strings);
 
             if search_index > num_strings {
                 return Ok(None);
@@ -418,7 +418,7 @@ mod tests {
     async fn read_device_name() {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2889.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/el2889.hex"));
 
         assert_eq!(
             e.device_name::<64>().await,
@@ -430,7 +430,7 @@ mod tests {
     async fn sync_managers() {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         let expected = [
             SyncManager {
@@ -497,7 +497,7 @@ mod tests {
     async fn empty_string() {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
 
         // Ensure we have at least one string.
         assert_eq!(
@@ -513,7 +513,7 @@ mod tests {
     async fn short_buffer() {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         // Pick a decently long string from the EEPROM file. This is just an arbitrary index.
         let idx = 12;
@@ -542,7 +542,7 @@ mod tests {
     async fn single_null_terminator() -> Result<(), Error> {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd_null_strings.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd_null_strings.hex"));
 
         // Index 4 was originally "AKD EtherCAT Drive (CoE)", now modified to "AKD EtherCA\0"
         let s = e.find_string::<64>(4).await?;
@@ -556,7 +556,7 @@ mod tests {
     async fn null_terminators() -> Result<(), Error> {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd_null_strings.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd_null_strings.hex"));
 
         // Index 10 was originally "Statusword", now modified to "Statu\0\0\0\0\0"
         let s = e.find_string::<64>(10).await?;
@@ -570,7 +570,7 @@ mod tests {
     async fn strings() -> Result<(), Error> {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         let mut strings = Vec::new();
 
@@ -633,7 +633,7 @@ mod tests {
 
     #[tokio::test]
     async fn pdos_invalid_range() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         assert_eq!(
             e.pdos(PdoType::Rx, 0x1000..=0x1010).await,
@@ -643,8 +643,8 @@ mod tests {
 
     // EK1100 doesn't have any IO so doesn't have any PDOs.
     #[tokio::test]
-    async fn slave_no_pdos() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+    async fn subdevice_no_pdos() {
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
 
         assert_eq!(e.master_read_pdos().await, Ok(heapless::Vec::new()));
         assert_eq!(e.master_write_pdos().await, Ok(heapless::Vec::new()));
@@ -652,7 +652,7 @@ mod tests {
 
     #[tokio::test]
     async fn output_pdos_only() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
 
         fn pdo(index: u16, name_string_idx: u8, _entry_idx: u16) -> Pdo {
             // let entry_defaults = PdoEntry {
@@ -717,15 +717,15 @@ mod tests {
     // and start reading it" codepath.
     #[tokio::test]
     async fn get_mailbox_config() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         assert_eq!(
             e.mailbox_config().await,
             Ok(DefaultMailbox {
-                slave_receive_offset: 0x1800,
-                slave_receive_size: 0x0400,
-                slave_send_offset: 0x1c00,
-                slave_send_size: 0x0400,
+                subdevice_receive_offset: 0x1800,
+                subdevice_receive_size: 0x0400,
+                subdevice_send_offset: 0x1c00,
+                subdevice_send_size: 0x0400,
                 supported_protocols: MailboxProtocols::EOE
                     | MailboxProtocols::COE
                     | MailboxProtocols::FOE,
@@ -735,28 +735,34 @@ mod tests {
 
     #[tokio::test]
     async fn default_mailbox_config_matches_sms() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         let sms = e.sync_managers().await.expect("Read sync managers");
 
         let mbox = e.mailbox_config().await.expect("Read mailbox config");
 
         assert_eq!(
-            mbox.slave_receive_offset, sms[0].start_addr,
-            "slave_receive_offset"
+            mbox.subdevice_receive_offset, sms[0].start_addr,
+            "subdevice_receive_offset"
         );
-        assert_eq!(mbox.slave_receive_size, sms[0].length, "slave_receive_size");
         assert_eq!(
-            mbox.slave_send_offset, sms[1].start_addr,
-            "slave_send_offset"
+            mbox.subdevice_receive_size, sms[0].length,
+            "subdevice_receive_size"
         );
-        assert_eq!(mbox.slave_send_size, sms[1].length, "slave_send_size");
+        assert_eq!(
+            mbox.subdevice_send_offset, sms[1].start_addr,
+            "subdevice_send_offset"
+        );
+        assert_eq!(
+            mbox.subdevice_send_size, sms[1].length,
+            "subdevice_send_size"
+        );
     }
 
     #[tokio::test]
     async fn get_fmmu_usage() {
         assert_eq!(
-            SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"))
+            SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"))
                 .fmmus()
                 .await,
             Ok(heapless::Vec::from_slice(&[
@@ -769,7 +775,7 @@ mod tests {
         );
 
         assert_eq!(
-            SlaveEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"))
+            SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"))
                 .fmmus()
                 .await,
             Ok(heapless::Vec::from_slice(&[FmmuUsage::Outputs, FmmuUsage::Unused,]).unwrap())
@@ -778,18 +784,18 @@ mod tests {
 
     #[tokio::test]
     async fn no_fmmus() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
 
         assert_eq!(e.fmmus().await, Ok(heapless::Vec::new()));
     }
 
     #[tokio::test]
     async fn identity() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         assert_eq!(
             e.identity().await,
-            Ok(SlaveIdentity {
+            Ok(SubDeviceIdentity {
                 vendor_id: 0x0000006a,
                 product_id: 0x00414b44,
                 revision: 2,
@@ -800,7 +806,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_general_akd() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         assert_eq!(
             e.general().await,
@@ -829,7 +835,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_general_ek1100() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
 
         assert_eq!(
             e.general().await,
@@ -856,7 +862,7 @@ mod tests {
 
     #[tokio::test]
     async fn akd_strings() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         let general = e.general().await.expect("Get general");
 
@@ -876,7 +882,7 @@ mod tests {
 
     #[tokio::test]
     async fn ek1100_string_no_image() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
 
         let general = e.general().await.expect("Get general");
 
@@ -889,7 +895,7 @@ mod tests {
 
     #[tokio::test]
     async fn akd_fmmu_ex() {
-        let e = SlaveEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
 
         let fmmu_ex = e.fmmu_mappings().await.expect("Get FMMU_EX");
 

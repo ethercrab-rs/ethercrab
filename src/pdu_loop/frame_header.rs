@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn parse() {
-        // Header from packet #39, soem-slaveinfo-ek1100-only.pcapng
+        // Header from packet #39, soem-sdinfo-ek1100-only.pcapng
         let raw = [0x3cu8, 0x10];
 
         let header = EthercatFrameHeader::unpack_from_slice(&raw).unwrap();

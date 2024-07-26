@@ -1,4 +1,4 @@
-//! Slave Information Interface (SII).
+//! SubDevice Information Interface (SII).
 
 use crate::{base_data_types::PrimitiveDataType, coe::SdoExpedited, sync_manager_channel};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
@@ -509,9 +509,9 @@ pub enum SyncManagerType {
     /// Not used or unknown.
     #[default]
     Unknown = 0x00,
-    /// Used for writing into the slave.
+    /// Used for writing into the SubDevice.
     MailboxWrite = 0x01,
-    /// Used for reading from the slave.
+    /// Used for reading from the SubDevice.
     MailboxRead = 0x02,
     /// Used for process data outputs from master.
     ProcessDataWrite = 0x03,
@@ -725,27 +725,27 @@ impl defmt::Format for MailboxProtocols {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 10)]
 pub struct DefaultMailbox {
-    /// Master to slave receive mailbox address offset.
+    /// Master to SubDevice receive mailbox address offset.
     #[wire(bytes = 2)]
-    pub slave_receive_offset: u16,
-    /// Master to slave receive mailbox size.
+    pub subdevice_receive_offset: u16,
+    /// Master to SubDevice receive mailbox size.
     #[wire(bytes = 2)]
-    pub slave_receive_size: u16,
-    /// Slave to master send mailbox address offset.
+    pub subdevice_receive_size: u16,
+    /// SubDevice to master send mailbox address offset.
     #[wire(bytes = 2)]
-    pub slave_send_offset: u16,
-    /// Slave to master send mailbox size.
+    pub subdevice_send_offset: u16,
+    /// SubDevice to master send mailbox size.
     #[wire(bytes = 2)]
-    pub slave_send_size: u16,
-    /// Mailbox protocols supported by the slave device.
+    pub subdevice_send_size: u16,
+    /// Mailbox protocols supported by the SubDevice.
     #[wire(bytes = 2)]
     pub supported_protocols: MailboxProtocols,
 }
 
 impl DefaultMailbox {
     pub fn has_mailbox(&self) -> bool {
-        !self.supported_protocols.is_empty() && self.slave_receive_size > 0
-            || self.slave_send_size > 0
+        !self.supported_protocols.is_empty() && self.subdevice_receive_size > 0
+            || self.subdevice_send_size > 0
     }
 }
 
@@ -753,20 +753,20 @@ impl core::fmt::Debug for DefaultMailbox {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("MailboxConfig")
             .field(
-                "slave_receive_offset",
-                &format_args!("{:#06x}", self.slave_receive_offset),
+                "subdevice_receive_offset",
+                &format_args!("{:#06x}", self.subdevice_receive_offset),
             )
             .field(
-                "slave_receive_size",
-                &format_args!("{:#06x}", self.slave_receive_size),
+                "subdevice_receive_size",
+                &format_args!("{:#06x}", self.subdevice_receive_size),
             )
             .field(
-                "slave_send_offset",
-                &format_args!("{:#06x}", self.slave_send_offset),
+                "subdevice_send_offset",
+                &format_args!("{:#06x}", self.subdevice_send_offset),
             )
             .field(
-                "slave_send_size",
-                &format_args!("{:#06x}", self.slave_send_size),
+                "subdevice_send_size",
+                &format_args!("{:#06x}", self.subdevice_send_size),
             )
             .field("supported_protocols", &self.supported_protocols)
             .finish()

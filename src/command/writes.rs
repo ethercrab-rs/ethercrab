@@ -8,7 +8,7 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 pub enum Writes {
     /// BWR.
     Bwr {
-        /// Autoincremented by each slave visited.
+        /// Autoincremented by each SubDevice visited.
         address: u16,
 
         /// Memory location to write to.
