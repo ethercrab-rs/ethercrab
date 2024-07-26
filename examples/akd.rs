@@ -4,7 +4,7 @@ use env_logger::Env;
 use ethercrab::{
     error::{Error, MailboxError},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -31,24 +31,24 @@ async fn main() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(
+    let maindevice = Arc::new(MainDevice::new(
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
             ..Default::default()
         },
-        ClientConfig::default(),
+        MainDeviceConfig::default(),
     ));
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let mut group = client
+    let mut group = maindevice
         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
 
-    for subdevice in group.iter(&client) {
+    for subdevice in group.iter(&maindevice) {
         // --- Reads ---
 
         // // Name
@@ -118,18 +118,18 @@ async fn main() -> Result<(), Error> {
         }
     }
 
-    let group = group.into_op(&client).await.expect("PRE-OP -> OP");
+    let group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
 
     log::info!("SubDevices moved to OP state");
 
     log::info!("Discovered {} SubDevices", group.len());
 
     let mut subdevice = group
-        .subdevice(&client, 0)
+        .subdevice(&maindevice, 0)
         .expect("first SubDevice not found");
 
     // Run twice to prime PDI
-    group.tx_rx(&client).await.expect("TX/RX");
+    group.tx_rx(&maindevice).await.expect("TX/RX");
 
     let cycle_time = {
         let base = subdevice.sdo_read::<u8>(0x60c2, 1).await?;
@@ -154,7 +154,7 @@ async fn main() -> Result<(), Error> {
     {
         log::info!("Checking faults");
 
-        group.tx_rx(&client).await.expect("TX/RX");
+        group.tx_rx(&maindevice).await.expect("TX/RX");
 
         let (i, o) = subdevice.io_raw_mut();
 
@@ -173,7 +173,7 @@ async fn main() -> Result<(), Error> {
             control.copy_from_slice(&reset);
 
             loop {
-                group.tx_rx(&client).await.expect("TX/RX");
+                group.tx_rx(&maindevice).await.expect("TX/RX");
 
                 let (i, _o) = subdevice.io_raw_mut();
 
@@ -206,7 +206,7 @@ async fn main() -> Result<(), Error> {
         control.copy_from_slice(&value);
 
         loop {
-            group.tx_rx(&client).await.expect("TX/RX");
+            group.tx_rx(&maindevice).await.expect("TX/RX");
 
             let (i, _o) = subdevice.io_raw_mut();
 
@@ -240,7 +240,7 @@ async fn main() -> Result<(), Error> {
         control.copy_from_slice(&reset);
 
         loop {
-            group.tx_rx(&client).await.expect("TX/RX");
+            group.tx_rx(&maindevice).await.expect("TX/RX");
 
             let (i, o) = subdevice.io_raw_mut();
 
@@ -273,7 +273,7 @@ async fn main() -> Result<(), Error> {
     let mut velocity: i32 = 0;
 
     loop {
-        group.tx_rx(&client).await.expect("TX/RX");
+        group.tx_rx(&maindevice).await.expect("TX/RX");
 
         let (i, o) = subdevice.io_raw_mut();
 

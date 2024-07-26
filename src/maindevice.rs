@@ -12,7 +12,7 @@ use crate::{
     subdevice_group::{self, SubDeviceGroupHandle},
     subdevice_state::SubDeviceState,
     timer_factory::IntoTimeout,
-    ClientConfig, SubDeviceGroup, Timeouts, BASE_SUBDEVICE_ADDRESS,
+    MainDeviceConfig, SubDeviceGroup, Timeouts, BASE_SUBDEVICE_ADDRESS,
 };
 use core::{
     ops::Range,
@@ -21,12 +21,12 @@ use core::{
 use ethercrab_wire::EtherCrabWireWrite;
 use heapless::FnvIndexMap;
 
-/// The main EtherCAT master instance.
+/// The main EtherCAT controller.
 ///
-/// The client is passed to [`SubDeviceGroup`]s to drive their TX/RX methods. It also provides
-/// direct access to EtherCAT PDUs like `BRD`, `LRW`, etc.
+/// The `MainDevice` is passed by reference to [`SubDeviceGroup`]s to drive their TX/RX methods. It
+/// also provides direct access to EtherCAT PDUs like `BRD`, `LRW`, etc.
 #[derive(Debug)]
-pub struct Client<'sto> {
+pub struct MainDevice<'sto> {
     pub(crate) pdu_loop: PduLoop<'sto>,
     /// The total number of discovered subdevices.
     ///
@@ -38,14 +38,18 @@ pub struct Client<'sto> {
     /// If no DC subdevices are found, this will be `0`.
     dc_reference_configured_address: AtomicU16,
     pub(crate) timeouts: Timeouts,
-    pub(crate) config: ClientConfig,
+    pub(crate) config: MainDeviceConfig,
 }
 
-unsafe impl<'sto> Sync for Client<'sto> {}
+unsafe impl<'sto> Sync for MainDevice<'sto> {}
 
-impl<'sto> Client<'sto> {
-    /// Create a new EtherCrab client.
-    pub const fn new(pdu_loop: PduLoop<'sto>, timeouts: Timeouts, config: ClientConfig) -> Self {
+impl<'sto> MainDevice<'sto> {
+    /// Create a new EtherCrab MainDevice.
+    pub const fn new(
+        pdu_loop: PduLoop<'sto>,
+        timeouts: Timeouts,
+        config: MainDeviceConfig,
+    ) -> Self {
         Self {
             pdu_loop,
             num_subdevices: AtomicU16::new(0),
@@ -189,7 +193,7 @@ impl<'sto> Client<'sto> {
     ///
     /// ```rust,no_run
     /// use ethercrab::{
-    ///     error::Error, std::{ethercat_now, tx_rx_task}, Client, ClientConfig, PduStorage,
+    ///     error::Error, std::{ethercat_now, tx_rx_task}, MainDevice, MainDeviceConfig, PduStorage,
     ///     SubDeviceGroup, Timeouts, subdevice_group
     /// };
     ///
@@ -210,10 +214,10 @@ impl<'sto> Client<'sto> {
     ///
     /// let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
     ///
-    /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    /// let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
     ///
     /// # async {
-    /// let groups = client
+    /// let groups = maindevice
     ///     .init::<MAX_SUBDEVICES, _>(ethercat_now, |groups: &Groups, subdevice| {
     ///         match subdevice.name() {
     ///             "COUPLER" | "IO69420" => Ok(&groups.group_1),
@@ -333,7 +337,7 @@ impl<'sto> Client<'sto> {
     /// To transition groups into different states, see [`SubDeviceGroup::into_safe_op`] or
     /// [`SubDeviceGroup::into_op`].
     ///
-    /// For multiple groups, see [`Client::init`].
+    /// For multiple groups, see [`MainDevice::init`].
     ///
     /// # Examples
     ///
@@ -341,7 +345,7 @@ impl<'sto> Client<'sto> {
     ///
     /// ```rust,no_run
     /// use ethercrab::{
-    ///     error::Error, Client, ClientConfig, PduStorage, Timeouts, std::ethercat_now
+    ///     error::Error, MainDevice, MainDeviceConfig, PduStorage, Timeouts, std::ethercat_now
     /// };
     ///
     /// const MAX_SUBDEVICES: usize = 2;
@@ -353,10 +357,10 @@ impl<'sto> Client<'sto> {
     ///
     /// let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
     ///
-    /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    /// let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
     ///
     /// # async {
-    /// let group = client
+    /// let group = maindevice
     ///     .init_single_group::<MAX_SUBDEVICES, MAX_PDI>(ethercat_now)
     ///     .await
     ///     .expect("Init");
@@ -367,7 +371,7 @@ impl<'sto> Client<'sto> {
     ///
     /// ```rust,no_run
     /// use ethercrab::{
-    ///     error::Error, Client, ClientConfig, PduStorage, Timeouts, std::ethercat_now
+    ///     error::Error, MainDevice, MainDeviceConfig, PduStorage, Timeouts, std::ethercat_now
     /// };
     ///
     /// const MAX_SUBDEVICES: usize = 2;
@@ -379,15 +383,15 @@ impl<'sto> Client<'sto> {
     ///
     /// let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
     ///
-    /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    /// let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
     ///
     /// # async {
-    /// let mut group = client
+    /// let mut group = maindevice
     ///     .init_single_group::<MAX_SUBDEVICES, MAX_PDI>(ethercat_now)
     ///     .await
     ///     .expect("Init");
     ///
-    /// for subdevice in group.iter(&client) {
+    /// for subdevice in group.iter(&maindevice) {
     ///     if subdevice.name() == "EL3004" {
     ///         log::info!("Found EL3004. Configuring...");
     ///
@@ -402,7 +406,7 @@ impl<'sto> Client<'sto> {
     ///     }
     /// }
     ///
-    /// let mut group = group.into_safe_op(&client).await.expect("PRE-OP -> SAFE-OP");
+    /// let mut group = group.into_safe_op(&maindevice).await.expect("PRE-OP -> SAFE-OP");
     /// # Ok::<(), ethercrab::error::Error>(())
     /// # };
     /// ```
@@ -423,7 +427,7 @@ impl<'sto> Client<'sto> {
 
     /// Get the number of discovered SubDevices in the EtherCAT network.
     ///
-    /// As [`init`](crate::Client::init) runs SubDevice autodetection, it must be called before this
+    /// As [`init`](crate::MainDevice::init) runs SubDevice autodetection, it must be called before this
     /// method to get an accurate count.
     pub fn num_subdevices(&self) -> usize {
         usize::from(self.num_subdevices.load(Ordering::Relaxed))

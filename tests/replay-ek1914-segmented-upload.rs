@@ -5,7 +5,7 @@
 mod util;
 
 use env_logger::Env;
-use ethercrab::{error::Error, Client, ClientConfig, PduStorage, Timeouts};
+use ethercrab::{error::Error, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
 use std::path::PathBuf;
 
 const MAX_SUBDEVICES: usize = 16;
@@ -22,10 +22,10 @@ async fn replay_ek1914_segmented_upload() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Client::new(
+    let maindevice = MainDevice::new(
         pdu_loop,
         Timeouts::default(),
-        ClientConfig {
+        MainDeviceConfig {
             dc_static_sync_iterations: 100,
             ..Default::default()
         },
@@ -40,14 +40,16 @@ async fn replay_ek1914_segmented_upload() -> Result<(), Error> {
     util::spawn_tx_rx(&format!("tests/{test_name}.pcapng"), tx, rx);
 
     // Read configurations from SubDevice EEPROMs and configure devices.
-    let group = client
+    let group = maindevice
         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(|| 0)
         .await
         .expect("Init");
 
-    assert_eq!(group.subdevice(&client, 0)?.name(), "EK1914");
+    assert_eq!(group.subdevice(&maindevice, 0)?.name(), "EK1914");
 
-    let first = group.subdevice(&client, 0).expect("EK1914 must be first");
+    let first = group
+        .subdevice(&maindevice, 0)
+        .expect("EK1914 must be first");
 
     let name_coe = first
         .sdo_read::<heapless::String<32>>(0x1008, 0)

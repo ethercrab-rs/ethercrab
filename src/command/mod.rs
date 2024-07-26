@@ -30,7 +30,7 @@ const LRW: u8 = 0x0c;
 ///
 /// A `Command` won't do much on its own. To perform network operations with the command it must be
 /// wrapped with either [`WrappedRead`] or [`WrappedWrite`] by calling the `wrap` method. These
-/// structs add a [`Client`](crate::Client) and expose many different read/write operations. See the
+/// structs add a [`MainDevice`](crate::MainDevice) and expose many different read/write operations. See the
 /// methods on [`WrappedRead`] and [`WrappedWrite`] for more.
 ///
 /// # Examples
@@ -38,18 +38,18 @@ const LRW: u8 = 0x0c;
 /// ## Read a `u32` from a SubDevice by address
 ///
 /// ```rust
-/// # use ethercrab::{ std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts };
+/// # use ethercrab::{ std::tx_rx_task, MainDevice, MainDeviceConfig, PduStorage, Timeouts };
 /// use ethercrab::{ Command, RegisterAddress };
 /// # static PDU_STORAGE: PduStorage<16, 1100> = PduStorage::new();
 /// # let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
-/// let client = /* ... */
-/// # Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+/// let maindevice = /* ... */
+/// # MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 ///
 /// let configured_address = 0x1001u16;
 ///
 /// # async {
 /// let value = Command::fprd(configured_address, RegisterAddress::SiiData.into())
-///     .receive::<u32>(&client)
+///     .receive::<u32>(&maindevice)
 ///     .await?;
 /// # Result::<(), ethercrab::error::Error>::Ok(())
 /// # };
@@ -58,12 +58,12 @@ const LRW: u8 = 0x0c;
 /// ## Write a slice to a given SubDevice address and register
 ///
 /// ```rust
-/// # use ethercrab::{ std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts };
+/// # use ethercrab::{ std::tx_rx_task, MainDevice, MainDeviceConfig, PduStorage, Timeouts };
 /// use ethercrab::{ Command, RegisterAddress };
 /// # static PDU_STORAGE: PduStorage<16, 1100> = PduStorage::new();
 /// # let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
-/// let client = /* ... */
-/// # Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+/// let maindevice = /* ... */
+/// # MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 ///
 /// let configured_address = 0x1001u16;
 /// let register = 0x1234u16;
@@ -72,7 +72,7 @@ const LRW: u8 = 0x0c;
 ///
 /// # async {
 /// Command::fpwr(configured_address, register)
-///     .send(&client, data)
+///     .send(&maindevice, data)
 ///     .await?;
 /// # Result::<(), ethercrab::error::Error>::Ok(())
 /// # };

@@ -8,7 +8,6 @@ mod types;
 use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
-    client::Client,
     coe::{
         self, abort_code::CoeAbortCode, services::CoeServiceRequest, CoeCommand, SdoExpedited,
         SubIndex,
@@ -19,6 +18,7 @@ use crate::{
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::{MailboxHeader, MailboxType},
+    maindevice::MainDevice,
     pdu_loop::ReceivedPdu,
     register::{DcSupport, RegisterAddress, SupportFlags},
     subdevice::{ports::Ports, types::SubDeviceConfig},
@@ -140,11 +140,11 @@ impl SubDevice {
     /// This method reads the SubDevices's name and other identifying information, but does not
     /// configure it.
     pub(crate) async fn new<'sto>(
-        client: &'sto Client<'sto>,
+        maindevice: &'sto MainDevice<'sto>,
         index: u16,
         configured_address: u16,
     ) -> Result<Self, Error> {
-        let subdevice_ref = SubDeviceRef::new(client, configured_address, ());
+        let subdevice_ref = SubDeviceRef::new(maindevice, configured_address, ());
 
         fmt::debug!(
             "Waiting for SubDevice {:#06x} to enter {}",
@@ -178,17 +178,17 @@ impl SubDevice {
 
         let flags = subdevice_ref
             .read(RegisterAddress::SupportFlags)
-            .receive::<SupportFlags>(client)
+            .receive::<SupportFlags>(maindevice)
             .await?;
 
         let alias_address = subdevice_ref
             .read(RegisterAddress::ConfiguredStationAlias)
-            .receive::<u16>(client)
+            .receive::<u16>(maindevice)
             .await?;
 
         let ports = subdevice_ref
             .read(RegisterAddress::DlStatus)
-            .receive::<DlStatus>(client)
+            .receive::<DlStatus>(maindevice)
             .await
             .map(|dl_status| {
                 // NOTE: dc_receive_times are populated during DC initialisation
@@ -251,7 +251,7 @@ impl SubDevice {
 
     /// Get the network propagation delay of this device in nanoseconds.
     ///
-    /// Note that before [`Client::init`](crate::client::Client::init) is called, this method will
+    /// Note that before [`MainDevice::init`](crate::MainDevice::init) is called, this method will
     /// always return `0`.
     pub fn propagation_delay(&self) -> u32 {
         self.propagation_delay
@@ -298,7 +298,7 @@ impl SubDevice {
 /// writing of a SubDevice's process data.
 #[derive(Debug)]
 pub struct SubDeviceRef<'a, S> {
-    pub(crate) client: &'a Client<'a>,
+    pub(crate) maindevice: &'a MainDevice<'a>,
     pub(crate) configured_address: u16,
     state: S,
 }
@@ -306,7 +306,7 @@ pub struct SubDeviceRef<'a, S> {
 impl<'a> Clone for SubDeviceRef<'a, ()> {
     fn clone(&self) -> Self {
         Self {
-            client: self.client,
+            maindevice: self.maindevice,
             configured_address: self.configured_address,
             state: (),
         }
@@ -347,7 +347,7 @@ where
 
     /// Get the network propagation delay of this device in nanoseconds.
     ///
-    /// Note that before [`Client::init`](crate::client::Client::init) is called, this method will
+    /// Note that before [`MainDevice::init`](crate::MainDevice::init) is called, this method will
     /// always return `0`.
     pub fn propagation_delay(&self) -> u32 {
         self.state.propagation_delay
@@ -412,7 +412,7 @@ where
         {
             let sm_status = self
                 .read(mailbox_read_sm_status)
-                .receive::<crate::sync_manager_channel::Status>(self.client)
+                .receive::<crate::sync_manager_channel::Status>(self.maindevice)
                 .await?;
 
             // If flag is set, read entire mailbox to clear it
@@ -424,7 +424,7 @@ where
 
                 self.read(read_mailbox.address)
                     .ignore_wkc()
-                    .receive_slice(self.client, read_mailbox.len)
+                    .receive_slice(self.maindevice, read_mailbox.len)
                     .await?;
             }
         }
@@ -434,17 +434,17 @@ where
             loop {
                 let sm_status = self
                     .read(mailbox_write_sm_status)
-                    .receive::<crate::sync_manager_channel::Status>(self.client)
+                    .receive::<crate::sync_manager_channel::Status>(self.maindevice)
                     .await?;
 
                 if !sm_status.mailbox_full {
                     break Ok(());
                 }
 
-                self.client.timeouts.loop_tick().await;
+                self.maindevice.timeouts.loop_tick().await;
             }
         }
-        .timeout(self.client.timeouts.mailbox_echo)
+        .timeout(self.maindevice.timeouts.mailbox_echo)
         .await
         .map_err(|e| {
             fmt::error!(
@@ -468,17 +468,17 @@ where
             loop {
                 let sm_status = self
                     .read(mailbox_read_sm)
-                    .receive::<crate::sync_manager_channel::Status>(self.client)
+                    .receive::<crate::sync_manager_channel::Status>(self.maindevice)
                     .await?;
 
                 if sm_status.mailbox_full {
                     break Ok(());
                 }
 
-                self.client.timeouts.loop_tick().await;
+                self.maindevice.timeouts.loop_tick().await;
             }
         }
-        .timeout(self.client.timeouts.mailbox_echo)
+        .timeout(self.maindevice.timeouts.mailbox_echo)
         .await
         .map_err(|e| {
             fmt::error!(
@@ -493,7 +493,7 @@ where
         // Read acknowledgement from SubDevice OUT mailbox
         let response = self
             .read(read_mailbox.address)
-            .receive_slice(self.client, read_mailbox.len)
+            .receive_slice(self.maindevice, read_mailbox.len)
             .await?;
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
@@ -514,7 +514,7 @@ where
         // Send data to SubDevice IN mailbox
         self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
-            .send(self.client, &request.pack().as_ref())
+            .send(self.maindevice, &request.pack().as_ref())
             .await?;
 
         let mut response = self.coe_response(&read_mailbox).await?;
@@ -761,9 +761,9 @@ where
 
 // General impl with no bounds
 impl<'a, S> SubDeviceRef<'a, S> {
-    pub(crate) fn new(client: &'a Client<'a>, configured_address: u16, state: S) -> Self {
+    pub(crate) fn new(maindevice: &'a MainDevice<'a>, configured_address: u16, state: S) -> Self {
         Self {
-            client,
+            maindevice,
             configured_address,
             state,
         }
@@ -778,7 +778,7 @@ impl<'a, S> SubDeviceRef<'a, S> {
     pub(crate) async fn state(&self) -> Result<SubDeviceState, Error> {
         match self
             .read(RegisterAddress::AlStatus)
-            .receive::<AlControl>(self.client)
+            .receive::<AlControl>(self.maindevice)
             .await
             .and_then(|ctl| {
                 if ctl.error {
@@ -792,7 +792,7 @@ impl<'a, S> SubDeviceRef<'a, S> {
                 Error::SubDevice(AlStatusCode::Unknown(0)) => {
                     let code = self
                         .read(RegisterAddress::AlStatusCode)
-                        .receive::<AlStatusCode>(self.client)
+                        .receive::<AlStatusCode>(self.maindevice)
                         .await
                         .unwrap_or(AlStatusCode::Unknown(0));
 
@@ -807,13 +807,13 @@ impl<'a, S> SubDeviceRef<'a, S> {
     pub async fn status(&self) -> Result<(SubDeviceState, AlStatusCode), Error> {
         let code = self
             .read(RegisterAddress::AlStatusCode)
-            .receive::<AlStatusCode>(self.client);
+            .receive::<AlStatusCode>(self.maindevice);
 
         futures_lite::future::try_zip(self.state(), code).await
     }
 
     fn eeprom(&self) -> SubDeviceEeprom<DeviceEeprom> {
-        SubDeviceEeprom::new(DeviceEeprom::new(self.client, self.configured_address))
+        SubDeviceEeprom::new(DeviceEeprom::new(self.maindevice, self.configured_address))
     }
 
     /// Read a register.
@@ -824,7 +824,7 @@ impl<'a, S> SubDeviceRef<'a, S> {
     where
         T: EtherCrabWireReadSized,
     {
-        self.read(register.into()).receive(self.client).await
+        self.read(register.into()).receive(self.maindevice).await
     }
 
     /// Write a register.
@@ -836,7 +836,7 @@ impl<'a, S> SubDeviceRef<'a, S> {
         T: EtherCrabWireReadWrite,
     {
         self.write(register.into())
-            .send_receive(self.client, value)
+            .send_receive(self.maindevice, value)
             .await
     }
 
@@ -846,17 +846,17 @@ impl<'a, S> SubDeviceRef<'a, S> {
                 let status = self
                     .read(RegisterAddress::AlStatus)
                     .ignore_wkc()
-                    .receive::<AlControl>(self.client)
+                    .receive::<AlControl>(self.maindevice)
                     .await?;
 
                 if status.state == desired_state {
                     break Ok(());
                 }
 
-                self.client.timeouts.loop_tick().await;
+                self.maindevice.timeouts.loop_tick().await;
             }
         }
-        .timeout(self.client.timeouts.state_transition)
+        .timeout(self.maindevice.timeouts.state_transition)
         .await
     }
 
@@ -881,13 +881,13 @@ impl<'a, S> SubDeviceRef<'a, S> {
         // Send state request
         let response = self
             .write(RegisterAddress::AlControl)
-            .send_receive::<AlControl>(self.client, AlControl::new(desired_state))
+            .send_receive::<AlControl>(self.maindevice, AlControl::new(desired_state))
             .await?;
 
         if response.error {
             let error = self
                 .read(RegisterAddress::AlStatus)
-                .receive::<AlStatusCode>(self.client)
+                .receive::<AlStatusCode>(self.maindevice)
                 .await?;
 
             fmt::error!(
@@ -916,11 +916,11 @@ impl<'a, S> SubDeviceRef<'a, S> {
         // ETG1000.4 Table 48 – SubDevice information interface access
         // A value of 2 sets owner to Master (not PDI) and cancels access
         self.write(RegisterAddress::SiiConfig)
-            .send(self.client, 2u16)
+            .send(self.maindevice, 2u16)
             .await?;
 
         self.write(RegisterAddress::SiiConfig)
-            .send(self.client, mode)
+            .send(self.maindevice, mode)
             .await?;
 
         Ok(())

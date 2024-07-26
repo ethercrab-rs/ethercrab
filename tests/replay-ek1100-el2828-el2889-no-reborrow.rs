@@ -10,7 +10,8 @@
 mod util;
 
 use ethercrab::{
-    error::Error, subdevice_group, Client, ClientConfig, PduStorage, SubDeviceGroup, Timeouts,
+    error::Error, subdevice_group, MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup,
+    Timeouts,
 };
 use std::{path::PathBuf, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -32,10 +33,10 @@ async fn replay_ek1100_el2828_el2889_no_reborrow() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Client::new(
+    let maindevice = MainDevice::new(
         pdu_loop,
         Timeouts::default(),
-        ClientConfig {
+        MainDeviceConfig {
             dc_static_sync_iterations: 100,
             ..Default::default()
         },
@@ -50,7 +51,7 @@ async fn replay_ek1100_el2828_el2889_no_reborrow() -> Result<(), Error> {
     util::spawn_tx_rx(&format!("tests/{test_name}.pcapng"), tx, rx);
 
     // Read configurations from SubDevice EEPROMs and configure devices.
-    let groups = client
+    let groups = maindevice
         .init::<MAX_SUBDEVICES, _>(
             || 0,
             |groups: &Groups, subdevice| match subdevice.name() {
@@ -67,23 +68,29 @@ async fn replay_ek1100_el2828_el2889_no_reborrow() -> Result<(), Error> {
         fast_outputs,
     } = groups;
 
-    let slow_outputs = slow_outputs.into_op(&client).await.expect("Slow into OP");
-    let fast_outputs = fast_outputs.into_op(&client).await.expect("Fast into OP");
+    let slow_outputs = slow_outputs
+        .into_op(&maindevice)
+        .await
+        .expect("Slow into OP");
+    let fast_outputs = fast_outputs
+        .into_op(&maindevice)
+        .await
+        .expect("Fast into OP");
 
     let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(10));
     slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     let _el2828 = fast_outputs
-        .subdevice(&client, 0)
+        .subdevice(&maindevice, 0)
         .expect("EL2828 not present!");
     let _ek1100 = slow_outputs
-        .subdevice(&client, 0)
+        .subdevice(&maindevice, 0)
         .expect("EL2889 not present!");
     let _el2889 = slow_outputs
-        .subdevice(&client, 1)
+        .subdevice(&maindevice, 1)
         .expect("EL2889 not present!");
 
-    let el2889_2 = slow_outputs.subdevice(&client, 1);
+    let el2889_2 = slow_outputs.subdevice(&maindevice, 1);
 
     assert!(matches!(el2889_2, Err(Error::Borrow)));
 

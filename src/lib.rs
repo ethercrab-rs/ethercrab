@@ -45,7 +45,7 @@
 //! ```rust,no_run
 //! use env_logger::Env;
 //! use ethercrab::{
-//!     error::Error, std::{ethercat_now, tx_rx_task}, Client, ClientConfig, PduStorage, Timeouts
+//!     error::Error, std::{ethercat_now, tx_rx_task}, MainDevice, MainDeviceConfig, PduStorage, Timeouts
 //! };
 //! use std::{sync::Arc, time::Duration};
 //! use tokio::time::MissedTickBehavior;
@@ -75,26 +75,26 @@
 //!
 //!     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 //!
-//!     let client = Arc::new(Client::new(
+//!     let maindevice = Arc::new(MainDevice::new(
 //!         pdu_loop,
 //!         Timeouts {
 //!             wait_loop_delay: Duration::from_millis(2),
 //!             mailbox_response: Duration::from_millis(1000),
 //!             ..Default::default()
 //!         },
-//!         ClientConfig::default(),
+//!         MainDeviceConfig::default(),
 //!     ));
 //!
 //!     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 //!
-//!     let mut group = client
+//!     let mut group = maindevice
 //!         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
 //!         .await
 //!         .expect("Init");
 //!
 //!     log::info!("Discovered {} SubDevices", group.len());
 //!
-//!     for subdevice in group.iter(&client) {
+//!     for subdevice in group.iter(&maindevice) {
 //!         // Special case: if an EL3004 module is discovered, it needs some specific config during
 //!         // init to function properly
 //!         if subdevice.name() == "EL3004" {
@@ -111,9 +111,9 @@
 //!         }
 //!     }
 //!
-//!     let mut group = group.into_op(&client).await.expect("PRE-OP -> OP");
+//!     let mut group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
 //!
-//!     for subdevice in group.iter(&client) {
+//!     for subdevice in group.iter(&maindevice) {
 //!         let (i, o) = subdevice.io_raw();
 //!
 //!         log::info!(
@@ -129,10 +129,10 @@
 //!     tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 //!
 //!     loop {
-//!         group.tx_rx(&client).await.expect("TX/RX");
+//!         group.tx_rx(&maindevice).await.expect("TX/RX");
 //!
 //!         // Increment every output byte for every SubDevice by one
-//!         for mut subdevice in group.iter(&client) {
+//!         for mut subdevice in group.iter(&maindevice) {
 //!             let (_i, o) = subdevice.io_raw_mut();
 //!
 //!             for byte in o.iter_mut() {
@@ -166,8 +166,6 @@ pub(crate) mod fmt;
 mod al_control;
 mod al_status_code;
 mod base_data_types;
-mod client;
-mod client_config;
 mod coe;
 mod command;
 mod dc;
@@ -179,6 +177,8 @@ mod ethernet;
 mod fmmu;
 mod generate;
 mod mailbox;
+mod maindevice;
+mod maindevice_config;
 mod pdi;
 mod pdu_loop;
 mod register;
@@ -196,8 +196,6 @@ pub mod internals;
 pub mod std;
 
 pub use al_status_code::AlStatusCode;
-pub use client::Client;
-pub use client_config::{ClientConfig, RetryBehaviour};
 pub use coe::SubIndex;
 pub use command::{Command, Reads, WrappedRead, WrappedWrite, Writes};
 pub use ethercrab_wire::{
@@ -205,6 +203,8 @@ pub use ethercrab_wire::{
     EtherCrabWireWrite, EtherCrabWireWriteSized,
 };
 use ethernet::EthernetAddress;
+pub use maindevice::MainDevice;
+pub use maindevice_config::{MainDeviceConfig, RetryBehaviour};
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::{DcSupport, RegisterAddress};
 pub use subdevice::{DcSync, SubDevice, SubDeviceIdentity, SubDevicePdi, SubDeviceRef};

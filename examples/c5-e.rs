@@ -7,7 +7,7 @@ use env_logger::Env;
 use ethercrab::{
     ds402::{Ds402, Ds402Sm, StatusWord},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
 use std::{
     sync::{
@@ -55,24 +55,24 @@ async fn main() -> anyhow::Result<()> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(
+    let maindevice = Arc::new(MainDevice::new(
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
             ..Default::default()
         },
-        ClientConfig::default(),
+        MainDeviceConfig::default(),
     ));
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let mut group = client
+    let mut group = maindevice
         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
 
-    for subdevice in group.iter(&client) {
+    for subdevice in group.iter(&maindevice) {
         // Assuming all connected SubDevices are C5-Es here
 
         // Manual section 4.8 Setting the motor data
@@ -149,13 +149,13 @@ async fn main() -> anyhow::Result<()> {
         subdevice.sdo_write(0x6060, 0, 0x09u8).await?;
     }
 
-    let mut group = group.into_op(&client).await.expect("PRE-OP -> OP");
+    let mut group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
 
     log::info!("SubDevices moved to OP state");
 
     log::info!("Discovered {} SubDevices", group.len());
 
-    for subdevice in group.iter(&client) {
+    for subdevice in group.iter(&maindevice) {
         let (i, o) = subdevice.io_raw();
 
         log::info!(
@@ -168,11 +168,11 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Run twice to prime PDI
-    group.tx_rx(&client).await.expect("TX/RX");
+    group.tx_rx(&maindevice).await.expect("TX/RX");
 
     // Read cycle time from servo drive
     let cycle_time = {
-        let subdevice = group.subdevice(&client, 0).unwrap();
+        let subdevice = group.subdevice(&maindevice, 0).unwrap();
 
         let base = subdevice.sdo_read::<u8>(0x60c2, 1).await?;
         let x10 = subdevice.sdo_read::<i8>(0x60c2, 2).await?;
@@ -190,7 +190,7 @@ async fn main() -> anyhow::Result<()> {
     let mut cyclic_interval = tokio::time::interval(cycle_time);
     cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let subdevice = group.subdevice(&client, 0).expect("No servo!");
+    let subdevice = group.subdevice(&maindevice, 0).expect("No servo!");
     let mut servo = Ds402Sm::new(Ds402::new(subdevice).expect("Failed to gather DS402"));
 
     let mut velocity: i32 = 0;
@@ -203,7 +203,7 @@ async fn main() -> anyhow::Result<()> {
         .expect("Register hook");
 
     loop {
-        group.tx_rx(&client).await.expect("TX/RX");
+        group.tx_rx(&maindevice).await.expect("TX/RX");
 
         if servo.tick() {
             let status = servo.status_word();
@@ -271,7 +271,7 @@ async fn main() -> anyhow::Result<()> {
     log::info!("Servo stopped, shutting drive down");
 
     loop {
-        group.tx_rx(&client).await.expect("TX/RX");
+        group.tx_rx(&maindevice).await.expect("TX/RX");
 
         if servo.tick_shutdown() {
             break;

@@ -47,15 +47,15 @@ impl<'a, 'group> SubDeviceRef<'a, SubDevicePdi<'group>> {
     /// ```compile_fail,E0499
     /// // error[E0499]: cannot borrow `SubDevice` as mutable more than once at a time
     /// # use ethercrab::{
-    /// #     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts,
+    /// #     error::Error, std::tx_rx_task, MainDevice, MainDeviceConfig, PduStorage, Timeouts,
     /// # };
     /// # async fn case() {
     /// # static PDU_STORAGE: PduStorage<8, 8> = PduStorage::new();
     /// # let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
-    /// # let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
-    /// let mut group = client.init_single_group::<8, 8>(ethercrab::std::ethercat_now).await.expect("Init");
-    /// let group = group.into_op(&client).await.expect("Op");
-    /// let mut subdevice = group.subdevice(&client, 0).expect("No device");
+    /// # let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
+    /// let mut group = maindevice.init_single_group::<8, 8>(ethercrab::std::ethercat_now).await.expect("Init");
+    /// let group = group.into_op(&maindevice).await.expect("Op");
+    /// let mut subdevice = group.subdevice(&maindevice, 0).expect("No device");
     ///
     /// let (i1, o1) = subdevice.io_raw_mut();
     ///
@@ -82,15 +82,15 @@ impl<'a, 'group> SubDeviceRef<'a, SubDevicePdi<'group>> {
     /// ```compile_fail,E0502
     /// // error[E0502]: cannot borrow `SubDevice` as immutable because it is also borrowed as mutable
     /// # use ethercrab::{
-    /// #     error::Error, std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts,
+    /// #     error::Error, std::tx_rx_task, MainDevice, MainDeviceConfig, PduStorage, Timeouts,
     /// # };
     /// # async fn case() {
     /// # static PDU_STORAGE: PduStorage<8, 8> = PduStorage::new();
     /// # let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
-    /// # let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
-    /// let mut group = client.init_single_group::<8, 8>(ethercrab::std::ethercat_now).await.expect("Init");
-    /// let group = group.into_op(&client).await.expect("Op");
-    /// let mut subdevice = group.subdevice(&client, 0).expect("No device");
+    /// # let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
+    /// let mut group = maindevice.init_single_group::<8, 8>(ethercrab::std::ethercat_now).await.expect("Init");
+    /// let group = group.into_op(&maindevice).await.expect("Op");
+    /// let mut subdevice = group.subdevice(&maindevice, 0).expect("No device");
     ///
     /// let (i1, o1_mut) = subdevice.io_raw_mut();
     ///

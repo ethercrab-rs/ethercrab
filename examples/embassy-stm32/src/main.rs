@@ -13,7 +13,7 @@ use embassy_stm32::{
     Config,
 };
 use embassy_time::{Duration, Instant, Timer};
-use ethercrab::{Client, ClientConfig, PduRx, PduStorage, PduTx, SendableFrame, Timeouts};
+use ethercrab::{MainDevice, MainDeviceConfig, PduRx, PduStorage, PduTx, SendableFrame, Timeouts};
 use panic_probe as _;
 use static_cell::StaticCell;
 
@@ -162,21 +162,21 @@ async fn main(spawner: Spawner) {
 
     defmt::unwrap!(spawner.spawn(tx_rx_task(device, tx, rx)));
 
-    let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 
     defmt::info!("Begin loop");
 
     let group = defmt::unwrap!(
-        client
+        maindevice
             .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(|| Instant::now().as_micros() * 1000)
             .await
     );
 
     defmt::info!("Discovered {} SubDevices", group.len());
 
-    let mut group = defmt::unwrap!(group.into_op(&client).await);
+    let mut group = defmt::unwrap!(group.into_op(&maindevice).await);
 
-    for subdevice in group.iter(&client) {
+    for subdevice in group.iter(&maindevice) {
         let (i, o) = subdevice.io_raw();
 
         defmt::info!(
@@ -189,10 +189,10 @@ async fn main(spawner: Spawner) {
     }
 
     loop {
-        defmt::unwrap!(group.tx_rx(&client).await);
+        defmt::unwrap!(group.tx_rx(&maindevice).await);
 
         // Increment every output byte for every SubDevice by one
-        for mut subdevice in group.iter(&client) {
+        for mut subdevice in group.iter(&maindevice) {
             let (_i, o) = subdevice.io_raw_mut();
 
             for byte in o.iter_mut() {

@@ -10,7 +10,7 @@ use env_logger::Env;
 use ethercrab::{
     error::Error,
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, SubDeviceGroup, Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
 };
 use std::{
     sync::Arc,
@@ -55,14 +55,14 @@ async fn main() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Client::new(
+    let maindevice = MainDevice::new(
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
             ..Default::default()
         },
-        ClientConfig::default(),
+        MainDeviceConfig::default(),
     );
 
     // Network TX/RX should run in a separate thread to avoid timeouts. Tokio doesn't guarantee a
@@ -70,10 +70,10 @@ async fn main() -> Result<(), Error> {
     // the `rt-multi-thread` feature is enabled.
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let client = Arc::new(client);
+    let maindevice = Arc::new(maindevice);
 
     // Read configurations from SubDevice EEPROMs and configure devices.
-    let groups = client
+    let groups = maindevice
         .init::<MAX_SUBDEVICES, _>(ethercat_now, |groups: &Groups, subdevice| {
             match subdevice.name() {
                 "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
@@ -89,11 +89,11 @@ async fn main() -> Result<(), Error> {
         fast_outputs,
     } = groups;
 
-    let client_slow = client.clone();
+    let maindevice_slow = maindevice.clone();
 
     let slow_task = tokio::spawn(async move {
         let slow_outputs = slow_outputs
-            .into_op(&client_slow)
+            .into_op(&maindevice_slow)
             .await
             .expect("PRE-OP -> OP");
 
@@ -107,7 +107,7 @@ async fn main() -> Result<(), Error> {
 
         // EK1100 is first SubDevice, EL2889 is second
         let mut el2889 = slow_outputs
-            .subdevice(&client_slow, 1)
+            .subdevice(&maindevice_slow, 1)
             .expect("EL2889 not present!");
 
         // Set initial output state
@@ -115,7 +115,7 @@ async fn main() -> Result<(), Error> {
         el2889.io_raw_mut().1[1] = 0x80;
 
         loop {
-            slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
+            slow_outputs.tx_rx(&maindevice_slow).await.expect("TX/RX");
 
             // Increment every output byte for every SubDevice by one
             if tick.elapsed() > slow_duration {
@@ -133,16 +133,19 @@ async fn main() -> Result<(), Error> {
     });
 
     let fast_task = tokio::spawn(async move {
-        let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
+        let mut fast_outputs = fast_outputs
+            .into_op(&maindevice)
+            .await
+            .expect("PRE-OP -> OP");
 
         let mut fast_cycle_time = tokio::time::interval(Duration::from_millis(5));
         fast_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         loop {
-            fast_outputs.tx_rx(&client).await.expect("TX/RX");
+            fast_outputs.tx_rx(&maindevice).await.expect("TX/RX");
 
             // Increment every output byte for every SubDevice by one
-            for mut subdevice in fast_outputs.iter(&client) {
+            for mut subdevice in fast_outputs.iter(&maindevice) {
                 let (_i, o) = subdevice.io_raw_mut();
 
                 for byte in o.iter_mut() {

@@ -10,7 +10,7 @@ use ethercrab::{
     error::Error,
     internals::{ChunkReader, DeviceEeprom},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
@@ -46,25 +46,25 @@ async fn main() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Client::new(
+    let maindevice = MainDevice::new(
         pdu_loop,
         Timeouts::default(),
-        ClientConfig {
+        MainDeviceConfig {
             dc_static_sync_iterations: 0,
-            ..ClientConfig::default()
+            ..MainDeviceConfig::default()
         },
     );
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let mut group = client
+    let mut group = maindevice
         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
 
     log::info!("Discovered {} SubDevices", group.len());
 
-    for subdevice in group.iter(&client) {
+    for subdevice in group.iter(&maindevice) {
         log::info!(
             "--> SubDevices {:#06x} {} {}",
             subdevice.configured_address(),
@@ -74,7 +74,7 @@ async fn main() -> Result<(), Error> {
     }
 
     let subdevice = group
-        .subdevice(&client, usize::from(index))
+        .subdevice(&maindevice, usize::from(index))
         .expect("Could not find device for given index");
 
     log::info!(
@@ -90,17 +90,22 @@ async fn main() -> Result<(), Error> {
     let mut len_buf = [0u8; 2];
 
     // ETG2020 page 7: 0x003e is the EEPROM address size register in kilobit minus 1 (u16).
-    ChunkReader::new(DeviceEeprom::new(&client, base_address + index), 0x003e, 2)
-        .read_exact(&mut len_buf)
-        .await
-        .expect("Could not read EEPROM len");
+    ChunkReader::new(
+        DeviceEeprom::new(&maindevice, base_address + index),
+        0x003e,
+        2,
+    )
+    .read_exact(&mut len_buf)
+    .await
+    .expect("Could not read EEPROM len");
 
     // Kilobits to bits to bytes, and undoing the offset
     let len = ((u16::from_le_bytes(len_buf) + 1) * 1024) / 8;
 
     log::info!("--> Device EEPROM is {} bytes long", len);
 
-    let mut provider = ChunkReader::new(DeviceEeprom::new(&client, base_address + index), 0, len);
+    let mut provider =
+        ChunkReader::new(DeviceEeprom::new(&maindevice, base_address + index), 0, len);
 
     let mut buf = vec![0u8; usize::from(len)];
 

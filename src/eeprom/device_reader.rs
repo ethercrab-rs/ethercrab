@@ -7,7 +7,7 @@ use crate::{
     fmt,
     register::RegisterAddress,
     timer_factory::IntoTimeout,
-    Client, Command,
+    Command, MainDevice,
 };
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010
@@ -19,15 +19,15 @@ pub(crate) const SII_FIRST_CATEGORY_START: u16 = 0x0040u16;
 /// EEPROM data provider that communicates with a physical sub device.
 #[derive(Clone)]
 pub struct DeviceEeprom<'subdevice> {
-    client: &'subdevice Client<'subdevice>,
+    maindevice: &'subdevice MainDevice<'subdevice>,
     configured_address: u16,
 }
 
 impl<'subdevice> DeviceEeprom<'subdevice> {
     /// Create a new EEPROM reader instance.
-    pub fn new(client: &'subdevice Client<'subdevice>, configured_address: u16) -> Self {
+    pub fn new(maindevice: &'subdevice MainDevice<'subdevice>, configured_address: u16) -> Self {
         Self {
-            client,
+            maindevice,
             configured_address,
         }
     }
@@ -39,28 +39,28 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
         start_word: u16,
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
         Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
-            .send_receive(self.client, SiiRequest::read(start_word))
+            .send_receive(self.maindevice, SiiRequest::read(start_word))
             .await?;
 
         let status = async {
             loop {
                 let control: SiiControl =
                     Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-                        .receive::<SiiControl>(self.client)
+                        .receive::<SiiControl>(self.maindevice)
                         .await?;
 
                 if !control.busy {
                     break Ok(control);
                 }
 
-                self.client.timeouts.loop_tick().await;
+                self.maindevice.timeouts.loop_tick().await;
             }
         }
-        .timeout(self.client.timeouts.eeprom)
+        .timeout(self.maindevice.timeouts.eeprom)
         .await?;
 
         Command::fprd(self.configured_address, RegisterAddress::SiiData.into())
-            .receive_slice(self.client, status.read_size.chunk_len())
+            .receive_slice(self.maindevice, status.read_size.chunk_len())
             .await
             .map(|data| {
                 #[cfg(not(feature = "defmt"))]
@@ -74,7 +74,7 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
 
     async fn clear_errors(&self) -> Result<(), Error> {
         let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-            .receive::<SiiControl>(self.client)
+            .receive::<SiiControl>(self.maindevice)
             .await?;
 
         // Clear errors
@@ -82,7 +82,7 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
             fmt::trace!("Resetting EEPROM error flags");
 
             Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
-                .send_receive(self.client, status.error_reset())
+                .send_receive(self.maindevice, status.error_reset())
                 .await?
         } else {
             status

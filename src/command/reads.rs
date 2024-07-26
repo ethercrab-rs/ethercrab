@@ -1,4 +1,4 @@
-use crate::{error::Error, pdu_loop::ReceivedPdu, Client};
+use crate::{error::Error, pdu_loop::ReceivedPdu, MainDevice};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// Read commands that send no data.
@@ -46,7 +46,7 @@ pub enum Reads {
 }
 
 impl Reads {
-    /// Wrap this command with a client to make it sendable over the wire.
+    /// Wrap this command with a MainDevice to make it sendable over the wire.
     pub fn wrap(self) -> WrappedRead {
         WrappedRead::new(self)
     }
@@ -85,23 +85,26 @@ impl WrappedRead {
     }
 
     /// Receive data and decode into a `T`.
-    pub async fn receive<'client, T>(self, client: &'client Client<'client>) -> Result<T, Error>
+    pub async fn receive<'maindevice, T>(
+        self,
+        maindevice: &'maindevice MainDevice<'maindevice>,
+    ) -> Result<T, Error>
     where
         T: EtherCrabWireRead + EtherCrabWireSized,
     {
-        self.common(client, T::PACKED_LEN as u16)
+        self.common(maindevice, T::PACKED_LEN as u16)
             .await?
             .maybe_wkc(self.wkc)
             .and_then(|data| Ok(T::unpack_from_slice(&data)?))
     }
 
     /// Receive a given number of bytes and return it as a slice.
-    pub async fn receive_slice<'client>(
+    pub async fn receive_slice<'maindevice>(
         self,
-        client: &'client Client<'client>,
+        maindevice: &'maindevice MainDevice<'maindevice>,
         len: u16,
-    ) -> Result<ReceivedPdu<'client>, Error> {
-        self.common(client, len).await?.maybe_wkc(self.wkc)
+    ) -> Result<ReceivedPdu<'maindevice>, Error> {
+        self.common(maindevice, len).await?.maybe_wkc(self.wkc)
     }
 
     /// Receive only the working counter.
@@ -111,24 +114,24 @@ impl WrappedRead {
     ///
     /// `T` determines the length of the read, which is required for valid reads. It is otherwise
     /// ignored.
-    pub(crate) async fn receive_wkc<'client, T>(
+    pub(crate) async fn receive_wkc<'maindevice, T>(
         &self,
-        client: &'client Client<'client>,
+        maindevice: &'maindevice MainDevice<'maindevice>,
     ) -> Result<u16, Error>
     where
         T: EtherCrabWireRead + EtherCrabWireSized,
     {
-        self.common(client, T::PACKED_LEN as u16)
+        self.common(maindevice, T::PACKED_LEN as u16)
             .await
             .map(|res| res.working_counter)
     }
 
     // Some manual monomorphisation
-    fn common<'client>(
+    fn common<'maindevice>(
         &self,
-        client: &'client Client<'client>,
+        maindevice: &'maindevice MainDevice<'maindevice>,
         len: u16,
-    ) -> impl core::future::Future<Output = Result<ReceivedPdu<'client>, Error>> {
-        client.single_pdu(self.command.into(), (), Some(len))
+    ) -> impl core::future::Future<Output = Result<ReceivedPdu<'maindevice>, Error>> {
+        maindevice.single_pdu(self.command.into(), (), Some(len))
     }
 }

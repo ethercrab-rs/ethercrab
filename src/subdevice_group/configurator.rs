@@ -3,7 +3,7 @@ use crate::{
     fmt,
     pdi::PdiOffset,
     subdevice::{SubDevice, SubDeviceRef},
-    Client, SubDeviceGroup,
+    MainDevice, SubDeviceGroup,
 };
 use atomic_refcell::AtomicRefCell;
 
@@ -21,7 +21,7 @@ unsafe impl<'a> Sync for SubDeviceGroupRef<'a> {}
 unsafe impl<'a> Send for SubDeviceGroupRef<'a> {}
 
 /// A reference to a [`SubDeviceGroup`](crate::SubDeviceGroup) returned by the closure passed to
-/// [`Client::init`](crate::Client::init).
+/// [`MainDevice::init`](crate::MainDevice::init).
 pub struct SubDeviceGroupRef<'a> {
     /// Maximum PDI length in bytes.
     max_pdi_len: usize,
@@ -51,7 +51,7 @@ impl<'a> SubDeviceGroupRef<'a> {
     pub(crate) async fn into_pre_op<'sto>(
         &mut self,
         pdi_position: PdiOffset,
-        client: &'sto Client<'sto>,
+        maindevice: &'sto MainDevice<'sto>,
     ) -> Result<PdiOffset, Error> {
         let inner = &mut self.inner;
 
@@ -69,7 +69,7 @@ impl<'a> SubDeviceGroupRef<'a> {
             let subdevice = subdevice.get_mut();
 
             let mut subdevice_config =
-                SubDeviceRef::new(client, subdevice.configured_address(), subdevice);
+                SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice);
 
             // TODO: Move PRE-OP transition out of this so we can do it for the group just once
             subdevice_config.configure_mailboxes().await?;

@@ -52,7 +52,7 @@ $env:RUST_LOG="debug" ; cargo run --example ek1100 --release -- '\Device\NPF_{FF
 ```rust
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::{ethercat_now, tx_rx_task}, Client, ClientConfig, PduStorage, Timeouts
+    error::Error, std::{ethercat_now, tx_rx_task}, MainDevice, MainDeviceConfig, PduStorage, Timeouts
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -82,26 +82,26 @@ async fn main() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(
+    let maindevice = Arc::new(MainDevice::new(
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
             ..Default::default()
         },
-        ClientConfig::default(),
+        MainDeviceConfig::default(),
     ));
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let mut group = client
+    let mut group = maindevice
         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
 
     log::info!("Discovered {} SubDevices", group.len());
 
-    for subdevice in group.iter(&client) {
+    for subdevice in group.iter(&maindevice) {
         // Special case: if an EL3004 module is discovered, it needs some specific config during
         // init to function properly
         if subdevice.name() == "EL3004" {
@@ -118,9 +118,9 @@ async fn main() -> Result<(), Error> {
         }
     }
 
-    let mut group = group.into_op(&client).await.expect("PRE-OP -> OP");
+    let mut group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
 
-    for subdevice in group.iter(&client) {
+    for subdevice in group.iter(&maindevice) {
         let (i, o) = subdevice.io_raw();
 
         log::info!(
@@ -136,10 +136,10 @@ async fn main() -> Result<(), Error> {
     tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     loop {
-        group.tx_rx(&client).await.expect("TX/RX");
+        group.tx_rx(&maindevice).await.expect("TX/RX");
 
         // Increment every output byte for every SubDevice by one
-        for mut subdevice in group.iter(&client) {
+        for mut subdevice in group.iter(&maindevice) {
             let (_i, o) = subdevice.io_raw_mut();
 
             for byte in o.iter_mut() {

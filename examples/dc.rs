@@ -8,7 +8,7 @@ use ethercrab::{
     error::Error,
     std::{ethercat_now, tx_rx_task},
     subdevice_group::{CycleInfo, DcConfiguration},
-    Client, ClientConfig, DcSync, PduStorage, RegisterAddress, Timeouts,
+    DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
@@ -66,7 +66,7 @@ fn main() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(
+    let maindevice = Arc::new(MainDevice::new(
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(5),
@@ -74,9 +74,9 @@ fn main() -> Result<(), Error> {
             pdu: Duration::from_millis(2000),
             ..Timeouts::default()
         },
-        ClientConfig {
+        MainDeviceConfig {
             dc_static_sync_iterations: 10_000,
-            ..ClientConfig::default()
+            ..MainDeviceConfig::default()
         },
     ));
 
@@ -94,14 +94,14 @@ fn main() -> Result<(), Error> {
     .expect("Main thread prio");
 
     smol::block_on(async {
-        let mut group = client
+        let mut group = maindevice
             .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
             .await
             .expect("Init");
 
         // The group will be in PRE-OP at this point
 
-        for mut subdevice in group.iter(&client) {
+        for mut subdevice in group.iter(&maindevice) {
             if subdevice.name() == "LAN9252-EVB-HBI" {
                 // Sync mode 02 = SYNC0
                 subdevice
@@ -209,7 +209,7 @@ fn main() -> Result<(), Error> {
 
         log::info!("Moving into PRE-OP with PDI");
 
-        let mut group = group.into_pre_op_pdi(&client).await?;
+        let mut group = group.into_pre_op_pdi(&maindevice).await?;
 
         log::info!("Done. PDI available. Waiting for SubDevices to align");
 
@@ -218,7 +218,7 @@ fn main() -> Result<(), Error> {
 
             w.write_field("t_ms").ok();
 
-            for s in group.iter(&client) {
+            for s in group.iter(&maindevice) {
                 w.write_field(format!("{:#06x}", s.configured_address()))
                     .ok();
                 w.write_field(format!("{:#06x} EMA", s.configured_address()))
@@ -240,7 +240,10 @@ fn main() -> Result<(), Error> {
         // below 100ns (arbitraily chosen value for this demo), we call the sync good enough and
         // exit the loop.
         loop {
-            group.tx_rx_sync_system_time(&client).await.expect("TX/RX");
+            group
+                .tx_rx_sync_system_time(&maindevice)
+                .await
+                .expect("TX/RX");
 
             if now.elapsed() >= Duration::from_millis(25) {
                 now = Instant::now();
@@ -251,7 +254,7 @@ fn main() -> Result<(), Error> {
 
                 let mut max_deviation = 0;
 
-                for (s1, ema) in group.iter(&client).zip(averages.iter_mut()) {
+                for (s1, ema) in group.iter(&maindevice).zip(averages.iter_mut()) {
                     let diff = match s1
                         .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
                         .await
@@ -307,7 +310,7 @@ fn main() -> Result<(), Error> {
         // SubDevice clocks are aligned. We can turn DC on now.
         let group = group
             .configure_dc_sync(
-                &client,
+                &maindevice,
                 DcConfiguration {
                     // Start SYNC0 100ms in the future
                     start_delay: Duration::from_millis(100),
@@ -320,7 +323,7 @@ fn main() -> Result<(), Error> {
             .await?;
 
         let group = group
-            .into_safe_op(&client)
+            .into_safe_op(&maindevice)
             .await
             .expect("PRE-OP -> SAFE-OP");
 
@@ -345,7 +348,10 @@ fn main() -> Result<(), Error> {
         // Request OP state without waiting for all SubDevices to reach it. Allows the immediate
         // start of the process data cycle, which is required when DC sync is used, otherwise
         // SubDevices never reach OP, most often timing out with a SyncManagerWatchdog error.
-        let mut group = group.request_into_op(&client).await.expect("SAFE-OP -> OP");
+        let mut group = group
+            .request_into_op(&maindevice)
+            .await
+            .expect("SAFE-OP -> OP");
 
         log::info!("OP requested");
 
@@ -354,7 +360,7 @@ fn main() -> Result<(), Error> {
         // Send PDI and check group state until all SubDevices enter OP state. At this point, we can
         // exit this loop and enter the main process data loop that does not have the state check
         // overhead present here.
-        while !group.all_op(&client).await? {
+        while !group.all_op(&maindevice).await? {
             let now = Instant::now();
 
             let (
@@ -362,7 +368,7 @@ fn main() -> Result<(), Error> {
                 CycleInfo {
                     next_cycle_wait, ..
                 },
-            ) = group.tx_rx_dc(&client).await.expect("TX/RX");
+            ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
             smol::Timer::at(now + next_cycle_wait).await;
         }
@@ -383,7 +389,7 @@ fn main() -> Result<(), Error> {
                     next_cycle_wait,
                     cycle_start_offset,
                 },
-            ) = group.tx_rx_dc(&client).await.expect("TX/RX");
+            ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
             // Debug logging
             {
@@ -409,7 +415,7 @@ fn main() -> Result<(), Error> {
                 process_stats.serialize(stat).ok();
             }
 
-            for mut subdevice in group.iter(&client) {
+            for mut subdevice in group.iter(&maindevice) {
                 let (_i, o) = subdevice.io_raw_mut();
 
                 for byte in o.iter_mut() {
@@ -429,15 +435,21 @@ fn main() -> Result<(), Error> {
             }
         }
 
-        let group = group.into_safe_op(&client).await.expect("OP -> SAFE-OP");
+        let group = group
+            .into_safe_op(&maindevice)
+            .await
+            .expect("OP -> SAFE-OP");
 
         log::info!("OP -> SAFE-OP");
 
-        let group = group.into_pre_op(&client).await.expect("SAFE-OP -> PRE-OP");
+        let group = group
+            .into_pre_op(&maindevice)
+            .await
+            .expect("SAFE-OP -> PRE-OP");
 
         log::info!("SAFE-OP -> PRE-OP");
 
-        let _group = group.into_init(&client).await.expect("PRE-OP -> INIT");
+        let _group = group.into_init(&maindevice).await.expect("PRE-OP -> INIT");
 
         log::info!("PRE-OP -> INIT, shutdown complete");
 

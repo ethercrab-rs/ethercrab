@@ -3,7 +3,7 @@
 use env_logger::Env;
 use ethercrab::{
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
 use std::sync::Arc;
 
@@ -29,26 +29,26 @@ fn main() {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(
+    let maindevice = Arc::new(MainDevice::new(
         pdu_loop,
         Timeouts::default(),
-        ClientConfig {
+        MainDeviceConfig {
             dc_static_sync_iterations: 0,
-            ..ClientConfig::default()
+            ..MainDeviceConfig::default()
         },
     ));
 
     smol::block_on(async {
         smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
-        let mut group = client
+        let mut group = maindevice
             .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
             .await
             .expect("Init");
 
         log::info!("Discovered {} SubDevices", group.len());
 
-        for subdevice in group.iter(&client) {
+        for subdevice in group.iter(&maindevice) {
             log::info!(
                 "--> SubDevice {:#06x} {} {}",
                 subdevice.configured_address(),

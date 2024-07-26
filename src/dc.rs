@@ -10,12 +10,15 @@ use crate::{
     fmt,
     register::RegisterAddress,
     subdevice::{ports::Topology, SubDevice},
-    Client, SubDeviceRef,
+    MainDevice, SubDeviceRef,
 };
 
 /// Send a broadcast to all SubDevices to latch in DC receive time, then store it on the SubDevice
 /// structs.
-async fn latch_dc_times(client: &Client<'_>, subdevices: &mut [SubDevice]) -> Result<(), Error> {
+async fn latch_dc_times(
+    maindevice: &MainDevice<'_>,
+    subdevices: &mut [SubDevice],
+) -> Result<(), Error> {
     let num_subdevices_with_dc: usize = subdevices
         .iter()
         .filter(|subdevice| subdevice.flags.dc_supported)
@@ -24,7 +27,7 @@ async fn latch_dc_times(client: &Client<'_>, subdevices: &mut [SubDevice]) -> Re
     // Latch receive times into all ports of all SubDevices.
     Command::bwr(RegisterAddress::DcTimePort0.into())
         .with_wkc(num_subdevices_with_dc as u16)
-        .send_receive(client, 0u32)
+        .send_receive(maindevice, 0u32)
         .await?;
 
     // Read receive times for all SubDevices and store on SubDevice structs
@@ -32,17 +35,17 @@ async fn latch_dc_times(client: &Client<'_>, subdevices: &mut [SubDevice]) -> Re
         .iter_mut()
         .filter(|subdevice| subdevice.flags.dc_supported)
     {
-        let sl = SubDeviceRef::new(client, subdevice.configured_address(), ());
+        let sl = SubDeviceRef::new(maindevice, subdevice.configured_address(), ());
 
         let dc_receive_time = sl
             .read(RegisterAddress::DcReceiveTime)
             .ignore_wkc()
-            .receive::<u64>(client)
+            .receive::<u64>(maindevice)
             .await?;
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
             .read(RegisterAddress::DcTimePort0)
-            .receive::<[u32; 4]>(client)
+            .receive::<[u32; 4]>(maindevice)
             .await
             .map_err(|e| {
                 fmt::error!(
@@ -72,7 +75,7 @@ async fn latch_dc_times(client: &Client<'_>, subdevices: &mut [SubDevice]) -> Re
 
 /// Write DC system time offset and propagation delay to the SubDevice memory.
 async fn write_dc_parameters(
-    client: &Client<'_>,
+    maindevice: &MainDevice<'_>,
     subdevice: &SubDevice,
     dc_system_time: u64,
     now_nanos: u64,
@@ -93,7 +96,7 @@ async fn write_dc_parameters(
         RegisterAddress::DcSystemTimeOffset.into(),
     )
     .ignore_wkc()
-    .send(client, system_time_offset)
+    .send(maindevice, system_time_offset)
     .await?;
 
     Command::fpwr(
@@ -101,7 +104,7 @@ async fn write_dc_parameters(
         RegisterAddress::DcSystemTimeTransmissionDelay.into(),
     )
     .ignore_wkc()
-    .send(client, subdevice.propagation_delay)
+    .send(maindevice, subdevice.propagation_delay)
     .await?;
 
     Ok(())
@@ -411,11 +414,11 @@ fn assign_parent_relationships(subdevices: &mut [SubDevice]) -> Result<(), Error
 /// This method walks through the discovered list of devices and sets the system time offset and
 /// transmission delay of each device.
 pub(crate) async fn configure_dc<'subdevices>(
-    client: &Client<'_>,
+    maindevice: &MainDevice<'_>,
     subdevices: &'subdevices mut [SubDevice],
     now: impl Fn() -> u64,
 ) -> Result<Option<&'subdevices SubDevice>, Error> {
-    latch_dc_times(client, subdevices).await?;
+    latch_dc_times(maindevice, subdevices).await?;
 
     assign_parent_relationships(subdevices)?;
 
@@ -428,7 +431,7 @@ pub(crate) async fn configure_dc<'subdevices>(
 
         for subdevice in subdevices.iter().filter(|sl| sl.dc_support().any()) {
             write_dc_parameters(
-                client,
+                maindevice,
                 subdevice,
                 first_dc_subdevice.dc_receive_time,
                 now_nanos,
@@ -447,7 +450,7 @@ pub(crate) async fn configure_dc<'subdevices>(
 /// Send `iterations` FRMW frames to synchronise the network with the reference clock in the
 /// designated DC SubDevice.
 pub(crate) async fn run_dc_static_sync(
-    client: &Client<'_>,
+    maindevice: &MainDevice<'_>,
     dc_reference_subdevice: &SubDevice,
     iterations: u32,
 ) -> Result<(), Error> {
@@ -464,7 +467,7 @@ pub(crate) async fn run_dc_static_sync(
             dc_reference_subdevice.configured_address(),
             RegisterAddress::DcSystemTime.into(),
         )
-        .receive_wkc::<u64>(client)
+        .receive_wkc::<u64>(maindevice)
         .await?;
     }
 
