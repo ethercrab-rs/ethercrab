@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn decode_header() {
-        // From Wireshark capture "soem-slaveinfo-akd.pcapng", packet #296
+        // From Wireshark capture "soem-sdinfo-akd.pcapng", packet #296
         let raw = [0x0a, 0x00, 0x00, 0x00, 0x00, 0x23, 0x00, 0x20];
 
         let expected = MailboxHeader {

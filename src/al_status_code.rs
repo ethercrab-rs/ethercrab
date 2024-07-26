@@ -45,14 +45,14 @@ pub enum AlStatusCode {
     InvalidInputConfiguration = 0x001E,
     /// Invalid Watchdog Configuration
     InvalidWatchdogConfiguration = 0x001F,
-    /// Slave needs cold start
-    SlaveNeedsColdStart = 0x0020,
-    /// Slave needs INIT
-    SlaveNeedsInit = 0x0021,
-    /// Slave needs PREOP
-    SlaveNeedsPreop = 0x0022,
-    /// Slave needs SAFEOP
-    SlaveNeedsSafeop = 0x0023,
+    /// SubDevice needs cold start
+    SubDeviceNeedsColdStart = 0x0020,
+    /// SubDevice needs INIT
+    SubDeviceNeedsInit = 0x0021,
+    /// SubDevice needs PREOP
+    SubDeviceNeedsPreop = 0x0022,
+    /// SubDevice needs SAFEOP
+    SubDeviceNeedsSafeop = 0x0023,
     /// Invalid Input Mapping
     InvalidInputMapping = 0x0024,
     /// Invalid Output Mapping
@@ -105,8 +105,8 @@ pub enum AlStatusCode {
     EepromNoAccess = 0x0050,
     /// EEPROM Error
     EepromError = 0x0051,
-    /// Slave restarted locally
-    SlaveRestartedLocally = 0x0060,
+    /// SubDevice restarted locally
+    SubDeviceRestartedLocally = 0x0060,
     /// Device Identification value updated
     DeviceIdentificationValueUpdated = 0x0061,
     /// Application controller available
@@ -146,10 +146,10 @@ impl core::fmt::Display for AlStatusCode {
             AlStatusCode::InvalidOutputConfiguration => "Invalid Output Configuration",
             AlStatusCode::InvalidInputConfiguration => "Invalid Input Configuration",
             AlStatusCode::InvalidWatchdogConfiguration => "Invalid Watchdog Configuration",
-            AlStatusCode::SlaveNeedsColdStart => "Slave needs cold start",
-            AlStatusCode::SlaveNeedsInit => "Slave needs INIT",
-            AlStatusCode::SlaveNeedsPreop => "Slave needs PREOP",
-            AlStatusCode::SlaveNeedsSafeop => "Slave needs SAFEOP",
+            AlStatusCode::SubDeviceNeedsColdStart => "SubDevice needs cold start",
+            AlStatusCode::SubDeviceNeedsInit => "SubDevice needs INIT",
+            AlStatusCode::SubDeviceNeedsPreop => "SubDevice needs PREOP",
+            AlStatusCode::SubDeviceNeedsSafeop => "SubDevice needs SAFEOP",
             AlStatusCode::InvalidInputMapping => "Invalid Input Mapping",
             AlStatusCode::InvalidOutputMapping => "Invalid Output Mapping",
             AlStatusCode::InconsistentSettings => "Inconsistent Settings",
@@ -176,7 +176,7 @@ impl core::fmt::Display for AlStatusCode {
             AlStatusCode::MbxVoe => "Mailbox VoE",
             AlStatusCode::EepromNoAccess => "EEPROM no access",
             AlStatusCode::EepromError => "EEPROM Error",
-            AlStatusCode::SlaveRestartedLocally => "Slave restarted locally",
+            AlStatusCode::SubDeviceRestartedLocally => "SubDevice restarted locally",
             AlStatusCode::DeviceIdentificationValueUpdated => "Device Identification value updated",
             AlStatusCode::ApplicationControllerAvailable => "Application controller available",
             AlStatusCode::Unknown(_) => "(unknown)",

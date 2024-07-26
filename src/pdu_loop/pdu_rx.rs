@@ -39,7 +39,7 @@ impl<'sto> PduRx<'sto> {
 
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self. As per
         // <https://github.com/OpenEtherCATsociety/SOEM/issues/585#issuecomment-1013688786>, the
-        // first slave will set the second bit of the MSB of the MAC address (U/L bit). This means
+        // first SubDevice will set the second bit of the MSB of the MAC address (U/L bit). This means
         // if we send e.g. 10:10:10:10:10:10, we receive 12:10:10:10:10:10 which passes through this
         // filter.
         if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == self.source_mac

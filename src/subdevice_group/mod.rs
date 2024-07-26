@@ -1,6 +1,6 @@
-//! A group of slave devices.
+//! A group of SubDevices.
 //!
-//! Slaves can be divided into multiple groups to allow multiple tasks to run concurrently,
+//! SubDevices can be divided into multiple groups to allow multiple tasks to run concurrently,
 //! potentially at different tick rates.
 
 mod configurator;
@@ -13,9 +13,11 @@ use crate::{
     error::{DistributedClockError, Error, Item, PduError},
     fmt,
     pdi::PdiOffset,
-    slave::{configuration::PdoDirection, pdi::SlavePdi, IoRanges, Slave, SlaveRef},
+    subdevice::{
+        configuration::PdoDirection, pdi::SubDevicePdi, IoRanges, SubDevice, SubDeviceRef,
+    },
     timer_factory::IntoTimeout,
-    Client, DcSync, RegisterAddress, SlaveState,
+    DcSync, MainDevice, RegisterAddress, SubDeviceState,
 };
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 use core::{
@@ -24,44 +26,44 @@ use core::{
 use ethercrab_wire::EtherCrabWireRead;
 
 pub use self::group_id::GroupId;
-pub use self::handle::SlaveGroupHandle;
-pub use self::iterator::GroupSlaveIterator;
-pub use configurator::SlaveGroupRef;
+pub use self::handle::SubDeviceGroupHandle;
+pub use self::iterator::GroupSubDeviceIterator;
+pub use configurator::SubDeviceGroupRef;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 
-/// A typestate for [`SlaveGroup`] representing a group that is shut down.
+/// A typestate for [`SubDeviceGroup`] representing a group that is shut down.
 ///
 /// This corresponds to the EtherCAT states INIT.
 #[derive(Copy, Clone, Debug)]
 pub struct Init;
 
-/// A typestate for [`SlaveGroup`] representing a group that is undergoing initialisation.
+/// A typestate for [`SubDeviceGroup`] representing a group that is undergoing initialisation.
 ///
 /// This corresponds to the EtherCAT states INIT and PRE-OP.
 #[derive(Copy, Clone, Debug)]
 pub struct PreOp;
 
-/// The same as [`PreOp`] but with access to PDI methods. All slave configuration should be complete
+/// The same as [`PreOp`] but with access to PDI methods. All SubDevice configuration should be complete
 /// at this point.
 #[derive(Copy, Clone, Debug)]
 pub struct PreOpPdi;
 
-/// A typestate for [`SlaveGroup`] representing a group that is in SAFE-OP.
+/// A typestate for [`SubDeviceGroup`] representing a group that is in SAFE-OP.
 #[derive(Copy, Clone, Debug)]
 pub struct SafeOp;
 
-/// A typestate for [`SlaveGroup`] representing a group that is in OP.
+/// A typestate for [`SubDeviceGroup`] representing a group that is in OP.
 #[derive(Copy, Clone, Debug)]
 pub struct Op;
 
-/// A typestate for [`SlaveGroup`]s that do not have a Distributed Clock configuration
+/// A typestate for [`SubDeviceGroup`]s that do not have a Distributed Clock configuration
 #[derive(Copy, Clone, Debug)]
 pub struct NoDc;
 
-/// A typestate for [`SlaveGroup`]s that have a configured Distributed Clock.
+/// A typestate for [`SubDeviceGroup`]s that have a configured Distributed Clock.
 ///
-/// This typestate can be entered by calling [`SlaveGroup::configure_dc_sync`].
+/// This typestate can be entered by calling [`SubDeviceGroup::configure_dc_sync`].
 #[derive(Copy, Clone, Debug)]
 pub struct HasDc {
     sync0_period: u64,
@@ -70,7 +72,7 @@ pub struct HasDc {
     reference: u16,
 }
 
-/// Marker trait for `SlaveGroup` typestates where all SubDevices have a PDI.
+/// Marker trait for `SubDeviceGroup` typestates where all SubDevices have a PDI.
 #[doc(hidden)]
 pub trait HasPdi {}
 
@@ -85,8 +87,8 @@ impl IsPreOp for PreOp {}
 impl IsPreOp for PreOpPdi {}
 
 #[derive(Default)]
-struct GroupInner<const MAX_SLAVES: usize> {
-    slaves: heapless::Vec<AtomicRefCell<Slave>, MAX_SLAVES>,
+struct GroupInner<const MAX_SUBDEVICES: usize> {
+    subdevices: heapless::Vec<AtomicRefCell<SubDevice>, MAX_SUBDEVICES>,
     pdi_start: PdiOffset,
 }
 
@@ -119,7 +121,7 @@ pub struct CycleInfo {
     /// The time to wait before starting the next process data cycle.
     ///
     /// This duration is calculated based on the [`sync0_period`](DcConfiguration::sync0_period) and
-    /// [`sync0_shift`](DcConfiguration::sync0_shift) passed into [`SlaveGroup::configure_dc_sync`]
+    /// [`sync0_shift`](DcConfiguration::sync0_shift) passed into [`SubDeviceGroup::configure_dc_sync`]
     /// and is meant to be used to accurately synchronise the MainDevice process data cycle with the
     /// DC system time.
     pub next_cycle_wait: Duration,
@@ -129,39 +131,42 @@ pub struct CycleInfo {
     pub cycle_start_offset: Duration,
 }
 
-/// A group of one or more EtherCAT slaves.
+/// A group of one or more EtherCAT SubDevices.
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
-/// slave PDI sections.
-pub struct SlaveGroup<const MAX_SLAVES: usize, const MAX_PDI: usize, S = PreOp, DC = NoDc> {
+/// SubDevice PDI sections.
+#[doc(alias = "SlaveGroup")]
+pub struct SubDeviceGroup<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S = PreOp, DC = NoDc> {
     id: GroupId,
     pdi: UnsafeCell<[u8; MAX_PDI]>,
-    /// The number of bytes at the beginning of the PDI reserved for slave inputs.
+    /// The number of bytes at the beginning of the PDI reserved for SubDevice inputs.
     read_pdi_len: usize,
     /// The total length (I and O) of the PDI for this group.
     pdi_len: usize,
-    inner: UnsafeCell<GroupInner<MAX_SLAVES>>,
+    inner: UnsafeCell<GroupInner<MAX_SUBDEVICES>>,
     dc_conf: DC,
     _state: PhantomData<S>,
 }
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp, DC> {
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOp, DC>
+{
     /// Configure read/write FMMUs and PDI for this group.
-    async fn configure_fmmus(&mut self, client: &Client<'_>) -> Result<(), Error> {
+    async fn configure_fmmus(&mut self, maindevice: &MainDevice<'_>) -> Result<(), Error> {
         let inner = self.inner.get_mut();
 
         let mut pdi_position = inner.pdi_start;
 
         fmt::debug!(
-            "Going to configure group with {} slave(s), starting PDI offset {:#010x}",
-            inner.slaves.len(),
+            "Going to configure group with {} SubDevice(s), starting PDI offset {:#010x}",
+            inner.subdevices.len(),
             inner.pdi_start.start_address
         );
 
         // Configure master read PDI mappings in the first section of the PDI
-        for slave in inner.slaves.iter_mut().map(AtomicRefCell::get_mut) {
+        for subdevice in inner.subdevices.iter_mut().map(AtomicRefCell::get_mut) {
             // We're in PRE-OP at this point
-            pdi_position = SlaveRef::new(client, slave.configured_address(), slave)
+            pdi_position = SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
@@ -172,18 +177,18 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
 
         self.read_pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
 
-        fmt::debug!("Slave mailboxes configured and init hooks called");
+        fmt::debug!("SubDevice mailboxes configured and init hooks called");
 
         // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
-        for slave in inner.slaves.iter_mut().map(AtomicRefCell::get_mut) {
-            let addr = slave.configured_address();
+        for subdevice in inner.subdevices.iter_mut().map(AtomicRefCell::get_mut) {
+            let addr = subdevice.configured_address();
 
-            let mut slave_config = SlaveRef::new(client, addr, slave);
+            let mut subdevice_config = SubDeviceRef::new(maindevice, addr, subdevice);
 
             // Still in PRE-OP
-            pdi_position = slave_config
+            pdi_position = subdevice_config
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
@@ -192,7 +197,7 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
                 .await?;
         }
 
-        fmt::debug!("Slave FMMUs configured for group. Able to move to SAFE-OP");
+        fmt::debug!("SubDevice FMMUs configured for group. Able to move to SAFE-OP");
 
         self.pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
 
@@ -213,51 +218,56 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
         Ok(())
     }
 
-    /// Borrow an individual slave device.
+    /// Borrow an individual SubDevice.
     ///
-    /// Each slave device in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
-    /// single reference to it at any one time. Multiple different slaves can be borrowed
-    /// simultaneously, but multiple references to the same slave are not allowed.
+    /// Each SubDevice in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
+    /// single reference to it at any one time. Multiple different SubDevices can be borrowed
+    /// simultaneously, but multiple references to the same SubDevice are not allowed.
     ///
     /// # Errors
     ///
     /// This method will return an error if the given index is out of range of the current group, or
     /// if the SubDevice at the given index is already borrowed.
     #[deny(clippy::panic)]
-    pub fn slave<'client, 'group>(
+    #[doc(alias = "slave")]
+    pub fn subdevice<'maindevice, 'group>(
         &'group self,
-        client: &'client Client<'client>,
+        maindevice: &'maindevice MainDevice<'maindevice>,
         index: usize,
-    ) -> Result<SlaveRef<'client, AtomicRefMut<'group, Slave>>, Error> {
-        let slave = self
+    ) -> Result<SubDeviceRef<'maindevice, AtomicRefMut<'group, SubDevice>>, Error> {
+        let subdevice = self
             .inner()
-            .slaves
+            .subdevices
             .get(index)
             .ok_or(Error::NotFound {
-                item: Item::Slave,
+                item: Item::SubDevice,
                 index: Some(index),
             })?
             .try_borrow_mut()
             .map_err(|_e| {
-                fmt::error!("Slave index {} already borrowed", index);
+                fmt::error!("SubDevice index {} already borrowed", index);
 
                 Error::Borrow
             })?;
 
-        Ok(SlaveRef::new(client, slave.configured_address(), slave))
+        Ok(SubDeviceRef::new(
+            maindevice,
+            subdevice.configured_address(),
+            subdevice,
+        ))
     }
 
     /// Transition the group from PRE-OP -> SAFE-OP -> OP.
     ///
     /// To transition individually from PRE-OP to SAFE-OP, then SAFE-OP to OP, see
-    /// [`SlaveGroup::into_safe_op`].
+    /// [`SubDeviceGroup::into_safe_op`].
     pub async fn into_op(
         self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op, DC>, Error> {
-        let self_ = self.into_safe_op(client).await?;
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+        let self_ = self.into_safe_op(maindevice).await?;
 
-        self_.into_op(client).await
+        self_.into_op(maindevice).await
     }
 
     /// Configure FMMUs, but leave the group in [`PreOp`] state.
@@ -267,11 +277,11 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
     /// may occur (e.g. incorrect lengths, misplaced fields, etc).
     pub async fn into_pre_op_pdi(
         mut self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, PreOpPdi, DC>, Error> {
-        self.configure_fmmus(client).await?;
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, DC>, Error> {
+        self.configure_fmmus(maindevice).await?;
 
-        Ok(SlaveGroup {
+        Ok(SubDeviceGroup {
             id: self.id,
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
@@ -282,36 +292,39 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, M
         })
     }
 
-    /// Transition the slave group from PRE-OP to SAFE-OP.
+    /// Transition the SubDevice group from PRE-OP to SAFE-OP.
     pub async fn into_safe_op(
         self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp, DC>, Error> {
-        let self_ = self.into_pre_op_pdi(client).await?;
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
+        let self_ = self.into_pre_op_pdi(maindevice).await?;
 
-        // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
+        // We're done configuring FMMUs, etc, now we can request all SubDevices in this group go into
         // SAFE-OP
-        self_.transition_to(client, SlaveState::SafeOp).await
+        self_
+            .transition_to(maindevice, SubDeviceState::SafeOp)
+            .await
     }
 
-    /// Transition all slave devices in the group from PRE-OP to INIT.
+    /// Transition all SubDevices in the group from PRE-OP to INIT.
     pub async fn into_init(
         self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Init, DC>, Error> {
-        self.transition_to(client, SlaveState::Init).await
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Init, DC>, Error> {
+        self.transition_to(maindevice, SubDeviceState::Init).await
     }
 
-    /// Get an iterator over all slaves in this group.
-    pub fn iter<'group, 'client>(
+    /// Get an iterator over all SubDevices in this group.
+    pub fn iter<'group, 'maindevice>(
         &'group mut self,
-        client: &'client Client<'client>,
-    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, PreOp, DC> {
-        GroupSlaveIterator::new(client, self)
+        maindevice: &'maindevice MainDevice<'maindevice>,
+    ) -> GroupSubDeviceIterator<'group, 'maindevice, MAX_SUBDEVICES, MAX_PDI, PreOp, DC> {
+        GroupSubDeviceIterator::new(maindevice, self)
     }
 }
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES, MAX_PDI, S, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
 where
     S: IsPreOp,
 {
@@ -324,12 +337,12 @@ where
     /// error if no DC reference SubDevice is present on the network.
     pub async fn configure_dc_sync(
         self,
-        client: &Client<'_>,
+        maindevice: &MainDevice<'_>,
         dc_conf: DcConfiguration,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, PreOpPdi, HasDc>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, HasDc>, Error> {
         fmt::debug!("Configuring distributed clocks for group");
 
-        let Some(reference) = client.dc_ref_address() else {
+        let Some(reference) = maindevice.dc_ref_address() else {
             fmt::error!("No DC reference clock SubDevice present, unable to configure DC");
 
             return Err(DistributedClockError::NoReference.into());
@@ -342,7 +355,7 @@ where
         } = dc_conf;
 
         // Coerce generics into concrete `PreOp` type as we don't need the PDI to configure the DC.
-        let self_ = SlaveGroup {
+        let self_ = SubDeviceGroup {
             id: self.id,
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
@@ -353,35 +366,35 @@ where
         };
 
         // Only configure DC for those devices that want and support it
-        let dc_devices = GroupSlaveIterator::new(client, &self_).filter(|slave| {
-            slave.dc_support().any() && !matches!(slave.dc_sync(), DcSync::Disabled)
+        let dc_devices = GroupSubDeviceIterator::new(maindevice, &self_).filter(|subdevice| {
+            subdevice.dc_support().any() && !matches!(subdevice.dc_sync(), DcSync::Disabled)
         });
 
-        for slave in dc_devices {
+        for subdevice in dc_devices {
             fmt::debug!(
                 "--> Configuring SubDevice {:#06x} {} DC mode {}",
-                slave.configured_address(),
-                slave.name(),
-                slave.dc_sync()
+                subdevice.configured_address(),
+                subdevice.name(),
+                subdevice.dc_sync()
             );
 
             // Disable cyclic op, ignore WKC
-            slave
+            subdevice
                 .write(RegisterAddress::DcSyncActive)
                 .ignore_wkc()
-                .send(client, 0u8)
+                .send(maindevice, 0u8)
                 .await?;
 
             // Write access to EtherCAT
-            slave
+            subdevice
                 .write(RegisterAddress::DcCyclicUnitControl)
-                .send(client, 0u8)
+                .send(maindevice, 0u8)
                 .await?;
 
-            let device_time: u64 = slave
+            let device_time: u64 = subdevice
                 .read(RegisterAddress::DcSystemTime)
                 .ignore_wkc()
-                .receive(client)
+                .receive(maindevice)
                 .await?;
 
             fmt::debug!("--> Device time {} ns", device_time);
@@ -395,21 +408,21 @@ where
 
             fmt::debug!("--> Computed DC sync start time: {}", start_time);
 
-            slave
+            subdevice
                 .write(RegisterAddress::DcSyncStartTime)
-                .send(client, start_time)
+                .send(maindevice, start_time)
                 .await?;
 
             // Cycle time in nanoseconds
-            slave
+            subdevice
                 .write(RegisterAddress::DcSync0CycleTime)
-                .send(client, sync0_period)
+                .send(maindevice, sync0_period)
                 .await?;
 
-            let flags = if let DcSync::Sync01 { sync1_period } = slave.dc_sync() {
-                slave
+            let flags = if let DcSync::Sync01 { sync1_period } = subdevice.dc_sync() {
+                subdevice
                     .write(RegisterAddress::DcSync1CycleTime)
-                    .send(client, sync1_period.as_nanos() as u64)
+                    .send(maindevice, sync1_period.as_nanos() as u64)
                     .await?;
 
                 SYNC1_ACTIVATE | SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
@@ -417,13 +430,13 @@ where
                 SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
             };
 
-            slave
+            subdevice
                 .write(RegisterAddress::DcSyncActive)
-                .send(client, flags)
+                .send(maindevice, flags)
                 .await?;
         }
 
-        Ok(SlaveGroup {
+        Ok(SubDeviceGroup {
             id: self_.id,
             pdi: self_.pdi,
             read_pdi_len: self_.read_pdi_len,
@@ -439,100 +452,100 @@ where
     }
 }
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC>
-    SlaveGroup<MAX_SLAVES, MAX_PDI, PreOpPdi, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, DC>
 {
-    /// Transition the slave group from PRE-OP to SAFE-OP.
+    /// Transition the SubDevice group from PRE-OP to SAFE-OP.
     pub async fn into_safe_op(
         self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp, DC>, Error> {
-        self.transition_to(client, SlaveState::SafeOp).await
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
+        self.transition_to(maindevice, SubDeviceState::SafeOp).await
     }
 
-    /// Transition all slave devices in the group from PRE-OP to SAFE-OP, then to OP.
+    /// Transition all SubDevices in the group from PRE-OP to SAFE-OP, then to OP.
     ///
-    /// This is a convenience method that calls [`into_safe_op`](SlaveGroup::into_safe_op) then
-    /// [`into_op`](SlaveGroup::into_op).
+    /// This is a convenience method that calls [`into_safe_op`](SubDeviceGroup::into_safe_op) then
+    /// [`into_op`](SubDeviceGroup::into_op).
     pub async fn into_op(
         self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op, DC>, Error> {
-        let self_ = self.into_safe_op(client).await?;
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+        let self_ = self.into_safe_op(maindevice).await?;
 
-        self_.transition_to(client, SlaveState::Op).await
+        self_.transition_to(maindevice, SubDeviceState::Op).await
     }
 
-    /// Like [`into_op`](SlaveGroup::into_op), however does not wait for all SubDevices to enter OP
+    /// Like [`into_op`](SubDeviceGroup::into_op), however does not wait for all SubDevices to enter OP
     /// state.
     ///
     /// This allows the application process data loop to be started, so as to e.g. not time out
     /// watchdogs, or provide valid data to prevent DC sync errors.
     ///
-    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SlaveGroup::all_op) to
+    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SubDeviceGroup::all_op) to
     /// check if the group has reached OP state.
     pub async fn request_into_op(
         self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op, DC>, Error> {
-        let self_ = self.into_safe_op(client).await?;
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+        let self_ = self.into_safe_op(maindevice).await?;
 
-        self_.request_into_op(client).await
+        self_.request_into_op(maindevice).await
     }
 
-    /// Transition all slave devices in the group from PRE-OP to INIT.
+    /// Transition all SubDevices in the group from PRE-OP to INIT.
     pub async fn into_init(
         self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Init, DC>, Error> {
-        self.transition_to(client, SlaveState::Init).await
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Init, DC>, Error> {
+        self.transition_to(maindevice, SubDeviceState::Init).await
     }
 }
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC>
-    SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>
 {
-    /// Transition all slave devices in the group from SAFE-OP to OP.
+    /// Transition all SubDevices in the group from SAFE-OP to OP.
     pub async fn into_op(
         self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op, DC>, Error> {
-        self.transition_to(client, SlaveState::Op).await
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+        self.transition_to(maindevice, SubDeviceState::Op).await
     }
 
-    /// Transition all slave devices in the group from SAFE-OP to PRE-OP.
+    /// Transition all SubDevices in the group from SAFE-OP to PRE-OP.
     pub async fn into_pre_op(
         self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, PreOp, DC>, Error> {
-        self.transition_to(client, SlaveState::PreOp).await
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOp, DC>, Error> {
+        self.transition_to(maindevice, SubDeviceState::PreOp).await
     }
 
-    /// Like [`into_op`](SlaveGroup::into_op), however does not wait for all SubDevices to enter OP
+    /// Like [`into_op`](SubDeviceGroup::into_op), however does not wait for all SubDevices to enter OP
     /// state.
     ///
     /// This allows the application process data loop to be started, so as to e.g. not time out
     /// watchdogs, or provide valid data to prevent DC sync errors.
     ///
-    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SlaveGroup::all_op) to
+    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SubDeviceGroup::all_op) to
     /// check if the group has reached OP state.
     pub async fn request_into_op(
         mut self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, Op, DC>, Error> {
-        for slave in self
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+        for subdevice in self
             .inner
             .get_mut()
-            .slaves
+            .subdevices
             .iter_mut()
-            .map(|slave| slave.get_mut())
+            .map(|subdevice| subdevice.get_mut())
         {
-            SlaveRef::new(client, slave.configured_address(), slave)
-                .request_slave_state_nowait(SlaveState::Op)
+            SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
+                .request_subdevice_state_nowait(SubDeviceState::Op)
                 .await?;
         }
 
-        Ok(SlaveGroup {
+        Ok(SubDeviceGroup {
             id: self.id,
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
@@ -544,32 +557,34 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC>
     }
 }
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, DC> SlaveGroup<MAX_SLAVES, MAX_PDI, Op, DC> {
-    /// Transition all slave devices in the group from OP to SAFE-OP.
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>
+{
+    /// Transition all SubDevices in the group from OP to SAFE-OP.
     pub async fn into_safe_op(
         self,
-        client: &Client<'_>,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, SafeOp, DC>, Error> {
-        self.transition_to(client, SlaveState::SafeOp).await
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
+        self.transition_to(maindevice, SubDeviceState::SafeOp).await
     }
 
     /// Returns true if all SubDevices in the group are in OP state
-    pub async fn all_op(&self, client: &Client<'_>) -> Result<bool, Error> {
-        self.is_state(client, SlaveState::Op).await
+    pub async fn all_op(&self, maindevice: &MainDevice<'_>) -> Result<bool, Error> {
+        self.is_state(maindevice, SubDeviceState::Op).await
     }
 }
 
-unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Sync
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
+unsafe impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Sync
+    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S>
 {
 }
-unsafe impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> Send
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, S, DC>
+unsafe impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC> Send
+    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
 {
 }
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Default
-    for SlaveGroup<MAX_SLAVES, MAX_PDI, S>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Default
+    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S>
 {
     fn default() -> Self {
         Self {
@@ -584,22 +599,24 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> Default
     }
 }
 
-/// Returned when a slave device's input or output PDI segment is empty.
+/// Returned when a SubDevice's input or output PDI segment is empty.
 static EMPTY_PDI_SLICE: &[u8] = &[];
 
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES, MAX_PDI, S, DC> {
-    fn inner(&self) -> &GroupInner<MAX_SLAVES> {
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
+{
+    fn inner(&self) -> &GroupInner<MAX_SUBDEVICES> {
         unsafe { &*self.inner.get() }
     }
 
-    /// Get the number of slave devices in this group.
+    /// Get the number of SubDevices in this group.
     pub fn len(&self) -> usize {
-        self.inner().slaves.len()
+        self.inner().subdevices.len()
     }
 
-    /// Check whether this slave group is empty or not.
+    /// Check whether this SubDevice group is empty or not.
     pub fn is_empty(&self) -> bool {
-        self.inner().slaves.is_empty()
+        self.inner().subdevices.is_empty()
     }
 
     #[allow(clippy::mut_from_ref)]
@@ -618,24 +635,29 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES
     /// Check if all SubDevices in the group are the given desired state.
     async fn is_state(
         &self,
-        client: &Client<'_>,
-        desired_state: SlaveState,
+        maindevice: &MainDevice<'_>,
+        desired_state: SubDeviceState,
     ) -> Result<bool, Error> {
-        for slave in self.inner().slaves.iter().map(|slave| slave.borrow()) {
-            let s = SlaveRef::new(client, slave.configured_address(), slave);
+        for subdevice in self
+            .inner()
+            .subdevices
+            .iter()
+            .map(|subdevice| subdevice.borrow())
+        {
+            let sd = SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice);
 
             // TODO: Add a way to queue up a bunch of PDUs and send all at once
-            let slave_state = s.state().await.map_err(|e| {
+            let subdevice_state = sd.state().await.map_err(|e| {
                 fmt::error!(
                     "Failed to transition SubDevice {:#06x}: {}",
-                    s.configured_address(),
+                    sd.configured_address(),
                     e
                 );
 
                 e
             })?;
 
-            if slave_state != desired_state {
+            if subdevice_state != desired_state {
                 return Ok(false);
             }
         }
@@ -643,52 +665,52 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES
         Ok(true)
     }
 
-    /// Wait for all slaves in this group to transition to the given state.
+    /// Wait for all SubDevices in this group to transition to the given state.
     async fn wait_for_state(
         &self,
-        client: &Client<'_>,
-        desired_state: SlaveState,
+        maindevice: &MainDevice<'_>,
+        desired_state: SubDeviceState,
     ) -> Result<(), Error> {
         async {
             loop {
-                if self.is_state(client, desired_state).await? {
+                if self.is_state(maindevice, desired_state).await? {
                     break Ok(());
                 }
 
-                client.timeouts.loop_tick().await;
+                maindevice.timeouts.loop_tick().await;
             }
         }
-        .timeout(client.timeouts.state_transition)
+        .timeout(maindevice.timeouts.state_transition)
         .await
     }
 
     /// Transition to a new state.
     async fn transition_to<TO>(
         mut self,
-        client: &Client<'_>,
-        desired_state: SlaveState,
-    ) -> Result<SlaveGroup<MAX_SLAVES, MAX_PDI, TO, DC>, Error> {
-        // We're done configuring FMMUs, etc, now we can request all slaves in this group go into
+        maindevice: &MainDevice<'_>,
+        desired_state: SubDeviceState,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, TO, DC>, Error> {
+        // We're done configuring FMMUs, etc, now we can request all SubDevices in this group go into
         // SAFE-OP
-        for slave in self
+        for subdevice in self
             .inner
             .get_mut()
-            .slaves
+            .subdevices
             .iter_mut()
             .map(AtomicRefCell::get_mut)
         {
-            SlaveRef::new(client, slave.configured_address(), slave)
-                .request_slave_state_nowait(desired_state)
+            SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
+                .request_subdevice_state_nowait(desired_state)
                 .await?;
         }
 
         fmt::debug!("Waiting for group state {}", desired_state);
 
-        self.wait_for_state(client, desired_state).await?;
+        self.wait_for_state(maindevice, desired_state).await?;
 
         fmt::debug!("--> Group reached state {}", desired_state);
 
-        Ok(SlaveGroup {
+        Ok(SubDeviceGroup {
             id: self.id,
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
@@ -701,31 +723,33 @@ impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES
 }
 
 // Methods for any state where a PDI has been configured.
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S, DC> SlaveGroup<MAX_SLAVES, MAX_PDI, S, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
 where
     S: HasPdi,
 {
-    /// Borrow an individual slave device.
+    /// Borrow an individual SubDevice.
     ///
-    /// Each slave device in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
-    /// single reference to it at any one time. Multiple different slaves can be borrowed
-    /// simultaneously, but multiple references to the same slave are not allowed.
-    pub fn slave<'client, 'group>(
+    /// Each SubDevice in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
+    /// single reference to it at any one time. Multiple different SubDevices can be borrowed
+    /// simultaneously, but multiple references to the same SubDevice are not allowed.
+    #[doc(alias = "slave")]
+    pub fn subdevice<'maindevice, 'group>(
         &'group self,
-        client: &'client Client<'client>,
+        maindevice: &'maindevice MainDevice<'maindevice>,
         index: usize,
-    ) -> Result<SlaveRef<'client, SlavePdi<'group>>, Error> {
-        let slave = self
+    ) -> Result<SubDeviceRef<'maindevice, SubDevicePdi<'group>>, Error> {
+        let subdevice = self
             .inner()
-            .slaves
+            .subdevices
             .get(index)
             .ok_or(Error::NotFound {
-                item: Item::Slave,
+                item: Item::SubDevice,
                 index: Some(index),
             })?
             .try_borrow_mut()
             .map_err(|_e| {
-                fmt::error!("Slave index {} already borrowed", index);
+                fmt::error!("SubDevice index {} already borrowed", index);
 
                 Error::Borrow
             })?;
@@ -733,15 +757,15 @@ where
         let IoRanges {
             input: input_range,
             output: output_range,
-        } = slave.io_segments();
+        } = subdevice.io_segments();
 
         // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
         let i_data = self.pdi();
         let o_data = self.pdi_mut();
 
         fmt::trace!(
-            "Get slave {:#06x} IO ranges I: {}, O: {}",
-            slave.configured_address(),
+            "Get SubDevice {:#06x} IO ranges I: {}, O: {}",
+            subdevice.configured_address(),
             input_range,
             output_range
         );
@@ -772,28 +796,28 @@ where
                 .ok_or(Error::Internal)?
         };
 
-        Ok(SlaveRef::new(
-            client,
-            slave.configured_address(),
-            // SAFETY: A given slave contained in a `SlavePdi` MUST only be borrowed once (currently
-            // enforced by `AtomicRefCell`). If it is borrowed more than once, immutable APIs in
-            // `SlaveRef<SlavePdi>` will be unsound.
-            SlavePdi::new(slave, inputs, outputs),
+        Ok(SubDeviceRef::new(
+            maindevice,
+            subdevice.configured_address(),
+            // SAFETY: A given SubDevice contained in a `SubDevicePdi` MUST only be borrowed once
+            // (currently enforced by `AtomicRefCell`). If it is borrowed more than once, immutable
+            // APIs in `SubDeviceRef<SubDevicePdi>` will be unsound.
+            SubDevicePdi::new(subdevice, inputs, outputs),
         ))
     }
 
-    /// Get an iterator over all slaves in this group.
-    pub fn iter<'group, 'client>(
+    /// Get an iterator over all SubDevices in this group.
+    pub fn iter<'group, 'maindevice>(
         &'group mut self,
-        client: &'client Client<'client>,
-    ) -> GroupSlaveIterator<'group, 'client, MAX_SLAVES, MAX_PDI, S, DC> {
-        GroupSlaveIterator::new(client, self)
+        maindevice: &'maindevice MainDevice<'maindevice>,
+    ) -> GroupSubDeviceIterator<'group, 'maindevice, MAX_SUBDEVICES, MAX_PDI, S, DC> {
+        GroupSubDeviceIterator::new(maindevice, self)
     }
 
-    /// Drive the slave group's inputs and outputs.
+    /// Drive the SubDevice group's inputs and outputs.
     ///
-    /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
-    /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
+    /// A `SubDeviceGroup` will not process any inputs or outputs unless this method is called
+    /// periodically. It will send an `LRW` to update SubDevice outputs and read SubDevice inputs.
     ///
     /// This method returns the working counter on success.
     ///
@@ -807,7 +831,7 @@ where
     /// This method will panic if the frame data length of the group is too large to fit in the
     /// configured maximum PDU length set by the `DATA` const generic of
     /// [`PduStorage`](crate::PduStorage).
-    pub async fn tx_rx<'sto>(&self, client: &'sto Client<'sto>) -> Result<u16, Error> {
+    pub async fn tx_rx<'sto>(&self, maindevice: &'sto MainDevice<'sto>) -> Result<u16, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -816,24 +840,25 @@ where
         );
 
         assert!(
-            self.len() <= client.max_frame_data(),
+            self.len() <= maindevice.max_frame_data(),
             "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
             self.len(),
-            client.max_frame_data()
+            maindevice.max_frame_data()
         );
 
         let data = Command::lrw(self.inner().pdi_start.start_address)
             .ignore_wkc()
-            .send_receive_slice(client, self.pdi())
+            .send_receive_slice(maindevice, self.pdi())
             .await?;
 
         self.process_pdi_response(&data)
     }
 
-    /// Drive the slave group's inputs and outputs and synchronise EtherCAT system time with `FRMW`.
+    /// Drive the SubDevice group's inputs and outputs and synchronise EtherCAT system time with
+    /// `FRMW`.
     ///
-    /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
-    /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
+    /// A `SubDeviceGroup` will not process any inputs or outputs unless this method is called
+    /// periodically. It will send an `LRW` to update SubDevice outputs and read SubDevice inputs.
     ///
     /// This method returns the working counter and the current EtherCAT system time in nanoseconds
     /// on success.
@@ -850,13 +875,13 @@ where
     /// [`PduStorage`](crate::PduStorage).
     pub async fn tx_rx_sync_system_time<'sto>(
         &self,
-        client: &'sto Client<'sto>,
+        maindevice: &'sto MainDevice<'sto>,
     ) -> Result<(u16, Option<u64>), Error> {
         assert!(
-            self.len() <= client.max_frame_data(),
+            self.len() <= maindevice.max_frame_data(),
             "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
             self.len(),
-            client.max_frame_data()
+            maindevice.max_frame_data()
         );
 
         fmt::trace!(
@@ -866,8 +891,8 @@ where
             self.read_pdi_len
         );
 
-        if let Some(dc_ref) = client.dc_ref_address() {
-            let mut frame = client.pdu_loop.alloc_frame()?;
+        if let Some(dc_ref) = maindevice.dc_ref_address() {
+            let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
             let dc_handle = frame.push_pdu(
                 Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into()).into(),
@@ -884,12 +909,12 @@ where
             )?;
 
             let frame = frame.mark_sendable(
-                &client.pdu_loop,
-                client.timeouts.pdu,
-                client.config.retry_behaviour.retry_count(),
+                &maindevice.pdu_loop,
+                maindevice.timeouts.pdu,
+                maindevice.config.retry_behaviour.retry_count(),
             );
 
-            client.pdu_loop.wake_sender();
+            maindevice.pdu_loop.wake_sender();
 
             let received = frame.await?;
 
@@ -900,7 +925,7 @@ where
 
             Ok((wkc, Some(time)))
         } else {
-            self.tx_rx(client).await.map(|wkc| (wkc, None))
+            self.tx_rx(maindevice).await.map(|wkc| (wkc, None))
         }
     }
 
@@ -940,15 +965,16 @@ where
 }
 
 // Methods for when the group has a PDI AND has Distributed Clocks configured
-impl<const MAX_SLAVES: usize, const MAX_PDI: usize, S> SlaveGroup<MAX_SLAVES, MAX_PDI, S, HasDc>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, HasDc>
 where
     S: HasPdi,
 {
-    /// Drive the slave group's inputs and outputs, synchronise EtherCAT system time with `FRMW`,
+    /// Drive the SubDevice group's inputs and outputs, synchronise EtherCAT system time with `FRMW`,
     /// and return cycle timing information.
     ///
-    /// A `SlaveGroup` will not process any inputs or outputs unless this method is called
-    /// periodically. It will send an `LRW` to update slave outputs and read slave inputs.
+    /// A `SubDeviceGroup` will not process any inputs or outputs unless this method is called
+    /// periodically. It will send an `LRW` to update SubDevice outputs and read SubDevice inputs.
     ///
     /// This method returns the working counter and a [`CycleInfo`], containing values that can be
     /// used to synchronise the MainDevice to the network SYNC0 event.
@@ -971,12 +997,12 @@ where
     /// ```rust,no_run
     /// # use ethercrab::{
     /// #     error::Error,
-    /// #     slave_group::{CycleInfo, DcConfiguration},
+    /// #     subdevice_group::{CycleInfo, DcConfiguration},
     /// #     std::ethercat_now,
-    /// #     Client, ClientConfig, PduStorage, Timeouts, DcSync,
+    /// #     MainDevice, MainDeviceConfig, PduStorage, Timeouts, DcSync,
     /// # };
     /// # use std::time::{Duration, Instant};
-    /// # const MAX_SLAVES: usize = 16;
+    /// # const MAX_SUBDEVICES: usize = 16;
     /// # const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
     /// # const MAX_FRAMES: usize = 32;
     /// # const PDI_LEN: usize = 64;
@@ -984,26 +1010,26 @@ where
     /// # fn main() -> Result<(), Error> { smol::block_on(async {
     /// let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
     ///
-    /// let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    /// let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
     ///
     /// let cycle_time = Duration::from_millis(5);
     ///
-    /// let mut group = client
-    ///     .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
+    /// let mut group = maindevice
+    ///     .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
     ///     .await
     ///     .expect("Init");
     ///
     /// // This example enables SYNC0 for every detected SubDevice
-    /// for mut slave in group.iter(&client) {
-    ///     slave.set_dc_sync(DcSync::Sync0);
+    /// for mut subdevice in group.iter(&maindevice) {
+    ///     subdevice.set_dc_sync(DcSync::Sync0);
     /// }
     ///
     /// let group = group
-    ///     .into_pre_op_pdi(&client)
+    ///     .into_pre_op_pdi(&maindevice)
     ///     .await
     ///     .expect("PRE-OP -> PRE-OP with PDI")
     ///     .configure_dc_sync(
-    ///         &client,
+    ///         &maindevice,
     ///         DcConfiguration {
     ///             // Start SYNC0 100ms in the future
     ///             start_delay: Duration::from_millis(100),
@@ -1015,13 +1041,13 @@ where
     ///     )
     ///     .await
     ///     .expect("DC configuration")
-    ///     .request_into_op(&client)
+    ///     .request_into_op(&maindevice)
     ///     .await
     ///     .expect("PRE-OP -> SAFE-OP -> OP");
     ///
     /// // Wait for all SubDevices in the group to reach OP, whilst sending PDI to allow DC to start
     /// // correctly.
-    /// while !group.all_op(&client).await? {
+    /// while !group.all_op(&maindevice).await? {
     ///     let now = Instant::now();
     ///
     ///     let (
@@ -1029,7 +1055,7 @@ where
     ///         CycleInfo {
     ///             next_cycle_wait, ..
     ///         },
-    ///     ) = group.tx_rx_dc(&client).await.expect("TX/RX");
+    ///     ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
     ///
     ///     smol::Timer::at(now + next_cycle_wait).await;
     /// }
@@ -1043,7 +1069,7 @@ where
     ///         CycleInfo {
     ///             next_cycle_wait, ..
     ///         },
-    ///     ) = group.tx_rx_dc(&client).await.expect("TX/RX");
+    ///     ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
     ///
     ///     // Process data computations happen here
     ///
@@ -1053,13 +1079,13 @@ where
     /// ```
     pub async fn tx_rx_dc<'sto>(
         &self,
-        client: &'sto Client<'sto>,
+        maindevice: &'sto MainDevice<'sto>,
     ) -> Result<(u16, CycleInfo), Error> {
         assert!(
-            self.len() <= client.max_frame_data(),
+            self.len() <= maindevice.max_frame_data(),
             "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
             self.len(),
-            client.max_frame_data()
+            maindevice.max_frame_data()
         );
 
         fmt::trace!(
@@ -1069,7 +1095,7 @@ where
             self.read_pdi_len
         );
 
-        let mut frame = client.pdu_loop.alloc_frame()?;
+        let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
         let dc_handle = frame.push_pdu(
             Command::frmw(self.dc_conf.reference, RegisterAddress::DcSystemTime.into()).into(),
@@ -1086,12 +1112,12 @@ where
         )?;
 
         let frame = frame.mark_sendable(
-            &client.pdu_loop,
-            client.timeouts.pdu,
-            client.config.retry_behaviour.retry_count(),
+            &maindevice.pdu_loop,
+            maindevice.timeouts.pdu,
+            maindevice.config.retry_behaviour.retry_count(),
         );
 
-        client.pdu_loop.wake_sender();
+        maindevice.pdu_loop.wake_sender();
 
         let received = frame.await?;
 

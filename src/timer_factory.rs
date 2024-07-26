@@ -65,7 +65,7 @@ where
 /// Timeout configuration for the EtherCrab master.
 #[derive(Copy, Clone, Debug)]
 pub struct Timeouts {
-    /// How long to wait for a slave state change, e.g. SAFE-OP to OP.
+    /// How long to wait for a SubDevice state change, e.g. SAFE-OP to OP.
     ///
     /// This timeout is global for all state transitions.
     pub state_transition: Duration,
@@ -78,16 +78,16 @@ pub struct Timeouts {
 
     /// Polling duration of wait loops.
     ///
-    /// Some operations require repeatedly reading something from a slave until a value changes.
+    /// Some operations require repeatedly reading something from a SubDevice until a value changes.
     /// This duration specifies the wait time between polls.
     ///
     /// This defaults to a timeout of 0 to keep latency to a minimum.
     pub wait_loop_delay: Duration,
 
-    /// How long to wait for a slave mailbox to become ready.
+    /// How long to wait for a SubDevice mailbox to become ready.
     pub mailbox_echo: Duration,
 
-    /// How long to wait for a response to be read from the slave's response mailbox.
+    /// How long to wait for a response to be read from the SubDevice's response mailbox.
     pub mailbox_response: Duration,
 }
 

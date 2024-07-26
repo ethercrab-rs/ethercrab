@@ -7,7 +7,7 @@ use env_logger::Env;
 use ethercrab::{
     ds402::{Ds402, Ds402Sm, StatusWord},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
 use std::{
     sync::{
@@ -18,8 +18,8 @@ use std::{
 };
 use tokio::time::MissedTickBehavior;
 
-/// Maximum number of slaves that can be stored.
-const MAX_SLAVES: usize = 16;
+/// Maximum number of SubDevices that can be stored.
+const MAX_SUBDEVICES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
@@ -55,127 +55,127 @@ async fn main() -> anyhow::Result<()> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(
+    let maindevice = Arc::new(MainDevice::new(
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
             ..Default::default()
         },
-        ClientConfig::default(),
+        MainDeviceConfig::default(),
     ));
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let mut group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
+    let mut group = maindevice
+        .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
 
-    for slave in group.iter(&client) {
+    for subdevice in group.iter(&maindevice) {
         // Assuming all connected SubDevices are C5-Es here
 
         // Manual section 4.8 Setting the motor data
         // 1.8deg step, so 50 pole pairs
-        slave
+        subdevice
             .sdo_write(0x2030, 0, 50u32)
             .await
             .context("pole pairs")?;
         // Max motor current in mA.
-        slave
+        subdevice
             .sdo_write(0x2031, 0, 1000u32)
             .await
             .context("max current")?;
         // Rated motor current in mA
-        slave
+        subdevice
             .sdo_write(0x6075, 0, 2820u32)
             .await
             .context("rated currnet")?;
         // Max motor current, % of rated current in milli-percent, i.e. 1000 is 100%
-        slave
+        subdevice
             .sdo_write(0x6073, 0, 1000u16)
             .await
             .context("current %")?;
         // Max motor current max duration in ms
-        slave
+        subdevice
             .sdo_write(0x203b, 02, 100u32)
             .await
             .context("max current duration")?;
         // Motor type: stepper
-        slave
+        subdevice
             .sdo_write(0x3202, 00, 0x08u32)
             .await
             .context("set motor type")?;
         // Test motor has 500ppr incremental encoder, differential
-        slave
+        subdevice
             .sdo_write(0x2059, 00, 0x0u32)
             .await
             .context("encoder kind")?;
         // Set velocity unit to RPM (factory default)
-        slave
+        subdevice
             .sdo_write(0x60a9, 00, 0x00B44700u32)
             .await
             .context("velocity unit RPM")?;
 
         // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
-        slave.sdo_write(0x1600, 0, 0u8).await?;
+        subdevice.sdo_write(0x1600, 0, 0u8).await?;
         // Control word, u16
         // NOTE: The lower word specifies the field length
-        slave.sdo_write(0x1600, 1, 0x6040_0010u32).await?;
+        subdevice.sdo_write(0x1600, 1, 0x6040_0010u32).await?;
         // Target velocity, i32
-        slave.sdo_write(0x1600, 2, 0x60ff_0020u32).await?;
-        slave.sdo_write(0x1600, 0, 2u8).await?;
+        subdevice.sdo_write(0x1600, 2, 0x60ff_0020u32).await?;
+        subdevice.sdo_write(0x1600, 0, 2u8).await?;
 
-        slave.sdo_write(0x1a00, 0, 0u8).await?;
+        subdevice.sdo_write(0x1a00, 0, 0u8).await?;
         // Status word, u16
-        slave.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
+        subdevice.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
         // Actual position, i32
-        slave.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
+        subdevice.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
         // Actual velocity, i32
-        slave.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
-        slave.sdo_write(0x1a00, 0, 0x03u8).await?;
+        subdevice.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
+        subdevice.sdo_write(0x1a00, 0, 0x03u8).await?;
 
-        slave.sdo_write(0x1c12, 0, 0u8).await?;
-        slave.sdo_write(0x1c12, 1, 0x1600u16).await?;
-        slave.sdo_write(0x1c12, 0, 1u8).await?;
+        subdevice.sdo_write(0x1c12, 0, 0u8).await?;
+        subdevice.sdo_write(0x1c12, 1, 0x1600u16).await?;
+        subdevice.sdo_write(0x1c12, 0, 1u8).await?;
 
-        slave.sdo_write(0x1c13, 0, 0u8).await?;
-        slave.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-        slave.sdo_write(0x1c13, 0, 1u8).await?;
+        subdevice.sdo_write(0x1c13, 0, 0u8).await?;
+        subdevice.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+        subdevice.sdo_write(0x1c13, 0, 1u8).await?;
 
         // Opmode - Cyclic Synchronous Position
-        // slave.write_sdo(0x6060, 0, 0x08).await?;
+        // subdevice.write_sdo(0x6060, 0, 0x08).await?;
         // Opmode - Cyclic Synchronous Velocity
-        slave.sdo_write(0x6060, 0, 0x09u8).await?;
+        subdevice.sdo_write(0x6060, 0, 0x09u8).await?;
     }
 
-    let mut group = group.into_op(&client).await.expect("PRE-OP -> OP");
+    let mut group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
 
-    log::info!("Slaves moved to OP state");
+    log::info!("SubDevices moved to OP state");
 
-    log::info!("Discovered {} slaves", group.len());
+    log::info!("Discovered {} SubDevices", group.len());
 
-    for slave in group.iter(&client) {
-        let (i, o) = slave.io_raw();
+    for subdevice in group.iter(&maindevice) {
+        let (i, o) = subdevice.io_raw();
 
         log::info!(
-            "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
-            slave.configured_address(),
-            slave.name(),
+            "-> SubDevice {:#06x} {} inputs: {} bytes, outputs: {} bytes",
+            subdevice.configured_address(),
+            subdevice.name(),
             i.len(),
             o.len()
         );
     }
 
     // Run twice to prime PDI
-    group.tx_rx(&client).await.expect("TX/RX");
+    group.tx_rx(&maindevice).await.expect("TX/RX");
 
     // Read cycle time from servo drive
     let cycle_time = {
-        let slave = group.slave(&client, 0).unwrap();
+        let subdevice = group.subdevice(&maindevice, 0).unwrap();
 
-        let base = slave.sdo_read::<u8>(0x60c2, 1).await?;
-        let x10 = slave.sdo_read::<i8>(0x60c2, 2).await?;
+        let base = subdevice.sdo_read::<u8>(0x60c2, 1).await?;
+        let x10 = subdevice.sdo_read::<i8>(0x60c2, 2).await?;
 
         let base = f32::from(base);
         let x10 = 10.0f32.powi(i32::from(x10));
@@ -190,8 +190,8 @@ async fn main() -> anyhow::Result<()> {
     let mut cyclic_interval = tokio::time::interval(cycle_time);
     cyclic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let slave = group.slave(&client, 0).expect("No servo!");
-    let mut servo = Ds402Sm::new(Ds402::new(slave).expect("Failed to gather DS402"));
+    let subdevice = group.subdevice(&maindevice, 0).expect("No servo!");
+    let mut servo = Ds402Sm::new(Ds402::new(subdevice).expect("Failed to gather DS402"));
 
     let mut velocity: i32 = 0;
 
@@ -203,11 +203,11 @@ async fn main() -> anyhow::Result<()> {
         .expect("Register hook");
 
     loop {
-        group.tx_rx(&client).await.expect("TX/RX");
+        group.tx_rx(&maindevice).await.expect("TX/RX");
 
         if servo.tick() {
             let status = servo.status_word();
-            let (i, o) = servo.slave().io_raw_mut();
+            let (i, o) = servo.subdevice().io_raw_mut();
 
             let (pos, vel) = {
                 let pos = i32::from_le_bytes(i[2..=5].try_into().unwrap());
@@ -226,7 +226,7 @@ async fn main() -> anyhow::Result<()> {
             vel_cmd.copy_from_slice(&velocity.to_le_bytes());
 
             if status.contains(StatusWord::FAULT) {
-                let sl = servo.slave();
+                let sl = servo.subdevice();
 
                 let num_errors = sl
                     .sdo_read::<u8>(0x1003, 0)
@@ -271,14 +271,14 @@ async fn main() -> anyhow::Result<()> {
     log::info!("Servo stopped, shutting drive down");
 
     loop {
-        group.tx_rx(&client).await.expect("TX/RX");
+        group.tx_rx(&maindevice).await.expect("TX/RX");
 
         if servo.tick_shutdown() {
             break;
         }
 
         let status = servo.status_word();
-        let (i, o) = servo.slave().io_raw_mut();
+        let (i, o) = servo.subdevice().io_raw_mut();
 
         // In fault state, so don't bother trying to shut down gracefully.
         if status.contains(StatusWord::FAULT) {

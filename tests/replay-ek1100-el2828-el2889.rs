@@ -10,12 +10,13 @@ mod util;
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, slave_group, Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    error::Error, subdevice_group, MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup,
+    Timeouts,
 };
 use std::{path::PathBuf, time::Duration};
 use tokio::time::MissedTickBehavior;
 
-const MAX_SLAVES: usize = 16;
+const MAX_SUBDEVICES: usize = 16;
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 const MAX_FRAMES: usize = 128;
 
@@ -24,9 +25,9 @@ struct Groups {
     /// EL2889 and EK1100. 2 items, 2 bytes of PDI for 16 output bits.
     ///
     /// We'll keep the EK1100 in here as it has no PDI but still needs to live somewhere.
-    slow_outputs: SlaveGroup<2, 2, slave_group::PreOp>,
+    slow_outputs: SubDeviceGroup<2, 2, subdevice_group::PreOp>,
     /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-    fast_outputs: SlaveGroup<1, 1, slave_group::PreOp>,
+    fast_outputs: SubDeviceGroup<1, 1, subdevice_group::PreOp>,
 }
 
 #[tokio::test]
@@ -38,10 +39,10 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Client::new(
+    let maindevice = MainDevice::new(
         pdu_loop,
         Timeouts::default(),
-        ClientConfig {
+        MainDeviceConfig {
             dc_static_sync_iterations: 100,
             ..Default::default()
         },
@@ -55,14 +56,14 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
 
     util::spawn_tx_rx(&format!("tests/{test_name}.pcapng"), tx, rx);
 
-    // Read configurations from slave EEPROMs and configure devices.
-    let groups = client
-        .init::<MAX_SLAVES, _>(
+    // Read configurations from SubDevice EEPROMs and configure devices.
+    let groups = maindevice
+        .init::<MAX_SUBDEVICES, _>(
             || 0,
-            |groups: &Groups, slave| match slave.name() {
+            |groups: &Groups, subdevice| match subdevice.name() {
                 "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
                 "EL2828" => Ok(&groups.fast_outputs),
-                _ => Err(Error::UnknownSlave),
+                _ => Err(Error::UnknownSubDevice),
             },
         )
         .await
@@ -73,13 +74,21 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
         fast_outputs,
     } = groups;
 
-    let slow_outputs = slow_outputs.into_op(&client).await.expect("Slow into OP");
-    let mut fast_outputs = fast_outputs.into_op(&client).await.expect("Fast into OP");
+    let slow_outputs = slow_outputs
+        .into_op(&maindevice)
+        .await
+        .expect("Slow into OP");
+    let mut fast_outputs = fast_outputs
+        .into_op(&maindevice)
+        .await
+        .expect("Fast into OP");
 
     let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(10));
     slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let mut el2889 = slow_outputs.slave(&client, 1).expect("EL2889 not present!");
+    let mut el2889 = slow_outputs
+        .subdevice(&maindevice, 1)
+        .expect("EL2889 not present!");
 
     // Set initial output state
     el2889.io_raw_mut().1[0] = 0x01;
@@ -87,7 +96,7 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
 
     // Animate slow pattern for 8 ticks
     for _ in 0..8 {
-        slow_outputs.tx_rx(&client).await.expect("TX/RX");
+        slow_outputs.tx_rx(&maindevice).await.expect("TX/RX");
 
         let (_i, o) = el2889.io_raw_mut();
 
@@ -103,11 +112,11 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
 
     // Count up to 255 in binary
     for _ in 0..255 {
-        fast_outputs.tx_rx(&client).await.expect("TX/RX");
+        fast_outputs.tx_rx(&maindevice).await.expect("TX/RX");
 
-        // Increment every output byte for every slave device by one
-        for mut slave in fast_outputs.iter(&client) {
-            let (_i, o) = slave.io_raw_mut();
+        // Increment every output byte for every SubDevice by one
+        for mut subdevice in fast_outputs.iter(&maindevice) {
+            let (_i, o) = subdevice.io_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);

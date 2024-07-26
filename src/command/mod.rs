@@ -23,56 +23,56 @@ const LRW: u8 = 0x0c;
 /// PDU command.
 ///
 /// A command can be used in various different ways, to e.g. read a number or write a raw slice to a
-/// slave device on the network.
+/// SubDevice on the network.
 ///
 /// All EtherCAT commands are implemented. It is recommended to use the methods on `Command` to
 /// create them.
 ///
 /// A `Command` won't do much on its own. To perform network operations with the command it must be
 /// wrapped with either [`WrappedRead`] or [`WrappedWrite`] by calling the `wrap` method. These
-/// structs add a [`Client`](crate::Client) and expose many different read/write operations. See the
+/// structs add a [`MainDevice`](crate::MainDevice) and expose many different read/write operations. See the
 /// methods on [`WrappedRead`] and [`WrappedWrite`] for more.
 ///
 /// # Examples
 ///
-/// ## Read a `u32` from a slave by address
+/// ## Read a `u32` from a SubDevice by address
 ///
 /// ```rust
-/// # use ethercrab::{ std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts };
+/// # use ethercrab::{ std::tx_rx_task, MainDevice, MainDeviceConfig, PduStorage, Timeouts };
 /// use ethercrab::{ Command, RegisterAddress };
 /// # static PDU_STORAGE: PduStorage<16, 1100> = PduStorage::new();
 /// # let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
-/// let client = /* ... */
-/// # Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+/// let maindevice = /* ... */
+/// # MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 ///
-/// let slave_configured_address = 0x1001u16;
+/// let configured_address = 0x1001u16;
 ///
 /// # async {
-/// let value = Command::fprd(slave_configured_address, RegisterAddress::SiiData.into())
-///     .receive::<u32>(&client)
+/// let value = Command::fprd(configured_address, RegisterAddress::SiiData.into())
+///     .receive::<u32>(&maindevice)
 ///     .await?;
 /// # Result::<(), ethercrab::error::Error>::Ok(())
 /// # };
 /// ```
 ///
-/// ## Write a slice to a given slave address and register
+/// ## Write a slice to a given SubDevice address and register
 ///
 /// ```rust
-/// # use ethercrab::{ std::tx_rx_task, Client, ClientConfig, PduStorage, Timeouts };
+/// # use ethercrab::{ std::tx_rx_task, MainDevice, MainDeviceConfig, PduStorage, Timeouts };
 /// use ethercrab::{ Command, RegisterAddress };
 /// # static PDU_STORAGE: PduStorage<16, 1100> = PduStorage::new();
 /// # let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
-/// let client = /* ... */
-/// # Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+/// let maindevice = /* ... */
+/// # MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 ///
-/// let slave_configured_address = 0x1001u16;
+/// let configured_address = 0x1001u16;
 /// let register = 0x1234u16;
 ///
 /// let data = [ 0xaau8, 0xbb, 0xcc, 0xdd ];
 ///
 /// # async {
-/// Command::fpwr(slave_configured_address, register)
-///     .send(&client, data)
+/// Command::fpwr(configured_address, register)
+///     .send(&maindevice, data)
 ///     .await?;
 /// # Result::<(), ethercrab::error::Error>::Ok(())
 /// # };
@@ -213,7 +213,7 @@ impl Command {
 
     /// Configured address read, multiple write (FRMW).
     ///
-    /// This can be used to distribute a value from one slave to all others on the network, e.g.
+    /// This can be used to distribute a value from one SubDevice to all others on the network, e.g.
     /// with distributed clocks.
     pub fn frmw(address: u16, register: u16) -> WrappedRead {
         WrappedRead::new(Reads::Frmw { address, register })

@@ -4,9 +4,9 @@
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    slave_group::{CycleInfo, DcConfiguration},
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, DcSync, PduStorage, RegisterAddress, SlaveGroup, Timeouts,
+    subdevice_group::{CycleInfo, DcConfiguration},
+    DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, SubDeviceGroup, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
@@ -17,8 +17,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-const MAX_SLAVES: usize = 16;
+/// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
+const MAX_SUBDEVICES: usize = 16;
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 const MAX_FRAMES: usize = 32;
 
@@ -39,10 +39,10 @@ fn main() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(
+    let maindevice = Arc::new(MainDevice::new(
         pdu_loop,
         Timeouts::default(),
-        ClientConfig::default(),
+        MainDeviceConfig::default(),
     ));
 
     let mut slow_tick_interval = smol::Timer::interval(SLOW_TICK_INTERVAL);
@@ -57,8 +57,8 @@ fn main() -> Result<(), Error> {
     .expect("Main thread prio");
 
     smol::block_on(async {
-        let (mut slow_group, mut fast_group) = client
-            .init::<MAX_SLAVES, (SlaveGroup<1, 32>, SlaveGroup<1, 32>)>(
+        let (mut slow_group, mut fast_group) = maindevice
+            .init::<MAX_SUBDEVICES, (SubDeviceGroup<1, 32>, SubDeviceGroup<1, 32>)>(
                 ethercat_now,
                 |groups, s| {
                     if s.configured_address() == 0x1000 {
@@ -71,21 +71,24 @@ fn main() -> Result<(), Error> {
             .await
             .expect("Init");
 
-        for mut slave in slow_group.iter(&client) {
+        for mut subdevice in slow_group.iter(&maindevice) {
             // Sync mode 02 = SYNC0
-            slave
+            subdevice
                 .sdo_write(0x1c32, 1, 2u16)
                 .await
                 .expect("Set sync mode");
 
             // ETG1020 calc and copy time
-            let cal_and_copy_time = slave
+            let cal_and_copy_time = subdevice
                 .sdo_read::<u16>(0x1c32, 6)
                 .await
                 .expect("Calc and copy time");
 
             // Delay time
-            let delay_time = slave.sdo_read::<u16>(0x1c32, 9).await.expect("Delay time");
+            let delay_time = subdevice
+                .sdo_read::<u16>(0x1c32, 9)
+                .await
+                .expect("Delay time");
 
             log::info!(
                 "LAN9252 calc time {} ns, delay time {} ns",
@@ -94,29 +97,32 @@ fn main() -> Result<(), Error> {
             );
 
             // Adding this seems to make the second LAN9252 converge much more quickly
-            slave
+            subdevice
                 .sdo_write(0x1c32, 0x0a, SLOW_TICK_INTERVAL.as_nanos() as u32)
                 .await
                 .expect("Set cycle time");
 
-            slave.set_dc_sync(DcSync::Sync0);
+            subdevice.set_dc_sync(DcSync::Sync0);
         }
 
-        for mut slave in fast_group.iter(&client) {
+        for mut subdevice in fast_group.iter(&maindevice) {
             // Sync mode 02 = SYNC0
-            slave
+            subdevice
                 .sdo_write(0x1c32, 1, 2u16)
                 .await
                 .expect("Set sync mode");
 
             // ETG1020 calc and copy time
-            let cal_and_copy_time = slave
+            let cal_and_copy_time = subdevice
                 .sdo_read::<u16>(0x1c32, 6)
                 .await
                 .expect("Calc and copy time");
 
             // Delay time
-            let delay_time = slave.sdo_read::<u16>(0x1c32, 9).await.expect("Delay time");
+            let delay_time = subdevice
+                .sdo_read::<u16>(0x1c32, 9)
+                .await
+                .expect("Delay time");
 
             log::info!(
                 "LAN9252 calc time {} ns, delay time {} ns",
@@ -125,18 +131,18 @@ fn main() -> Result<(), Error> {
             );
 
             // Adding this seems to make the second LAN9252 converge much more quickly
-            slave
+            subdevice
                 .sdo_write(0x1c32, 0x0a, FAST_TICK_INTERVAL.as_nanos() as u32)
                 .await
                 .expect("Set cycle time");
 
-            slave.set_dc_sync(DcSync::Sync0);
+            subdevice.set_dc_sync(DcSync::Sync0);
         }
 
         log::info!("Moving into PRE-OP with PDI");
 
-        let mut slow_group = slow_group.into_pre_op_pdi(&client).await?;
-        let mut fast_group = fast_group.into_pre_op_pdi(&client).await?;
+        let mut slow_group = slow_group.into_pre_op_pdi(&maindevice).await?;
+        let mut fast_group = fast_group.into_pre_op_pdi(&maindevice).await?;
 
         log::info!("Done. PDI available. Waiting for SubDevices to align");
 
@@ -145,7 +151,7 @@ fn main() -> Result<(), Error> {
 
         loop {
             slow_group
-                .tx_rx_sync_system_time(&client)
+                .tx_rx_sync_system_time(&maindevice)
                 .await
                 .expect("TX/RX");
 
@@ -154,7 +160,7 @@ fn main() -> Result<(), Error> {
 
                 let mut max_deviation = 0;
 
-                for s1 in slow_group.iter(&client) {
+                for s1 in slow_group.iter(&maindevice) {
                     let diff = match s1
                         .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
                         .await
@@ -202,7 +208,7 @@ fn main() -> Result<(), Error> {
 
         loop {
             fast_group
-                .tx_rx_sync_system_time(&client)
+                .tx_rx_sync_system_time(&maindevice)
                 .await
                 .expect("TX/RX");
 
@@ -211,7 +217,7 @@ fn main() -> Result<(), Error> {
 
                 let mut max_deviation = 0;
 
-                for s1 in fast_group.iter(&client) {
+                for s1 in fast_group.iter(&maindevice) {
                     let diff = match s1
                         .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
                         .await
@@ -259,7 +265,7 @@ fn main() -> Result<(), Error> {
         // SubDevice clocks are aligned. We can turn DC on now.
         let slow_group = slow_group
             .configure_dc_sync(
-                &client,
+                &maindevice,
                 DcConfiguration {
                     // Start SYNC0 100ms in the future
                     start_delay: Duration::from_millis(100),
@@ -273,7 +279,7 @@ fn main() -> Result<(), Error> {
 
         let fast_group = fast_group
             .configure_dc_sync(
-                &client,
+                &maindevice,
                 DcConfiguration {
                     // Start SYNC0 100ms in the future
                     start_delay: Duration::from_millis(100),
@@ -286,12 +292,12 @@ fn main() -> Result<(), Error> {
             .await?;
 
         let slow_group = slow_group
-            .into_safe_op(&client)
+            .into_safe_op(&maindevice)
             .await
             .expect("PRE-OP -> SAFE-OP");
 
         let fast_group = fast_group
-            .into_safe_op(&client)
+            .into_safe_op(&maindevice)
             .await
             .expect("PRE-OP -> SAFE-OP");
 
@@ -305,11 +311,11 @@ fn main() -> Result<(), Error> {
         // start of the process data cycle, which is required when DC sync is used, otherwise
         // SubDevices never reach OP, most often timing out with a SyncManagerWatchdog error.
         let mut slow_group = slow_group
-            .request_into_op(&client)
+            .request_into_op(&maindevice)
             .await
             .expect("SAFE-OP -> OP");
         let mut fast_group = fast_group
-            .request_into_op(&client)
+            .request_into_op(&maindevice)
             .await
             .expect("SAFE-OP -> OP");
 
@@ -322,7 +328,7 @@ fn main() -> Result<(), Error> {
         // overhead present here.
         smol::future::race(
             async {
-                while !slow_group.all_op(&client).await? {
+                while !slow_group.all_op(&maindevice).await? {
                     let now = Instant::now();
 
                     let (
@@ -330,7 +336,7 @@ fn main() -> Result<(), Error> {
                         CycleInfo {
                             next_cycle_wait, ..
                         },
-                    ) = slow_group.tx_rx_dc(&client).await.expect("TX/RX");
+                    ) = slow_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
                     smol::Timer::at(now + next_cycle_wait).await;
                 }
@@ -338,7 +344,7 @@ fn main() -> Result<(), Error> {
                 Result::<_, Error>::Ok(())
             },
             async {
-                while !fast_group.all_op(&client).await? {
+                while !fast_group.all_op(&maindevice).await? {
                     let now = Instant::now();
 
                     let (
@@ -346,7 +352,7 @@ fn main() -> Result<(), Error> {
                         CycleInfo {
                             next_cycle_wait, ..
                         },
-                    ) = fast_group.tx_rx_dc(&client).await.expect("TX/RX");
+                    ) = fast_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
                     smol::Timer::at(now + next_cycle_wait).await;
                 }
@@ -371,10 +377,10 @@ fn main() -> Result<(), Error> {
                         CycleInfo {
                             next_cycle_wait, ..
                         },
-                    ) = slow_group.tx_rx_dc(&client).await.expect("TX/RX");
+                    ) = slow_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
-                    for mut slave in slow_group.iter(&client) {
-                        let (_i, o) = slave.io_raw_mut();
+                    for mut subdevice in slow_group.iter(&maindevice) {
+                        let (_i, o) = subdevice.io_raw_mut();
 
                         for byte in o.iter_mut() {
                             *byte = byte.wrapping_add(1);
@@ -399,10 +405,10 @@ fn main() -> Result<(), Error> {
                         CycleInfo {
                             next_cycle_wait, ..
                         },
-                    ) = fast_group.tx_rx_dc(&client).await.expect("TX/RX");
+                    ) = fast_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
-                    for mut slave in fast_group.iter(&client) {
-                        let (_i, o) = slave.io_raw_mut();
+                    for mut subdevice in fast_group.iter(&maindevice) {
+                        let (_i, o) = subdevice.io_raw_mut();
 
                         for byte in o.iter_mut() {
                             *byte = byte.wrapping_add(1);
@@ -422,29 +428,35 @@ fn main() -> Result<(), Error> {
         .await;
 
         let slow_group = slow_group
-            .into_safe_op(&client)
+            .into_safe_op(&maindevice)
             .await
             .expect("OP -> SAFE-OP");
         let fast_group = fast_group
-            .into_safe_op(&client)
+            .into_safe_op(&maindevice)
             .await
             .expect("OP -> SAFE-OP");
 
         log::info!("OP -> SAFE-OP");
 
         let slow_group = slow_group
-            .into_pre_op(&client)
+            .into_pre_op(&maindevice)
             .await
             .expect("SAFE-OP -> PRE-OP");
         let fast_group = fast_group
-            .into_pre_op(&client)
+            .into_pre_op(&maindevice)
             .await
             .expect("SAFE-OP -> PRE-OP");
 
         log::info!("SAFE-OP -> PRE-OP");
 
-        let _slow_group = slow_group.into_init(&client).await.expect("PRE-OP -> INIT");
-        let _fast_group = fast_group.into_init(&client).await.expect("PRE-OP -> INIT");
+        let _slow_group = slow_group
+            .into_init(&maindevice)
+            .await
+            .expect("PRE-OP -> INIT");
+        let _fast_group = fast_group
+            .into_init(&maindevice)
+            .await
+            .expect("PRE-OP -> INIT");
 
         log::info!("PRE-OP -> INIT, shutdown complete");
 

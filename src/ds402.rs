@@ -11,7 +11,7 @@
 use crate::{
     error::Error as EthercrabError,
     fmt,
-    slave::{pdi::SlavePdi, SlaveRef},
+    subdevice::{pdi::SubDevicePdi, SubDeviceRef},
 };
 use ethercrab_wire::EtherCrabWireRead;
 
@@ -113,17 +113,17 @@ impl Clone for States {
     }
 }
 
-/// DS402/CiA402 wrapper around a single EtherCat slave.
+/// DS402/CiA402 wrapper around a single EtherCat SubDevice.
 #[derive(Debug)]
 pub struct Ds402<'a> {
-    /// The EtherCat slave.
-    pub slave: SlaveRef<'a, SlavePdi<'a>>,
+    /// The EtherCat SubDevice.
+    pub subdevice: SubDeviceRef<'a, SubDevicePdi<'a>>,
 }
 
 impl<'a> Ds402<'a> {
     /// Create a new DS402 state machine.
-    pub fn new(slave: SlaveRef<'a, SlavePdi<'a>>) -> Result<Self, EthercrabError> {
-        Ok(Self { slave })
+    pub fn new(subdevice: SubDeviceRef<'a, SubDevicePdi<'a>>) -> Result<Self, EthercrabError> {
+        Ok(Self { subdevice })
     }
 
     fn set_and_read(&mut self, set: &ControlWord, read: StatusWord) -> Result<(), ()> {
@@ -138,13 +138,13 @@ impl<'a> Ds402<'a> {
 
     /// Get the DS402 status word.
     pub fn status_word(&self) -> StatusWord {
-        let status = fmt::unwrap!(u16::unpack_from_slice(self.slave.inputs_raw()));
+        let status = fmt::unwrap!(u16::unpack_from_slice(self.subdevice.inputs_raw()));
 
         StatusWord::from_bits_truncate(status)
     }
 
     fn set_control_word(&mut self, state: &ControlWord) {
-        let (control, _rest) = self.slave.outputs_raw_mut().split_at_mut(2);
+        let (control, _rest) = self.subdevice.outputs_raw_mut().split_at_mut(2);
 
         let state = state.bits().to_le_bytes();
 
@@ -158,7 +158,7 @@ pub struct Ds402Sm<'a> {
 }
 
 impl<'a> Ds402Sm<'a> {
-    /// Returns true if the slave is in `OP` state.
+    /// Returns true if the SubDevice is in `OP` state.
     ///
     /// NOTE: Not to be confused with EtherCAT's `OP` state; that is a precondition for running the
     /// DS402 SM.
@@ -166,16 +166,16 @@ impl<'a> Ds402Sm<'a> {
         self.sm.state == States::OpEnable
     }
 
-    /// Create a new DS402 state machine with the given slave.
+    /// Create a new DS402 state machine with the given SubDevice.
     pub fn new(context: Ds402<'a>) -> Self {
         Self {
             sm: StateMachine::new(context),
         }
     }
 
-    /// Get a reference to the underlying EtherCAT slave device.
-    pub fn slave(&mut self) -> &mut SlaveRef<'a, SlavePdi<'a>> {
-        &mut self.sm.context_mut().slave
+    /// Get a reference to the underlying EtherCAT SubDevice.
+    pub fn subdevice(&mut self) -> &mut SubDeviceRef<'a, SubDevicePdi<'a>> {
+        &mut self.sm.context_mut().subdevice
     }
 
     /// Get the DS402 status word.
@@ -194,7 +194,7 @@ impl<'a> Ds402Sm<'a> {
         self.sm.state == States::OpEnable
     }
 
-    /// Put the slave into "switch on disabled" state. Returns true when finished.
+    /// Put the SubDevice into "switch on disabled" state. Returns true when finished.
     // TODO: Some sort of typestate API to transition between higher level states so we can't do
     // this during normal op
     pub fn tick_shutdown(&mut self) -> bool {

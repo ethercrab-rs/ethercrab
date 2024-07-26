@@ -1,8 +1,8 @@
-//! Configuration passed to [`Client`](crate::Client).
+//! Configuration passed to [`MainDevice`](crate::MainDevice).
 
-/// Configuration passed to [`Client`](crate::Client).
+/// Configuration passed to [`MainDevice`](crate::MainDevice).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ClientConfig {
+pub struct MainDeviceConfig {
     /// The number of `FRMW` packets to send during the static phase of Distributed Clocks (DC)
     /// synchronisation.
     ///
@@ -15,7 +15,7 @@ pub struct ClientConfig {
     pub retry_behaviour: RetryBehaviour,
 }
 
-impl Default for ClientConfig {
+impl Default for MainDeviceConfig {
     fn default() -> Self {
         Self {
             dc_static_sync_iterations: 10_000,

@@ -1,7 +1,7 @@
 use core::future::poll_fn;
 use core::task::Poll;
 use criterion::{criterion_group, criterion_main, Bencher, Criterion, Throughput};
-use ethercrab::{Client, ClientConfig, Command, PduStorage, Timeouts};
+use ethercrab::{Command, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
 use futures_lite::FutureExt;
 use std::{pin::pin, time::Duration};
 
@@ -15,13 +15,13 @@ fn do_bench(b: &mut Bencher) {
 
     let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
 
-    let client = Client::new(
+    let maindevice = MainDevice::new(
         pdu_loop,
         Timeouts {
             pdu: Duration::from_millis(1000),
             ..Timeouts::default()
         },
-        ClientConfig::default(),
+        MainDeviceConfig::default(),
     );
 
     let mut written_packet = [0u8; { FRAME_OVERHEAD + DATA.len() }];
@@ -29,7 +29,8 @@ fn do_bench(b: &mut Bencher) {
     b.iter(|| {
         //  --- Prepare frame
 
-        let mut frame_fut = pin!(Command::fpwr(0x5678, 0x1234).send_receive::<()>(&client, &DATA));
+        let mut frame_fut =
+            pin!(Command::fpwr(0x5678, 0x1234).send_receive::<()>(&maindevice, &DATA));
 
         // Poll future once to register it with sender
         cassette::block_on(poll_fn(|ctx| {

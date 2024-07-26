@@ -9,56 +9,63 @@ use crate::{
     error::Error,
     fmt,
     register::RegisterAddress,
-    slave::{ports::Topology, Slave},
-    Client, SlaveRef,
+    subdevice::{ports::Topology, SubDevice},
+    MainDevice, SubDeviceRef,
 };
 
-/// Send a broadcast to all slaves to latch in DC receive time, then store it on the slave structs.
-async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(), Error> {
-    let num_slaves_with_dc: usize = slaves
+/// Send a broadcast to all SubDevices to latch in DC receive time, then store it on the SubDevice
+/// structs.
+async fn latch_dc_times(
+    maindevice: &MainDevice<'_>,
+    subdevices: &mut [SubDevice],
+) -> Result<(), Error> {
+    let num_subdevices_with_dc: usize = subdevices
         .iter()
-        .filter(|slave| slave.flags.dc_supported)
+        .filter(|subdevice| subdevice.flags.dc_supported)
         .count();
 
-    // Latch receive times into all ports of all slaves.
+    // Latch receive times into all ports of all SubDevices.
     Command::bwr(RegisterAddress::DcTimePort0.into())
-        .with_wkc(num_slaves_with_dc as u16)
-        .send_receive(client, 0u32)
+        .with_wkc(num_subdevices_with_dc as u16)
+        .send_receive(maindevice, 0u32)
         .await?;
 
-    // Read receive times for all slaves and store on slave structs
-    for slave in slaves.iter_mut().filter(|slave| slave.flags.dc_supported) {
-        let sl = SlaveRef::new(client, slave.configured_address(), ());
+    // Read receive times for all SubDevices and store on SubDevice structs
+    for subdevice in subdevices
+        .iter_mut()
+        .filter(|subdevice| subdevice.flags.dc_supported)
+    {
+        let sl = SubDeviceRef::new(maindevice, subdevice.configured_address(), ());
 
         let dc_receive_time = sl
             .read(RegisterAddress::DcReceiveTime)
             .ignore_wkc()
-            .receive::<u64>(client)
+            .receive::<u64>(maindevice)
             .await?;
 
         let [time_p0, time_p1, time_p2, time_p3] = sl
             .read(RegisterAddress::DcTimePort0)
-            .receive::<[u32; 4]>(client)
+            .receive::<[u32; 4]>(maindevice)
             .await
             .map_err(|e| {
                 fmt::error!(
-                    "Failed to read DC times for slave {:#06x}: {}",
-                    slave.configured_address(),
+                    "Failed to read DC times for SubDevice {:#06x}: {}",
+                    subdevice.configured_address(),
                     e
                 );
 
                 e
             })?;
 
-        slave.dc_receive_time = dc_receive_time;
+        subdevice.dc_receive_time = dc_receive_time;
 
         fmt::trace!(
-            "Slave {:#06x} DC receive time {} ns",
-            slave.configured_address(),
-            slave.dc_receive_time
+            "SubDevice {:#06x} DC receive time {} ns",
+            subdevice.configured_address(),
+            subdevice.dc_receive_time
         );
 
-        slave
+        subdevice
             .ports
             .set_receive_times(time_p0, time_p3, time_p1, time_p2);
     }
@@ -66,44 +73,44 @@ async fn latch_dc_times(client: &Client<'_>, slaves: &mut [Slave]) -> Result<(),
     Ok(())
 }
 
-/// Write DC system time offset and propagation delay to the slave memory.
+/// Write DC system time offset and propagation delay to the SubDevice memory.
 async fn write_dc_parameters(
-    client: &Client<'_>,
-    slave: &Slave,
+    maindevice: &MainDevice<'_>,
+    subdevice: &SubDevice,
     dc_system_time: u64,
     now_nanos: u64,
 ) -> Result<(), Error> {
-    let system_time_offset = -(slave.dc_receive_time as i64) + now_nanos as i64;
+    let system_time_offset = -(subdevice.dc_receive_time as i64) + now_nanos as i64;
 
     fmt::trace!(
-        "Setting slave {:#06x} system time offset to {} ns (system time is {} ns, DC receive time is {}, now is {} ns)",
-        slave.configured_address(),
+        "Setting SubDevice {:#06x} system time offset to {} ns (system time is {} ns, DC receive time is {}, now is {} ns)",
+        subdevice.configured_address(),
         system_time_offset,
         dc_system_time,
-        slave.dc_receive_time,
+        subdevice.dc_receive_time,
         now_nanos
     );
 
     Command::fpwr(
-        slave.configured_address(),
+        subdevice.configured_address(),
         RegisterAddress::DcSystemTimeOffset.into(),
     )
     .ignore_wkc()
-    .send(client, system_time_offset)
+    .send(maindevice, system_time_offset)
     .await?;
 
     Command::fpwr(
-        slave.configured_address(),
+        subdevice.configured_address(),
         RegisterAddress::DcSystemTimeTransmissionDelay.into(),
     )
     .ignore_wkc()
-    .send(client, slave.propagation_delay)
+    .send(maindevice, subdevice.propagation_delay)
     .await?;
 
     Ok(())
 }
 
-/// Find the slave parent device in the list of slaves before it in the linear topology.
+/// Find the SubDevice parent device in the list of SubDevices before it in the linear topology.
 ///
 /// # Implementation detail
 ///
@@ -111,7 +118,7 @@ async fn write_dc_parameters(
 ///
 /// Given the following topology, we want to find the parent device of the LAN9252 (index 5).
 /// According to EtherCAT topology rules, the parent device is the EK1100 (index 1), however the
-/// slave devices are discovered in network order (denoted here by `#N`), meaning there is some
+/// SubDevices are discovered in network order (denoted here by `#N`), meaning there is some
 /// special behaviour to consider when traversing backwards through the previous nodes before the
 /// LAN9252.
 ///
@@ -135,7 +142,10 @@ async fn write_dc_parameters(
 ///           │            │  │
 ///           └────────────┘◀─┘
 /// ```
-fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<u16>, Error> {
+fn find_subdevice_parent(
+    parents: &[SubDevice],
+    subdevice: &SubDevice,
+) -> Result<Option<u16>, Error> {
     // No parent if we're first in the network, e.g. the EK1100 in the diagram above
     if parents.is_empty() {
         return Ok(None);
@@ -152,11 +162,11 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<u16>, Er
         // that as the parent.
         if parent.ports.topology() == Topology::LineEnd {
             let split_point = parents_it
-                .find(|slave| slave.ports.topology().is_junction())
+                .find(|subdevice| subdevice.ports.topology().is_junction())
                 .ok_or_else(|| {
                     fmt::error!(
-                        "Did not find fork parent for slave {:#06x}",
-                        slave.configured_address()
+                        "Did not find fork parent for SubDevice {:#06x}",
+                        subdevice.configured_address()
                     );
 
                     Error::Topology
@@ -170,72 +180,82 @@ fn find_slave_parent(parents: &[Slave], slave: &Slave) -> Result<Option<u16>, Er
         }
     } else {
         fmt::error!(
-            "Did not find parent for slave {:#06x}",
-            slave.configured_address()
+            "Did not find parent for SubDevice {:#06x}",
+            subdevice.configured_address()
         );
 
         Err(Error::Topology)
     }
 }
 
-/// Calculate and assign a slave device's propagation delay, i.e. the time it takes for a packet to
+/// Calculate and assign a SubDevice's propagation delay, i.e. the time it takes for a packet to
 /// reach it when sent from the master.
-fn configure_slave_offsets(slave: &mut Slave, parents: &[Slave], delay_accum: &mut u32) {
+fn configure_subdevice_offsets(
+    subdevice: &mut SubDevice,
+    parents: &[SubDevice],
+    delay_accum: &mut u32,
+) {
     // Just for debug
     {
-        let time_p0 = slave.ports.0[0].dc_receive_time;
-        let time_p3 = slave.ports.0[1].dc_receive_time;
-        let time_p1 = slave.ports.0[2].dc_receive_time;
-        let time_p2 = slave.ports.0[3].dc_receive_time;
+        let time_p0 = subdevice.ports.0[0].dc_receive_time;
+        let time_p3 = subdevice.ports.0[1].dc_receive_time;
+        let time_p1 = subdevice.ports.0[2].dc_receive_time;
+        let time_p2 = subdevice.ports.0[3].dc_receive_time;
 
         // Deltas between port receive times
         let d03 = time_p3.saturating_sub(time_p0);
         let d31 = time_p1.saturating_sub(time_p3);
         let d12 = time_p2.saturating_sub(time_p1);
 
-        // let loop_propagation_time = slave.ports.total_propagation_time();
-        // let child_delay = slave.ports.fork_child_delay();
+        // let loop_propagation_time = subdevice.ports.total_propagation_time();
+        // let child_delay = subdevice.ports.fork_child_delay();
 
-        fmt::debug!("--> Topology {:?}, {}", slave.ports.topology(), slave.ports);
+        fmt::debug!(
+            "--> Topology {:?}, {}",
+            subdevice.ports.topology(),
+            subdevice.ports
+        );
         fmt::debug!(
             "--> Receive times {} ns ({} ns) {} ({} ns) {} ({} ns) {} (total {})",
             time_p0,
-            if slave.ports.0[1].active { d03 } else { 0 },
+            if subdevice.ports.0[1].active { d03 } else { 0 },
             // d03,
             time_p3,
-            if slave.ports.0[2].active { d31 } else { 0 },
+            if subdevice.ports.0[2].active { d31 } else { 0 },
             // d31,
             time_p1,
-            if slave.ports.0[3].active { d12 } else { 0 },
+            if subdevice.ports.0[3].active { d12 } else { 0 },
             // d12,
             time_p2,
-            slave.ports.total_propagation_time().unwrap_or(0)
+            subdevice.ports.total_propagation_time().unwrap_or(0)
         );
     }
 
-    let parent = slave
+    let parent = subdevice
         .parent_index
         .and_then(|parent_index| parents.iter().find(|parent| parent.index == parent_index));
 
     if let Some(parent) = parent {
-        let parent_port =
-            fmt::unwrap_opt!(parent.ports.port_assigned_to(slave), "Parent assigned port");
+        let parent_port = fmt::unwrap_opt!(
+            parent.ports.port_assigned_to(subdevice),
+            "Parent assigned port"
+        );
 
-        // The port the master is connected to on this slave. Must always be entry port.
-        let this_port = slave.ports.entry_port();
+        // The port the master is connected to on this SubDevice. Must always be entry port.
+        let this_port = subdevice.ports.entry_port();
 
         fmt::debug!(
-            "--> Parent ({:?}) {} port {} assigned to {} port {} (slave is child of parent: {:?})",
+            "--> Parent ({:?}) {} port {} assigned to {} port {} (SubDevice is child of parent: {:?})",
             parent.ports.topology(),
             parent.name(),
             parent_port.number,
-            slave.name(),
+            subdevice.name(),
             this_port.number,
-            slave.is_child_of(parent)
+            subdevice.is_child_of(parent)
         );
 
         let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
-        let this_prop_time = slave.ports.total_propagation_time().unwrap_or(0);
+        let this_prop_time = subdevice.ports.total_propagation_time().unwrap_or(0);
 
         fmt::debug!(
             "--> Parent propagation time {}, my prop. time {} delta {}",
@@ -247,7 +267,7 @@ fn configure_slave_offsets(slave: &mut Slave, parents: &[Slave], delay_accum: &m
         let propagation_delay = match parent.ports.topology() {
             Topology::Passthrough => (parent_prop_time - this_prop_time) / 2,
             Topology::Fork => {
-                if slave.is_child_of(parent) {
+                if subdevice.is_child_of(parent) {
                     let children_loop_time =
                         parent.ports.propagation_time_to(parent_port).unwrap_or(0);
 
@@ -257,7 +277,7 @@ fn configure_slave_offsets(slave: &mut Slave, parents: &[Slave], delay_accum: &m
                 }
             }
             Topology::Cross => {
-                if slave.is_child_of(parent) {
+                if subdevice.is_child_of(parent) {
                     let children_loop_time =
                         parent.ports.intermediate_propagation_time_to(parent_port);
 
@@ -267,7 +287,7 @@ fn configure_slave_offsets(slave: &mut Slave, parents: &[Slave], delay_accum: &m
                 }
             }
             // A parent of any device cannot have a `LineEnd` topology as it will always have at
-            // least 2 ports open (1 for comms to master, 1 to current slave device)
+            // least 2 ports open (1 for comms to master, 1 to current SubDevice)
             Topology::LineEnd => 0,
         };
 
@@ -279,46 +299,45 @@ fn configure_slave_offsets(slave: &mut Slave, parents: &[Slave], delay_accum: &m
             propagation_delay,
         );
 
-        slave.propagation_delay = *delay_accum;
+        subdevice.propagation_delay = *delay_accum;
     }
 }
 
-/// Assign parent/child relationships between slave devices, and compute propagation delays for all
-/// salves.
-fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
+/// Assign parent/child relationships and compute propagation delays for all SubDevices.
+fn assign_parent_relationships(subdevices: &mut [SubDevice]) -> Result<(), Error> {
     let mut delay_accum = 0;
 
-    for i in 0..slaves.len() {
-        let (parents, rest) = slaves.split_at_mut(i);
-        let slave = rest.first_mut().ok_or(Error::Internal)?;
+    for i in 0..subdevices.len() {
+        let (parents, rest) = subdevices.split_at_mut(i);
+        let subdevice = rest.first_mut().ok_or(Error::Internal)?;
 
-        slave.parent_index = find_slave_parent(parents, slave)?;
+        subdevice.parent_index = find_subdevice_parent(parents, subdevice)?;
 
         fmt::debug!(
-            "Slave {:#06x} {} {}",
-            slave.configured_address(),
-            slave.name,
-            slave.flags
+            "SubDevice {:#06x} {} {}",
+            subdevice.configured_address(),
+            subdevice.name,
+            subdevice.flags
         );
 
-        // If this slave has a parent, find it, then assign the parent's next open port to this
-        // slave, estabilishing the relationship between them by index.
-        if let Some(parent_idx) = slave.parent_index {
+        // If this SubDevice has a parent, find it, then assign the parent's next open port to this
+        // SubDevice, estabilishing the relationship between them by index.
+        if let Some(parent_idx) = subdevice.parent_index {
             let parent =
                 fmt::unwrap_opt!(parents.iter_mut().find(|parent| parent.index == parent_idx));
 
             fmt::unwrap_opt!(
-                parent.ports.assign_next_downstream_port(slave.index),
+                parent.ports.assign_next_downstream_port(subdevice.index),
                 "no free ports on parent"
             );
         }
 
-        if slave.flags.dc_supported {
-            configure_slave_offsets(slave, parents, &mut delay_accum);
+        if subdevice.flags.dc_supported {
+            configure_subdevice_offsets(subdevice, parents, &mut delay_accum);
         } else {
             fmt::trace!(
-                "--> Skipping DC config for slave {:#06x}: DC not supported",
-                slave.configured_address()
+                "--> Skipping DC config for slSubDeviceave {:#06x}: DC not supported",
+                subdevice.configured_address()
             );
         }
     }
@@ -326,8 +345,8 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
     // Extremely crude output to generate test cases with. `rustfmt` makes it look nice in the test.
     #[cfg(feature = "std")]
     if option_env!("PRINT_TEST_CASE").is_some() {
-        for slave in slaves.iter() {
-            let p = slave.ports.0;
+        for subdevice in subdevices.iter() {
+            let p = subdevice.ports.0;
 
             let ports = format!(
                 "{}, {}, {}, {}, {}, {}, {}, {}",
@@ -342,7 +361,7 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
             );
 
             println!(
-                r#"Slave {{
+                r#"SubDevice {{
                 index: {},
                 configured_address: {:#06x},
                 name: "{}".try_into().unwrap(),
@@ -352,31 +371,34 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
                 dc_receive_time: {},
                 ..defaults.clone()
             }},"#,
-                slave.index,
-                slave.configured_address(),
-                slave.name,
+                subdevice.index,
+                subdevice.configured_address(),
+                subdevice.name,
                 ports,
-                slave.dc_receive_time,
+                subdevice.dc_receive_time,
             );
         }
 
-        for slave in slaves.iter() {
+        for subdevice in subdevices.iter() {
             println!(
                 "// Index {}: {} ({:?})",
-                slave.index,
-                slave.name(),
-                slave.ports.topology()
+                subdevice.index,
+                subdevice.name(),
+                subdevice.ports.topology()
             );
 
             print!("(");
 
             print!("[");
-            for p in slave.ports.0 {
+            for p in subdevice.ports.0 {
                 print!("{:?}, ", p.downstream_to);
             }
             print!("],");
 
-            print!("{:?}, {}, ", slave.parent_index, slave.propagation_delay);
+            print!(
+                "{:?}, {}, ",
+                subdevice.parent_index, subdevice.propagation_delay
+            );
 
             print!("),");
 
@@ -391,22 +413,30 @@ fn assign_parent_relationships(slaves: &mut [Slave]) -> Result<(), Error> {
 ///
 /// This method walks through the discovered list of devices and sets the system time offset and
 /// transmission delay of each device.
-pub(crate) async fn configure_dc<'slaves>(
-    client: &Client<'_>,
-    slaves: &'slaves mut [Slave],
+pub(crate) async fn configure_dc<'subdevices>(
+    maindevice: &MainDevice<'_>,
+    subdevices: &'subdevices mut [SubDevice],
     now: impl Fn() -> u64,
-) -> Result<Option<&'slaves Slave>, Error> {
-    latch_dc_times(client, slaves).await?;
+) -> Result<Option<&'subdevices SubDevice>, Error> {
+    latch_dc_times(maindevice, subdevices).await?;
 
-    assign_parent_relationships(slaves)?;
+    assign_parent_relationships(subdevices)?;
 
-    let first_dc_slave = slaves.iter().find(|slave| slave.flags.dc_supported);
+    let first_dc_subdevice = subdevices
+        .iter()
+        .find(|subdevice| subdevice.flags.dc_supported);
 
-    if let Some(first_dc_slave) = first_dc_slave.as_ref() {
+    if let Some(first_dc_subdevice) = first_dc_subdevice.as_ref() {
         let now_nanos = now();
 
-        for slave in slaves.iter().filter(|sl| sl.dc_support().any()) {
-            write_dc_parameters(client, slave, first_dc_slave.dc_receive_time, now_nanos).await?;
+        for subdevice in subdevices.iter().filter(|sl| sl.dc_support().any()) {
+            write_dc_parameters(
+                maindevice,
+                subdevice,
+                first_dc_subdevice.dc_receive_time,
+                now_nanos,
+            )
+            .await?;
         }
     } else {
         fmt::debug!("No SubDevices with DC support found");
@@ -414,30 +444,30 @@ pub(crate) async fn configure_dc<'slaves>(
 
     fmt::debug!("Distributed clock config complete");
 
-    Ok(first_dc_slave)
+    Ok(first_dc_subdevice)
 }
 
 /// Send `iterations` FRMW frames to synchronise the network with the reference clock in the
 /// designated DC SubDevice.
 pub(crate) async fn run_dc_static_sync(
-    client: &Client<'_>,
-    dc_reference_slave: &Slave,
+    maindevice: &MainDevice<'_>,
+    dc_reference_subdevice: &SubDevice,
     iterations: u32,
 ) -> Result<(), Error> {
     fmt::debug!(
-        "Performing static drift compensation using slave {:#06x} {} as reference. This can take some time...",
-        dc_reference_slave.configured_address(),
-        dc_reference_slave.name
+        "Performing static drift compensation using SubDevice {:#06x} {} as reference. This can take some time...",
+        dc_reference_subdevice.configured_address(),
+        dc_reference_subdevice.name
     );
 
-    // Static drift compensation - distribute reference clock through network until slave clocks
+    // Static drift compensation - distribute reference clock through network until SubDevice clocks
     // settle
     for _ in 0..iterations {
         Command::frmw(
-            dc_reference_slave.configured_address(),
+            dc_reference_subdevice.configured_address(),
             RegisterAddress::DcSystemTime.into(),
         )
-        .receive_wkc::<u64>(client)
+        .receive_wkc::<u64>(maindevice)
         .await?;
     }
 
@@ -451,20 +481,20 @@ mod tests {
     use super::*;
     use crate::{
         register::SupportFlags,
-        slave::ports::{tests::make_ports, Port, Ports},
+        subdevice::ports::{tests::make_ports, Port, Ports},
     };
 
-    // A slave device in the middle of the chain
+    // A SubDevice in the middle of the chain
     fn ports_passthrough() -> Ports {
         make_ports(true, true, false, false)
     }
 
-    // EK1100 for example, with in/out ports and a bunch of slaves connected to it
+    // EK1100 for example, with in/out ports and a bunch of SubDevices connected to it
     fn ports_fork() -> Ports {
         make_ports(true, true, true, false)
     }
 
-    // Last slave in the network
+    // Last SubDevice in the network
     fn ports_eol() -> Ports {
         make_ports(true, false, false, false)
     }
@@ -472,7 +502,7 @@ mod tests {
     // Test for topology including an EK1100 that creates a fork in the tree.
     #[test]
     fn parent_is_ek1100() {
-        let slave_defaults = Slave {
+        let subdevice_defaults = SubDevice {
             configured_address: 0x0000,
             ports: Ports::default(),
             name: "Default".try_into().unwrap(),
@@ -485,45 +515,45 @@ mod tests {
         };
 
         let parents = [
-            Slave {
+            SubDevice {
                 configured_address: 0x1000,
                 ports: ports_passthrough(),
                 name: "LAN9252".try_into().unwrap(),
                 index: 0,
-                ..slave_defaults.clone()
+                ..subdevice_defaults.clone()
             },
-            Slave {
+            SubDevice {
                 configured_address: 0x1100,
                 ports: ports_fork(),
                 name: "EK1100".try_into().unwrap(),
                 index: 1,
-                ..slave_defaults.clone()
+                ..subdevice_defaults.clone()
             },
-            Slave {
+            SubDevice {
                 configured_address: 0x2004,
                 ports: ports_passthrough(),
                 name: "EL2004".try_into().unwrap(),
                 index: 2,
-                ..slave_defaults.clone()
+                ..subdevice_defaults.clone()
             },
-            Slave {
+            SubDevice {
                 configured_address: 0x3004,
                 ports: ports_eol(),
                 name: "EL3004".try_into().unwrap(),
                 index: 3,
-                ..slave_defaults.clone()
+                ..subdevice_defaults.clone()
             },
         ];
 
-        let me = Slave {
+        let me = SubDevice {
             configured_address: 0x9252,
             ports: ports_eol(),
             name: "LAN9252".try_into().unwrap(),
             index: 4,
-            ..slave_defaults
+            ..subdevice_defaults
         };
 
-        let parent_index = find_slave_parent(&parents, &me);
+        let parent_index = find_subdevice_parent(&parents, &me);
 
         assert_eq!(parent_index.unwrap(), Some(1));
     }
@@ -531,7 +561,7 @@ mod tests {
     // Two forks in the tree
     #[test]
     fn two_ek1100() {
-        let slave_defaults = Slave {
+        let subdevice_defaults = SubDevice {
             configured_address: 0x0000,
             ports: Ports::default(),
             name: "Default".try_into().unwrap(),
@@ -544,47 +574,47 @@ mod tests {
         };
 
         let parents = [
-            Slave {
+            SubDevice {
                 configured_address: 0x1100,
                 ports: ports_fork(),
                 name: "EK1100".try_into().unwrap(),
                 index: 1,
-                ..slave_defaults.clone()
+                ..subdevice_defaults.clone()
             },
-            Slave {
+            SubDevice {
                 configured_address: 0x2004,
                 ports: ports_passthrough(),
                 name: "EL2004".try_into().unwrap(),
                 index: 2,
-                ..slave_defaults.clone()
+                ..subdevice_defaults.clone()
             },
-            Slave {
+            SubDevice {
                 configured_address: 0x3004,
                 ports: ports_eol(),
                 name: "EL3004".try_into().unwrap(),
                 index: 3,
-                ..slave_defaults.clone()
+                ..subdevice_defaults.clone()
             },
-            Slave {
+            SubDevice {
                 configured_address: 0x1100,
                 ports: ports_fork(),
                 name: "EK1100_2".try_into().unwrap(),
                 index: 4,
-                ..slave_defaults.clone()
+                ..subdevice_defaults.clone()
             },
-            Slave {
+            SubDevice {
                 configured_address: 0x2004,
                 ports: ports_passthrough(),
                 name: "EL2828".try_into().unwrap(),
                 index: 5,
-                ..slave_defaults.clone()
+                ..subdevice_defaults.clone()
             },
-            Slave {
+            SubDevice {
                 configured_address: 0x3004,
                 ports: ports_eol(),
                 name: "EL2889".try_into().unwrap(),
                 index: 6,
-                ..slave_defaults.clone()
+                ..subdevice_defaults.clone()
             },
         ];
 
@@ -595,18 +625,18 @@ mod tests {
         let el2828 = &parents[4];
 
         assert_eq!(
-            find_slave_parent(ek1100_2_parents, ek1100_2).unwrap(),
+            find_subdevice_parent(ek1100_2_parents, ek1100_2).unwrap(),
             Some(1)
         );
         assert_eq!(
-            find_slave_parent(el2828_parents, el2828).unwrap(),
+            find_subdevice_parent(el2828_parents, el2828).unwrap(),
             Some(ek1100_2.index)
         );
     }
 
     #[test]
     fn first_in_chain() {
-        let slave_defaults = Slave {
+        let subdevice_defaults = SubDevice {
             configured_address: 0x1000,
             ports: Ports::default(),
             name: "Default".try_into().unwrap(),
@@ -620,15 +650,15 @@ mod tests {
 
         let parents = [];
 
-        let me = Slave {
+        let me = SubDevice {
             configured_address: 0x1100,
             ports: ports_eol(),
             name: "EK1100".try_into().unwrap(),
             index: 4,
-            ..slave_defaults
+            ..subdevice_defaults
         };
 
-        let parent_index = find_slave_parent(&parents, &me);
+        let parent_index = find_subdevice_parent(&parents, &me);
 
         assert_eq!(parent_index.unwrap(), None);
     }
@@ -665,7 +695,7 @@ mod tests {
 
         assert_eq!(ports.topology(), Topology::LineEnd);
 
-        let mut slave = Slave {
+        let mut subdevice = SubDevice {
             configured_address: 0x1000,
             ports,
             name: "Default".try_into().unwrap(),
@@ -681,9 +711,9 @@ mod tests {
 
         let mut delay_accum = 0u32;
 
-        configure_slave_offsets(&mut slave, &parents, &mut delay_accum);
+        configure_subdevice_offsets(&mut subdevice, &parents, &mut delay_accum);
 
-        assert_eq!(slave.dc_receive_time, 0u64);
+        assert_eq!(subdevice.dc_receive_time, 0u64);
     }
 
     /// Create a ports object with active flags and DC receive times.
@@ -705,13 +735,13 @@ mod tests {
         ports
     }
 
-    // Test that slave parent/child relationships are established, and that propagation delays are
-    // computed correctly.
+    // Test that SubDevice parent/child relationships are established, and that propagation delays
+    // are computed correctly.
     #[test]
     fn propagation_delay_calc_fork() {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let defaults = Slave {
+        let defaults = SubDevice {
             configured_address: 0x999,
             name: "CHANGEME".try_into().unwrap(),
             ports: Ports::default(),
@@ -721,7 +751,7 @@ mod tests {
                 dc_supported: true,
                 ..SupportFlags::default()
             },
-            ..Slave::default()
+            ..SubDevice::default()
         };
 
         // Input data represents the following topology
@@ -731,8 +761,8 @@ mod tests {
         // --> EL9560
         // EK1914
         // --> EL1008
-        let mut slaves = [
-            Slave {
+        let mut subdevices = [
+            SubDevice {
                 index: 0,
                 configured_address: 0x1000,
                 name: "EK1100".try_into().unwrap(),
@@ -742,7 +772,7 @@ mod tests {
                 dc_receive_time: 402812332410,
                 ..defaults.clone()
             },
-            Slave {
+            SubDevice {
                 index: 1,
                 configured_address: 0x1001,
                 name: "EK1122".try_into().unwrap(),
@@ -752,7 +782,7 @@ mod tests {
                 dc_receive_time: 402816074890,
                 ..defaults.clone()
             },
-            Slave {
+            SubDevice {
                 index: 2,
                 configured_address: 0x1002,
                 name: "EL9560".try_into().unwrap(),
@@ -762,7 +792,7 @@ mod tests {
                 dc_receive_time: 0,
                 ..defaults.clone()
             },
-            Slave {
+            SubDevice {
                 index: 3,
                 configured_address: 0x1003,
                 name: "EK1914".try_into().unwrap(),
@@ -772,7 +802,7 @@ mod tests {
                 dc_receive_time: 0,
                 ..defaults.clone()
             },
-            Slave {
+            SubDevice {
                 index: 4,
                 configured_address: 0x1004,
                 name: "EL1008".try_into().unwrap(),
@@ -798,30 +828,30 @@ mod tests {
         ];
 
         let expected = {
-            let mut expected = slaves.clone();
+            let mut expected = subdevices.clone();
 
             expected.iter_mut().zip(downstreams).for_each(
-                |(slave, ([d0, d3, d1, d2], parent_index, propagation_delay))| {
-                    slave.ports.set_downstreams(d0, d3, d1, d2);
+                |(subdevice, ([d0, d3, d1, d2], parent_index, propagation_delay))| {
+                    subdevice.ports.set_downstreams(d0, d3, d1, d2);
 
-                    slave.parent_index = parent_index;
-                    slave.propagation_delay = propagation_delay;
+                    subdevice.parent_index = parent_index;
+                    subdevice.propagation_delay = propagation_delay;
                 },
             );
 
             expected
         };
 
-        assign_parent_relationships(&mut slaves).expect("assign");
+        assign_parent_relationships(&mut subdevices).expect("assign");
 
-        pretty_assertions::assert_eq!(slaves, expected);
+        pretty_assertions::assert_eq!(subdevices, expected);
     }
 
     #[test]
     fn propagation_delay_calc_cross() {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let defaults = Slave {
+        let defaults = SubDevice {
             configured_address: 0x999,
             name: "CHANGEME".try_into().unwrap(),
             ports: Ports::default(),
@@ -831,11 +861,11 @@ mod tests {
                 dc_supported: true,
                 ..SupportFlags::default()
             },
-            ..Slave::default()
+            ..SubDevice::default()
         };
 
-        let mut slaves = [
-            Slave {
+        let mut subdevices = [
+            SubDevice {
                 index: 0,
                 configured_address: 0x1000,
                 name: "EK1100".try_into().unwrap(),
@@ -845,7 +875,7 @@ mod tests {
                 dc_receive_time: 3493061450,
                 ..defaults.clone()
             },
-            Slave {
+            SubDevice {
                 index: 1,
                 configured_address: 0x1001,
                 name: "EK1122".try_into().unwrap(),
@@ -855,7 +885,7 @@ mod tests {
                 dc_receive_time: 3493293220,
                 ..defaults.clone()
             },
-            Slave {
+            SubDevice {
                 index: 2,
                 configured_address: 0x1002,
                 name: "EK1914".try_into().unwrap(),
@@ -865,7 +895,7 @@ mod tests {
                 dc_receive_time: 0,
                 ..defaults.clone()
             },
-            Slave {
+            SubDevice {
                 index: 3,
                 configured_address: 0x1003,
                 name: "EL1008".try_into().unwrap(),
@@ -875,7 +905,7 @@ mod tests {
                 dc_receive_time: 0,
                 ..defaults.clone()
             },
-            Slave {
+            SubDevice {
                 index: 4,
                 configured_address: 0x1004,
                 name: "EK1101".try_into().unwrap(),
@@ -885,7 +915,7 @@ mod tests {
                 dc_receive_time: 3485087810,
                 ..defaults.clone()
             },
-            Slave {
+            SubDevice {
                 index: 5,
                 configured_address: 0x1005,
                 name: "EL9560".try_into().unwrap(),
@@ -913,22 +943,22 @@ mod tests {
         ];
 
         let expected = {
-            let mut expected = slaves.clone();
+            let mut expected = subdevices.clone();
 
             expected.iter_mut().zip(downstreams).for_each(
-                |(slave, ([d0, d3, d1, d2], parent_index, propagation_delay))| {
-                    slave.ports.set_downstreams(d0, d3, d1, d2);
+                |(subdevice, ([d0, d3, d1, d2], parent_index, propagation_delay))| {
+                    subdevice.ports.set_downstreams(d0, d3, d1, d2);
 
-                    slave.parent_index = parent_index;
-                    slave.propagation_delay = propagation_delay;
+                    subdevice.parent_index = parent_index;
+                    subdevice.propagation_delay = propagation_delay;
                 },
             );
 
             expected
         };
 
-        assign_parent_relationships(&mut slaves).expect("assign");
+        assign_parent_relationships(&mut subdevices).expect("assign");
 
-        pretty_assertions::assert_eq!(slaves, expected);
+        pretty_assertions::assert_eq!(subdevices, expected);
     }
 }

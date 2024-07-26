@@ -3,12 +3,12 @@
 use env_logger::Env;
 use ethercrab::{
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
 use std::sync::Arc;
 
-/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-const MAX_SLAVES: usize = 128;
+/// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
+const MAX_SUBDEVICES: usize = 128;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
@@ -29,31 +29,31 @@ fn main() {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Arc::new(Client::new(
+    let maindevice = Arc::new(MainDevice::new(
         pdu_loop,
         Timeouts::default(),
-        ClientConfig {
+        MainDeviceConfig {
             dc_static_sync_iterations: 0,
-            ..ClientConfig::default()
+            ..MainDeviceConfig::default()
         },
     ));
 
     smol::block_on(async {
         smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
-        let mut group = client
-            .init_single_group::<MAX_SLAVES, PDI_LEN>(ethercat_now)
+        let mut group = maindevice
+            .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
             .await
             .expect("Init");
 
-        log::info!("Discovered {} slaves", group.len());
+        log::info!("Discovered {} SubDevices", group.len());
 
-        for slave in group.iter(&client) {
+        for subdevice in group.iter(&maindevice) {
             log::info!(
-                "--> Slave {:#06x} {} {}",
-                slave.configured_address(),
-                slave.name(),
-                slave.identity()
+                "--> SubDevice {:#06x} {} {}",
+                subdevice.configured_address(),
+                subdevice.name(),
+                subdevice.identity()
             );
         }
     });
