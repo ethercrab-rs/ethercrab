@@ -1,4 +1,4 @@
-use crate::{error::Error, pdu_loop::ReceivedPdu, Client};
+use crate::{error::Error, pdu_loop::ReceivedPdu, MainDevice};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 
 /// Write commands.
@@ -8,7 +8,7 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 pub enum Writes {
     /// BWR.
     Bwr {
-        /// Autoincremented by each slave visited.
+        /// Autoincremented by each SubDevice visited.
         address: u16,
 
         /// Memory location to write to.
@@ -90,47 +90,49 @@ impl WrappedWrite {
 
     /// Send a payload with a length set by [`with_len`](WrappedWrite::with_len), ignoring the
     /// response.
-    pub async fn send<'client>(
+    pub async fn send<'maindevice>(
         self,
-        client: &'client Client<'client>,
+        maindevice: &'maindevice MainDevice<'maindevice>,
         data: impl EtherCrabWireWrite,
     ) -> Result<(), Error> {
-        self.common(client, data, self.len_override).await?;
+        self.common(maindevice, data, self.len_override).await?;
 
         Ok(())
     }
 
     /// Send a value, returning the response returned from the network.
-    pub async fn send_receive<'data, 'client, T>(
+    pub async fn send_receive<'data, 'maindevice, T>(
         self,
-        client: &'client Client<'client>,
+        maindevice: &'maindevice MainDevice<'maindevice>,
         value: impl EtherCrabWireWrite,
     ) -> Result<T, Error>
     where
         T: EtherCrabWireRead,
     {
-        self.common(client, value, None)
+        self.common(maindevice, value, None)
             .await?
             .maybe_wkc(self.wkc)
             .and_then(|data| Ok(T::unpack_from_slice(&data)?))
     }
 
     /// Similar to [`send_receive`](WrappedWrite::send_receive) but returns a slice.
-    pub async fn send_receive_slice<'client>(
+    pub async fn send_receive_slice<'maindevice>(
         self,
-        client: &'client Client<'client>,
+        maindevice: &'maindevice MainDevice<'maindevice>,
         value: impl EtherCrabWireWrite,
-    ) -> Result<ReceivedPdu<'client>, Error> {
-        self.common(client, value, None).await?.maybe_wkc(self.wkc)
+    ) -> Result<ReceivedPdu<'maindevice>, Error> {
+        self.common(maindevice, value, None)
+            .await?
+            .maybe_wkc(self.wkc)
     }
 
     // Some manual monomorphisation
-    fn common<'client>(
+    fn common<'maindevice>(
         &self,
-        client: &'client Client<'client>,
+        maindevice: &'maindevice MainDevice<'maindevice>,
         value: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-    ) -> impl core::future::Future<Output = Result<ReceivedPdu<'client>, Error>> {
-        client.single_pdu(self.command.into(), value, len_override)
+    ) -> impl core::future::Future<Output = Result<ReceivedPdu<'maindevice>, Error>> {
+        maindevice.single_pdu(self.command.into(), value, len_override)
     }
 }

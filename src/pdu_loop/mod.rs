@@ -184,7 +184,7 @@ mod tests {
                 0x0f, 0x10, // EtherCAT frame header: type PDU, length 3 (plus header)
                 0x05, // Command: FPWR
                 0x00, // Frame index 0
-                0x78, 0x56, // Slave address,
+                0x78, 0x56, // SubDevice address,
                 0x34, 0x12, // Register address
                 0x03, 0x00, // Flags, 3 byte length
                 0x00, 0x00, // IRQ
@@ -321,7 +321,7 @@ mod tests {
                 0x0e, 0x10, // EtherCAT frame header: type PDU, length 2 (plus header)
                 0x05, // Command: FPWR
                 0x01, // Frame index 1 (first dropped frame used up index 0)
-                0x89, 0x67, // Slave address,
+                0x89, 0x67, // SubDevice address,
                 0x34, 0x12, // Register address
                 0x02, 0x00, // Flags, 2 byte length
                 0x00, 0x00, // IRQ
@@ -342,7 +342,7 @@ mod tests {
             0x10, 0x10, // EtherCAT frame header: type PDU, length 4 (plus header)
             0x05, // Command: FPWR
             0x00, // Frame index 0
-            0x89, 0x67, // Slave address,
+            0x89, 0x67, // SubDevice address,
             0x34, 0x12, // Register address
             0x04, 0x00, // Flags, 4 byte length
             0x00, 0x00, // IRQ
@@ -488,9 +488,9 @@ mod tests {
         let _ = env_logger::builder().is_test(true).try_init();
         env_logger::try_init().ok();
 
-        const MAX_SLAVES: usize = 16;
+        const MAX_SUBDEVICES: usize = 16;
 
-        static STORAGE: PduStorage<MAX_SLAVES, 128> = PduStorage::<MAX_SLAVES, 128>::new();
+        static STORAGE: PduStorage<MAX_SUBDEVICES, 128> = PduStorage::<MAX_SUBDEVICES, 128>::new();
         let (mut tx, mut rx, pdu_loop) = STORAGE.try_split().unwrap();
 
         let (sent, received) = thread::scope(|s| {
@@ -520,7 +520,7 @@ mod tests {
 
                     thread::sleep(Duration::from_millis(1));
 
-                    if sent == MAX_SLAVES {
+                    if sent == MAX_SUBDEVICES {
                         break sent;
                     }
                 }
@@ -550,7 +550,7 @@ mod tests {
 
                     received += 1;
 
-                    if received == MAX_SLAVES {
+                    if received == MAX_SUBDEVICES {
                         break;
                     }
                 }
@@ -560,7 +560,7 @@ mod tests {
 
             let pdu_loop = Arc::new(pdu_loop);
 
-            for i in 0..MAX_SLAVES {
+            for i in 0..MAX_SUBDEVICES {
                 let pdu_loop = pdu_loop.clone();
 
                 s.spawn(move || {
@@ -598,7 +598,7 @@ mod tests {
         });
 
         assert_eq!(sent, received);
-        assert_eq!(sent, MAX_SLAVES);
+        assert_eq!(sent, MAX_SUBDEVICES);
 
         fmt::info!("Sent all PDUs");
     }

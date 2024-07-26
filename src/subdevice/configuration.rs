@@ -1,4 +1,4 @@
-use super::{Slave, SlaveRef};
+use super::{SubDevice, SubDeviceRef};
 use crate::{
     coe::{SdoExpedited, SubIndex},
     eeprom::types::{
@@ -10,22 +10,23 @@ use crate::{
     fmt,
     pdi::{PdiOffset, PdiSegment},
     register::RegisterAddress,
-    slave::types::{Mailbox, MailboxConfig},
-    slave_state::SlaveState,
+    subdevice::types::{Mailbox, MailboxConfig},
+    subdevice_state::SubDeviceState,
     sync_manager_channel::{Enable, Status, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
 use core::ops::DerefMut;
 
 /// Configuation from EEPROM methods.
-impl<'a, S> SlaveRef<'a, S>
+impl<'a, S> SubDeviceRef<'a, S>
 where
-    S: DerefMut<Target = Slave>,
+    S: DerefMut<Target = SubDevice>,
 {
     /// First stage configuration (INIT -> PRE-OP).
     ///
-    /// Continue configuration by calling [`configure_fmmus`](SlaveConfigurator::configure_fmmus)
+    /// Continue configuration by calling
+    /// [`configure_fmmus`](crate::SubDeviceGroup::configure_fmmus).
     pub(crate) async fn configure_mailboxes(&mut self) -> Result<(), Error> {
-        // Force EEPROM into master mode. Some slaves require PDI mode for INIT -> PRE-OP
+        // Force EEPROM into master mode. Some SubDevices require PDI mode for INIT -> PRE-OP
         // transition. This is mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd". We'll reset
         // to master mode here, now that the transition is complete.
         self.set_eeprom_mode(SiiOwner::Master).await?;
@@ -35,16 +36,16 @@ where
         // Mailboxes must be configured in INIT state
         self.configure_mailbox_sms(&sync_managers).await?;
 
-        // Some slaves must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
+        // Some SubDevices must be in PDI EEPROM mode to transition from INIT to PRE-OP. This is
         // mentioned in ETG2010 p. 146 under "Eeprom/@AssignToPd"
         self.set_eeprom_mode(SiiOwner::Pdi).await?;
 
         fmt::debug!(
-            "Slave {:#06x} mailbox SMs configured. Transitioning to PRE-OP",
+            "SubDevice {:#06x} mailbox SMs configured. Transitioning to PRE-OP",
             self.configured_address
         );
 
-        self.request_slave_state(SlaveState::PreOp).await?;
+        self.request_subdevice_state(SubDeviceState::PreOp).await?;
 
         if self.state.config.mailbox.has_coe {
             // TODO: Abstract this no-complete-access check into a method call so we can reuse it.
@@ -85,7 +86,7 @@ where
             };
 
             fmt::debug!(
-                "Slave {:#06x} found sync managers {:?}",
+                "SubDevice {:#06x} found sync managers {:?}",
                 self.configured_address,
                 sms
             );
@@ -112,16 +113,16 @@ where
 
         let state = self.state().await?;
 
-        if state != SlaveState::PreOp {
+        if state != SubDeviceState::PreOp {
             fmt::error!(
-                "Slave {:#06x} is in invalid state {}. Expected {}",
+                "SubDevice {:#06x} is in invalid state {}. Expected {}",
                 self.configured_address,
                 state,
-                SlaveState::PreOp
+                SubDeviceState::PreOp
             );
 
             return Err(Error::InvalidState {
-                expected: SlaveState::PreOp,
+                expected: SubDeviceState::PreOp,
                 actual: state,
                 configured_address: self.configured_address,
             });
@@ -130,7 +131,7 @@ where
         let has_coe = self.state.config.mailbox.has_coe;
 
         fmt::debug!(
-            "Slave {:#06x} has CoE: {:?}",
+            "SubDevice {:#06x} has CoE: {:?}",
             self.configured_address,
             has_coe
         );
@@ -161,7 +162,7 @@ where
         };
 
         fmt::debug!(
-            "Slave {:#06x} PDI inputs: {:?} ({} bytes), outputs: {:?} ({} bytes)",
+            "SubDevice {:#06x} PDI inputs: {:?} ({} bytes), outputs: {:?} ({} bytes)",
             self.configured_address,
             self.state.config.io.input,
             self.state.config.io.input.len(),
@@ -191,11 +192,11 @@ where
         };
 
         self.write(RegisterAddress::sync_manager(sync_manager_index))
-            .send(self.client, sm_config)
+            .send(self.maindevice, sm_config)
             .await?;
 
         fmt::debug!(
-            "Slave {:#06x} SM{}: {}",
+            "SubDevice {:#06x} SM{}: {}",
             self.configured_address,
             sync_manager_index,
             sm_config
@@ -207,20 +208,20 @@ where
 
     /// Configure SM0 and SM1 for mailbox communication.
     async fn configure_mailbox_sms(&mut self, sync_managers: &[SyncManager]) -> Result<(), Error> {
-        // Read default mailbox configuration from slave information area
+        // Read default mailbox configuration from SubDevice information area
         let mailbox_config = self.eeprom().mailbox_config().await?;
 
         let general = self.eeprom().general().await?;
 
         fmt::trace!(
-            "Slave {:#06x} Mailbox configuration: {:#?}",
+            "SubDevice {:#06x} Mailbox configuration: {:#?}",
             self.configured_address,
             mailbox_config
         );
 
         if !mailbox_config.has_mailbox() {
             fmt::trace!(
-                "Slave {:#06x} has no valid mailbox configuration",
+                "SubDevice {:#06x} has no valid mailbox configuration",
                 self.configured_address
             );
 
@@ -239,13 +240,13 @@ where
                     self.write_sm_config(
                         sync_manager_index,
                         sync_manager,
-                        mailbox_config.slave_receive_size,
+                        mailbox_config.subdevice_receive_size,
                     )
                     .await?;
 
                     write_mailbox = Some(Mailbox {
                         address: sync_manager.start_addr,
-                        len: mailbox_config.slave_receive_size,
+                        len: mailbox_config.subdevice_receive_size,
                         sync_manager: sync_manager_index,
                     });
                 }
@@ -253,13 +254,13 @@ where
                     self.write_sm_config(
                         sync_manager_index,
                         sync_manager,
-                        mailbox_config.slave_send_size,
+                        mailbox_config.subdevice_send_size,
                     )
                     .await?;
 
                     read_mailbox = Some(Mailbox {
                         address: sync_manager.start_addr,
-                        len: mailbox_config.slave_send_size,
+                        len: mailbox_config.subdevice_send_size,
                         sync_manager: sync_manager_index,
                     });
                 }
@@ -298,7 +299,7 @@ where
 
         let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
 
-        // NOTE: Commented out because this causes a timeout on various slave devices, possibly due
+        // NOTE: Commented out because this causes a timeout on various SubDevices, possibly due
         // to querying 0x1c00 after we enter PRE-OP but I'm unsure. See
         // <https://github.com/ethercrab-rs/ethercrab/issues/49>. Complete access also causes the
         // same issue.
@@ -447,10 +448,10 @@ where
         desired_sm_type: SyncManagerType,
         sm_config: &SyncManagerChannel,
     ) -> Result<(), Error> {
-        // Multiple SMs may use the same FMMU, so we'll read the existing config from the slave
+        // Multiple SMs may use the same FMMU, so we'll read the existing config from the SubDevice
         let mut fmmu_config = self
             .read(RegisterAddress::fmmu(fmmu_index as u8))
-            .receive::<Fmmu>(self.client)
+            .receive::<Fmmu>(self.maindevice)
             .await?;
 
         // We can use the enable flag as a sentinel for existing config because EtherCrab inits
@@ -463,7 +464,7 @@ where
             Fmmu {
                 logical_start_address: global_offset.start_address,
                 length_bytes: sm_config.length_bytes,
-                // Mapping into PDI is byte-aligned until/if we support bit-oriented slaves
+                // Mapping into PDI is byte-aligned until/if we support bit-oriented SubDevices
                 logical_start_bit: 0,
                 // Always byte-aligned
                 logical_end_bit: 7,
@@ -476,11 +477,11 @@ where
         };
 
         self.write(RegisterAddress::fmmu(fmmu_index as u8))
-            .send(self.client, fmmu_config)
+            .send(self.maindevice, fmmu_config)
             .await?;
 
         fmt::debug!(
-            "Slave {:#06x} FMMU{}: {}",
+            "SubDevice {:#06x} FMMU{}: {}",
             self.configured_address,
             fmmu_index,
             fmmu_config
@@ -503,14 +504,14 @@ where
             PdoDirection::MasterRead => {
                 let read_pdos = self.eeprom().master_read_pdos().await?;
 
-                fmt::trace!("Slave inputs PDOs {:#?}", read_pdos);
+                fmt::trace!("SubDevice inputs PDOs {:#?}", read_pdos);
 
                 read_pdos
             }
             PdoDirection::MasterWrite => {
                 let write_pdos = self.eeprom().master_write_pdos().await?;
 
-                fmt::trace!("Slave outputs PDOs {:#?}", write_pdos);
+                fmt::trace!("SubDevice outputs PDOs {:#?}", write_pdos);
 
                 write_pdos
             }

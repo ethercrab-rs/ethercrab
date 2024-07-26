@@ -1,9 +1,9 @@
 use core::ops::Range;
 
-/// An accumulator that stores the bit and byte offsets in the PDI so slave IO data can be mapped
+/// An accumulator that stores the bit and byte offsets in the PDI so SubDevice IO data can be mapped
 /// to/from the PDI using FMMUs.
 ///
-/// PDI mappings are byte-aligned per each slave.
+/// PDI mappings are byte-aligned per each SubDevice.
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PdiOffset {

@@ -18,7 +18,7 @@ fn main() -> Result<(), ethercrab::error::Error> {
     use ethercrab::{
         error::Error,
         std::{ethercat_now, tx_rx_task_io_uring},
-        Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+        MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
     };
     use std::{
         sync::Arc,
@@ -30,8 +30,8 @@ fn main() -> Result<(), ethercrab::error::Error> {
     };
     use timerfd::{SetTimeFlags, TimerFd, TimerState};
 
-    /// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-    const MAX_SLAVES: usize = 16;
+    /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
+    const MAX_SUBDEVICES: usize = 16;
     /// Maximum PDU data payload size - set this to the max PDI size or higher.
     const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
     /// Maximum number of EtherCAT frames that can be in flight at any one time.
@@ -48,9 +48,9 @@ fn main() -> Result<(), ethercrab::error::Error> {
         ///
         /// We'll keep the EK1100/EK1501 in here as it has no useful PDI but still needs to live
         /// somewhere.
-        slow_outputs: SlaveGroup<2, 4>,
+        slow_outputs: SubDeviceGroup<2, 4>,
         /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-        fast_outputs: SlaveGroup<1, 1>,
+        fast_outputs: SubDeviceGroup<1, 1>,
     }
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
@@ -63,7 +63,7 @@ fn main() -> Result<(), ethercrab::error::Error> {
 
     log::info!("Starting multiple groups demo...");
     log::info!(
-        "Ensure an EK1100 or EK1501 is the first slave device, with an EL2828 and EL2889 following it"
+        "Ensure an EK1100 or EK1501 is the first SubDevice, with an EL2828 and EL2889 following it"
     );
     log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
@@ -108,25 +108,25 @@ fn main() -> Result<(), ethercrab::error::Error> {
     // Wait for TX/RX loop to start
     thread::sleep(Duration::from_millis(200));
 
-    let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 
-    let client = Arc::new(client);
+    let maindevice = Arc::new(maindevice);
 
-    // Read configurations from slave EEPROMs and configure devices.
+    // Read configurations from SubDevice EEPROMs and configure devices.
     let Groups {
         slow_outputs,
         fast_outputs,
-    } = futures_lite::future::block_on(client.init::<MAX_SLAVES, _>(
+    } = futures_lite::future::block_on(maindevice.init::<MAX_SUBDEVICES, _>(
         ethercat_now,
-        |groups: &Groups, slave| match slave.name() {
+        |groups: &Groups, subdevice| match subdevice.name() {
             "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
             "EL2828" => Ok(&groups.fast_outputs),
-            _ => Err(Error::UnknownSlave),
+            _ => Err(Error::UnknownSubDevice),
         },
     ))
     .expect("Init");
 
-    let client_slow = client.clone();
+    let maindevice_slow = maindevice.clone();
 
     let slow = thread_priority::ThreadBuilder::default()
         .name("slow-task")
@@ -146,7 +146,7 @@ fn main() -> Result<(), ethercrab::error::Error> {
 
             futures_lite::future::block_on::<Result<(), Error>>(async {
                 let slow_outputs = slow_outputs
-                    .into_op(&client_slow)
+                    .into_op(&maindevice_slow)
                     .await
                     .expect("PRE-OP -> OP");
 
@@ -167,9 +167,9 @@ fn main() -> Result<(), ethercrab::error::Error> {
                 // Only update "slow" outputs every 250ms using this instant
                 let mut tick = Instant::now();
 
-                // EK1100 is first slave, EL2889 is second
+                // EK1100 is first SubDevice, EL2889 is second
                 let mut el2889 = slow_outputs
-                    .slave(&client_slow, 1)
+                    .subdevice(&maindevice_slow, 1)
                     .expect("EL2889 not present!");
 
                 // Set initial output state
@@ -177,9 +177,9 @@ fn main() -> Result<(), ethercrab::error::Error> {
                 el2889.io_raw_mut().1[1] = 0x80;
 
                 loop {
-                    slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
+                    slow_outputs.tx_rx(&maindevice_slow).await.expect("TX/RX");
 
-                    // Increment every output byte for every slave device by one
+                    // Increment every output byte for every SubDevice by one
                     if tick.elapsed() > slow_duration {
                         tick = Instant::now();
 
@@ -214,7 +214,10 @@ fn main() -> Result<(), ethercrab::error::Error> {
                 .expect("Set fast thread core");
 
             futures_lite::future::block_on::<Result<(), Error>>(async {
-                let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
+                let mut fast_outputs = fast_outputs
+                    .into_op(&maindevice)
+                    .await
+                    .expect("PRE-OP -> OP");
 
                 let fast_cycle_time = Duration::from_micros(INTERVAL);
 
@@ -229,11 +232,11 @@ fn main() -> Result<(), ethercrab::error::Error> {
                 );
 
                 loop {
-                    fast_outputs.tx_rx(&client).await.expect("TX/RX");
+                    fast_outputs.tx_rx(&maindevice).await.expect("TX/RX");
 
-                    // Increment every output byte for every slave device by one
-                    for mut slave in fast_outputs.iter(&client) {
-                        let (_i, o) = slave.io_raw_mut();
+                    // Increment every output byte for every SubDevice by one
+                    for mut subdevice in fast_outputs.iter(&maindevice) {
+                        let (_i, o) = subdevice.io_raw_mut();
 
                         for byte in o.iter_mut() {
                             *byte = byte.wrapping_add(1);

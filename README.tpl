@@ -17,14 +17,14 @@
 - [x] Usable in `no_std` contexts with no allocator required, as long as an `async` executor is available.
   - [x] Tested with [Embassy](https://embassy.dev)
   - [ ] Tested with [RTIC](https://rtic.rs/2/book/en/)
-- [x] Autoconfigure slaves from their EEPROM (SII) data during startup
+- [x] Autoconfigure SubDevices from their EEPROM (SII) data during startup
   - [x] Supports configuration using CoE data
 - [x] Safely usable in multi-threaded Linux systems with e.g. `smol`, `tokio` or `std::thread` and
       `block_on`.
 - [x] Support for `io_uring` on Linux systems to improve performance and latency
-- [x] Support for SDO read/writes to configure slave devices
+- [x] Support for SDO read/writes to configure SubDevices
 - [x] Distributed clocks
-  - [x] Detection of delays between slave devices in topology
+  - [x] Detection of delays between SubDevices in topology
   - [x] Static drift compensation on startup
   - [x] Cyclic synchronisation during OP
 - [x] Basic support for [CiA402](https://www.can-cia.org/can-knowledge/canopen/cia402/)/DS402 drives
@@ -32,7 +32,7 @@
         a more abstract way.
 - [ ] Integration with LinuxCNC as a HAL component using
       [the `linuxcnc-hal` crate](https://github.com/jamwaffles/linuxcnc-hal-rs).
-- [ ] Load slave configurations from ESI XML files
+- [ ] Load SubDevice configurations from ESI XML files
 
 ## Sponsors
 

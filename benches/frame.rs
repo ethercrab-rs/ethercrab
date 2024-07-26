@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use ethercrab::{Client, ClientConfig, Command, PduStorage, Timeouts};
+use ethercrab::{Command, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
 use futures_lite::FutureExt;
 use std::{future::poll_fn, pin::pin, task::Poll};
 
@@ -11,11 +11,11 @@ pub fn push_pdu(c: &mut Criterion) {
 
     let (_tx, _rx, pdu_loop) = storage.try_split().unwrap();
 
-    let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 
     c.bench_function("frame push pdu", |b| {
         b.iter(|| {
-            let mut f = pin!(Command::fpwr(0x5678, 0x1234).send_receive_slice(&client, &DATA));
+            let mut f = pin!(Command::fpwr(0x5678, 0x1234).send_receive_slice(&maindevice, &DATA));
 
             cassette::block_on(poll_fn(|ctx| {
                 let _ = f.poll(ctx);

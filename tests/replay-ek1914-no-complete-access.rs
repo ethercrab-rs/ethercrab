@@ -1,4 +1,4 @@
-//! Checking that slave devices with no support for CoE complete access still initialise.
+//! Checking that SubDevices with no support for CoE complete access still initialise.
 //!
 //! Required hardware:
 //!
@@ -6,10 +6,10 @@
 
 mod util;
 
-use ethercrab::{error::Error, Client, ClientConfig, PduStorage, RetryBehaviour, Timeouts};
+use ethercrab::{error::Error, MainDevice, MainDeviceConfig, PduStorage, RetryBehaviour, Timeouts};
 use std::{path::PathBuf, time::Duration};
 
-const MAX_SLAVES: usize = 16;
+const MAX_SUBDEVICES: usize = 16;
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 const MAX_FRAMES: usize = 128;
 const PDI_LEN: usize = 128;
@@ -21,13 +21,13 @@ async fn replay_ek1914_no_complete_access() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Client::new(
+    let maindevice = MainDevice::new(
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(5),
             ..Timeouts::default()
         },
-        ClientConfig {
+        MainDeviceConfig {
             dc_static_sync_iterations: 100,
             retry_behaviour: RetryBehaviour::None,
         },
@@ -41,15 +41,15 @@ async fn replay_ek1914_no_complete_access() -> Result<(), Error> {
 
     util::spawn_tx_rx(&format!("tests/{test_name}.pcapng"), tx, rx);
 
-    // Read configurations from slave EEPROMs and configure devices.
-    let group = client
-        .init_single_group::<MAX_SLAVES, PDI_LEN>(|| 0)
+    // Read configurations from SubDevice EEPROMs and configure devices.
+    let group = maindevice
+        .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(|| 0)
         .await
         .expect("Init");
 
-    assert_eq!(group.slave(&client, 0)?.name(), "EK1914");
+    assert_eq!(group.subdevice(&maindevice, 0)?.name(), "EK1914");
 
-    let _group = group.into_op(&client).await.expect("PRE-OP -> OP");
+    let _group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
 
     Ok(())
 }

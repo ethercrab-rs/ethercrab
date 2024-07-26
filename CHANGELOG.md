@@ -16,6 +16,32 @@ An EtherCAT master written in Rust.
   `got` fields from `Error::Wire(WireError::{Read,Write}BufferTooShort)`.
 - **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Increase MSRV from 1.75
   to 1.77.
+- **(breaking)** [#227](https://github.com/ethercrab-rs/ethercrab/pull/227) Renamed many public
+  items to use the newer EtherCAT terminology `MainDevice` and `SubDevice` for master/slave
+  respectively.
+
+  | Type      | Old                                        | New                                            |
+  | --------- | ------------------------------------------ | ---------------------------------------------- |
+  | `enum`    | `SlaveState`                               | `SubDeviceState`                               |
+  | `fn`      | `Client::num_slaves()`                     | `MainDevice::num_subdevices()`                 |
+  | `fn`      | `Ds402::slave()`                           | `Ds402::subdevice()`                           |
+  | `fn`      | `SlaveGroup::slave()`                      | `SubDeviceGroup::subdevice()`                  |
+  | `mod`     | `ethercrab::slave_group`                   | `ethercrab::subdevice_group`                   |
+  | `struct`  | `Client`                                   | `MainDevice`                                   |
+  | `struct`  | `ClientConfig`                             | `MainDeviceConfig`                             |
+  | `struct`  | `GroupSlaveIterator`                       | `GroupSubDeviceIterator`                       |
+  | `struct`  | `Slave`                                    | `SubDevice`                                    |
+  | `struct`  | `SlaveGroup`                               | `SubDeviceGroup`                               |
+  | `struct`  | `SlaveGroupRef`                            | `SubDeviceGroupRef`                            |
+  | `struct`  | `SlaveIdentity`                            | `SubDeviceIdentity`                            |
+  | `struct`  | `SlavePdi`                                 | `SubDevicePdi`                                 |
+  | `struct`  | `SlaveRef`                                 | `SubDeviceRef`                                 |
+  | `variant` | `AlStatusCode::SlaveNeedsColdStart`        | `AlStatusCode::SubDeviceNeedsColdStart`        |
+  | `variant` | `AlStatusCode::SlaveNeedsInit`             | `AlStatusCode::SubDeviceNeedsInit`             |
+  | `variant` | `AlStatusCode::SlaveNeedsPreop`            | `AlStatusCode::SubDeviceNeedsPreop`            |
+  | `variant` | `AlStatusCode::SlaveNeedsRestartedLocally` | `AlStatusCode::SubDeviceNeedsRestartedLocally` |
+  | `variant` | `AlStatusCode::SlaveNeedsSafeop`           | `AlStatusCode::SubDeviceNeedsSafeop`           |
+  | `variant` | `Error::UnknownSlave`                      | `Error::UnknownSubDevice`                      |
 
 ### Added
 

@@ -1,6 +1,6 @@
-use crate::slave_state::SlaveState;
+use crate::subdevice_state::SubDeviceState;
 
-/// The AL control/status word for an individual slave device.
+/// The AL control/status word for an individual SubDevice.
 ///
 /// Defined in ETG1000.6 Table 9 - AL Control Description.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
@@ -9,7 +9,7 @@ use crate::slave_state::SlaveState;
 pub struct AlControl {
     /// AL status.
     #[wire(bits = 4)]
-    pub state: SlaveState,
+    pub state: SubDeviceState,
     /// Error flag.
     #[wire(bits = 1)]
     pub error: bool,
@@ -19,7 +19,7 @@ pub struct AlControl {
 }
 
 impl AlControl {
-    pub fn new(state: SlaveState) -> Self {
+    pub fn new(state: SubDeviceState) -> Self {
         Self {
             state,
             error: false,
@@ -29,7 +29,7 @@ impl AlControl {
 
     pub fn reset() -> Self {
         Self {
-            state: SlaveState::Init,
+            state: SubDeviceState::Init,
             // Acknowledge error
             error: true,
             ..Default::default()
@@ -45,7 +45,7 @@ mod tests {
     #[test]
     fn al_control() {
         let value = AlControl {
-            state: SlaveState::SafeOp,
+            state: SubDeviceState::SafeOp,
             error: true,
             id_request: false,
         };
@@ -58,7 +58,7 @@ mod tests {
     #[test]
     fn unpack() {
         let value = AlControl {
-            state: SlaveState::SafeOp,
+            state: SubDeviceState::SafeOp,
             error: true,
             id_request: false,
         };

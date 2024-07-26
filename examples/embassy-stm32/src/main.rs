@@ -13,7 +13,7 @@ use embassy_stm32::{
     Config,
 };
 use embassy_time::{Duration, Instant, Timer};
-use ethercrab::{Client, ClientConfig, PduRx, PduStorage, PduTx, SendableFrame, Timeouts};
+use ethercrab::{MainDevice, MainDeviceConfig, PduRx, PduStorage, PduTx, SendableFrame, Timeouts};
 use panic_probe as _;
 use static_cell::StaticCell;
 
@@ -21,8 +21,8 @@ bind_interrupts!(struct Irqs {
     ETH => eth::InterruptHandler;
 });
 
-/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-const MAX_SLAVES: usize = 16;
+/// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
+const MAX_SUBDEVICES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = PduStorage::element_size(256);
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
@@ -162,38 +162,38 @@ async fn main(spawner: Spawner) {
 
     defmt::unwrap!(spawner.spawn(tx_rx_task(device, tx, rx)));
 
-    let client = Client::new(pdu_loop, Timeouts::default(), ClientConfig::default());
+    let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 
     defmt::info!("Begin loop");
 
     let group = defmt::unwrap!(
-        client
-            .init_single_group::<MAX_SLAVES, PDI_LEN>(|| Instant::now().as_micros() * 1000)
+        maindevice
+            .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(|| Instant::now().as_micros() * 1000)
             .await
     );
 
-    defmt::info!("Discovered {} slaves", group.len());
+    defmt::info!("Discovered {} SubDevices", group.len());
 
-    let mut group = defmt::unwrap!(group.into_op(&client).await);
+    let mut group = defmt::unwrap!(group.into_op(&maindevice).await);
 
-    for slave in group.iter(&client) {
-        let (i, o) = slave.io_raw();
+    for subdevice in group.iter(&maindevice) {
+        let (i, o) = subdevice.io_raw();
 
         defmt::info!(
-            "-> Slave {:#06x} {} inputs: {} bytes, outputs: {} bytes",
-            slave.configured_address(),
-            slave.name(),
+            "-> SubDevice {:#06x} {} inputs: {} bytes, outputs: {} bytes",
+            subdevice.configured_address(),
+            subdevice.name(),
             i.len(),
             o.len()
         );
     }
 
     loop {
-        defmt::unwrap!(group.tx_rx(&client).await);
+        defmt::unwrap!(group.tx_rx(&maindevice).await);
 
-        // Increment every output byte for every slave device by one
-        for mut slave in group.iter(&client) {
-            let (_i, o) = slave.io_raw_mut();
+        // Increment every output byte for every SubDevice by one
+        for mut subdevice in group.iter(&maindevice) {
+            let (_i, o) = subdevice.io_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);

@@ -1,7 +1,7 @@
 //! EtherCrab error types.
 
 pub use crate::coe::abort_code::CoeAbortCode;
-use crate::{command::Command, fmt, AlStatusCode, SlaveState};
+use crate::{command::Command, fmt, AlStatusCode, SubDeviceState};
 use core::{cell::BorrowError, num::TryFromIntError};
 
 /// An EtherCrab error.
@@ -52,7 +52,7 @@ pub enum Error {
     /// E.g. converting `99_999usize` into a `u16` will fail as the value is larger than `u16::MAX`.
     IntegerTypeConversion,
     /// The allotted storage for a group's PDI is too small for the calculated length read from all
-    /// slaves in the group.
+    /// SubDevices in the group.
     PdiTooLong {
         /// Maximum PDI length.
         max_length: usize,
@@ -70,21 +70,22 @@ pub enum Error {
     },
     /// An internal error occurred. This indicates something that shouldn't happen within EtherCrab.
     Internal,
-    /// There is a problem with the discovered EtherCAT slave topology.
+    /// There is a problem with the discovered EtherCAT SubDevice topology.
     Topology,
-    /// An error was read back from one or more slaves when attempting to transition to a new state.
+    /// An error was read back from one or more SubDevices when attempting to transition to a new
+    /// state.
     StateTransition,
-    /// An unknown slave device was encountered during device discovery/initialisation.
-    UnknownSlave,
+    /// An unknown SubDevice was encountered during device discovery/initialisation.
+    UnknownSubDevice,
     /// An invalid state was encountered.
     InvalidState {
         /// The desired state.
-        expected: SlaveState,
+        expected: SubDeviceState,
 
         /// The actual state.
-        actual: SlaveState,
+        actual: SubDeviceState,
 
-        /// Slave address.
+        /// SubDevice address.
         configured_address: u16,
     },
 
@@ -140,15 +141,17 @@ impl core::fmt::Display for Error {
             }
             Error::Internal => f.write_str("internal error"),
             Error::Topology => f.write_str("topology"),
-            Error::StateTransition => f.write_str("a slave failed to transition to a new state"),
-            Error::UnknownSlave => f.write_str("unknown slave device"),
+            Error::StateTransition => {
+                f.write_str("a SubDevice failed to transition to a new state")
+            }
+            Error::UnknownSubDevice => f.write_str("unknown SubDevice"),
             Error::InvalidState {
                 expected,
                 actual,
                 configured_address,
             } => write!(
                 f,
-                "slave {:#06x} state is invalid: {}, expected {}",
+                "SubDevice {:#06x} state is invalid: {}, expected {}",
                 configured_address, actual, expected
             ),
             Error::Wire(e) => write!(f, "wire encode/decode error: {}", e),
@@ -169,8 +172,8 @@ impl From<BorrowError> for Error {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Item {
-    /// An EtherCAT slave device.
-    Slave,
+    /// An EtherCAT SubDevice.
+    SubDevice,
     /// Process Data Object.
     Pdo,
     /// Fieldbus Memory Management Unit.
@@ -181,7 +184,7 @@ pub enum Item {
     PdoEntry,
     /// Extended Fieldbus Memory Management Unit config.
     FmmuEx,
-    /// A user-defined slave group.
+    /// A user-defined SubDevice group.
     Group,
 }
 
@@ -270,7 +273,7 @@ pub enum MailboxError {
         /// The subindex used in the operation.
         sub_index: u8,
     },
-    /// A slave has no mailbox but requires one for a given action.
+    /// A SubDeviceve has no mailbox but requires one for a given action.
     NoMailbox,
     /// The response to a mailbox action is invalid.
     SdoResponseInvalid {
@@ -313,9 +316,9 @@ pub enum EepromError {
     Decode,
     /// An EEPROM section is too large to fit in the given buffer.
     SectionOverrun,
-    /// The given category does not exist in the slave's EEPROM.
+    /// The given category does not exist in the SubDevice's EEPROM.
     NoCategory,
-    /// The section in the slave's EEPROM is too small to fill the given buffer.
+    /// The section in the SubDevice's EEPROM is too small to fill the given buffer.
     SectionUnderrun,
     /// An attempt to clear errors on the device failed.
     ClearErrors,

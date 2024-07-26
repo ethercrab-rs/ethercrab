@@ -1,6 +1,6 @@
-//! Demonstrate sorting slaves into multiple slave groups.
+//! Demonstrate sorting SubDevices into multiple SubDevice groups.
 //!
-//! This demo is designed to be used with the following slave devices:
+//! This demo is designed to be used with the following SubDevices:
 //!
 //! - EK1100 (or EK1501 if using fibre)
 //! - EL2889 (2 bytes of outputs)
@@ -10,7 +10,7 @@ use env_logger::Env;
 use ethercrab::{
     error::Error,
     std::{ethercat_now, tx_rx_task},
-    Client, ClientConfig, PduStorage, SlaveGroup, Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
 };
 use std::{
     sync::Arc,
@@ -18,8 +18,8 @@ use std::{
 };
 use tokio::time::MissedTickBehavior;
 
-/// Maximum number of slaves that can be stored. This must be a power of 2 greater than 1.
-const MAX_SLAVES: usize = 16;
+/// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
+const MAX_SUBDEVICES: usize = 16;
 /// Maximum PDU data payload size - set this to the max PDI size or higher.
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 /// Maximum number of EtherCAT frames that can be in flight at any one time.
@@ -34,9 +34,9 @@ struct Groups {
     ///
     /// We'll keep the EK1100/EK1501 in here as it has no useful PDI but still needs to live
     /// somewhere.
-    slow_outputs: SlaveGroup<2, 4>,
+    slow_outputs: SubDeviceGroup<2, 4>,
     /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-    fast_outputs: SlaveGroup<1, 1>,
+    fast_outputs: SubDeviceGroup<1, 1>,
 }
 
 #[tokio::main]
@@ -49,20 +49,20 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Starting multiple groups demo...");
     log::info!(
-        "Ensure an EK1100 or EK1501 is the first slave device, with an EL2828 and EL2889 following it"
+        "Ensure an EK1100 or EK1501 is the first SubDevice, with an EL2828 and EL2889 following it"
     );
     log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let client = Client::new(
+    let maindevice = MainDevice::new(
         pdu_loop,
         Timeouts {
             wait_loop_delay: Duration::from_millis(2),
             mailbox_response: Duration::from_millis(1000),
             ..Default::default()
         },
-        ClientConfig::default(),
+        MainDeviceConfig::default(),
     );
 
     // Network TX/RX should run in a separate thread to avoid timeouts. Tokio doesn't guarantee a
@@ -70,14 +70,16 @@ async fn main() -> Result<(), Error> {
     // the `rt-multi-thread` feature is enabled.
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let client = Arc::new(client);
+    let maindevice = Arc::new(maindevice);
 
-    // Read configurations from slave EEPROMs and configure devices.
-    let groups = client
-        .init::<MAX_SLAVES, _>(ethercat_now, |groups: &Groups, slave| match slave.name() {
-            "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
-            "EL2828" => Ok(&groups.fast_outputs),
-            _ => Err(Error::UnknownSlave),
+    // Read configurations from SubDevice EEPROMs and configure devices.
+    let groups = maindevice
+        .init::<MAX_SUBDEVICES, _>(ethercat_now, |groups: &Groups, subdevice| {
+            match subdevice.name() {
+                "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
+                "EL2828" => Ok(&groups.fast_outputs),
+                _ => Err(Error::UnknownSubDevice),
+            }
         })
         .await
         .expect("Init");
@@ -87,11 +89,11 @@ async fn main() -> Result<(), Error> {
         fast_outputs,
     } = groups;
 
-    let client_slow = client.clone();
+    let maindevice_slow = maindevice.clone();
 
     let slow_task = tokio::spawn(async move {
         let slow_outputs = slow_outputs
-            .into_op(&client_slow)
+            .into_op(&maindevice_slow)
             .await
             .expect("PRE-OP -> OP");
 
@@ -103,9 +105,9 @@ async fn main() -> Result<(), Error> {
         // Only update "slow" outputs every 250ms using this instant
         let mut tick = Instant::now();
 
-        // EK1100 is first slave, EL2889 is second
+        // EK1100 is first SubDevice, EL2889 is second
         let mut el2889 = slow_outputs
-            .slave(&client_slow, 1)
+            .subdevice(&maindevice_slow, 1)
             .expect("EL2889 not present!");
 
         // Set initial output state
@@ -113,9 +115,9 @@ async fn main() -> Result<(), Error> {
         el2889.io_raw_mut().1[1] = 0x80;
 
         loop {
-            slow_outputs.tx_rx(&client_slow).await.expect("TX/RX");
+            slow_outputs.tx_rx(&maindevice_slow).await.expect("TX/RX");
 
-            // Increment every output byte for every slave device by one
+            // Increment every output byte for every SubDevice by one
             if tick.elapsed() > slow_duration {
                 tick = Instant::now();
 
@@ -131,17 +133,20 @@ async fn main() -> Result<(), Error> {
     });
 
     let fast_task = tokio::spawn(async move {
-        let mut fast_outputs = fast_outputs.into_op(&client).await.expect("PRE-OP -> OP");
+        let mut fast_outputs = fast_outputs
+            .into_op(&maindevice)
+            .await
+            .expect("PRE-OP -> OP");
 
         let mut fast_cycle_time = tokio::time::interval(Duration::from_millis(5));
         fast_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         loop {
-            fast_outputs.tx_rx(&client).await.expect("TX/RX");
+            fast_outputs.tx_rx(&maindevice).await.expect("TX/RX");
 
-            // Increment every output byte for every slave device by one
-            for mut slave in fast_outputs.iter(&client) {
-                let (_i, o) = slave.io_raw_mut();
+            // Increment every output byte for every SubDevice by one
+            for mut subdevice in fast_outputs.iter(&maindevice) {
+                let (_i, o) = subdevice.io_raw_mut();
 
                 for byte in o.iter_mut() {
                     *byte = byte.wrapping_add(1);

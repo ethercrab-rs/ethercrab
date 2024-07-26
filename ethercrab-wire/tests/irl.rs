@@ -62,10 +62,10 @@ fn pdo() {
 }
 
 #[test]
-fn slave_state() {
+fn subdevice_state() {
     #[derive(Debug, Copy, Clone, PartialEq, Eq, EtherCrabWireReadWrite)]
     #[repr(u8)]
-    pub enum SlaveState {
+    pub enum SubDeviceState {
         /// No state recorded/read/known.
         None = 0x00,
         /// EtherCAT `INIT` state.
@@ -88,7 +88,7 @@ fn slave_state() {
 fn bare_enum() {
     #[derive(Debug, Copy, Clone, PartialEq, Eq, EtherCrabWireReadWrite)]
     #[repr(u8)]
-    pub enum SlaveState {
+    pub enum SubDeviceState {
         /// No state recorded/read/known.
         None = 0x00,
         /// EtherCAT `INIT` state.
@@ -179,9 +179,9 @@ fn heapless_vec() {
         /// Not used or unknown.
         #[default]
         Unknown = 0x00,
-        /// Used for writing into the slave.
+        /// Used for writing into the subdevice.
         MailboxWrite = 0x01,
-        /// Used for reading from the slave.
+        /// Used for reading from the subdevice.
         MailboxRead = 0x02,
         /// Used for process data outputs from master.
         ProcessDataWrite = 0x03,

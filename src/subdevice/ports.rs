@@ -1,7 +1,7 @@
-use crate::{fmt, Slave};
+use crate::{fmt, SubDevice};
 use core::fmt::Debug;
 
-/// Flags showing which ports are active or not on the slave.
+/// Flags showing which ports are active or not on the SubDevice.
 #[derive(Default, Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Port {
@@ -9,7 +9,7 @@ pub struct Port {
     pub dc_receive_time: u32,
     /// The EtherCAT port number, ordered as 0 -> 3 -> 1 -> 2.
     pub number: u8,
-    /// Holds the index of the downstream slave this port is connected to.
+    /// Holds the index of the downstream SubDevice this port is connected to.
     pub downstream_to: Option<u16>,
 }
 
@@ -29,14 +29,13 @@ impl Port {
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Topology {
-    /// The slave device has two open ports, with only upstream and downstream slaves.
+    /// The SubDevice has two open ports, with only upstream and downstream subdevices.
     Passthrough,
-    /// The slave device is the last device in its fork of the topology tree, with only one open
-    /// port.
+    /// The SubDevice is the last device in its fork of the topology tree, with only one open port.
     LineEnd,
-    /// The slave device forms a fork in the topology, with 3 open ports.
+    /// The SubDevice forms a fork in the topology, with 3 open ports.
     Fork,
-    /// The slave device forms a cross in the topology, with 4 open ports.
+    /// The SubDevice forms a cross in the topology, with 4 open ports.
     Cross,
 }
 
@@ -134,7 +133,7 @@ impl Ports {
         self.0.iter().filter(|port| port.active)
     }
 
-    /// The port of the slave that first sees EtherCAT traffic.
+    /// The port of the SubDevice that first sees EtherCAT traffic.
     pub fn entry_port(&self) -> Port {
         fmt::unwrap_opt!(self
             .active_ports()
@@ -147,7 +146,8 @@ impl Ports {
         self.active_ports().last()
     }
 
-    /// Find the next port that hasn't already been assigned as the upstream port of another slave.
+    /// Find the next port that hasn't already been assigned as the upstream port of another
+    /// SubDevice.
     fn next_assignable_port(&mut self, this_port: &Port) -> Option<&mut Port> {
         let this_port_index = this_port.index();
 
@@ -164,20 +164,20 @@ impl Ports {
     }
 
     /// Link a downstream device to the current device using the next open port from the entry port.
-    pub fn assign_next_downstream_port(&mut self, downstream_slave_index: u16) -> Option<u8> {
+    pub fn assign_next_downstream_port(&mut self, downstream_subdevice_index: u16) -> Option<u8> {
         let entry_port = self.entry_port();
 
         let next_port = self.next_assignable_port(&entry_port)?;
 
-        next_port.downstream_to = Some(downstream_slave_index);
+        next_port.downstream_to = Some(downstream_subdevice_index);
 
         Some(next_port.number)
     }
 
-    /// Find the port assigned to the given slave device.
-    pub fn port_assigned_to(&self, slave: &Slave) -> Option<&Port> {
+    /// Find the port assigned to the given SubDevice.
+    pub fn port_assigned_to(&self, subdevice: &SubDevice) -> Option<&Port> {
         self.active_ports()
-            .find(|port| port.downstream_to == Some(slave.index))
+            .find(|port| port.downstream_to == Some(subdevice.index))
     }
 
     pub fn topology(&self) -> Topology {
@@ -194,8 +194,7 @@ impl Ports {
         self.last_port().filter(|p| *p == port).is_some()
     }
 
-    /// The time in nanoseconds for a packet to completely traverse all active ports of a slave
-    /// device.
+    /// The time in nanoseconds for a packet to completely traverse all active ports of a SubDevice.
     pub fn total_propagation_time(&self) -> Option<u32> {
         let times = self
             .0
@@ -209,10 +208,10 @@ impl Ports {
             .filter(|t| *t > 0)
     }
 
-    /// Propagation time between active ports in this slave.
+    /// Propagation time between active ports in this SubDevice.
     pub fn intermediate_propagation_time_to(&self, port: &Port) -> u32 {
         // If a pair of ports is open, they have a propagation delta between them, and we can sum
-        // these deltas up to get the child delays of this slave (fork or cross have children)
+        // these deltas up to get the child delays of this SubDevice (fork or cross have children)
         self.0
             .windows(2)
             .map(|window| {
@@ -234,7 +233,7 @@ impl Ports {
             .sum::<u32>()
     }
 
-    /// Get the propagation time taken from entry to this slave device up to the given port.
+    /// Get the propagation time taken from entry to this SubDevice up to the given port.
     pub fn propagation_time_to(&self, this_port: &Port) -> Option<u32> {
         let entry_port = self.entry_port();
 
@@ -273,7 +272,7 @@ pub mod tests {
     fn open_ports() {
         // EK1100 with children attached to port 3 and downstream devices on port 1
         let ports = make_ports(true, true, true, false);
-        // Normal slave has no children, so no child delay
+        // Normal SubDevice has no children, so no child delay
         let passthrough = make_ports(true, true, false, false);
 
         assert_eq!(ports.open_ports(), 3);
@@ -313,7 +312,7 @@ pub mod tests {
 
     #[test]
     fn propagation_time() {
-        // Passthrough slave
+        // Passthrough SubDevice
         let ports = make_ports(true, true, false, false);
 
         assert_eq!(ports.total_propagation_time(), Some(100));
@@ -352,11 +351,11 @@ pub mod tests {
 
         let port_number = ports.assign_next_downstream_port(1);
 
-        assert_eq!(port_number, Some(3), "assign slave idx 1");
+        assert_eq!(port_number, Some(3), "assign SubDevice idx 1");
 
         let port_number = ports.assign_next_downstream_port(2);
 
-        assert_eq!(port_number, Some(1), "assign slave idx 2");
+        assert_eq!(port_number, Some(1), "assign SubDevice idx 2");
 
         pretty_assertions::assert_eq!(
             ports,
