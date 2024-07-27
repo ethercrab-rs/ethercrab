@@ -1256,3 +1256,7 @@ Note
 **Yeah I figured it out:** `AssignActivate` is the bitmask for register 0x0981
 `RegisterAddress::DcSyncActive`. `0x0700` turns on SYNC1 AND SYNC0. `0x0300` turns on `SYNC0` only
 (both along with the DC sync enable bit).
+
+# Ultimate Linux networking guide
+
+<https://ntk148v.github.io/posts/linux-network-performance-ultimate-guide>
