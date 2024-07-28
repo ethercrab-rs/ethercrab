@@ -1,7 +1,7 @@
 [package]
 name = "ethercrab"
 categories = ["science::robotics", "no-std", "network-programming"]
-version = "0.4.2"
+version = "0.5.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
@@ -35,7 +35,7 @@ log = { version = "0.4.20", optional = true, default-features = false }
 sealed = "0.5.0"
 serde = { version = "1.0.190", features = ["derive"], optional = true }
 smlang = "0.6.0"
-ethercrab-wire = { version = "0.1.4", path = "./ethercrab-wire" }
+ethercrab-wire = { version = "0.2.0", path = "./ethercrab-wire" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.34.0", features = ["std"], optional = true }

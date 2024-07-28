@@ -9,6 +9,8 @@ Primarily used by `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.2.0] - 2024-07-28
+
 ### Changed
 
 - **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Removed `expected` and
@@ -41,8 +43,9 @@ Primarily used by `ethercrab`.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.2.0...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.4...HEAD
+[0.2.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.4...ethercrab-wire-v0.2.0
 [0.1.4]:
   https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.3...ethercrab-wire-v0.1.4
 [0.1.3]:
