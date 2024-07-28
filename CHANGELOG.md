@@ -6,6 +6,8 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.5.0] - 2024-07-28
+
 ### Changed
 
 - [#216](https://github.com/ethercrab-rs/ethercrab/pull/216) PDU retries now use the same PDU index
@@ -419,8 +421,9 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...HEAD
+[0.5.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.5.0
 [0.4.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.1...ethercrab-v0.4.2
 [0.4.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.0...ethercrab-v0.4.1
 [0.4.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...ethercrab-v0.4.0
