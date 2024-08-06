@@ -26,7 +26,7 @@ impl<T, O> IntoTimeout<O> for T
 where
     T: Future<Output = Result<O, Error>>,
 {
-    fn timeout(self, timeout: Duration) -> TimeoutFuture<T> {
+    fn timeout(self, timeout: Duration) -> TimeoutFuture<impl Future<Output = Result<O, Error>>> {
         let timeout = timer(timeout);
 
         TimeoutFuture { f: self, timeout }
