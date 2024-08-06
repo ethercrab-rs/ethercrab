@@ -10,7 +10,7 @@ documentation = "https://docs.rs/ethercrab-wire"
 description = "On-the-wire tools for the EtherCrab crate"
 keywords = ["ethercat", "ethercrab", "beckhoff", "automation", "fieldbus"]
 resolver = "2"
-rust-version = "1.75"
+rust-version = "1.79"
 
 [dependencies]
 defmt = { version = "0.3.5", optional = true }
