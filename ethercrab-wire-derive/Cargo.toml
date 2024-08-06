@@ -10,6 +10,7 @@ documentation = "https://docs.rs/ethercrab-derive"
 description = "Derive macros for EtherCrab"
 resolver = "2"
 keywords = ["ethercat", "ethercrab", "beckhoff", "automation", "fieldbus"]
+rust-version = "1.79"
 
 [lib]
 proc-macro = true

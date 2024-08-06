@@ -6,6 +6,13 @@ Derives for `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- **(breaking)** [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) Increase MSRV from 1.77
+  to 1.79.
+
+## [0.2.0] - 2024-07-28
+
 ## [0.1.4] - 2024-03-31
 
 ### Fixed
@@ -39,7 +46,11 @@ Derives for `ethercrab`.
 <!-- next-url -->
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.4...HEAD
 
-[0.1.4]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.3...ethercrab-wire-derive-v0.1.4
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.2.0...HEAD
+[0.2.0]:
+  https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.4...ethercrab-wire-derive-v0.2.0
+[0.1.4]:
+  https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.3...ethercrab-wire-derive-v0.1.4
 [0.1.3]:
   https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-derive-v0.1.2...ethercrab-wire-derive-v0.1.3
 [0.1.2]:

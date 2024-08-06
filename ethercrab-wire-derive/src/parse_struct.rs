@@ -12,14 +12,19 @@ pub struct StructMeta {
 
 #[derive(Clone)]
 pub struct FieldMeta {
+    #[allow(unused)]
     pub vis: Visibility,
     pub name: Ident,
     pub ty: Type,
     // Will be None for arrays
     pub ty_name: Option<Ident>,
+    #[allow(unused)]
     pub bit_start: usize,
+    #[allow(unused)]
     pub bit_end: usize,
+    #[allow(unused)]
     pub byte_start: usize,
+    #[allow(unused)]
     pub byte_end: usize,
     /// Offset of the starting bit in the starting byte.
     pub bit_offset: usize,
@@ -27,7 +32,9 @@ pub struct FieldMeta {
     pub bits: Range<usize>,
     pub bytes: Range<usize>,
 
+    #[allow(unused)]
     pub pre_skip: Option<usize>,
+    #[allow(unused)]
     pub post_skip: Option<usize>,
 
     pub skip: bool,

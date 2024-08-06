@@ -9,6 +9,20 @@ Primarily used by `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- **(breaking)** [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) Increase MSRV from 1.77
+  to 1.79.
+
+## [0.2.0] - 2024-07-28
+
+### Changed
+
+- **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Removed `expected` and
+  `got` fields from `WireError::{Read,Write}BufferTooShort`.
+- **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Increase MSRV from 1.75
+  to 1.77.
+
 ## [0.1.4] - 2024-03-31
 
 ## [0.1.3] - 2024-03-27
@@ -38,6 +52,14 @@ Primarily used by `ethercrab`.
 [0.1.4]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.3...ethercrab-wire-v0.1.4
 
 [0.1.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.2...ethercrab-wire-v0.1.3
+
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.2.0...HEAD
+[0.2.0]:
+  https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.4...ethercrab-wire-v0.2.0
+[0.1.4]:
+  https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.3...ethercrab-wire-v0.1.4
+[0.1.3]:
+  https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.2...ethercrab-wire-v0.1.3
 [0.1.2]:
   https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.1...ethercrab-wire-v0.1.2
 [0.1.1]:
