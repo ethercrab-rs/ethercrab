@@ -11,6 +11,11 @@ An EtherCAT master written in Rust.
 - **(breaking)** [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) Increase MSRV from 1.77
   to 1.79.
 
+### Fixed
+
+- [#229](https://github.com/ethercrab-rs/ethercrab/pull/229) Fix overflowing subtraction panic when
+  calculating DC cycle offset.
+
 ## [0.5.0] - 2024-07-28
 
 ### Changed
