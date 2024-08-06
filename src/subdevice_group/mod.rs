@@ -1131,7 +1131,7 @@ where
         let cycle_start_offset = time % self.dc_conf.sync0_period;
 
         let time_to_next_iter =
-            self.dc_conf.sync0_period + (self.dc_conf.sync0_shift - cycle_start_offset);
+            (self.dc_conf.sync0_period - cycle_start_offset) + self.dc_conf.sync0_shift;
 
         Ok((
             wkc,
