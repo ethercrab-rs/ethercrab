@@ -20,7 +20,9 @@ pub struct VariantMeta {
     pub name: Ident,
     pub discriminant: i128,
     pub catch_all: bool,
+    #[allow(unused)]
     pub default: bool,
+    #[allow(unused)]
     pub alternatives: Vec<i128>,
 }
 
