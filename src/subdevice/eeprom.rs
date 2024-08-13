@@ -1,8 +1,5 @@
 use crate::{
-    eeprom::types::{
-        CategoryType, DefaultMailbox, PdoEntry, SiiGeneral, SUBDEVICE_INPUTS_PDO_RANGE,
-        SUBDEVICE_OUTPUTS_PDO_RANGE,
-    },
+    eeprom::types::{CategoryType, DefaultMailbox, PdoEntry, SiiGeneral},
     eeprom::{
         device_reader::SII_FIRST_CATEGORY_START,
         types::{FmmuEx, FmmuUsage, Pdo, PdoType, SyncManager},
@@ -12,7 +9,7 @@ use crate::{
     fmt,
     subdevice::SubDeviceIdentity,
 };
-use core::{marker::PhantomData, ops::RangeInclusive};
+use core::marker::PhantomData;
 use embedded_io_async::{Read, ReadExactError};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized};
 
@@ -207,11 +204,7 @@ where
         Ok(mappings)
     }
 
-    async fn pdos(
-        &self,
-        direction: PdoType,
-        valid_range: RangeInclusive<u16>,
-    ) -> Result<heapless::Vec<Pdo, 64>, Error> {
+    async fn pdos(&self, direction: PdoType) -> Result<heapless::Vec<Pdo, 64>, Error> {
         let mut pdos = heapless::Vec::new();
 
         fmt::trace!("Get {:?} PDOs", direction);
@@ -220,18 +213,6 @@ where
 
         while let Some(mut pdo) = cat.next().await? {
             fmt::debug!("Discovered PDO:\n{:#?}", pdo);
-
-            // TODO: Does SOEM validate the range?
-            // if !valid_range.contains(&pdo.index) {
-            //     fmt::error!(
-            //         "Invalid PDO {:#06x}. Must be in range {:#06x} - {:#06x}",
-            //         pdo.index,
-            //         valid_range.start(),
-            //         valid_range.end(),
-            //     );
-
-            //     return Err(Error::Eeprom(EepromError::Decode));
-            // }
 
             // TODO: Return some kind of iterator so we don't have to have a fixed length vec
             for idx in 0..pdo.num_entries {
@@ -258,12 +239,12 @@ where
 
     /// Transmit PDOs (from device's perspective) - inputs
     pub(crate) async fn maindevice_read_pdos(&self) -> Result<heapless::Vec<Pdo, 64>, Error> {
-        self.pdos(PdoType::Tx, SUBDEVICE_OUTPUTS_PDO_RANGE).await
+        self.pdos(PdoType::Tx).await
     }
 
     /// Receive PDOs (from device's perspective) - outputs
     pub(crate) async fn maindevice_write_pdos(&self) -> Result<heapless::Vec<Pdo, 64>, Error> {
-        self.pdos(PdoType::Rx, SUBDEVICE_INPUTS_PDO_RANGE).await
+        self.pdos(PdoType::Rx).await
     }
 
     /// Find a string in the device EEPROM.
@@ -640,16 +621,6 @@ mod tests {
         );
 
         Ok(())
-    }
-
-    #[tokio::test]
-    async fn pdos_invalid_range() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
-
-        assert_eq!(
-            e.pdos(PdoType::Rx, 0x1000..=0x1010).await,
-            Err(Error::Eeprom(EepromError::Decode))
-        );
     }
 
     // EK1100 doesn't have any IO so doesn't have any PDOs.

@@ -3,15 +3,6 @@
 use crate::{base_data_types::PrimitiveDataType, coe::SdoExpedited, sync_manager_channel};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
-/// Ranges defined in ETG1000.6 Table 25 – Structure Category TXPDO and RXPDO for each PDO.
-///
-/// Data sent to the MainDevice (TX from the SubDevice).
-pub const SUBDEVICE_OUTPUTS_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1A00..=0x1bff;
-/// Ranges defined in ETG1000.6 Table 25 – Structure Category TXPDO and RXPDO for each PDO.
-///
-/// Data sent to the SubDevice (RX into the SubDevice).
-pub const SUBDEVICE_INPUTS_PDO_RANGE: core::ops::RangeInclusive<u16> = 0x1600..=0x17ff;
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
 #[repr(u8)]
 pub enum SiiOwner {
