@@ -217,7 +217,7 @@ where
             // TODO: Return some kind of iterator so we don't have to have a fixed length vec
             for idx in 0..pdo.num_entries {
                 let Some(entry) = cat.next_sub_item::<PdoEntry>().await? else {
-                    log::error!("Failed to read PDO entry {}", idx);
+                    fmt::error!("Failed to read PDO entry {}", idx);
 
                     return Err(Error::Eeprom(EepromError::Decode));
                 };
