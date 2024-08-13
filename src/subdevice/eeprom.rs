@@ -1,7 +1,5 @@
 use crate::{
-    eeprom::types::{
-        CategoryType, DefaultMailbox, PdoEntry, SiiGeneral, RX_PDO_RANGE, TX_PDO_RANGE,
-    },
+    eeprom::types::{CategoryType, DefaultMailbox, PdoEntry, SiiGeneral},
     eeprom::{
         device_reader::SII_FIRST_CATEGORY_START,
         types::{FmmuEx, FmmuUsage, Pdo, PdoType, SyncManager},
@@ -11,7 +9,7 @@ use crate::{
     fmt,
     subdevice::SubDeviceIdentity,
 };
-use core::{marker::PhantomData, ops::RangeInclusive};
+use core::marker::PhantomData;
 use embedded_io_async::{Read, ReadExactError};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized};
 
@@ -206,69 +204,47 @@ where
         Ok(mappings)
     }
 
-    async fn pdos(
-        &self,
-        direction: PdoType,
-        valid_range: RangeInclusive<u16>,
-    ) -> Result<heapless::Vec<Pdo, 16>, Error> {
+    async fn pdos(&self, direction: PdoType) -> Result<heapless::Vec<Pdo, 64>, Error> {
         let mut pdos = heapless::Vec::new();
 
-        fmt::trace!("Get {:?} PDUs", direction);
+        fmt::trace!("Get {:?} PDOs", direction);
 
-        let Some(mut reader) = self.category(CategoryType::from(direction)).await? else {
-            return Ok(pdos);
-        };
+        let mut cat = self.items::<Pdo>(CategoryType::from(direction)).await?;
 
-        let mut buf = Pdo::buffer();
-        let mut entry_buf = PdoEntry::buffer();
-
-        while reader.read(&mut buf).await? == buf.len() {
-            let mut pdo = Pdo::unpack_from_slice(&buf).map_err(|e| {
-                fmt::error!("PDO: {:?}", e);
-
-                e
-            })?;
-
+        while let Some(mut pdo) = cat.next().await? {
             fmt::debug!("Discovered PDO:\n{:#?}", pdo);
 
-            fmt::trace!("Range {:?} value {}", valid_range, pdo.index);
+            // TODO: Return some kind of iterator so we don't have to have a fixed length vec
+            for idx in 0..pdo.num_entries {
+                let Some(entry) = cat.next_sub_item::<PdoEntry>().await? else {
+                    fmt::error!("Failed to read PDO entry {}", idx);
 
-            if !valid_range.contains(&pdo.index) {
-                fmt::error!("Invalid PDO range");
-
-                return Err(Error::Eeprom(EepromError::Decode));
-            }
-
-            for _ in 0..pdo.num_entries {
-                let entry = reader.read_exact(&mut entry_buf).await.and_then(|()| {
-                    let entry = PdoEntry::unpack_from_slice(&entry_buf).map_err(|e| {
-                        fmt::error!("PDO entry: {:?}", e);
-
-                        Error::Eeprom(EepromError::Decode)
-                    })?;
-
-                    Ok(entry)
-                })?;
+                    return Err(Error::Eeprom(EepromError::Decode));
+                };
 
                 fmt::debug!("--> PDO entry:\n{:#?}", entry);
 
                 pdo.bit_len += u16::from(entry.data_length_bits);
             }
 
-            pdos.push(pdo).map_err(|_| Error::Capacity(Item::Pdo))?;
+            pdos.push(pdo).map_err(|_| {
+                fmt::error!("Too many PDOs, max 16");
+
+                Error::Capacity(Item::Pdo)
+            })?;
         }
 
         Ok(pdos)
     }
 
     /// Transmit PDOs (from device's perspective) - inputs
-    pub(crate) async fn master_read_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
-        self.pdos(PdoType::Tx, TX_PDO_RANGE).await
+    pub(crate) async fn maindevice_read_pdos(&self) -> Result<heapless::Vec<Pdo, 64>, Error> {
+        self.pdos(PdoType::Tx).await
     }
 
     /// Receive PDOs (from device's perspective) - outputs
-    pub(crate) async fn master_write_pdos(&self) -> Result<heapless::Vec<Pdo, 16>, Error> {
-        self.pdos(PdoType::Rx, RX_PDO_RANGE).await
+    pub(crate) async fn maindevice_write_pdos(&self) -> Result<heapless::Vec<Pdo, 64>, Error> {
+        self.pdos(PdoType::Rx).await
     }
 
     /// Find a string in the device EEPROM.
@@ -397,6 +373,22 @@ where
         }
 
         Ok(Some(T::unpack_from_slice(buf.as_ref())?))
+    }
+
+    pub async fn next_sub_item<S>(&mut self) -> Result<Option<S>, Error>
+    where
+        S: EtherCrabWireReadSized,
+    {
+        let mut buf = S::buffer();
+
+        match self.reader.read_exact(buf.as_mut()).await {
+            // Reached end of category
+            Err(ReadExactError::UnexpectedEof) => return Ok(None),
+            Err(ReadExactError::Other(e)) => return Err(e),
+            Ok(()) => (),
+        }
+
+        Ok(Some(S::unpack_from_slice(buf.as_ref())?))
     }
 }
 
@@ -631,23 +623,13 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn pdos_invalid_range() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
-
-        assert_eq!(
-            e.pdos(PdoType::Rx, 0x1000..=0x1010).await,
-            Err(Error::Eeprom(EepromError::Decode))
-        );
-    }
-
     // EK1100 doesn't have any IO so doesn't have any PDOs.
     #[tokio::test]
     async fn subdevice_no_pdos() {
         let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
 
-        assert_eq!(e.master_read_pdos().await, Ok(heapless::Vec::new()));
-        assert_eq!(e.master_write_pdos().await, Ok(heapless::Vec::new()));
+        assert_eq!(e.maindevice_read_pdos().await, Ok(heapless::Vec::new()));
+        assert_eq!(e.maindevice_write_pdos().await, Ok(heapless::Vec::new()));
     }
 
     #[tokio::test]
@@ -706,9 +688,9 @@ mod tests {
             pdo(0x1607, 13, 0x7070),
         ];
 
-        assert_eq!(e.master_read_pdos().await, Ok(heapless::Vec::new()));
+        assert_eq!(e.maindevice_read_pdos().await, Ok(heapless::Vec::new()));
         pretty_assertions::assert_eq!(
-            e.master_write_pdos().await,
+            e.maindevice_write_pdos().await,
             Ok(heapless::Vec::from_slice(&output_pdos).unwrap())
         );
     }
