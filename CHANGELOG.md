@@ -10,6 +10,8 @@ An EtherCAT master written in Rust.
 
 - **(breaking)** [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) Increase MSRV from 1.77
   to 1.79.
+- [#231](https://github.com/ethercrab-rs/ethercrab/pull/231) Enable reading of up to 64 PDO entries
+  per PDO from EEPROM.
 
 ### Fixed
 

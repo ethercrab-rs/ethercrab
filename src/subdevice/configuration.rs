@@ -2,7 +2,7 @@ use super::{SubDevice, SubDeviceRef};
 use crate::{
     coe::{SdoExpedited, SubIndex},
     eeprom::types::{
-        CoeDetails, FmmuUsage, MailboxProtocols, Pdo, SiiOwner, SyncManager, SyncManagerEnable,
+        CoeDetails, FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable,
         SyncManagerType,
     },
     error::{Error, Item},
@@ -500,16 +500,16 @@ where
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
-        let pdos: heapless::Vec<Pdo, 16> = match direction {
+        let pdos = match direction {
             PdoDirection::MasterRead => {
-                let read_pdos = self.eeprom().master_read_pdos().await?;
+                let read_pdos = self.eeprom().maindevice_read_pdos().await?;
 
                 fmt::trace!("SubDevice inputs PDOs {:#?}", read_pdos);
 
                 read_pdos
             }
             PdoDirection::MasterWrite => {
-                let write_pdos = self.eeprom().master_write_pdos().await?;
+                let write_pdos = self.eeprom().maindevice_write_pdos().await?;
 
                 fmt::trace!("SubDevice outputs PDOs {:#?}", write_pdos);
 
