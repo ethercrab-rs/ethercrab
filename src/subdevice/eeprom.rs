@@ -214,22 +214,11 @@ where
     ) -> Result<heapless::Vec<Pdo, 64>, Error> {
         let mut pdos = heapless::Vec::new();
 
-        fmt::trace!("Get {:?} PDUs", direction);
+        fmt::trace!("Get {:?} PDOs", direction);
 
-        let Some(mut reader) = self.category(CategoryType::from(direction)).await? else {
-            return Ok(pdos);
-        };
+        let mut cat = self.items::<Pdo>(CategoryType::from(direction)).await?;
 
-        let mut buf = Pdo::buffer();
-        let mut entry_buf = PdoEntry::buffer();
-
-        while reader.read(&mut buf).await? == buf.len() {
-            let mut pdo = Pdo::unpack_from_slice(&buf).map_err(|e| {
-                fmt::error!("PDO: {:?}", e);
-
-                e
-            })?;
-
+        while let Some(mut pdo) = cat.next().await? {
             fmt::debug!("Discovered PDO:\n{:#?}", pdo);
 
             // TODO: Does SOEM validate the range?
@@ -245,16 +234,12 @@ where
             // }
 
             // TODO: Return some kind of iterator so we don't have to have a fixed length vec
-            for _ in 0..pdo.num_entries {
-                let entry = reader.read_exact(&mut entry_buf).await.and_then(|()| {
-                    let entry = PdoEntry::unpack_from_slice(&entry_buf).map_err(|e| {
-                        fmt::error!("PDO entry: {:?}", e);
+            for idx in 0..pdo.num_entries {
+                let Some(entry) = cat.next_sub_item::<PdoEntry>().await? else {
+                    log::error!("Failed to read PDO entry {}", idx);
 
-                        Error::Eeprom(EepromError::Decode)
-                    })?;
-
-                    Ok(entry)
-                })?;
+                    return Err(Error::Eeprom(EepromError::Decode));
+                };
 
                 fmt::debug!("--> PDO entry:\n{:#?}", entry);
 
@@ -407,6 +392,22 @@ where
         }
 
         Ok(Some(T::unpack_from_slice(buf.as_ref())?))
+    }
+
+    pub async fn next_sub_item<S>(&mut self) -> Result<Option<S>, Error>
+    where
+        S: EtherCrabWireReadSized,
+    {
+        let mut buf = S::buffer();
+
+        match self.reader.read_exact(buf.as_mut()).await {
+            // Reached end of category
+            Err(ReadExactError::UnexpectedEof) => return Ok(None),
+            Err(ReadExactError::Other(e)) => return Err(e),
+            Ok(()) => (),
+        }
+
+        Ok(Some(S::unpack_from_slice(buf.as_ref())?))
     }
 }
 
