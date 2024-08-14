@@ -76,23 +76,32 @@ where
 
     /// Get the device name.
     ///
-    /// Note that the string index is hard coded to `1` instead of reading the string index from the
-    /// EEPROM `General` section.
+    /// This is the `OrderIdx` field as described in ETG2010 Table 7.
     pub(crate) async fn device_name<const N: usize>(
         &self,
     ) -> Result<Option<heapless::String<N>>, Error> {
-        // Uncomment to read longer, but correct, name string from EEPROM
-        // let general = self.general().await?;
-        // let name_idx = general.name_string_idx;
+        let general = self.general().await?;
 
-        fmt::trace!("Get device name");
+        fmt::trace!(
+            "Get device name from string index {}",
+            general.order_string_idx
+        );
 
-        // NOTE: Hard coded to the first string. This mirrors SOEM's behaviour. Reading the
-        // string index from EEPROM gives a different value in my testing - still a name, but
-        // longer.
-        let name_idx = 1;
+        self.find_string(general.order_string_idx).await
+    }
 
-        self.find_string(name_idx).await
+    /// Get the long name of the device.
+    pub(crate) async fn device_description<const N: usize>(
+        &self,
+    ) -> Result<Option<heapless::String<N>>, Error> {
+        let general = self.general().await?;
+
+        fmt::trace!(
+            "Get device long name from string index {}",
+            general.order_string_idx
+        );
+
+        self.find_string(general.name_string_idx).await
     }
 
     pub(crate) async fn mailbox_config(&self) -> Result<DefaultMailbox, Error> {
@@ -394,6 +403,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use core::str::FromStr;
+
     use super::*;
     use crate::{
         eeprom::{
@@ -883,5 +894,24 @@ mod tests {
 
         // None of the EEPROM dumps I have contain any FMMU_EX records :(
         assert_eq!(fmmu_ex, heapless::Vec::<FmmuEx, 16>::new());
+    }
+
+    #[tokio::test]
+    async fn clipx_device_name() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/hbm_clipx_eeprom_dump.bin"));
+
+        assert_eq!(
+            e.device_name::<128>().await,
+            Ok(Some(heapless::String::from_str("ClipX").unwrap())),
+            "device name"
+        );
+
+        assert_eq!(
+            e.device_description::<128>().await,
+            Ok(Some(heapless::String::from_str("ClipX").unwrap())),
+            "device description"
+        );
     }
 }
