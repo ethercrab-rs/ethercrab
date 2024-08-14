@@ -205,7 +205,7 @@ pub use ethercrab_wire::{
 use ethernet::EthernetAddress;
 pub use maindevice::MainDevice;
 pub use maindevice_config::{MainDeviceConfig, RetryBehaviour};
-pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
+pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, ReceiveAction, SendableFrame};
 pub use register::{DcSupport, RegisterAddress};
 pub use subdevice::{DcSync, SubDevice, SubDeviceIdentity, SubDevicePdi, SubDeviceRef};
 pub use subdevice_group::{GroupId, GroupSubDeviceIterator, SubDeviceGroup, SubDeviceGroupHandle};

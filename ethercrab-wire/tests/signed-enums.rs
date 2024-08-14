@@ -123,6 +123,7 @@ fn cia402_control_word() {
 #[test]
 fn sized() {
     #[derive(ethercrab_wire::EtherCrabWireRead)]
+    #[allow(unused)]
     #[wire(bytes = 9)]
     struct DriveState {
         #[wire(bytes = 4)]
@@ -142,6 +143,7 @@ fn sized() {
     }
 
     #[derive(Copy, Clone, ethercrab_wire::EtherCrabWireWrite)]
+    #[allow(unused)]
     #[wire(bytes = 1)]
     #[repr(u8)]
     enum ControlState {

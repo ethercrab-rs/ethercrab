@@ -8,6 +8,19 @@ use crate::{
 };
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
+/// What happened to a received Ethernet frame.
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum ReceiveAction {
+    /// The frame was ignored.
+    ///
+    /// This can be caused by other, non-EtherCAT traffic on the chosen network interface, e.g. if
+    /// sending EtherCAT packets through a switch.
+    Ignored,
+
+    /// The frame was successfully processed as an EtherCAT packet.
+    Processed,
+}
+
 /// EtherCAT frame receive adapter.
 pub struct PduRx<'sto> {
     storage: PduStorageRef<'sto>,
@@ -34,7 +47,7 @@ impl<'sto> PduRx<'sto> {
     /// Given a complete Ethernet II frame, parse a response PDU from it and wake the future that
     /// sent the frame.
     // NOTE: &mut self so this struct can only be used in one place.
-    pub fn receive_frame(&mut self, ethernet_frame: &[u8]) -> Result<(), Error> {
+    pub fn receive_frame(&mut self, ethernet_frame: &[u8]) -> Result<ReceiveAction, Error> {
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self. As per
@@ -46,7 +59,7 @@ impl<'sto> PduRx<'sto> {
         {
             fmt::trace!("Ignore frame");
 
-            return Ok(());
+            return Ok(ReceiveAction::Ignored);
         }
 
         let i = raw_packet.payload();
@@ -104,6 +117,6 @@ impl<'sto> PduRx<'sto> {
 
         frame.mark_received()?;
 
-        Ok(())
+        Ok(ReceiveAction::Processed)
     }
 }
