@@ -230,9 +230,27 @@ impl SubDevice {
         })
     }
 
-    /// Get the SubDevice's human readable name.
+    /// Get the SubDevice's human readable short name.
+    ///
+    /// To get a longer, more descriptive name, use [`SubDevice::description`].
     pub fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    /// Get the long name of the SubDevice.
+    ///
+    /// Using the EK1100 as an example, [`SubDevice::name`] will return `"EK1100"` wherease this
+    /// method will return `"EK1100 EtherCAT-Koppler (2A E-Bus)"`.
+    ///
+    /// In the case that a SubDevice does not have a description, this method will return
+    /// `Ok(None)`.
+    pub async fn description(
+        &self,
+        maindevice: &MainDevice<'_>,
+    ) -> Result<Option<heapless::String<64>>, Error> {
+        let subdevice_ref = SubDeviceRef::new(maindevice, self.configured_address, ());
+
+        subdevice_ref.eeprom().device_description().await
     }
 
     /// Get additional identifying details for the SubDevice.
@@ -335,6 +353,17 @@ where
     /// Get the human readable name of the SubDevice.
     pub fn name(&self) -> &str {
         self.state.name.as_str()
+    }
+
+    /// Get the long name of the SubDevice.
+    ///
+    /// Using the EK1100 as an example, [`SubDeviceRef::name`] will return `"EK1100"` wherease this
+    /// method will return `"EK1100 EtherCAT-Koppler (2A E-Bus)"`.
+    ///
+    /// In the case that a SubDevice does not have a description, this method will return
+    /// `Ok(None)`.
+    pub async fn description(&self) -> Result<Option<heapless::String<64>>, Error> {
+        SubDevice::description(&self.state, &self.maindevice).await
     }
 
     /// Get additional identifying details for the SubDevice.

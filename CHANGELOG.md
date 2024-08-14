@@ -12,6 +12,10 @@ An EtherCAT master written in Rust.
   to 1.79.
 - [#231](https://github.com/ethercrab-rs/ethercrab/pull/231) Enable reading of up to 64 PDO entries
   per PDO from EEPROM.
+- [#232](https://github.com/ethercrab-rs/ethercrab/pull/232) Use string index from EEPROM to read
+  device name instead of hard coding to the first string index.
+- [#232](https://github.com/ethercrab-rs/ethercrab/pull/232) Add
+  `{SubDevice,SubDeviceRef}::description()` method to get longer device name
 
 ### Fixed
 
