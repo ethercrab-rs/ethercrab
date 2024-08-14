@@ -76,23 +76,32 @@ where
 
     /// Get the device name.
     ///
-    /// Note that the string index is hard coded to `1` instead of reading the string index from the
-    /// EEPROM `General` section.
+    /// This is the `OrderIdx` field as described in ETG2010 Table 7.
     pub(crate) async fn device_name<const N: usize>(
         &self,
     ) -> Result<Option<heapless::String<N>>, Error> {
-        // Uncomment to read longer, but correct, name string from EEPROM
-        // let general = self.general().await?;
-        // let name_idx = general.name_string_idx;
+        let general = self.general().await?;
 
-        fmt::trace!("Get device name");
+        fmt::trace!(
+            "Get device name from string index {}",
+            general.order_string_idx
+        );
 
-        // NOTE: Hard coded to the first string. This mirrors SOEM's behaviour. Reading the
-        // string index from EEPROM gives a different value in my testing - still a name, but
-        // longer.
-        let name_idx = 1;
+        self.find_string(general.order_string_idx).await
+    }
 
-        self.find_string(name_idx).await
+    /// Get the long name of the device.
+    pub(crate) async fn device_description<const N: usize>(
+        &self,
+    ) -> Result<Option<heapless::String<N>>, Error> {
+        let general = self.general().await?;
+
+        fmt::trace!(
+            "Get device long name from string index {}",
+            general.order_string_idx
+        );
+
+        self.find_string(general.name_string_idx).await
     }
 
     pub(crate) async fn mailbox_config(&self) -> Result<DefaultMailbox, Error> {
@@ -250,6 +259,13 @@ where
     /// Find a string in the device EEPROM.
     ///
     /// An index of 0 denotes an empty string and will always return `Ok(None)`.
+    ///
+    /// # Encoding
+    ///
+    /// EtherCAT "visible string"s are required to be ASCII-only, however some SubDevices use
+    /// different encoding. For example, some versions of the EL2262 use ISO-8859-1, resulting in
+    /// non-ASCII _and_ non-UTF-8 strings. In this case, any non-ASCII characters are replaced with
+    /// `'?'`by this method.
     pub(crate) async fn find_string<const N: usize>(
         &self,
         search_index: u8,
@@ -302,12 +318,15 @@ where
             // Get rid of any C null terminators
             buf.retain(|char| *char != 0x00);
 
-            // Invariant: EtherCAT "visible string"s are 0x20 to 0x7E
-            if !buf.is_ascii() {
-                fmt::error!("String at index {} is not valid ASCII", search_index);
-
-                return Err(Error::Eeprom(EepromError::Decode));
-            }
+            // EtherCAT "visible string"s are required to be ASCII, however some SubDevices have
+            // non-ASCII characters. For example, the EL2262 contains the character `0xb5` which is
+            // 'μ' in ISO-8859-1. We'll convert any characters that aren't ascii into question
+            // marks.
+            buf.iter_mut().for_each(|c| {
+                if !c.is_ascii() {
+                    *c = b'?'
+                }
+            });
 
             // SAFETY: We've checked the buffer only contains ASCII characters above, so we don't
             // need to check for valid UTF-8.
@@ -394,6 +413,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use core::str::FromStr;
+
     use super::*;
     use crate::{
         eeprom::{
@@ -883,5 +904,46 @@ mod tests {
 
         // None of the EEPROM dumps I have contain any FMMU_EX records :(
         assert_eq!(fmmu_ex, heapless::Vec::<FmmuEx, 16>::new());
+    }
+
+    #[tokio::test]
+    async fn clipx_device_name() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/hbm_clipx_eeprom_dump.bin"));
+
+        assert_eq!(
+            e.device_name::<128>().await,
+            Ok(Some(heapless::String::from_str("ClipX").unwrap())),
+            "device name"
+        );
+
+        assert_eq!(
+            e.device_description::<128>().await,
+            Ok(Some(heapless::String::from_str("ClipX").unwrap())),
+            "device description"
+        );
+    }
+
+    #[tokio::test]
+    async fn el2262_device_name() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/el2262.bin"));
+
+        assert_eq!(
+            e.device_name::<128>().await,
+            Ok(Some(heapless::String::from_str("EL2262").unwrap())),
+            "device name"
+        );
+
+        assert_eq!(
+            e.device_description::<128>().await,
+            Ok(Some(
+                heapless::String::from_str("EL2262 2K. Dig. Ausgang 24V, 1?s, DC Oversample")
+                    .unwrap()
+            )),
+            "device description"
+        );
     }
 }

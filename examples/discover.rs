@@ -5,7 +5,7 @@ use ethercrab::{
     std::{ethercat_now, tx_rx_task},
     MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
 const MAX_SUBDEVICES: usize = 128;
@@ -50,9 +50,14 @@ fn main() {
 
         for subdevice in group.iter(&maindevice) {
             log::info!(
-                "--> SubDevice {:#06x} {} {}",
+                "--> SubDevice {:#06x} name {}, description {}, {}",
                 subdevice.configured_address(),
                 subdevice.name(),
+                subdevice
+                    .description()
+                    .await
+                    .expect("Failed to read description")
+                    .unwrap_or(heapless::String::<64>::from_str("[no description]").unwrap()),
                 subdevice.identity()
             );
         }
