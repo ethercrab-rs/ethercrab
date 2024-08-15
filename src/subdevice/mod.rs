@@ -653,6 +653,66 @@ where
         Ok(())
     }
 
+    /// Write multiple sub-indices of the given SDO.
+    ///
+    /// This is NOT a complete access write. This method is provided as sugar over individual calls
+    /// to [`sdo_write`](SubDeviceRef::sdo_write) and handles setting the SDO length and sub-index
+    /// automatically.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use ethercrab::{
+    /// #     error::Error, MainDevice, MainDeviceConfig, PduStorage, Timeouts, std::ethercat_now
+    /// # };
+    /// # static PDU_STORAGE: PduStorage<8, 32> = PduStorage::new();
+    /// # let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+    /// # let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
+    /// # async {
+    /// # let mut group = maindevice
+    /// #     .init_single_group::<8, 8>(ethercat_now)
+    /// #     .await
+    /// #     .expect("Init");
+    /// let subdevice = group.subdevice(&maindevice, 0).expect("No subdevice!");
+    ///
+    /// // This is equivalent to...
+    /// subdevice.sdo_write_array(0x1c13, &[
+    ///     0x1a00u16,
+    ///     0x1a02,
+    ///     0x1a04,
+    ///     0x1a06,
+    /// ]).await?;
+    ///
+    /// // ... this
+    /// // subdevice.sdo_write(0x1c13, 0, 0u8).await?;
+    /// // subdevice.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+    /// // subdevice.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+    /// // subdevice.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+    /// // subdevice.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+    /// // subdevice.sdo_write(0x1c13, 0, 4u8).await?;
+    /// # Ok::<(), ethercrab::error::Error>(())
+    /// # };
+    /// ```
+    pub async fn sdo_write_array<T>(&self, index: u16, values: impl AsRef<[T]>) -> Result<(), Error>
+    where
+        T: EtherCrabWireWrite,
+    {
+        let values = values.as_ref();
+
+        self.sdo_write(index, 0, 0u8).await?;
+
+        for (i, value) in values.iter().enumerate() {
+            // Subindices start from 1
+            let i = i + 1;
+
+            self.sdo_write(index, i as u8, value).await?;
+        }
+
+        self.sdo_write(index, 0, values.len() as u8).await?;
+
+        Ok(())
+    }
+
     pub(crate) async fn sdo_read_expedited<T>(
         &self,
         index: u16,
