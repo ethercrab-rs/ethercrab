@@ -1,3 +1,42 @@
+# Configuring SDOs in a less error prone way
+
+- Stage 1: Just be able to automatically set the `0x****:00` index to the number of configured
+  sub-indices
+
+  All we need to be able to do is turn this:
+
+  ```rust
+  subdevice.sdo_write(0x1a00, 0, 0u8).await?;
+  subdevice.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
+  subdevice.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
+  subdevice.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
+  subdevice.sdo_write(0x1a00, 0, 0x03u8).await?;
+  ```
+
+  Into this:
+
+  ```rust
+  subdevice.sdo_write_subindices(0x1a00, &[
+      0x6041_0010u32,
+      0x6064_0020u32,
+      0x606c_0020u32
+  ]);
+  ```
+
+  Explicit non-goal: supporting different types in the array. If this is desired, the user can go
+  back to using the individual `sdo_write` calls.
+
+- Stage 2: Be able to configure input (`0x1600`) and output (`0x1a00`) mappings, then pass that to
+  the SM config (`0x1c12`/`0x1c13`).
+
+  The API of this is likely to be dictated by what ESI files can give us
+
+  1. First ideas:
+
+     ```rust
+     // TODO
+     ```
+
 # Plotting DC/OS time sync
 
 ```gnuplot
