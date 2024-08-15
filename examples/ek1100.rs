@@ -80,13 +80,18 @@ async fn main() -> Result<(), Error> {
             log::info!("Found EL3004. Configuring...");
 
             subdevice.sdo_write(0x1c12, 0, 0u8).await?;
-            subdevice.sdo_write(0x1c13, 0, 0u8).await?;
 
-            subdevice.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-            subdevice.sdo_write(0x1c13, 2, 0x1a02u16).await?;
-            subdevice.sdo_write(0x1c13, 3, 0x1a04u16).await?;
-            subdevice.sdo_write(0x1c13, 4, 0x1a06u16).await?;
-            subdevice.sdo_write(0x1c13, 0, 4u8).await?;
+            subdevice
+                .sdo_write_subindices(0x1c13, &[0x1a00u16, 0x1a02, 0x1a04, 0x1a06])
+                .await?;
+
+            // The `sdo_write_subindices` call above is equivalent to the following
+            // subdevice.sdo_write(0x1c13, 0, 0u8).await?;
+            // subdevice.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+            // subdevice.sdo_write(0x1c13, 2, 0x1a02u16).await?;
+            // subdevice.sdo_write(0x1c13, 3, 0x1a04u16).await?;
+            // subdevice.sdo_write(0x1c13, 4, 0x1a06u16).await?;
+            // subdevice.sdo_write(0x1c13, 0, 4u8).await?;
         }
     }
 
