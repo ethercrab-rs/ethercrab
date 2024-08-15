@@ -16,7 +16,7 @@
   Into this:
 
   ```rust
-  subdevice.sdo_write_subindices(0x1a00, &[
+  subdevice.sdo_write_array(0x1a00, &[
       0x6041_0010u32,
       0x6064_0020u32,
       0x606c_0020u32

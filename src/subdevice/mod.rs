@@ -676,7 +676,7 @@ where
     /// let subdevice = group.subdevice(&maindevice, 0).expect("No subdevice!");
     ///
     /// // This is equivalent to...
-    /// subdevice.sdo_write_subindices(0x1c13, &[
+    /// subdevice.sdo_write_array(0x1c13, &[
     ///     0x1a00u16,
     ///     0x1a02,
     ///     0x1a04,
@@ -693,11 +693,7 @@ where
     /// # Ok::<(), ethercrab::error::Error>(())
     /// # };
     /// ```
-    pub async fn sdo_write_subindices<T>(
-        &self,
-        index: u16,
-        values: impl AsRef<[T]>,
-    ) -> Result<(), Error>
+    pub async fn sdo_write_array<T>(&self, index: u16, values: impl AsRef<[T]>) -> Result<(), Error>
     where
         T: EtherCrabWireWrite,
     {

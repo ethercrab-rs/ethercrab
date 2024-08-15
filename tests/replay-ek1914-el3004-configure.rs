@@ -54,7 +54,7 @@ async fn replay_ek1914_el3004_configure() -> Result<(), Error> {
     el3004.sdo_write(0x1c12, 0, 0u8).await?;
 
     el3004
-        .sdo_write_subindices(0x1c13, &[0x1a00u16, 0x1a02, 0x1a04, 0x1a06])
+        .sdo_write_array(0x1c13, &[0x1a00u16, 0x1a02, 0x1a04, 0x1a06])
         .await?;
 
     assert_eq!(el3004.sdo_read::<u16>(0x1c13, 1).await?, 0x1a00u16);

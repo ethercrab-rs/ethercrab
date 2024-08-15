@@ -82,10 +82,10 @@ async fn main() -> Result<(), Error> {
             subdevice.sdo_write(0x1c12, 0, 0u8).await?;
 
             subdevice
-                .sdo_write_subindices(0x1c13, &[0x1a00u16, 0x1a02, 0x1a04, 0x1a06])
+                .sdo_write_array(0x1c13, &[0x1a00u16, 0x1a02, 0x1a04, 0x1a06])
                 .await?;
 
-            // The `sdo_write_subindices` call above is equivalent to the following
+            // The `sdo_write_array` call above is equivalent to the following
             // subdevice.sdo_write(0x1c13, 0, 0u8).await?;
             // subdevice.sdo_write(0x1c13, 1, 0x1a00u16).await?;
             // subdevice.sdo_write(0x1c13, 2, 0x1a02u16).await?;

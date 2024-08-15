@@ -120,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
 
         // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
         subdevice
-            .sdo_write_subindices(
+            .sdo_write_array(
                 0x1600,
                 &[
                     // Control word, u16
@@ -139,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
         // subdevice.sdo_write(0x1600, 0, 2u8).await?;
 
         subdevice
-            .sdo_write_subindices(
+            .sdo_write_array(
                 0x1a00,
                 &[
                     // Status word, u16
@@ -160,10 +160,10 @@ async fn main() -> anyhow::Result<()> {
         // subdevice.sdo_write(0x1a00, 0, 0x03u8).await?;
 
         subdevice
-            .sdo_write_subindices(0x1c12, from_ref(&0x1600u16))
+            .sdo_write_array(0x1c12, from_ref(&0x1600u16))
             .await?;
         subdevice
-            .sdo_write_subindices(0x1c13, from_ref(&0x1a00u16))
+            .sdo_write_array(0x1c13, from_ref(&0x1a00u16))
             .await?;
 
         // Above code is equivalent to:
