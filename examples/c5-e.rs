@@ -10,6 +10,7 @@ use ethercrab::{
     MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
 use std::{
+    array::from_ref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -118,30 +119,60 @@ async fn main() -> anyhow::Result<()> {
             .context("velocity unit RPM")?;
 
         // CSV described a bit better in section 7.6.2.2 Related Objects of the manual
-        subdevice.sdo_write(0x1600, 0, 0u8).await?;
-        // Control word, u16
-        // NOTE: The lower word specifies the field length
-        subdevice.sdo_write(0x1600, 1, 0x6040_0010u32).await?;
-        // Target velocity, i32
-        subdevice.sdo_write(0x1600, 2, 0x60ff_0020u32).await?;
-        subdevice.sdo_write(0x1600, 0, 2u8).await?;
+        subdevice
+            .sdo_write_array(
+                0x1600,
+                &[
+                    // Control word, u16
+                    // NOTE: The lower word specifies the field length
+                    0x6040_0010u32,
+                    // Target velocity, i32
+                    0x60ff_0020,
+                ],
+            )
+            .await?;
 
-        subdevice.sdo_write(0x1a00, 0, 0u8).await?;
-        // Status word, u16
-        subdevice.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
-        // Actual position, i32
-        subdevice.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
-        // Actual velocity, i32
-        subdevice.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
-        subdevice.sdo_write(0x1a00, 0, 0x03u8).await?;
+        // The above code is equivalent to:
+        // subdevice.sdo_write(0x1600, 0, 0u8).await?;
+        // subdevice.sdo_write(0x1600, 1, 0x6040_0010u32).await?;
+        // subdevice.sdo_write(0x1600, 2, 0x60ff_0020u32).await?;
+        // subdevice.sdo_write(0x1600, 0, 2u8).await?;
 
-        subdevice.sdo_write(0x1c12, 0, 0u8).await?;
-        subdevice.sdo_write(0x1c12, 1, 0x1600u16).await?;
-        subdevice.sdo_write(0x1c12, 0, 1u8).await?;
+        subdevice
+            .sdo_write_array(
+                0x1a00,
+                &[
+                    // Status word, u16
+                    0x6041_0010u32,
+                    // Actual position, i32
+                    0x6064_0020,
+                    // Actual velocity, i32
+                    0x606c_0020,
+                ],
+            )
+            .await?;
 
-        subdevice.sdo_write(0x1c13, 0, 0u8).await?;
-        subdevice.sdo_write(0x1c13, 1, 0x1a00u16).await?;
-        subdevice.sdo_write(0x1c13, 0, 1u8).await?;
+        // Above code is equivalent to:
+        // subdevice.sdo_write(0x1a00, 0, 0u8).await?;
+        // subdevice.sdo_write(0x1a00, 1, 0x6041_0010u32).await?;
+        // subdevice.sdo_write(0x1a00, 2, 0x6064_0020u32).await?;
+        // subdevice.sdo_write(0x1a00, 3, 0x606c_0020u32).await?;
+        // subdevice.sdo_write(0x1a00, 0, 0x03u8).await?;
+
+        subdevice
+            .sdo_write_array(0x1c12, from_ref(&0x1600u16))
+            .await?;
+        subdevice
+            .sdo_write_array(0x1c13, from_ref(&0x1a00u16))
+            .await?;
+
+        // Above code is equivalent to:
+        // subdevice.sdo_write(0x1c12, 0, 0u8).await?;
+        // subdevice.sdo_write(0x1c12, 1, 0x1600u16).await?;
+        // subdevice.sdo_write(0x1c12, 0, 1u8).await?;
+        // subdevice.sdo_write(0x1c13, 0, 0u8).await?;
+        // subdevice.sdo_write(0x1c13, 1, 0x1a00u16).await?;
+        // subdevice.sdo_write(0x1c13, 0, 1u8).await?;
 
         // Opmode - Cyclic Synchronous Position
         // subdevice.write_sdo(0x6060, 0, 0x08).await?;
