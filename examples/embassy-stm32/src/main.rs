@@ -10,6 +10,7 @@ use embassy_stm32::{
     eth::{self, generic_smi::GenericSMI, Ethernet, PacketQueue},
     gpio::{Level, Output, Speed},
     peripherals::{ETH, PB7},
+    time::Hertz,
     Config,
 };
 use embassy_time::{Duration, Instant, Timer};
@@ -96,16 +97,17 @@ async fn blinky(mut led: Output<'static, PB7>) -> ! {
 async fn main(spawner: Spawner) {
     let mut config = Config::default();
 
-    // Configure for STM32F429 Nucelo with 16MHz HSI and 180MHz sysclk.
     {
         use embassy_stm32::rcc::*;
-
-        config.rcc.hsi = true;
-        config.rcc.pll_src = PllSource::HSI;
+        config.rcc.hse = Some(Hse {
+            freq: Hertz(8_000_000),
+            mode: HseMode::Bypass,
+        });
+        config.rcc.pll_src = PllSource::HSE;
         config.rcc.pll = Some(Pll {
-            prediv: PllPreDiv::DIV8,
+            prediv: PllPreDiv::DIV4,
             mul: PllMul::MUL180,
-            divp: Some(PllPDiv::DIV2), // 16mhz / 8 * 180 / 2 = 180Mhz.
+            divp: Some(PllPDiv::DIV2), // 8mhz / 4 * 180 / 2 = 180Mhz.
             divq: None,
             divr: None,
         });
@@ -126,10 +128,10 @@ async fn main(spawner: Spawner) {
 
     let (tx, rx, pdu_loop) = defmt::unwrap!(PDU_STORAGE.try_split());
 
-    static PACKETS: StaticCell<PacketQueue<16, 16>> = StaticCell::new();
+    static PACKETS: StaticCell<PacketQueue<8, 8>> = StaticCell::new();
     let device = {
         let mut device = Ethernet::new(
-            PACKETS.init(PacketQueue::<16, 16>::new()),
+            PACKETS.init(PacketQueue::<8, 8>::new()),
             p.ETH,
             Irqs,
             p.PA1,
