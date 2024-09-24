@@ -440,7 +440,7 @@ where
             RegisterAddress::sync_manager_status(write_mailbox.sync_manager);
 
         // Ensure SubDevice OUT (master IN) mailbox is empty
-        {
+        for i in 0..10 {
             let sm_status = self
                 .read(mailbox_read_sm_status)
                 .receive::<crate::sync_manager_channel::Status>(self.maindevice)
@@ -458,6 +458,13 @@ where
                     .ignore_wkc()
                     .receive_slice(self.maindevice, read_mailbox.len)
                     .await?;
+            } else {
+                break;
+            }
+
+            // Don't delay on first iteration
+            if i > 0 {
+                self.maindevice.timeouts.loop_tick().await;
             }
         }
 
