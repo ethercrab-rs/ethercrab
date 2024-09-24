@@ -410,8 +410,9 @@ where
         let mailbox_write_sm_status =
             RegisterAddress::sync_manager_status(write_mailbox.sync_manager);
 
-        // Ensure SubDevice OUT (master IN) mailbox is empty
-        {
+        // Ensure SubDevice OUT (master IN) mailbox is empty. We'll retry this multiple times in
+        // case the SubDevice is still busy or bugged or something.
+        for i in 0..10 {
             let sm_status = self
                 .read(mailbox_read_sm_status)
                 .receive::<crate::sync_manager_channel::Status>(self.maindevice)
@@ -420,14 +421,26 @@ where
             // If flag is set, read entire mailbox to clear it
             if sm_status.mailbox_full {
                 fmt::debug!(
-                    "SubDevice {:#06x} OUT mailbox not empty. Clearing.",
-                    self.configured_address()
+                    "SubDevice {:#06x} OUT mailbox not empty (status {:?}). Clearing.",
+                    self.configured_address(),
+                    sm_status
                 );
 
                 self.read(read_mailbox.address)
                     .ignore_wkc()
                     .receive_slice(self.maindevice, read_mailbox.len)
                     .await?;
+            } else {
+                break;
+            }
+
+            // Don't delay on first iteration
+            if i > 0 {
+                self.maindevice.timeouts.loop_tick().await;
+            }
+
+            if i > 1 {
+                fmt::debug!("--> Retrying clear");
             }
         }
 
@@ -544,6 +557,14 @@ where
 
         let headers = HeadersRaw::unpack_from_slice(&response)?;
 
+        if headers.header.counter != counter {
+            fmt::warn!(
+                "Invalid count received: {} (expected {})",
+                headers.header.counter,
+                counter
+            );
+        }
+
         if headers.command == CoeCommand::Abort {
             let code = CoeAbortCode::Incompatible;
 
@@ -562,14 +583,14 @@ where
         }
         // Validate that the mailbox response is to the request we just sent
         else if headers.header.mailbox_type != MailboxType::Coe
-            || headers.header.counter != counter
+            || !request.validate_response(headers.address, headers.sub_index)
         {
             fmt::error!(
-                "Invalid SDO response. Type: {:?} (expected {:?}), counter {} (expected {})",
+                "Invalid SDO response. Type: {:?} (expected {:?}), index {}, subindex {}",
                 headers.header.mailbox_type,
                 MailboxType::Coe,
-                headers.header.counter,
-                counter
+                headers.address,
+                headers.sub_index,
             );
 
             Err(Error::Mailbox(MailboxError::SdoResponseInvalid {
