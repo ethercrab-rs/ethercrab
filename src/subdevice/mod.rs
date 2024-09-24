@@ -439,7 +439,8 @@ where
         let mailbox_write_sm_status =
             RegisterAddress::sync_manager_status(write_mailbox.sync_manager);
 
-        // Ensure SubDevice OUT (master IN) mailbox is empty
+        // Ensure SubDevice OUT (master IN) mailbox is empty. We'll retry this multiple times in
+        // case the SubDevice is still busy or bugged or something.
         for i in 0..10 {
             let sm_status = self
                 .read(mailbox_read_sm_status)
@@ -465,6 +466,10 @@ where
             // Don't delay on first iteration
             if i > 0 {
                 self.maindevice.timeouts.loop_tick().await;
+            }
+
+            if i > 1 {
+                fmt::debug!("--> Retrying clear");
             }
         }
 
