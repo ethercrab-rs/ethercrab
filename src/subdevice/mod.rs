@@ -449,8 +449,9 @@ where
             // If flag is set, read entire mailbox to clear it
             if sm_status.mailbox_full {
                 fmt::debug!(
-                    "SubDevice {:#06x} OUT mailbox not empty. Clearing.",
-                    self.configured_address()
+                    "SubDevice {:#06x} OUT mailbox not empty (status {:?}). Clearing.",
+                    self.configured_address(),
+                    sm_status
                 );
 
                 self.read(read_mailbox.address)
@@ -573,6 +574,14 @@ where
 
         let headers = HeadersRaw::unpack_from_slice(&response)?;
 
+        if headers.header.counter != counter {
+            fmt::warn!(
+                "Invalid count received: {} (expected {})",
+                headers.header.counter,
+                counter
+            );
+        }
+
         if headers.command == CoeCommand::Abort {
             let code = CoeAbortCode::Incompatible;
 
@@ -591,14 +600,14 @@ where
         }
         // Validate that the mailbox response is to the request we just sent
         else if headers.header.mailbox_type != MailboxType::Coe
-            || headers.header.counter != counter
+            || !request.validate_response(headers.address, headers.sub_index)
         {
             fmt::error!(
-                "Invalid SDO response. Type: {:?} (expected {:?}), counter {} (expected {})",
+                "Invalid SDO response. Type: {:?} (expected {:?}), index {}, subindex {}",
                 headers.header.mailbox_type,
                 MailboxType::Coe,
-                headers.header.counter,
-                counter
+                headers.address,
+                headers.sub_index,
             );
 
             Err(Error::Mailbox(MailboxError::SdoResponseInvalid {
