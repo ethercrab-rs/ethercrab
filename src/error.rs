@@ -280,6 +280,10 @@ pub enum MailboxError {
         /// The subindex used in the operation.
         sub_index: u8,
     },
+    /// The returned counter value does not match that which was sent.
+    ///
+    /// Slowing down mailbox reads may help mitigate this error.
+    InvalidCount,
 }
 
 impl core::fmt::Display for MailboxError {
@@ -301,6 +305,7 @@ impl core::fmt::Display for MailboxError {
                 "{:#06x}:{} invalid response from device",
                 address, sub_index
             ),
+            MailboxError::InvalidCount => f.write_str("incorrect mailbox count value"),
         }
     }
 }
