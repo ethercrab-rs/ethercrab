@@ -1086,7 +1086,7 @@ where
     ///
     /// // Wait for all SubDevices in the group to reach OP, whilst sending PDI to allow DC to start
     /// // correctly.
-    /// while !group.all_op(&maindevice).await? {
+    /// loop {
     ///     let now = Instant::now();
     ///
     ///     let (
@@ -1095,6 +1095,10 @@ where
     ///             next_cycle_wait, ..
     ///         },
     ///     ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+    ///
+    ///     if group.all_op(&maindevice).await? {
+    ///         break;
+    ///     }
     ///
     ///     smol::Timer::at(now + next_cycle_wait).await;
     /// }
