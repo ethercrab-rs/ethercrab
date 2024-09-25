@@ -9,6 +9,7 @@ mod handle;
 mod iterator;
 
 use crate::{
+    al_control::AlControl,
     command::Command,
     error::{DistributedClockError, Error, Item, PduError},
     fmt,
@@ -23,7 +24,7 @@ use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 use core::{
     cell::UnsafeCell, marker::PhantomData, slice, sync::atomic::AtomicUsize, time::Duration,
 };
-use ethercrab_wire::EtherCrabWireRead;
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
@@ -638,27 +639,65 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
         maindevice: &MainDevice<'_>,
         desired_state: SubDeviceState,
     ) -> Result<bool, Error> {
-        for subdevice in self
-            .inner()
-            .subdevices
-            .iter()
-            .map(|subdevice| subdevice.borrow())
-        {
-            let sd = SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice);
+        fmt::trace!("Check group state");
 
-            // TODO: Add a way to queue up a bunch of PDUs and send all at once
-            let subdevice_state = sd.state().await.map_err(|e| {
+        // Send this many status frames in a single PDU.
+        // TODO: Check ahead of time that this many PDUs will fit in the given frame size.
+        const CHUNK_SIZE: usize = 16;
+
+        for (chunk_idx, chunk) in self.inner().subdevices.chunks(CHUNK_SIZE).enumerate() {
+            let mut frame = maindevice.pdu_loop.alloc_frame()?;
+
+            let mut handles = heapless::Vec::<_, CHUNK_SIZE>::new();
+
+            let idx_range = chunk_idx * CHUNK_SIZE..chunk_idx * CHUNK_SIZE + CHUNK_SIZE;
+
+            fmt::trace!("--> Group index chunk {:?}", idx_range);
+
+            for (position_in_chunk, sd_address) in chunk
+                .iter()
+                .map(|sd| sd.borrow().configured_address())
+                .enumerate()
+            {
+                let current_pos = CHUNK_SIZE * chunk_idx + position_in_chunk;
+
+                let handle = frame.push_pdu(
+                    Command::fprd(sd_address, RegisterAddress::AlStatus.into()).into(),
+                    (),
+                    Some(AlControl::PACKED_LEN as u16),
+                    current_pos < self.len() - 1,
+                )?;
+
+                // SAFETY: Handles has the same length as the chunk, so this should always succeed.
+                let _ = handles.push(handle).map_err(|_| unreachable!());
+            }
+
+            let frame = frame.mark_sendable(
+                &maindevice.pdu_loop,
+                maindevice.timeouts.pdu,
+                maindevice.config.retry_behaviour.retry_count(),
+            );
+
+            maindevice.pdu_loop.wake_sender();
+
+            let received = frame.await.map_err(|e| {
                 fmt::error!(
-                    "Failed to transition SubDevice {:#06x}: {}",
-                    sd.configured_address(),
+                    "Failed to get group SubDevice chunk {:?} status: {}",
+                    idx_range,
                     e
                 );
 
                 e
             })?;
 
-            if subdevice_state != desired_state {
-                return Ok(false);
+            for handle in handles {
+                let result = received.pdu(handle)?;
+
+                let result = AlControl::unpack_from_slice(&result)?;
+
+                if result.state != desired_state {
+                    return Ok(false);
+                }
             }
         }
 
