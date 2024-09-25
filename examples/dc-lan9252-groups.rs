@@ -328,7 +328,7 @@ fn main() -> Result<(), Error> {
         // overhead present here.
         smol::future::race(
             async {
-                while !slow_group.all_op(&maindevice).await? {
+                loop {
                     let now = Instant::now();
 
                     let (
@@ -338,13 +338,17 @@ fn main() -> Result<(), Error> {
                         },
                     ) = slow_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
+                    if slow_group.all_op(&maindevice).await? {
+                        break;
+                    }
+
                     smol::Timer::at(now + next_cycle_wait).await;
                 }
 
                 Result::<_, Error>::Ok(())
             },
             async {
-                while !fast_group.all_op(&maindevice).await? {
+                loop {
                     let now = Instant::now();
 
                     let (
@@ -353,6 +357,10 @@ fn main() -> Result<(), Error> {
                             next_cycle_wait, ..
                         },
                     ) = fast_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+
+                    if fast_group.all_op(&maindevice).await? {
+                        break;
+                    }
 
                     smol::Timer::at(now + next_cycle_wait).await;
                 }
