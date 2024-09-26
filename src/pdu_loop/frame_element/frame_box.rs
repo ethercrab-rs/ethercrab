@@ -166,6 +166,12 @@ impl<'sto> FrameBox<'sto> {
         unsafe { FrameElement::swap_state(self.frame, from, to) }.map(|_| ())
     }
 
+    pub fn clear_first_pdu(&self) {
+        unsafe {
+            FrameElement::<0>::clear_first_pdu(self.frame);
+        }
+    }
+
     pub fn add_pdu(&mut self, alloc_size: usize, pdu_idx: u8) {
         unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += alloc_size };
 
