@@ -7,5 +7,5 @@ pre-release-replacements = [
 ]
 pre-release-commit-message = "Release"
 tag-message = "Release {{crate_name}} v{{version}}"
-allow-branch = ["master"]
+allow-branch = ["master", "*-backports"]
 tag-prefix = "{{crate_name}}-"
