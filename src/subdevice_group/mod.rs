@@ -659,13 +659,11 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
                 .map(|sd| sd.borrow().configured_address())
                 .enumerate()
             {
-                let current_pos = CHUNK_SIZE * chunk_idx + position_in_chunk;
-
                 let handle = frame.push_pdu(
                     Command::fprd(sd_address, RegisterAddress::AlStatus.into()).into(),
                     (),
                     Some(AlControl::PACKED_LEN as u16),
-                    current_pos < self.len() - 1,
+                    position_in_chunk < chunk.len() - 1,
                 )?;
 
                 // SAFETY: Handles has the same length as the chunk, so this should always succeed.
