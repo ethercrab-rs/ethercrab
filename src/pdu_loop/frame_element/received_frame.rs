@@ -131,6 +131,9 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
         fmt::unwrap!(self
             .inner
             .swap_state(FrameState::RxProcessing, FrameState::None));
+
+        // Set frame empty sentinel so we don't get false-positive matches when receiving frames
+        self.inner.clear_first_pdu();
     }
 }
 
