@@ -73,6 +73,18 @@ An EtherCAT MainDevice written in Rust.
 - [#162](https://github.com/ethercrab-rs/ethercrab/pull/162) Add support for FreeBSD and NetBSD
   using BPF.
 
+### Changed
+
+- [#236](https://github.com/ethercrab-rs/ethercrab/pull/236) Change mailbox response validation to
+  check index/subindex instead of returned counter.
+
+## [0.4.3] - 2024-09-26
+
+### Changed
+
+- [#236](https://github.com/ethercrab-rs/ethercrab/pull/236) Change mailbox response validation to
+  check index/subindex instead of returned counter.
+
 ## [0.4.2] - 2024-05-27
 
 ### Added
@@ -447,6 +459,8 @@ An EtherCAT MainDevice written in Rust.
 
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...HEAD
 [0.5.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.5.0
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.3...HEAD
+[0.4.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.4.3
 [0.4.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.1...ethercrab-v0.4.2
 [0.4.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.0...ethercrab-v0.4.1
 [0.4.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...ethercrab-v0.4.0
