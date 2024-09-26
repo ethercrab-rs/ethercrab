@@ -8,6 +8,11 @@ An EtherCAT master written in Rust.
 
 ## [0.4.3] - 2024-09-26
 
+### Changed
+
+- [#236](https://github.com/ethercrab-rs/ethercrab/pull/236) Change mailbox response validation to
+  check index/subindex instead of returned counter.
+
 ## [0.4.2] - 2024-05-27
 
 ### Added
@@ -379,9 +384,9 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
+
 [unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.3...HEAD
 [0.4.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.4.3
-
 [0.4.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.1...ethercrab-v0.4.2
 [0.4.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.0...ethercrab-v0.4.1
 [0.4.0]: https://github.com/ethercrab-rs/ethercrab/compare/v0.3.6...ethercrab-v0.4.0
