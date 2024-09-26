@@ -230,6 +230,13 @@ impl<const N: usize> FrameElement<N> {
             Ordering::Relaxed,
         );
     }
+
+    /// Clear first PDU.
+    unsafe fn clear_first_pdu(this: NonNull<FrameElement<0>>) {
+        let first_pdu = &*addr_of!((*this.as_ptr()).first_pdu);
+
+        first_pdu.store(FIRST_PDU_EMPTY, Ordering::Release);
+    }
 }
 
 #[cfg(test)]

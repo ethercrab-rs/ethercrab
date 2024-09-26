@@ -1,6 +1,6 @@
 # Changelog
 
-An EtherCAT master written in Rust.
+An EtherCAT MainDevice written in Rust.
 
 <!-- next-header -->
 
@@ -21,6 +21,8 @@ An EtherCAT master written in Rust.
   device name instead of hard coding to the first string index.
 - [#232](https://github.com/ethercrab-rs/ethercrab/pull/232) Add
   `{SubDevice,SubDeviceRef}::description()` method to get longer device name
+- [#237](https://github.com/ethercrab-rs/ethercrab/pull/237) Read SubDevice group status in chunks
+  of 16 devices to speed up group status reads.
 
 ### Fixed
 
