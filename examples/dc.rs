@@ -27,7 +27,7 @@ use ta::Next;
 const MAX_SUBDEVICES: usize = 16;
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 const MAX_FRAMES: usize = 32;
-const PDI_LEN: usize = 128;
+const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
@@ -293,7 +293,7 @@ fn main() -> Result<(), Error> {
                 // Less than 100ns max deviation as an example threshold.
                 // <https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585>
                 // mentions less than 100us as a good enough value as well.
-                if max_deviation < 100_000_00 {
+                if max_deviation < 100 {
                     log::info!("Clocks settled after {} ms", start.elapsed().as_millis());
 
                     break;
