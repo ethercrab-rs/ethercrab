@@ -678,6 +678,14 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
                 }
 
                 num_in_this_frame += 1;
+
+                // A status check datagram is 14 bytes, meaning we can fit at most just over 100
+                // checks per normal EtherCAT frame. This leaves spare PDU indices available for
+                // other purposes, however if the user is using jumbo frames or something, we should
+                // always leave some indices free for e.g. other threads.
+                if num_in_this_frame > 128 {
+                    break;
+                }
             }
 
             // Nothing to send, we've checked all SDs
