@@ -28,6 +28,8 @@ An EtherCAT MainDevice written in Rust.
   of 16 devices to speed up group status reads.
 - [#239](https://github.com/ethercrab-rs/ethercrab/pull/239) Mailbox emergency responses now return
   `Error::Mailbox(MailboxError::Emergency)` instead of being ignored.
+- [#238](https://github.com/ethercrab-rs/ethercrab/pull/238) Group SubDevice status checks are now
+  chunked into however many fit into a frame, instead of being sent separately.
 
 ### Fixed
 
