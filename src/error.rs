@@ -284,6 +284,13 @@ pub enum MailboxError {
     ///
     /// Slowing down mailbox reads may help mitigate this error.
     InvalidCount,
+    /// SubDevice sent an emergency message.
+    Emergency {
+        /// Error code.
+        error_code: u16,
+        /// Error register.
+        error_register: u8,
+    },
 }
 
 impl core::fmt::Display for MailboxError {
@@ -306,6 +313,14 @@ impl core::fmt::Display for MailboxError {
                 address, sub_index
             ),
             MailboxError::InvalidCount => f.write_str("incorrect mailbox count value"),
+            MailboxError::Emergency {
+                error_code,
+                error_register,
+            } => write!(
+                f,
+                "emergency: code {:#06x}, register {:#04x}",
+                error_code, error_register
+            ),
         }
     }
 }

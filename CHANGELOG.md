@@ -6,6 +6,17 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- [#239](https://github.com/ethercrab-rs/ethercrab/pull/239) Add
+  `MailboxError::Emergency { error_code, error_register }` variant to surface EMERGENCY responses
+  from CoE transactions.
+
+### Fixed
+
+- [#239](https://github.com/ethercrab-rs/ethercrab/pull/239) Mailbox emergency responses now return
+  `Error::Mailbox(MailboxError::Emergency)` instead of being ignored.
+
 ## [0.4.3] - 2024-09-26
 
 ### Changed

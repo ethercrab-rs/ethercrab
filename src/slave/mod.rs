@@ -10,8 +10,8 @@ use crate::{
     al_status_code::AlStatusCode,
     client::Client,
     coe::{
-        self, abort_code::CoeAbortCode, services::CoeServiceRequest, CoeCommand, SdoExpedited,
-        SubIndex,
+        self, abort_code::CoeAbortCode, services::CoeServiceRequest, CoeCommand, CoeService,
+        SdoExpedited, SubIndex,
     },
     command::Command,
     dl_status::DlStatus,
@@ -551,6 +551,8 @@ where
 
         let headers = HeadersRaw::unpack_from_slice(&response)?;
 
+        assert_ne!(headers.header.service, CoeService::Emergency);
+
         if headers.header.counter != counter {
             fmt::warn!(
                 "Invalid count received: {} (expected {})",
@@ -559,7 +561,42 @@ where
             );
         }
 
-        if headers.command == CoeCommand::Abort {
+        if headers.header.service == CoeService::Emergency {
+            #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
+            #[wire(bytes = 8)]
+            struct EmergencyData {
+                #[wire(bytes = 2)]
+                error_code: u16,
+                #[wire(bytes = 1)]
+                error_register: u8,
+                #[wire(bytes = 5)]
+                extra_data: [u8; 5],
+            }
+
+            response.trim_front(HeadersRaw::PACKED_LEN);
+
+            let decoded = EmergencyData::unpack_from_slice(&response)?;
+
+            #[cfg(not(feature = "defmt"))]
+            fmt::error!(
+                "Mailbox emergency code {:#06x}, register {:#04x}, data {:#04x?}",
+                decoded.error_code,
+                decoded.error_register,
+                decoded.extra_data
+            );
+            #[cfg(feature = "defmt")]
+            fmt::error!(
+                "Mailbox emergency code {:#06x}, register {:#04x}, data {=[u8]}",
+                decoded.error_code,
+                decoded.error_register,
+                decoded.extra_data
+            );
+
+            return Err(Error::Mailbox(MailboxError::Emergency {
+                error_code: decoded.error_code,
+                error_register: decoded.error_register,
+            }));
+        } else if headers.command == CoeCommand::Abort {
             let code = CoeAbortCode::Incompatible;
 
             fmt::error!(
