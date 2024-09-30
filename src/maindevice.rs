@@ -509,7 +509,7 @@ impl<'sto> MainDevice<'sto> {
     ) -> Result<ReceivedPdu<'sto>, Error> {
         let mut frame = self.pdu_loop.alloc_frame()?;
 
-        let handle = frame.push_pdu(command, data, len_override, false)?;
+        let handle = frame.push_pdu(command, data, len_override)?;
 
         let frame = frame.mark_sendable(
             &self.pdu_loop,
