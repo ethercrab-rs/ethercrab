@@ -10,6 +10,9 @@ An EtherCAT MainDevice written in Rust.
 
 - [#234](https://github.com/ethercrab-rs/ethercrab/pull/234) Added `SubDeviceRef::sdo_write_array`
   to more cleanly write multiple SDO sub-indices and prevent mistakes.
+- [#239](https://github.com/ethercrab-rs/ethercrab/pull/239) Add
+  `MailboxError::Emergency { error_code, error_register }` variant to surface EMERGENCY responses
+  from CoE transactions.
 
 ### Changed
 
@@ -23,6 +26,8 @@ An EtherCAT MainDevice written in Rust.
   `{SubDevice,SubDeviceRef}::description()` method to get longer device name
 - [#237](https://github.com/ethercrab-rs/ethercrab/pull/237) Read SubDevice group status in chunks
   of 16 devices to speed up group status reads.
+- [#239](https://github.com/ethercrab-rs/ethercrab/pull/239) Mailbox emergency responses now return
+  `Error::Mailbox(MailboxError::Emergency)` instead of being ignored.
 
 ### Fixed
 
