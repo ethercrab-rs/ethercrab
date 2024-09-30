@@ -356,7 +356,7 @@ fn main() -> Result<(), Error> {
         // Send PDI and check group state until all SubDevices enter OP state. At this point, we can
         // exit this loop and enter the main process data loop that does not have the state check
         // overhead present here.
-        loop {
+        let mut group = loop {
             let now = Instant::now();
 
             let (
@@ -364,14 +364,22 @@ fn main() -> Result<(), Error> {
                 CycleInfo {
                     next_cycle_wait, ..
                 },
-            ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+                transition_token,
+            ) = group
+                .tx_rx_dc_check_state(&maindevice)
+                .await
+                .expect("TX/RX");
 
-            if group.all_op(&maindevice).await? {
-                break;
+            if let Some(token) = transition_token {
+                break group.into_state(token);
             }
 
+            // if group.all_op(&maindevice).await? {
+            //     break;
+            // }
+
             smol::Timer::at(now + next_cycle_wait).await;
-        }
+        };
 
         log::info!(
             "All SubDevices entered OP in {} us",

@@ -77,6 +77,15 @@ pub struct HasDc {
     reference: u16,
 }
 
+/// A state where a [`SubDeviceGroup`] has requested a state change and is currently transitioning.
+pub struct Transitioning<FROM, TO>(FROM, TO);
+
+/// A sealed token returned by EtherCrab to allow end user code to transition a group after
+/// EtherCrab has validated it can do so.
+///
+/// This token may not be created by user code.
+pub struct TransitionToken<T>(T);
+
 /// Marker trait for `SubDeviceGroup` typestates where all SubDevices have a PDI.
 #[doc(hidden)]
 pub trait HasPdi {}
@@ -84,12 +93,14 @@ pub trait HasPdi {}
 impl HasPdi for PreOpPdi {}
 impl HasPdi for SafeOp {}
 impl HasPdi for Op {}
+impl<FROM, TO> HasPdi for Transitioning<FROM, TO> where FROM: HasPdi {}
 
 #[doc(hidden)]
 pub trait IsPreOp {}
 
 impl IsPreOp for PreOp {}
 impl IsPreOp for PreOpPdi {}
+impl<FROM, TO> IsPreOp for Transitioning<FROM, TO> where FROM: IsPreOp {}
 
 #[derive(Default)]
 struct GroupInner<const MAX_SUBDEVICES: usize> {
@@ -492,7 +503,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn request_into_op(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Transitioning<SafeOp, Op>, DC>, Error> {
         let self_ = self.into_safe_op(maindevice).await?;
 
         self_.request_into_op(maindevice).await
@@ -537,18 +548,9 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn request_into_op(
         mut self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
-        for subdevice in self
-            .inner
-            .get_mut()
-            .subdevices
-            .iter_mut()
-            .map(|subdevice| subdevice.get_mut())
-        {
-            SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
-                .request_subdevice_state_nowait(SubDeviceState::Op)
-                .await?;
-        }
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Transitioning<SafeOp, Op>, DC>, Error> {
+        self.set_subdevice_states(maindevice, SubDeviceState::Op)
+            .await?;
 
         Ok(SubDeviceGroup {
             id: self.id,
@@ -755,14 +757,11 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
         .await
     }
 
-    /// Transition to a new state.
-    async fn transition_to<TO>(
-        mut self,
+    async fn set_subdevice_states(
+        &mut self,
         maindevice: &MainDevice<'_>,
         desired_state: SubDeviceState,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, TO, DC>, Error> {
-        // We're done configuring FMMUs, etc, now we can request all SubDevices in this group go into
-        // SAFE-OP
+    ) -> Result<(), Error> {
         for subdevice in self
             .inner
             .get_mut()
@@ -774,6 +773,19 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
                 .request_subdevice_state_nowait(desired_state)
                 .await?;
         }
+
+        Ok(())
+    }
+
+    /// Transition to a new state.
+    async fn transition_to<TO>(
+        mut self,
+        maindevice: &MainDevice<'_>,
+        desired_state: SubDeviceState,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, TO, DC>, Error> {
+        // We're done configuring FMMUs, etc, now we can request all SubDevices in this group go into
+        // SAFE-OP
+        self.set_subdevice_states(maindevice, desired_state).await?;
 
         fmt::debug!("Waiting for group state {}", desired_state);
 
@@ -1274,5 +1286,17 @@ where
                 next_cycle_wait: Duration::from_nanos(time_to_next_iter),
             },
         ))
+    }
+}
+
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Transitioning<SafeOp, Op>, HasDc>
+{
+    /// Transmit PDI, DC sync frame and check if all SubDevices have reached the desired state.
+    pub async fn tx_rx_dc_check_state(
+        &self,
+        maindevice: &MainDevice<'_>,
+    ) -> Result<(u16, CycleInfo, TransitionToken<Op>), Error> {
+        todo!()
     }
 }
