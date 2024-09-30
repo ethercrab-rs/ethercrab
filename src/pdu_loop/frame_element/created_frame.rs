@@ -11,7 +11,9 @@ use crate::{
     Command, PduLoop,
 };
 use core::{ptr::NonNull, sync::atomic::AtomicU8, time::Duration};
-use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized};
+use ethercrab_wire::{
+    EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized,
+};
 
 /// A frame in a freshly allocated state.
 ///
@@ -21,6 +23,10 @@ use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteS
 pub struct CreatedFrame<'sto> {
     inner: FrameBox<'sto>,
     pdu_count: u8,
+    /// Position of the last frame's header in the payload.
+    ///
+    /// Used for updating the `more_follows` flag when pushing a new PDU.
+    last_header_location: Option<usize>,
 }
 
 impl<'sto> CreatedFrame<'sto> {
@@ -39,6 +45,7 @@ impl<'sto> CreatedFrame<'sto> {
         Ok(Self {
             inner,
             pdu_count: 0,
+            last_header_location: None,
         })
     }
 
@@ -67,17 +74,22 @@ impl<'sto> CreatedFrame<'sto> {
         }
     }
 
+    /// Push a PDU into this frame.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PduError::TooLong`] if the remaining space in the frame is not enough to hold the
+    /// new PDU.
     pub fn push_pdu(
         &mut self,
         command: Command,
         data: impl EtherCrabWireWrite,
         len_override: Option<u16>,
-        more_follows: bool,
     ) -> Result<PduResponseHandle, PduError> {
         let data_length_usize =
             len_override.map_or(data.packed_len(), |l| usize::from(l).max(data.packed_len()));
 
-        let flags = PduFlags::new(data_length_usize as u16, more_follows);
+        let flags = PduFlags::new(data_length_usize as u16, false);
 
         // PDU header + data + working counter (space is required for the response value - we never
         // actually write it)
@@ -128,6 +140,28 @@ impl<'sto> CreatedFrame<'sto> {
         let index_in_frame = self.pdu_count;
 
         self.pdu_count += 1;
+
+        // Frame was added successfully, so now we can update the previous PDU `more_follows` flag to true.
+        if let Some(last_header_location) = self.last_header_location.as_mut() {
+            // Flags start at 6th bit of header
+            let flags_offset = 6usize;
+
+            let last_flags_buf = fmt::unwrap_opt!(self
+                .inner
+                .pdu_buf_mut()
+                .get_mut((*last_header_location + flags_offset)..));
+
+            let mut last_flags = fmt::unwrap!(PduFlags::unpack_from_slice(last_flags_buf));
+
+            last_flags.more_follows = true;
+
+            last_flags.pack_to_slice_unchecked(last_flags_buf);
+
+            // Previous header is now the one we just inserted
+            *last_header_location = buf_range.start;
+        } else {
+            self.last_header_location = Some(0);
+        }
 
         Ok(PduResponseHandle {
             index_in_frame,
@@ -191,13 +225,60 @@ mod tests {
         )
         .expect("Claim created");
 
-        let handle = created.push_pdu(
-            Command::fpwr(0x1000, 0x0918).into(),
-            [0xffu8; 9],
-            None,
-            false,
-        );
+        let handle = created.push_pdu(Command::fpwr(0x1000, 0x0918).into(), [0xffu8; 9], None);
 
         assert_eq!(handle.unwrap_err(), PduError::TooLong);
+    }
+
+    #[test]
+    fn auto_more_follows() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const BUF_LEN: usize = 64;
+
+        let pdu_idx = AtomicU8::new(0);
+
+        let frames = UnsafeCell::new([FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::None),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
+        }]);
+
+        let mut created = CreatedFrame::claim_created(
+            unsafe { NonNull::new_unchecked(frames.get().cast()) },
+            0xab,
+            &pdu_idx,
+            BUF_LEN,
+        )
+        .expect("Claim created");
+
+        let handle = created.push_pdu(Command::fpwr(0x1000, 0x0918).into(), (), None);
+        assert!(handle.is_ok());
+
+        let handle = created.push_pdu(Command::fpwr(0x1001, 0x0918).into(), (), None);
+        assert!(handle.is_ok());
+
+        let handle = created.push_pdu(Command::fpwr(0x1002, 0x0918).into(), (), None);
+        assert!(handle.is_ok());
+
+        const FLAGS_OFFSET: usize = 6;
+
+        assert_eq!(
+            created.inner.pdu_buf()[FLAGS_OFFSET..][..2],
+            PduFlags::new(0, true).pack()
+        );
+
+        assert_eq!(
+            created.inner.pdu_buf()[PduHeader::PACKED_LEN + 2 + FLAGS_OFFSET..][..2],
+            PduFlags::new(0, true).pack()
+        );
+
+        assert_eq!(
+            created.inner.pdu_buf()[(PduHeader::PACKED_LEN + 2 + FLAGS_OFFSET) * 2..][..2],
+            PduFlags::new(0, false).pack()
+        );
     }
 }

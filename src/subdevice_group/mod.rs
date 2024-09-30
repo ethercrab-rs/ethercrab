@@ -641,33 +641,56 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
     ) -> Result<bool, Error> {
         fmt::trace!("Check group state");
 
-        // Send this many status frames in a single PDU.
-        // TODO: Check ahead of time that this many PDUs will fit in the given frame size.
-        const CHUNK_SIZE: usize = 16;
+        let mut subdevices = self.inner().subdevices.iter();
 
-        for (chunk_idx, chunk) in self.inner().subdevices.chunks(CHUNK_SIZE).enumerate() {
+        let mut frame_idx = 0;
+
+        // Send as many frames as required to check statuses of all subdevices
+        loop {
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
-            let mut handles = heapless::Vec::<_, CHUNK_SIZE>::new();
+            let mut num_in_this_frame = 0;
 
-            let idx_range = chunk_idx * CHUNK_SIZE..chunk_idx * CHUNK_SIZE + CHUNK_SIZE;
-
-            fmt::trace!("--> Group index chunk {:?}", idx_range);
-
-            for (position_in_chunk, sd_address) in chunk
-                .iter()
-                .map(|sd| sd.borrow().configured_address())
-                .enumerate()
-            {
-                let handle = frame.push_pdu(
-                    Command::fprd(sd_address, RegisterAddress::AlStatus.into()).into(),
+            // Fill frame with status requests
+            while let Some(sd) = subdevices.next() {
+                match frame.push_pdu(
+                    Command::fprd(
+                        sd.borrow().configured_address(),
+                        RegisterAddress::AlStatus.into(),
+                    )
+                    .into(),
                     (),
                     Some(AlControl::PACKED_LEN as u16),
-                    position_in_chunk < chunk.len() - 1,
-                )?;
+                ) {
+                    Ok(_) => (),
+                    // Frame is full, we'll do more next time round
+                    Err(PduError::TooLong) => {
+                        fmt::trace!(
+                            "--> Pushed {} checks into frame {}",
+                            num_in_this_frame,
+                            frame_idx
+                        );
 
-                // SAFETY: Handles has the same length as the chunk, so this should always succeed.
-                let _ = handles.push(handle).map_err(|_| unreachable!());
+                        break;
+                    }
+                    // Bail on a legitimate failure
+                    Err(e) => return Err(e.into()),
+                }
+
+                num_in_this_frame += 1;
+
+                // A status check datagram is 14 bytes, meaning we can fit at most just over 100
+                // checks per normal EtherCAT frame. This leaves spare PDU indices available for
+                // other purposes, however if the user is using jumbo frames or something, we should
+                // always leave some indices free for e.g. other threads.
+                if num_in_this_frame > 128 {
+                    break;
+                }
+            }
+
+            // Nothing to send, we've checked all SDs
+            if num_in_this_frame == 0 {
+                break;
             }
 
             let frame = frame.mark_sendable(
@@ -678,25 +701,19 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
 
             maindevice.pdu_loop.wake_sender();
 
-            let received = frame.await.map_err(|e| {
-                fmt::error!(
-                    "Failed to get group SubDevice chunk {:?} status: {}",
-                    idx_range,
-                    e
-                );
+            let received = frame.await?;
 
-                e
-            })?;
+            for pdu in received.into_iter() {
+                let pdu = pdu?;
 
-            for handle in handles {
-                let result = received.pdu(handle)?;
-
-                let result = AlControl::unpack_from_slice(&result)?;
+                let result = AlControl::unpack_from_slice(&pdu)?;
 
                 if result.state != desired_state {
                     return Ok(false);
                 }
             }
+
+            frame_idx += 1;
         }
 
         Ok(true)
@@ -935,14 +952,12 @@ where
                 Command::frmw(dc_ref, RegisterAddress::DcSystemTime.into()).into(),
                 0u64,
                 None,
-                true,
             )?;
 
             let pdu_handle = frame.push_pdu(
                 Command::lrw(self.inner().pdi_start.start_address).into(),
                 self.pdi(),
                 None,
-                false,
             )?;
 
             let frame = frame.mark_sendable(
@@ -1142,14 +1157,12 @@ where
             Command::frmw(self.dc_conf.reference, RegisterAddress::DcSystemTime.into()).into(),
             0u64,
             None,
-            true,
         )?;
 
         let pdu_handle = frame.push_pdu(
             Command::lrw(self.inner().pdi_start.start_address).into(),
             self.pdi(),
             None,
-            false,
         )?;
 
         let frame = frame.mark_sendable(

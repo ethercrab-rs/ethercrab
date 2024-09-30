@@ -339,10 +339,6 @@ fn main() -> Result<(), Error> {
         let mut process_stats =
             csv::Writer::from_writer(File::create("dc-pd.csv").expect("Open CSV"));
 
-        let term = Arc::new(AtomicBool::new(false));
-        signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
-            .expect("Register hook");
-
         let mut print_tick = Instant::now();
 
         // Request OP state without waiting for all SubDevices to reach it. Allows the immediate
@@ -381,6 +377,10 @@ fn main() -> Result<(), Error> {
             "All SubDevices entered OP in {} us",
             op_request.elapsed().as_micros()
         );
+
+        let term = Arc::new(AtomicBool::new(false));
+        signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
+            .expect("Register hook");
 
         // Main application process data cycle
         loop {
