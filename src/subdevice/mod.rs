@@ -612,8 +612,16 @@ where
 
             let decoded = EmergencyData::unpack_from_slice(&response)?;
 
+            #[cfg(not(feature = "defmt"))]
             fmt::error!(
                 "Mailbox emergency code {:#06x}, register {:#04x}, data {:#04x?}",
+                decoded.error_code,
+                decoded.error_register,
+                decoded.extra_data
+            );
+            #[cfg(feature = "defmt")]
+            fmt::error!(
+                "Mailbox emergency code {:#06x}, register {:#04x}, data {=[u8]}",
                 decoded.error_code,
                 decoded.error_register,
                 decoded.extra_data
