@@ -6,6 +6,8 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.4.4] - 2024-10-03
+
 ### Added
 
 - [#239](https://github.com/ethercrab-rs/ethercrab/pull/239) Add
@@ -399,8 +401,9 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.4...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.3...HEAD
+[0.4.4]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.3...ethercrab-v0.4.4
 [0.4.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.4.3
 [0.4.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.1...ethercrab-v0.4.2
 [0.4.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.0...ethercrab-v0.4.1
