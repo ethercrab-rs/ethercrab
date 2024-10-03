@@ -16,8 +16,8 @@ An EtherCAT master written in Rust.
 
 - **(breaking)** [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) Increase MSRV from 1.77
   to 1.79.
-- [#241](https://github.com/ethercrab-rs/ethercrab/pull/241) During init, SMs and FMMUs are reset
-  one-by-one instead of the entire block being written to.
+- [#241](https://github.com/ethercrab-rs/ethercrab/pull/241) (@david-boles) During init, SMs and
+  FMMUs are reset one-by-one instead of the entire block being written to.
 - [#239](https://github.com/ethercrab-rs/ethercrab/pull/239) Mailbox emergency responses now return
   `Error::Mailbox(MailboxError::Emergency)` instead of being ignored.
 
