@@ -30,6 +30,8 @@ An EtherCAT MainDevice written in Rust.
   `Error::Mailbox(MailboxError::Emergency)` instead of being ignored.
 - [#238](https://github.com/ethercrab-rs/ethercrab/pull/238) Group SubDevice status checks are now
   chunked into however many fit into a frame, instead of being sent separately.
+- [#241](https://github.com/ethercrab-rs/ethercrab/pull/241) During init, SMs and FMMUs are reset
+  one-by-one instead of the entire block being written to.
 
 ### Fixed
 
