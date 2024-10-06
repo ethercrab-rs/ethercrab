@@ -154,6 +154,7 @@ impl<'sto> FrameBox<'sto> {
         }
     }
 
+    /// Get the number of bytes consumed in the region of the frame used to store one or more PDUs.
     pub fn pdu_payload_len(&self) -> usize {
         unsafe { *addr_of!((*self.frame.as_ptr()).pdu_payload_len) }
     }
@@ -172,6 +173,9 @@ impl<'sto> FrameBox<'sto> {
         }
     }
 
+    /// Add the given number of bytes in `alloc_size` to the consumed bytes counter in the frame.
+    ///
+    /// Also sets the first PDU index if it hasn't already been set.
     pub fn add_pdu(&mut self, alloc_size: usize, pdu_idx: u8) {
         unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += alloc_size };
 

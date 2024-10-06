@@ -30,6 +30,11 @@ pub struct CreatedFrame<'sto> {
 }
 
 impl<'sto> CreatedFrame<'sto> {
+    /// The size of a completely empty PDU.
+    ///
+    /// Includes header and 2 bytes for working counter.
+    pub const PDU_OVERHEAD_BYTES: usize = PduHeader::PACKED_LEN + 2;
+
     pub(in crate::pdu_loop) fn claim_created(
         frame: NonNull<FrameElement<0>>,
         frame_index: u8,
@@ -74,6 +79,106 @@ impl<'sto> CreatedFrame<'sto> {
         }
     }
 
+    /// Push a PDU into this frame, consuming as much space as possible.
+    pub(crate) fn push_pdu_slice_rest(
+        &mut self,
+        command: Command,
+        bytes: &[u8],
+    ) -> Result<(usize, PduResponseHandle), PduError> {
+        let consumed = self.inner.pdu_payload_len();
+
+        // The maximum number of bytes we can insert into this frame
+        let max_bytes = self
+            .inner
+            .pdu_buf()
+            .len()
+            .saturating_sub(consumed)
+            .saturating_sub(Self::PDU_OVERHEAD_BYTES);
+
+        let sub_slice_len = max_bytes.min(bytes.packed_len());
+
+        let bytes = &bytes[0..sub_slice_len];
+
+        let flags = PduFlags::new(sub_slice_len as u16, false);
+
+        let alloc_size = sub_slice_len + Self::PDU_OVERHEAD_BYTES;
+
+        let buf_range = consumed..(consumed + alloc_size);
+
+        // Establish mapping between this PDU index and the Ethernet frame it's being put in
+        let pdu_idx = self.inner.next_pdu_idx();
+
+        fmt::trace!(
+            "Write PDU {:#04x} into rest of frame index {} ({}, {} bytes at {:?})",
+            pdu_idx,
+            self.inner.frame_index(),
+            command,
+            sub_slice_len,
+            buf_range
+        );
+
+        let pdu_buf = self
+            .inner
+            .pdu_buf_mut()
+            .get_mut(buf_range.clone())
+            .ok_or(PduError::TooLong)?;
+
+        let header = PduHeader {
+            command_code: command.code(),
+            index: pdu_idx,
+            command_raw: command.pack(),
+            flags,
+            irq: 0,
+        };
+
+        let pdu_buf = write_packed(header, pdu_buf);
+
+        // Payload
+        let _pdu_buf = write_packed(bytes, pdu_buf);
+
+        // Next two bytes are working counter, but they are always zero on send (and the buffer is
+        // zero-initialised) so there's nothing to do.
+
+        // Don't need to check length here as we do that with `pdu_buf_mut().get_mut()` above.
+        self.inner.add_pdu(alloc_size, pdu_idx);
+
+        let index_in_frame = self.pdu_count;
+
+        self.pdu_count += 1;
+
+        // Frame was added successfully, so now we can update the previous PDU `more_follows` flag to true.
+        if let Some(last_header_location) = self.last_header_location.as_mut() {
+            // Flags start at 6th bit of header
+            let flags_offset = 6usize;
+
+            let last_flags_buf = fmt::unwrap_opt!(self
+                .inner
+                .pdu_buf_mut()
+                .get_mut((*last_header_location + flags_offset)..));
+
+            let mut last_flags = fmt::unwrap!(PduFlags::unpack_from_slice(last_flags_buf));
+
+            last_flags.more_follows = true;
+
+            last_flags.pack_to_slice_unchecked(last_flags_buf);
+
+            // Previous header is now the one we just inserted
+            *last_header_location = buf_range.start;
+        } else {
+            self.last_header_location = Some(0);
+        }
+
+        Ok((
+            sub_slice_len,
+            PduResponseHandle {
+                index_in_frame,
+                pdu_idx,
+                command_code: command.code(),
+                alloc_size,
+            },
+        ))
+    }
+
     /// Push a PDU into this frame.
     ///
     /// # Errors
@@ -93,7 +198,7 @@ impl<'sto> CreatedFrame<'sto> {
 
         // PDU header + data + working counter (space is required for the response value - we never
         // actually write it)
-        let alloc_size = data_length_usize + PduHeader::PACKED_LEN + 2;
+        let alloc_size = data_length_usize + Self::PDU_OVERHEAD_BYTES;
 
         let consumed = self.inner.pdu_payload_len();
 
@@ -167,6 +272,7 @@ impl<'sto> CreatedFrame<'sto> {
             index_in_frame,
             pdu_idx,
             command_code: command.code(),
+            alloc_size,
         })
     }
 }
@@ -187,6 +293,9 @@ pub struct PduResponseHandle {
     /// PDU wire index and command used to validate response match.
     pub pdu_idx: u8,
     pub command_code: u8,
+
+    /// The number of bytes allocated for the PDU header and payload in the frame.
+    pub alloc_size: usize,
 }
 
 #[cfg(test)]
