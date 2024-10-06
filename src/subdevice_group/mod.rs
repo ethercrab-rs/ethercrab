@@ -14,7 +14,7 @@ use crate::{
     error::{DistributedClockError, Error, Item, PduError},
     fmt,
     pdi::PdiOffset,
-    pdu_loop::CreatedFrame,
+    pdu_loop::{CreatedFrame, ReceivedPdu},
     subdevice::{
         configuration::PdoDirection, pdi::SubDevicePdi, IoRanges, SubDevice, SubDeviceRef,
     },
@@ -883,12 +883,6 @@ where
     ///
     /// This method will return with an error if the PDU could not be sent over the network, or the
     /// response times out.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic if the frame data length of the group is too large to fit in the
-    /// configured maximum PDU length set by the `DATA` const generic of
-    /// [`PduStorage`](crate::PduStorage).
     pub async fn tx_rx<'sto>(&self, maindevice: &'sto MainDevice<'sto>) -> Result<u16, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
@@ -906,10 +900,10 @@ where
 
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-            let (num_bytes_written, pdu_handle) =
+            let (bytes_in_this_chunk, pdu_handle) =
                 frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?;
 
-            remaining = &remaining[num_bytes_written..];
+            remaining = &remaining[bytes_in_this_chunk..];
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
@@ -921,23 +915,13 @@ where
 
             let received = frame.await?;
 
-            let data = received.first_pdu(pdu_handle)?;
+            let wkc = self.process_received_pdi_chunk(
+                total_bytes_sent,
+                bytes_in_this_chunk,
+                &received.pdu(pdu_handle)?,
+            )?;
 
-            let wkc = data.working_counter;
-
-            // If we've read the inputs chunk, write it back into the PDI (PDI is organised as
-            // IIIIOOOO)
-            if num_bytes_written > 0 && total_bytes_sent < self.read_pdi_len {
-                let inputs_range =
-                    total_bytes_sent..(total_bytes_sent + self.read_pdi_len.min(num_bytes_written));
-
-                self.pdi_mut()
-                    .get_mut(inputs_range.clone())
-                    .ok_or(Error::Internal)?
-                    .copy_from_slice(data.get(0..inputs_range.len()).ok_or(Error::Internal)?);
-            }
-
-            total_bytes_sent += num_bytes_written;
+            total_bytes_sent += bytes_in_this_chunk;
             lrw_wkc_sum += wkc;
         }
 
@@ -962,13 +946,6 @@ where
         &self,
         maindevice: &'sto MainDevice<'sto>,
     ) -> Result<(u16, Option<u64>), Error> {
-        assert!(
-            self.len() <= maindevice.max_frame_data(),
-            "Chunked sends not yet supported. Buffer len {} B too long to send in {} B frame",
-            self.len(),
-            maindevice.max_frame_data()
-        );
-
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -1003,10 +980,10 @@ where
 
                 let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-                let (num_bytes_written, pdu_handle) =
+                let (bytes_in_this_chunk, pdu_handle) =
                     frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?;
 
-                remaining = &remaining[num_bytes_written..];
+                remaining = &remaining[bytes_in_this_chunk..];
 
                 let frame = frame.mark_sendable(
                     &maindevice.pdu_loop,
@@ -1026,27 +1003,17 @@ where
                     time_read = true;
                 }
 
-                let data = &received.pdu(pdu_handle)?;
+                let wkc = self.process_received_pdi_chunk(
+                    total_bytes_sent,
+                    bytes_in_this_chunk,
+                    &received.pdu(pdu_handle)?,
+                )?;
 
-                let wkc = data.working_counter;
-
-                // If we've read the inputs chunk, write it back into the PDI (PDI is organised as
-                // IIIIOOOO)
-                if num_bytes_written > 0 && total_bytes_sent < self.read_pdi_len {
-                    let inputs_range = total_bytes_sent
-                        ..(total_bytes_sent + self.read_pdi_len.min(num_bytes_written));
-
-                    self.pdi_mut()
-                        .get_mut(inputs_range.clone())
-                        .ok_or(Error::Internal)?
-                        .copy_from_slice(data.get(0..inputs_range.len()).ok_or(Error::Internal)?);
-                }
-
-                total_bytes_sent += num_bytes_written;
+                total_bytes_sent += bytes_in_this_chunk;
                 lrw_wkc_sum += wkc;
 
-                // NOTE: Not using a while loop as we want to always send the DC sync PDU even if the
-                // PDI is empty.
+                // NOTE: Not using a while loop as we want to always send the DC sync PDU even if
+                // the PDI is empty.
                 if remaining.is_empty() {
                     break Ok((lrw_wkc_sum, Some(time)));
                 }
@@ -1054,6 +1021,29 @@ where
         } else {
             self.tx_rx(maindevice).await.map(|wkc| (wkc, None))
         }
+    }
+
+    fn process_received_pdi_chunk(
+        &self,
+        total_bytes_sent: usize,
+        bytes_in_this_chunk: usize,
+        data: &ReceivedPdu<'_>,
+    ) -> Result<u16, Error> {
+        let wkc = data.working_counter;
+
+        // If we've read the inputs chunk, write it back into the PDI (PDI is organised as
+        // IIIIOOOO)
+        if bytes_in_this_chunk > 0 && total_bytes_sent < self.read_pdi_len {
+            let inputs_range =
+                total_bytes_sent..(total_bytes_sent + self.read_pdi_len.min(bytes_in_this_chunk));
+
+            self.pdi_mut()
+                .get_mut(inputs_range.clone())
+                .ok_or(Error::Internal)?
+                .copy_from_slice(data.get(0..inputs_range.len()).ok_or(Error::Internal)?);
+        }
+
+        Ok(wkc)
     }
 }
 
@@ -1206,10 +1196,10 @@ where
 
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-            let (num_bytes_written, pdu_handle) =
+            let (bytes_in_this_chunk, pdu_handle) =
                 frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?;
 
-            remaining = &remaining[num_bytes_written..];
+            remaining = &remaining[bytes_in_this_chunk..];
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
@@ -1229,23 +1219,13 @@ where
                 time_read = true;
             }
 
-            let data = &received.pdu(pdu_handle)?;
+            let wkc = self.process_received_pdi_chunk(
+                total_bytes_sent,
+                bytes_in_this_chunk,
+                &received.pdu(pdu_handle)?,
+            )?;
 
-            let wkc = data.working_counter;
-
-            // If we've read the inputs chunk, write it back into the PDI (PDI is organised as
-            // IIIIOOOO)
-            if num_bytes_written > 0 && total_bytes_sent < self.read_pdi_len {
-                let inputs_range =
-                    total_bytes_sent..(total_bytes_sent + self.read_pdi_len.min(num_bytes_written));
-
-                self.pdi_mut()
-                    .get_mut(inputs_range.clone())
-                    .ok_or(Error::Internal)?
-                    .copy_from_slice(data.get(0..inputs_range.len()).ok_or(Error::Internal)?);
-            }
-
-            total_bytes_sent += num_bytes_written;
+            total_bytes_sent += bytes_in_this_chunk;
             lrw_wkc_sum += wkc;
 
             // NOTE: Not using a while loop as we want to always send the DC sync PDU even if the
