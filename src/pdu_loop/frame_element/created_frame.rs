@@ -84,7 +84,7 @@ impl<'sto> CreatedFrame<'sto> {
         &mut self,
         command: Command,
         bytes: &[u8],
-    ) -> Result<(usize, PduResponseHandle), PduError> {
+    ) -> Result<Option<(usize, PduResponseHandle)>, PduError> {
         let consumed = self.inner.pdu_payload_len();
 
         // The maximum number of bytes we can insert into this frame
@@ -94,6 +94,12 @@ impl<'sto> CreatedFrame<'sto> {
             .len()
             .saturating_sub(consumed)
             .saturating_sub(Self::PDU_OVERHEAD_BYTES);
+
+        if max_bytes == 0 {
+            fmt::trace!("Pushed 0 bytes of {} into PDU", bytes.len());
+
+            return Ok(None);
+        }
 
         let sub_slice_len = max_bytes.min(bytes.packed_len());
 
@@ -178,7 +184,7 @@ impl<'sto> CreatedFrame<'sto> {
             self.last_header_location = Some(0);
         }
 
-        Ok((
+        Ok(Some((
             sub_slice_len,
             PduResponseHandle {
                 index_in_frame,
@@ -186,7 +192,7 @@ impl<'sto> CreatedFrame<'sto> {
                 command_code: command.code(),
                 alloc_size,
             },
-        ))
+        )))
     }
 
     /// Push a PDU into this frame.
@@ -367,7 +373,8 @@ mod tests {
 
         let (rest, _handle) = created
             .push_pdu_slice_rest(Command::fpwr(0x1000, 0x0918).into(), &big_frame)
-            .expect("Should not fail");
+            .expect("Should not fail")
+            .unwrap();
 
         assert_eq!(rest, 12);
     }
