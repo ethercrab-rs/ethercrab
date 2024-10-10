@@ -64,7 +64,7 @@ impl<'sto> PduLoop<'sto> {
         Self { storage }
     }
 
-    pub(crate) fn max_frame_data(&self) -> usize {
+    pub(crate) const fn max_frame_data(&self) -> usize {
         self.storage.frame_data_len
     }
 

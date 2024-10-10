@@ -77,6 +77,8 @@ pub struct FrameElement<const N: usize> {
     frame_index: u8,
     status: AtomicFrameState,
     waker: AtomicWaker,
+
+    /// Keeps track of how much of the PDU data buffer has been consumed.
     pdu_payload_len: usize,
 
     // Atomic as we iterate over all `FrameElement`s and read this field when receiving a frame.
