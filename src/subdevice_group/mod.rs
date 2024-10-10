@@ -900,8 +900,11 @@ where
 
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-            let (bytes_in_this_chunk, pdu_handle) =
-                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?;
+            let Some((bytes_in_this_chunk, pdu_handle)) =
+                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?
+            else {
+                continue;
+            };
 
             remaining = &remaining[bytes_in_this_chunk..];
 
@@ -980,8 +983,11 @@ where
 
                 let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-                let (bytes_in_this_chunk, pdu_handle) =
-                    frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?;
+                let Some((bytes_in_this_chunk, pdu_handle)) =
+                    frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?
+                else {
+                    continue;
+                };
 
                 fmt::trace!("Wrote {} byte chunk", bytes_in_this_chunk);
 
@@ -1198,8 +1204,11 @@ where
 
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-            let (bytes_in_this_chunk, pdu_handle) =
-                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?;
+            let Some((bytes_in_this_chunk, pdu_handle)) =
+                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?
+            else {
+                continue;
+            };
 
             remaining = &remaining[bytes_in_this_chunk..];
 
