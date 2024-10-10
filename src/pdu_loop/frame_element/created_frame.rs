@@ -117,11 +117,21 @@ impl<'sto> CreatedFrame<'sto> {
             buf_range
         );
 
+        let l = self.inner.pdu_buf_mut().len();
+
         let pdu_buf = self
             .inner
             .pdu_buf_mut()
             .get_mut(buf_range.clone())
-            .ok_or(PduError::TooLong)?;
+            .ok_or_else(|| {
+                fmt::error!(
+                    "Fill rest of PDU buf range too long: wanted {:?} from {:?}",
+                    buf_range,
+                    0..l
+                );
+
+                PduError::TooLong
+            })?;
 
         let header = PduHeader {
             command_code: command.code(),
@@ -217,11 +227,21 @@ impl<'sto> CreatedFrame<'sto> {
             buf_range
         );
 
+        let l = self.inner.pdu_buf_mut().len();
+
         let pdu_buf = self
             .inner
             .pdu_buf_mut()
             .get_mut(buf_range.clone())
-            .ok_or(PduError::TooLong)?;
+            .ok_or_else(|| {
+                fmt::error!(
+                    "Push PDU buf range too long: wanted {:?} from {:?}",
+                    buf_range,
+                    0..l
+                );
+
+                PduError::TooLong
+            })?;
 
         let header = PduHeader {
             command_code: command.code(),
@@ -301,13 +321,56 @@ pub struct PduResponseHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, FIRST_PDU_EMPTY};
+    use crate::{
+        pdu_loop::frame_element::{AtomicFrameState, FrameElement, FIRST_PDU_EMPTY},
+        PduStorage,
+    };
     use atomic_waker::AtomicWaker;
     use core::{
         cell::UnsafeCell,
         ptr::NonNull,
         sync::atomic::{AtomicU16, AtomicU8},
     };
+
+    #[test]
+    fn chunked_send() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const MAX_PAYLOAD: usize = 32;
+
+        const BUF_LEN: usize = PduStorage::element_size(MAX_PAYLOAD);
+
+        let pdu_idx = AtomicU8::new(0);
+
+        let frames = UnsafeCell::new([FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::None),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
+        }]);
+
+        let mut created = CreatedFrame::claim_created(
+            unsafe { NonNull::new_unchecked(frames.get().cast()) },
+            0xab,
+            &pdu_idx,
+            BUF_LEN,
+        )
+        .expect("Claim created");
+
+        let whatever_handle = created.push_pdu(Command::frmw(0x1000, 0x0918).into(), 0u64, None);
+
+        assert!(whatever_handle.is_ok());
+
+        let big_frame = [0xaau8; MAX_PAYLOAD * 2];
+
+        let (rest, _handle) = created
+            .push_pdu_slice_rest(Command::fpwr(0x1000, 0x0918).into(), &big_frame)
+            .expect("Should not fail");
+
+        assert_eq!(rest, 12);
+    }
 
     #[test]
     fn too_long() {

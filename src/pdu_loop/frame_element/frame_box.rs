@@ -60,8 +60,11 @@ impl<'sto> FrameBox<'sto> {
     pub fn init(&mut self) {
         unsafe {
             addr_of_mut!((*self.frame.as_ptr()).waker).write(AtomicWaker::new());
+
             (&*addr_of_mut!((*self.frame.as_ptr()).first_pdu))
                 .store(FIRST_PDU_EMPTY, Ordering::Relaxed);
+
+            addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len).write(0);
         }
 
         let mut ethernet_frame = self.ethernet_frame_mut();
