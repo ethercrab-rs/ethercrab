@@ -983,6 +983,8 @@ where
                 let (bytes_in_this_chunk, pdu_handle) =
                     frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?;
 
+                fmt::trace!("Wrote {} byte chunk", bytes_in_this_chunk);
+
                 remaining = &remaining[bytes_in_this_chunk..];
 
                 let frame = frame.mark_sendable(
