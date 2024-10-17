@@ -262,10 +262,14 @@ impl From<PdoType> for CategoryType {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FmmuUsage {
+    /// TODO
     #[wire(alternatives = [0xff])]
     Unused = 0x00,
+    /// TODO
     Outputs = 0x01,
+    /// TODO
     Inputs = 0x02,
+    /// TODO
     SyncManagerStatus = 0x03,
 }
 
@@ -435,20 +439,26 @@ impl EtherCrabWireRead for CoeDetails {
     }
 }
 
+/// TODO
 #[derive(Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 8)]
 pub struct SyncManager {
+    /// TODO
     #[wire(bytes = 2)]
-    pub(crate) start_addr: u16,
+    pub start_addr: u16,
+    /// TODO
     #[wire(bytes = 2)]
-    pub(crate) length: u16,
+    pub length: u16,
+    /// TODO
     #[wire(bytes = 1, post_skip_bytes = 1)]
-    pub(crate) control: sync_manager_channel::Control,
+    pub control: sync_manager_channel::Control,
+    /// TODO
     #[wire(bytes = 1)]
-    pub(crate) enable: SyncManagerEnable,
+    pub enable: SyncManagerEnable,
+    /// TODO
     #[wire(bytes = 1)]
-    pub(crate) usage_type: SyncManagerType,
+    pub usage_type: SyncManagerType,
 }
 
 impl core::fmt::Debug for SyncManager {
@@ -464,6 +474,7 @@ impl core::fmt::Debug for SyncManager {
 }
 
 bitflags::bitflags! {
+    /// TODO
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub struct SyncManagerEnable: u8 {
         /// Bit 0: enable.
@@ -502,6 +513,7 @@ impl defmt::Format for SyncManagerEnable {
     }
 }
 
+/// TODO
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
