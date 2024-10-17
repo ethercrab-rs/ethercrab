@@ -198,6 +198,7 @@ pub mod std;
 pub use al_status_code::AlStatusCode;
 pub use coe::SubIndex;
 pub use command::{Command, Reads, WrappedRead, WrappedWrite, Writes};
+pub use eeprom::types::{SyncManager, SyncManagerEnable, SyncManagerType, FmmuUsage};
 pub use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
     EtherCrabWireWrite, EtherCrabWireWriteSized,
@@ -205,11 +206,14 @@ pub use ethercrab_wire::{
 use ethernet::EthernetAddress;
 pub use maindevice::MainDevice;
 pub use maindevice_config::{MainDeviceConfig, RetryBehaviour};
+pub use pdi::{PdiOffset, PdiSegment};
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, SendableFrame};
 pub use register::{DcSupport, RegisterAddress};
 pub use subdevice::{DcSync, SubDevice, SubDeviceIdentity, SubDevicePdi, SubDeviceRef};
+pub use subdevice::configuration::{ConfigureSubdevicePdi, ConfigureSubdevicePdiDefault, ConfigureSubdevicePdiBasedOnCoe, ConfigureSubdevicePdiBasedOnEeprom, PdoDirection, ConfigureSubdevicePdiError};
 pub use subdevice_group::{GroupId, GroupSubDeviceIterator, SubDeviceGroup, SubDeviceGroupHandle};
 pub use subdevice_state::SubDeviceState;
+pub use sync_manager_channel::Control as SyncManagerControl;
 pub use timer_factory::Timeouts;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;

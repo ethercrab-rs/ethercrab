@@ -24,7 +24,7 @@ use crate::{
     subdevice::{ports::Ports, types::SubDeviceConfig},
     subdevice_state::SubDeviceState,
     timer_factory::IntoTimeout,
-    WrappedRead, WrappedWrite,
+    WrappedRead, WrappedWrite, BASE_SUBDEVICE_ADDRESS,
 };
 use core::{
     any::type_name,
@@ -325,6 +325,11 @@ where
     /// used by [`SubDeviceGroup::configure_dc_sync`](crate::SubDeviceGroup::configure_dc_sync).
     pub fn set_dc_sync(&mut self, dc_sync: DcSync) {
         self.state.dc_sync = dc_sync;
+    }
+
+    /// TODO
+    pub fn as_raw_ref_mut(&mut self) -> SubDeviceRef<'a, &mut SubDevice> {
+        SubDeviceRef { maindevice: self.maindevice, configured_address: self.configured_address, state: self.state.deref_mut() }
     }
 }
 
@@ -759,6 +764,11 @@ where
             Error::Pdu(PduError::Decode)
         })
     }
+
+    /// TODO
+    pub fn as_raw_ref(&self) -> SubDeviceRef<'a, &SubDevice> {
+        SubDeviceRef { maindevice: self.maindevice, configured_address: self.configured_address, state: self.state.deref() }
+    }
 }
 
 // General impl with no bounds
@@ -774,6 +784,11 @@ impl<'a, S> SubDeviceRef<'a, S> {
     /// Get the configured station address of the SubDevice.
     pub fn configured_address(&self) -> u16 {
         self.configured_address
+    }
+
+    /// Get the index of this subdevice in the overall EtherCAT network when it was first initialized.
+    pub fn topology_address_at_init(&self) -> u16 {
+        self.configured_address.wrapping_sub(BASE_SUBDEVICE_ADDRESS)
     }
 
     /// Get the sub device status.
@@ -862,11 +877,13 @@ impl<'a, S> SubDeviceRef<'a, S> {
         .await
     }
 
-    pub(crate) fn write(&self, register: impl Into<u16>) -> WrappedWrite {
+    /// TODO
+    pub fn write(&self, register: impl Into<u16>) -> WrappedWrite {
         Command::fpwr(self.configured_address, register.into())
     }
 
-    pub(crate) fn read(&self, register: impl Into<u16>) -> WrappedRead {
+    /// TODO
+    pub fn read(&self, register: impl Into<u16>) -> WrappedRead {
         Command::fprd(self.configured_address, register.into())
     }
 

@@ -7,6 +7,7 @@ use core::ops::Range;
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PdiOffset {
+    /// TODO
     pub start_address: u32,
     // // Unused, but will become useful if we support bit-packed PDI mappings in the future.
     // start_bit: u8,
@@ -20,6 +21,7 @@ impl PdiOffset {
         self.increment_inner(0, inc_bytes)
     }
 
+    /// TODO
     pub fn increment(self, bytes: u16) -> Self {
         self.increment_inner(0, bytes)
     }
@@ -68,18 +70,23 @@ impl PdiOffset {
     // }
 }
 
+/// TODO
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PdiSegment {
+    /// TODO
     pub bytes: Range<usize>,
+    /// TODO
     pub bit_len: usize,
 }
 
 impl PdiSegment {
+    /// TODO
     pub fn len(&self) -> usize {
         self.bytes.len()
     }
 
+    /// TODO
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

@@ -14,7 +14,364 @@ use crate::{
     subdevice_state::SubDeviceState,
     sync_manager_channel::{Enable, Status, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
 };
-use core::ops::DerefMut;
+use core::{fmt::{Debug, Display}, ops::DerefMut};
+
+/// TODO
+pub trait ConfigureSubdevicePdi {
+    /// TODO
+    type Error;
+
+    /// TODO
+    async fn configure<'a, S>(
+        &mut self,
+        subdevice: &mut SubDeviceRef<'a, S>,
+        sync_managers: &[SyncManager],
+        fmmu_usage: &[FmmuUsage],
+        direction: PdoDirection,
+        global_offset: &mut PdiOffset,
+    ) -> Result<PdiSegment, Self::Error>
+    where
+        S: DerefMut<Target = SubDevice>;
+}
+
+/// TODO
+pub enum ConfigureSubdevicePdiError<T> {
+    /// TODO
+    Callback(T),
+    /// TODO
+    Internal(Error)
+}
+
+impl<T: Display> Display for ConfigureSubdevicePdiError<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ConfigureSubdevicePdiError::Callback(e) => e.fmt(f),
+            ConfigureSubdevicePdiError::Internal(e) => Display::fmt(e, f)
+        }
+    }
+}
+
+impl<T: Display> Debug for ConfigureSubdevicePdiError<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ConfigureSubdevicePdiError::Callback(e) => e.fmt(f),
+            ConfigureSubdevicePdiError::Internal(e) => Debug::fmt(e,f)
+        }
+    }
+}
+
+
+#[cfg(feature = "std")]
+impl<T: std::error::Error> std::error::Error for ConfigureSubdevicePdiError<T> {}
+
+
+impl<T> From<Error> for ConfigureSubdevicePdiError<T> {
+    fn from(value: Error) -> Self {
+        ConfigureSubdevicePdiError::Internal(value)
+    }
+}
+
+impl From<ConfigureSubdevicePdiError<Error>> for Error {
+    fn from(value: ConfigureSubdevicePdiError<Error>) -> Self {
+        match value {
+            ConfigureSubdevicePdiError::Callback(e) => e,
+            ConfigureSubdevicePdiError::Internal(e) => e,
+        }
+    }
+}
+
+impl<T: ConfigureSubdevicePdi, R: DerefMut<Target = T>> ConfigureSubdevicePdi for R {
+    type Error = T::Error;
+
+    async fn configure<'a, S>(
+            &mut self,
+            subdevice: &mut SubDeviceRef<'a, S>,
+            sync_managers: &[SyncManager],
+            fmmu_usage: &[FmmuUsage],
+            direction: PdoDirection,
+            global_offset: &mut PdiOffset,
+        ) -> Result<PdiSegment, Self::Error>
+        where
+            S: DerefMut<Target = SubDevice> {
+        self.deref_mut().configure(subdevice, sync_managers, fmmu_usage, direction, global_offset).await
+    }
+}
+
+/// Configure PDI using the PDO assignments in CoE registers.
+#[derive(Clone, Copy)]
+pub struct ConfigureSubdevicePdiBasedOnCoe;
+impl ConfigureSubdevicePdi for ConfigureSubdevicePdiBasedOnCoe {
+    type Error = Error;
+
+    async fn configure<'a, S>(
+        &mut self,
+        subdevice: &mut SubDeviceRef<'a, S>,
+        sync_managers: &[SyncManager],
+        fmmu_usage: &[FmmuUsage],
+        direction: PdoDirection,
+        global_offset: &mut PdiOffset,
+    ) -> Result<PdiSegment, Error>
+    where
+        S: DerefMut<Target = SubDevice>,
+    {
+        if !subdevice.state.config.mailbox.has_coe {
+            fmt::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
+        }
+
+        let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
+
+        // NOTE: Commented out because this causes a timeout on various SubDevices,
+        // possibly due to querying 0x1c00 after we enter PRE-OP but I'm unsure.
+        // See <https://github.com/ethercrab-rs/ethercrab/issues/49>. Complete access also causes the
+        // same issue.
+        // // ETG1000.6 Table 67 – CoE Communication Area
+        // let num_sms = self
+        //     .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
+        //     .await?;
+
+        let start_offset = *global_offset;
+        let mut total_bit_len = 0;
+
+        for (sync_manager_index, sm_type) in
+            subdevice.state.config.mailbox.coe_sync_manager_types.iter().enumerate()
+        {
+            let sync_manager_index = sync_manager_index as u8;
+
+            let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
+
+            let sync_manager =
+                sync_managers.get(usize::from(sync_manager_index)).ok_or(Error::NotFound {
+                    item:  Item::SyncManager,
+                    index: Some(usize::from(sync_manager_index)),
+                })?;
+
+            if *sm_type != desired_sm_type {
+                continue;
+            }
+
+            // Total number of PDO assignments for this sync manager
+            let num_sm_assignments =
+                subdevice.sdo_read_expedited::<u8>(sm_address, SubIndex::Index(0)).await?;
+
+            fmt::trace!(
+                "SDO sync manager {}  {:#06x} {:?}, sub indices: {}",
+                sync_manager_index,
+                sm_address,
+                sm_type,
+                num_sm_assignments
+            );
+
+            let mut sm_bit_len = 0u16;
+
+            for i in 1..=num_sm_assignments {
+                let pdo =
+                    subdevice.sdo_read_expedited::<u16>(sm_address, SubIndex::Index(i)).await?;
+                let num_mappings =
+                    subdevice.sdo_read_expedited::<u8>(pdo, SubIndex::Index(0)).await?;
+
+                fmt::trace!("--> {:#04x} data: {:#06x} ({} mappings):", i, pdo, num_mappings);
+
+                for i in 1..=num_mappings {
+                    /// Defined in ETG1000.6 Table 74/Table 75 Receive PDO
+                    /// Mapping.
+                    ///
+                    /// Note that this struct order is opposite to the
+                    /// specification as the data is
+                    /// big-endian in EEPROM, but little endian on the wire.
+                    #[derive(ethercrab_wire::EtherCrabWireRead)]
+                    #[wire(bytes = 4)]
+                    struct Mapping {
+                        #[wire(bytes = 1)]
+                        mapping_bit_len: u8,
+                        #[wire(bytes = 1)]
+                        sub_index:       u8,
+                        #[wire(bytes = 2)]
+                        index:           u16,
+                    }
+
+                    impl SdoExpedited for Mapping {}
+
+                    let Mapping { index, sub_index, mapping_bit_len } =
+                        subdevice.sdo_read_expedited::<Mapping>(pdo, SubIndex::Index(i)).await?;
+
+                    fmt::trace!(
+                        "----> index {:#06x}, sub index {}, bit length {}",
+                        index,
+                        sub_index,
+                        mapping_bit_len,
+                    );
+
+                    sm_bit_len += u16::from(mapping_bit_len);
+                }
+            }
+
+            fmt::trace!(
+                "----= total SM bit length {} ({} bytes)",
+                sm_bit_len,
+                (sm_bit_len + 7) / 8
+            );
+
+            let sm_config = subdevice
+                .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
+                .await?;
+
+            if sm_bit_len > 0 {
+                let fmmu_index = fmmu_usage
+                    .iter()
+                    .position(|usage| *usage == desired_fmmu_type)
+                    .ok_or(Error::NotFound { item: Item::Fmmu, index: None })?;
+
+                subdevice
+                    .write_fmmu_config(
+                        sm_bit_len,
+                        fmmu_index,
+                        global_offset,
+                        desired_sm_type,
+                        &sm_config,
+                    )
+                    .await?;
+            }
+
+            total_bit_len += sm_bit_len;
+        }
+
+        Ok(PdiSegment {
+            bit_len: total_bit_len.into(),
+            bytes:   start_offset.up_to(*global_offset),
+        })
+    }
+}
+
+/// Configure PDI using the SM and FMMU configurations stored in the EEPROM.
+#[derive(Clone, Copy)]
+pub struct ConfigureSubdevicePdiBasedOnEeprom;
+impl ConfigureSubdevicePdi for ConfigureSubdevicePdiBasedOnEeprom {
+    type Error = Error;
+
+    async fn configure<'a, S>(
+        &mut self,
+        subdevice: &mut SubDeviceRef<'a, S>,
+        sync_managers: &[SyncManager],
+        fmmu_usage: &[FmmuUsage],
+        direction: PdoDirection,
+        global_offset: &mut PdiOffset,
+    ) -> Result<PdiSegment, Error>
+    where
+        S: DerefMut<Target = SubDevice>,
+    {
+        let pdos: heapless::Vec<Pdo, 16> = match direction {
+            PdoDirection::MasterRead => {
+                let read_pdos = subdevice.eeprom().master_read_pdos().await?;
+
+                fmt::trace!("SubDevice inputs PDOs {:#?}", read_pdos);
+
+                read_pdos
+            }
+            PdoDirection::MasterWrite => {
+                let write_pdos = subdevice.eeprom().master_write_pdos().await?;
+
+                fmt::trace!("SubDevice outputs PDOs {:#?}", write_pdos);
+
+                write_pdos
+            }
+        };
+
+        let fmmu_sm_mappings = subdevice.eeprom().fmmu_mappings().await?;
+
+        let start_offset = *global_offset;
+        let mut total_bit_len = 0;
+
+        let (sm_type, fmmu_type) = direction.filter_terms();
+
+        for (sync_manager_index, sync_manager) in
+            sync_managers.iter().enumerate().filter(|(_idx, sm)| sm.usage_type == sm_type)
+        {
+            let sync_manager_index = sync_manager_index as u8;
+
+            let bit_len = pdos
+                .iter()
+                .filter(|pdo| pdo.sync_manager == sync_manager_index)
+                .map(|pdo| pdo.bit_len)
+                .sum();
+
+            total_bit_len += bit_len;
+
+            // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
+            // to looking through FMMU usage list and picking out the appropriate kind
+            // (Inputs, Outputs)
+            let fmmu_index = fmmu_sm_mappings
+                .iter()
+                .find(|fmmu| fmmu.sync_manager == sync_manager_index)
+                .map(|fmmu| fmmu.sync_manager)
+                .or_else(|| {
+                    fmt::trace!("Could not find FMMU for PDO SM{}", sync_manager_index);
+
+                    fmmu_usage.iter().position(|usage| *usage == fmmu_type).map(|idx| {
+                        fmt::trace!("Using fallback FMMU FMMU{}", idx);
+
+                        idx as u8
+                    })
+                })
+                .ok_or(Error::NotFound { item: Item::Fmmu, index: None })?;
+
+            let sm_config = subdevice
+                .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
+                .await?;
+
+            subdevice
+                .write_fmmu_config(
+                    bit_len,
+                    usize::from(fmmu_index),
+                    global_offset,
+                    sm_type,
+                    &sm_config,
+                )
+                .await?;
+        }
+
+        Ok(PdiSegment {
+            bit_len: total_bit_len.into(),
+            bytes:   start_offset.up_to(*global_offset),
+        })
+    }
+}
+
+/// Configure PDI using CoE if supported, otherwise fallback to EEPROM
+#[derive(Clone, Copy)]
+pub struct ConfigureSubdevicePdiDefault;
+impl ConfigureSubdevicePdi for ConfigureSubdevicePdiDefault {
+    type Error = Error;
+
+    async fn configure<'a, S>(
+        &mut self,
+        subdevice: &mut SubDeviceRef<'a, S>,
+        sync_managers: &[SyncManager],
+        fmmu_usage: &[FmmuUsage],
+        direction: PdoDirection,
+        global_offset: &mut PdiOffset,
+    ) -> Result<PdiSegment, Error>
+    where
+        S: DerefMut<Target = SubDevice>,
+    {
+        let has_coe = subdevice.state.config.mailbox.has_coe;
+
+        fmt::debug!("SubDevice {:#06x} has CoE: {:?}", subdevice.configured_address, has_coe);
+
+        if has_coe {
+            ConfigureSubdevicePdiBasedOnCoe.configure(subdevice, sync_managers, fmmu_usage, direction, global_offset)
+                .await
+        } else {
+            ConfigureSubdevicePdiBasedOnEeprom.configure(
+                subdevice,
+                sync_managers,
+                fmmu_usage,
+                direction,
+                global_offset,
+            )
+            .await
+        }
+    }
+}
 
 /// Configuation from EEPROM methods.
 impl<'a, S> SubDeviceRef<'a, S>
@@ -102,12 +459,13 @@ where
     /// Second state configuration (PRE-OP -> SAFE-OP).
     ///
     /// PDOs must be configured in the PRE-OP state.
-    pub(crate) async fn configure_fmmus(
+    pub(crate) async fn configure_pdi<C: ConfigureSubdevicePdi>(
         &mut self,
+        callback: &mut C,
         mut global_offset: PdiOffset,
         group_start_address: u32,
         direction: PdoDirection,
-    ) -> Result<PdiOffset, Error> {
+    ) -> Result<PdiOffset, ConfigureSubdevicePdiError<C::Error>> {
         let sync_managers = self.eeprom().sync_managers().await?;
         let fmmu_usage = self.eeprom().fmmus().await?;
 
@@ -121,28 +479,16 @@ where
                 SubDeviceState::PreOp
             );
 
-            return Err(Error::InvalidState {
+            return Err(ConfigureSubdevicePdiError::Internal(Error::InvalidState {
                 expected: SubDeviceState::PreOp,
                 actual: state,
                 configured_address: self.configured_address,
-            });
+            }));
         }
 
-        let has_coe = self.state.config.mailbox.has_coe;
-
-        fmt::debug!(
-            "SubDevice {:#06x} has CoE: {:?}",
-            self.configured_address,
-            has_coe
-        );
-
-        let range = if has_coe {
-            self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
-                .await?
-        } else {
-            self.configure_pdos_eeprom(&sync_managers, &fmmu_usage, direction, &mut global_offset)
-                .await?
-        };
+        let range = callback
+            .configure(self, &sync_managers, &fmmu_usage, direction, &mut global_offset)
+            .await.map_err(ConfigureSubdevicePdiError::Callback)?;
 
         match direction {
             PdoDirection::MasterRead => {
@@ -173,7 +519,8 @@ where
         Ok(global_offset)
     }
 
-    async fn write_sm_config(
+    /// TODO
+    pub async fn write_sm_config(
         &self,
         sync_manager_index: u8,
         sync_manager: &SyncManager,
@@ -285,162 +632,8 @@ where
         Ok(())
     }
 
-    /// Configure PDOs from CoE registers.
-    async fn configure_pdos_coe(
-        &self,
-        sync_managers: &[SyncManager],
-        fmmu_usage: &[FmmuUsage],
-        direction: PdoDirection,
-        global_offset: &mut PdiOffset,
-    ) -> Result<PdiSegment, Error> {
-        if !self.state.config.mailbox.has_coe {
-            fmt::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
-        }
-
-        let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
-
-        // NOTE: Commented out because this causes a timeout on various SubDevices, possibly due
-        // to querying 0x1c00 after we enter PRE-OP but I'm unsure. See
-        // <https://github.com/ethercrab-rs/ethercrab/issues/49>. Complete access also causes the
-        // same issue.
-        // // ETG1000.6 Table 67 – CoE Communication Area
-        // let num_sms = self
-        //     .sdo_read::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
-        //     .await?;
-
-        let start_offset = *global_offset;
-        let mut total_bit_len = 0;
-
-        for (sync_manager_index, sm_type) in self
-            .state
-            .config
-            .mailbox
-            .coe_sync_manager_types
-            .iter()
-            .enumerate()
-        {
-            let sync_manager_index = sync_manager_index as u8;
-
-            let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
-
-            let sync_manager =
-                sync_managers
-                    .get(usize::from(sync_manager_index))
-                    .ok_or(Error::NotFound {
-                        item: Item::SyncManager,
-                        index: Some(usize::from(sync_manager_index)),
-                    })?;
-
-            if *sm_type != desired_sm_type {
-                continue;
-            }
-
-            // Total number of PDO assignments for this sync manager
-            let num_sm_assignments = self
-                .sdo_read_expedited::<u8>(sm_address, SubIndex::Index(0))
-                .await?;
-
-            fmt::trace!(
-                "SDO sync manager {}  {:#06x} {:?}, sub indices: {}",
-                sync_manager_index,
-                sm_address,
-                sm_type,
-                num_sm_assignments
-            );
-
-            let mut sm_bit_len = 0u16;
-
-            for i in 1..=num_sm_assignments {
-                let pdo = self
-                    .sdo_read_expedited::<u16>(sm_address, SubIndex::Index(i))
-                    .await?;
-                let num_mappings = self
-                    .sdo_read_expedited::<u8>(pdo, SubIndex::Index(0))
-                    .await?;
-
-                fmt::trace!(
-                    "--> {:#04x} data: {:#06x} ({} mappings):",
-                    i,
-                    pdo,
-                    num_mappings
-                );
-
-                for i in 1..=num_mappings {
-                    /// Defined in ETG1000.6 Table 74/Table 75 Receive PDO Mapping.
-                    ///
-                    /// Note that this struct order is opposite to the specification as the data is
-                    /// big-endian in EEPROM, but little endian on the wire.
-                    #[derive(ethercrab_wire::EtherCrabWireRead)]
-                    #[wire(bytes = 4)]
-                    struct Mapping {
-                        #[wire(bytes = 1)]
-                        mapping_bit_len: u8,
-                        #[wire(bytes = 1)]
-                        sub_index: u8,
-                        #[wire(bytes = 2)]
-                        index: u16,
-                    }
-
-                    impl SdoExpedited for Mapping {}
-
-                    let Mapping {
-                        index,
-                        sub_index,
-                        mapping_bit_len,
-                    } = self
-                        .sdo_read_expedited::<Mapping>(pdo, SubIndex::Index(i))
-                        .await?;
-
-                    fmt::trace!(
-                        "----> index {:#06x}, sub index {}, bit length {}",
-                        index,
-                        sub_index,
-                        mapping_bit_len,
-                    );
-
-                    sm_bit_len += u16::from(mapping_bit_len);
-                }
-            }
-
-            fmt::trace!(
-                "----= total SM bit length {} ({} bytes)",
-                sm_bit_len,
-                (sm_bit_len + 7) / 8
-            );
-
-            let sm_config = self
-                .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
-                .await?;
-
-            if sm_bit_len > 0 {
-                let fmmu_index = fmmu_usage
-                    .iter()
-                    .position(|usage| *usage == desired_fmmu_type)
-                    .ok_or(Error::NotFound {
-                        item: Item::Fmmu,
-                        index: None,
-                    })?;
-
-                self.write_fmmu_config(
-                    sm_bit_len,
-                    fmmu_index,
-                    global_offset,
-                    desired_sm_type,
-                    &sm_config,
-                )
-                .await?;
-            }
-
-            total_bit_len += sm_bit_len;
-        }
-
-        Ok(PdiSegment {
-            bit_len: total_bit_len.into(),
-            bytes: start_offset.up_to(*global_offset),
-        })
-    }
-
-    async fn write_fmmu_config(
+    /// TODO
+    pub async fn write_fmmu_config(
         &self,
         sm_bit_len: u16,
         fmmu_index: usize,
@@ -491,102 +684,15 @@ where
 
         Ok(())
     }
-
-    /// Configure PDOs from EEPROM
-    async fn configure_pdos_eeprom(
-        &self,
-        sync_managers: &[SyncManager],
-        fmmu_usage: &[FmmuUsage],
-        direction: PdoDirection,
-        offset: &mut PdiOffset,
-    ) -> Result<PdiSegment, Error> {
-        let pdos: heapless::Vec<Pdo, 16> = match direction {
-            PdoDirection::MasterRead => {
-                let read_pdos = self.eeprom().master_read_pdos().await?;
-
-                fmt::trace!("SubDevice inputs PDOs {:#?}", read_pdos);
-
-                read_pdos
-            }
-            PdoDirection::MasterWrite => {
-                let write_pdos = self.eeprom().master_write_pdos().await?;
-
-                fmt::trace!("SubDevice outputs PDOs {:#?}", write_pdos);
-
-                write_pdos
-            }
-        };
-
-        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
-
-        let start_offset = *offset;
-        let mut total_bit_len = 0;
-
-        let (sm_type, fmmu_type) = direction.filter_terms();
-
-        for (sync_manager_index, sync_manager) in sync_managers
-            .iter()
-            .enumerate()
-            .filter(|(_idx, sm)| sm.usage_type == sm_type)
-        {
-            let sync_manager_index = sync_manager_index as u8;
-
-            let bit_len = pdos
-                .iter()
-                .filter(|pdo| pdo.sync_manager == sync_manager_index)
-                .map(|pdo| pdo.bit_len)
-                .sum();
-
-            total_bit_len += bit_len;
-
-            // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
-            // to looking through FMMU usage list and picking out the appropriate kind
-            // (Inputs, Outputs)
-            let fmmu_index = fmmu_sm_mappings
-                .iter()
-                .find(|fmmu| fmmu.sync_manager == sync_manager_index)
-                .map(|fmmu| fmmu.sync_manager)
-                .or_else(|| {
-                    fmt::trace!("Could not find FMMU for PDO SM{}", sync_manager_index);
-
-                    fmmu_usage
-                        .iter()
-                        .position(|usage| *usage == fmmu_type)
-                        .map(|idx| {
-                            fmt::trace!("Using fallback FMMU FMMU{}", idx);
-
-                            idx as u8
-                        })
-                })
-                .ok_or(Error::NotFound {
-                    item: Item::Fmmu,
-                    index: None,
-                })?;
-
-            let sm_config = self
-                .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
-                .await?;
-
-            self.write_fmmu_config(
-                bit_len,
-                usize::from(fmmu_index),
-                offset,
-                sm_type,
-                &sm_config,
-            )
-            .await?;
-        }
-
-        Ok(PdiSegment {
-            bit_len: total_bit_len.into(),
-            bytes: start_offset.up_to(*offset),
-        })
-    }
 }
 
-#[derive(Copy, Clone)]
+
+/// TODO
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum PdoDirection {
+    /// TODO
     MasterRead,
+    /// TODO
     MasterWrite,
 }
 

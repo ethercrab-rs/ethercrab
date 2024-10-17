@@ -14,14 +14,14 @@ use crate::{
     fmt,
     pdi::PdiOffset,
     subdevice::{
-        configuration::PdoDirection, pdi::SubDevicePdi, IoRanges, SubDevice, SubDeviceRef,
+        configuration::{ConfigureSubdevicePdi, ConfigureSubdevicePdiDefault, ConfigureSubdevicePdiError, PdoDirection}, pdi::SubDevicePdi, IoRanges, SubDevice, SubDeviceRef,
     },
     timer_factory::IntoTimeout,
     DcSync, MainDevice, RegisterAddress, SubDeviceState,
 };
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 use core::{
-    cell::UnsafeCell, marker::PhantomData, slice, sync::atomic::AtomicUsize, time::Duration,
+    cell::UnsafeCell, marker::PhantomData, ops::Range, slice, sync::atomic::AtomicUsize, time::Duration
 };
 use ethercrab_wire::EtherCrabWireRead;
 
@@ -152,7 +152,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOp, DC>
 {
     /// Configure read/write FMMUs and PDI for this group.
-    async fn configure_fmmus(&mut self, maindevice: &MainDevice<'_>) -> Result<(), Error> {
+    async fn configure_pdi<C: ConfigureSubdevicePdi>(&mut self, maindevice: &MainDevice<'_>, callback: &mut C) -> Result<(), ConfigureSubdevicePdiError<C::Error>> {
         let inner = self.inner.get_mut();
 
         let mut pdi_position = inner.pdi_start;
@@ -167,7 +167,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         for subdevice in inner.subdevices.iter_mut().map(AtomicRefCell::get_mut) {
             // We're in PRE-OP at this point
             pdi_position = SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
-                .configure_fmmus(
+                .configure_pdi(
+                    callback,
                     pdi_position,
                     inner.pdi_start.start_address,
                     PdoDirection::MasterRead,
@@ -189,7 +190,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
 
             // Still in PRE-OP
             pdi_position = subdevice_config
-                .configure_fmmus(
+                .configure_pdi(
+                    callback,
                     pdi_position,
                     inner.pdi_start.start_address,
                     PdoDirection::MasterWrite,
@@ -212,7 +214,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
             return Err(Error::PdiTooLong {
                 max_length: MAX_PDI,
                 desired_length: self.pdi_len,
-            });
+            }.into());
         }
 
         Ok(())
@@ -270,16 +272,17 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         self_.into_op(maindevice).await
     }
 
-    /// Configure FMMUs, but leave the group in [`PreOp`] state.
+    /// Configure FMMUs using the given callback, but leave the group in [`PreOp`] state.
     ///
     /// This method is used to obtain access to the group's PDI and related functionality. All SDO
     /// and other configuration should be complete at this point otherwise issues with cyclic data
     /// may occur (e.g. incorrect lengths, misplaced fields, etc).
-    pub async fn into_pre_op_pdi(
+    pub async fn into_pre_op_pdi_with_callback<C: ConfigureSubdevicePdi>(
         mut self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, DC>, Error> {
-        self.configure_fmmus(maindevice).await?;
+        mut callback: C
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, DC>, ConfigureSubdevicePdiError<C::Error>> {
+        self.configure_pdi(maindevice, &mut callback).await?;
 
         Ok(SubDeviceGroup {
             id: self.id,
@@ -290,6 +293,18 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
             dc_conf: self.dc_conf,
             _state: PhantomData,
         })
+    }
+
+    /// Configure FMMUs, but leave the group in [`PreOp`] state.
+    ///
+    /// This method is used to obtain access to the group's PDI and related functionality. All SDO
+    /// and other configuration should be complete at this point otherwise issues with cyclic data
+    /// may occur (e.g. incorrect lengths, misplaced fields, etc).
+    pub async fn into_pre_op_pdi(
+        self,
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, DC>, Error> {
+        Ok(self.into_pre_op_pdi_with_callback(maindevice, ConfigureSubdevicePdiDefault).await?)
     }
 
     /// Transition the SubDevice group from PRE-OP to SAFE-OP.
@@ -852,6 +867,11 @@ where
             .await?;
 
         self.process_pdi_response(&data)
+    }
+
+    /// TODO
+    pub fn pdi_range(&self) -> Range<u32> {
+        self.inner().pdi_start.start_address..u32::try_from(self.pdi().len()).expect("pdi length should be representable with pdi addresses")
     }
 
     /// Drive the SubDevice group's inputs and outputs and synchronise EtherCAT system time with

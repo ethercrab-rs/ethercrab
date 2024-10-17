@@ -59,18 +59,24 @@ impl core::fmt::Display for SyncManagerChannel {
     }
 }
 
+/// TODO
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 1)]
 pub struct Control {
+    /// TODO
     #[wire(bits = 2)]
     pub operation_mode: OperationMode,
+    /// TODO
     #[wire(bits = 2)]
     pub direction: Direction,
+    /// TODO
     #[wire(bits = 1)]
     pub ecat_event_enable: bool,
+    /// TODO
     #[wire(bits = 1)]
     pub dls_user_event_enable: bool,
+    /// TODO
     #[wire(bits = 1, post_skip = 1)]
     pub watchdog_enable: bool,
     // reserved1: bool

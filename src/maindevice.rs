@@ -93,10 +93,14 @@ impl<'sto> MainDevice<'sto> {
             .await?;
 
         // Clear FMMUs. FMMU memory section is 0xff (255) bytes long - see ETG1000.4 Table 57
-        self.blank_memory(RegisterAddress::Fmmu0, 0xff).await?;
+        for fmmu_idx in 0..16 {
+            self.blank_memory(RegisterAddress::fmmu(fmmu_idx), 0x10).await?;
+        }
 
         // Clear SMs. SM memory section is 0x7f bytes long - see ETG1000.4 Table 59
-        self.blank_memory(RegisterAddress::Sm0, 0x7f).await?;
+        for sm_idx in 0..16 {
+            self.blank_memory(RegisterAddress::sync_manager(sm_idx), 0x8).await?;
+        }
 
         // Set DC control back to EtherCAT
         self.blank_memory(
