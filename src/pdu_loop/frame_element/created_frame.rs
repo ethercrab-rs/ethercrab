@@ -80,6 +80,8 @@ impl<'sto> CreatedFrame<'sto> {
     }
 
     /// Push a PDU into this frame, consuming as much space as possible.
+    ///
+    /// Returns the number of bytes from the given `data` that were written into the frame.
     pub(crate) fn push_pdu_slice_rest(
         &mut self,
         command: Command,
@@ -115,11 +117,12 @@ impl<'sto> CreatedFrame<'sto> {
         let pdu_idx = self.inner.next_pdu_idx();
 
         fmt::trace!(
-            "Write PDU {:#04x} into rest of frame index {} ({}, {} bytes at {:?})",
+            "Write PDU {:#04x} into rest of frame index {} ({}, {} frame bytes + {} payload bytes at {:?})",
             pdu_idx,
             self.inner.frame_index(),
             command,
             sub_slice_len,
+            Self::PDU_OVERHEAD_BYTES,
             buf_range
         );
 
@@ -313,6 +316,7 @@ impl<'sto> CreatedFrame<'sto> {
 unsafe impl<'sto> Send for CreatedFrame<'sto> {}
 
 #[derive(Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct PduResponseHandle {
     pub index_in_frame: u8,
 
@@ -320,7 +324,7 @@ pub struct PduResponseHandle {
     pub pdu_idx: u8,
     pub command_code: u8,
 
-    /// The number of bytes allocated for the PDU header and payload in the frame.
+    /// The number of bytes allocated for the PDU header, payload and WKC in the frame.
     pub alloc_size: usize,
 }
 
@@ -328,8 +332,9 @@ pub struct PduResponseHandle {
 mod tests {
     use super::*;
     use crate::{
+        ethernet::EthernetFrame,
         pdu_loop::frame_element::{AtomicFrameState, FrameElement, FIRST_PDU_EMPTY},
-        PduStorage,
+        PduStorage, RegisterAddress,
     };
     use atomic_waker::AtomicWaker;
     use core::{
@@ -459,5 +464,131 @@ mod tests {
             created.inner.pdu_buf()[(PduHeader::PACKED_LEN + 2 + FLAGS_OFFSET) * 2..][..2],
             PduFlags::new(0, false).pack()
         );
+    }
+
+    #[test]
+    fn push_rest_too_long() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const BUF_LEN: usize = 32;
+
+        let pdu_idx = AtomicU8::new(0);
+
+        let frames = UnsafeCell::new([FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::None),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
+        }]);
+
+        let mut created = CreatedFrame::claim_created(
+            unsafe { NonNull::new_unchecked(frames.get().cast()) },
+            0xab,
+            &pdu_idx,
+            BUF_LEN,
+        )
+        .expect("Claim created");
+
+        let data = [0xaau8; 128];
+
+        let res = created.push_pdu_slice_rest(Command::Nop, &data);
+
+        // 32 byte frame contains all the headers with a little bit left over for writing some data
+        // into.
+        let expected_written = BUF_LEN
+            - CreatedFrame::PDU_OVERHEAD_BYTES
+            - EthercatFrameHeader::header_len()
+            - EthernetFrame::<&[u8]>::header_len();
+
+        // Just double checking
+        assert_eq!(expected_written, 4);
+
+        assert_eq!(
+            res,
+            Ok(Some((
+                expected_written,
+                PduResponseHandle {
+                    index_in_frame: 0,
+                    pdu_idx: 0,
+                    command_code: 0,
+                    // The size of this PDU with a 4 byte payload (plus 12 byte header)
+                    alloc_size: 4 + CreatedFrame::PDU_OVERHEAD_BYTES
+                }
+            )))
+        );
+
+        // Can't push anything else
+        let res = created.push_pdu_slice_rest(Command::Nop, &data);
+
+        assert_eq!(res, Ok(None));
+    }
+
+    #[test]
+    fn push_rest_after_dc_sync() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const BUF_LEN: usize = 64;
+
+        let pdu_idx = AtomicU8::new(0);
+
+        let frames = UnsafeCell::new([FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::None),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
+        }]);
+
+        let mut created = CreatedFrame::claim_created(
+            unsafe { NonNull::new_unchecked(frames.get().cast()) },
+            0xab,
+            &pdu_idx,
+            BUF_LEN,
+        )
+        .expect("Claim created");
+
+        let dc_handle = created
+            .push_pdu(
+                Command::frmw(0x1000, RegisterAddress::DcSystemTime.into()).into(),
+                0u64,
+                None,
+            )
+            .expect("DC handle");
+
+        // 12 byte PDU header plus 8 byte payload
+        assert_eq!(dc_handle.alloc_size, 20);
+
+        let data = [0xaau8; 128];
+
+        let remaining = BUF_LEN
+            - EthernetFrame::<&[u8]>::header_len()
+            - EthercatFrameHeader::header_len()
+            - dc_handle.alloc_size;
+
+        // Just double checking
+        assert_eq!(remaining, 28);
+
+        let res = created.push_pdu_slice_rest(Command::Nop, &data);
+
+        assert_eq!(
+            res,
+            Ok(Some((
+                remaining - CreatedFrame::PDU_OVERHEAD_BYTES,
+                PduResponseHandle {
+                    index_in_frame: 1,
+                    pdu_idx: 1,
+                    command_code: 0,
+                    alloc_size: remaining
+                }
+            )))
+        );
+
+        // Can't push anything else
+        let res = created.push_pdu_slice_rest(Command::Nop, &data);
+
+        assert_eq!(res, Ok(None));
     }
 }

@@ -105,6 +105,8 @@ impl<'sto> PduLoop<'sto> {
 #[cfg(test)]
 mod tests {
     use crate::ethernet::{EthernetAddress, EthernetFrame};
+    use crate::pdu_loop::frame_element::created_frame::PduResponseHandle;
+    use crate::pdu_loop::frame_header::EthercatFrameHeader;
     use crate::{
         error::{Error, PduError},
         fmt,
@@ -593,5 +595,151 @@ mod tests {
         assert_eq!(sent, MAX_SUBDEVICES);
 
         fmt::info!("Sent all PDUs");
+    }
+
+    #[test]
+    fn split_pdi() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        const DATA: usize = 48;
+
+        // 8 frames, 32 bytes each
+        static STORAGE: PduStorage<8, DATA> = PduStorage::new();
+        let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
+
+        let pdi = [0xaau8; 64];
+        let mut remaining = &pdi[..];
+
+        let (sent, _handle) = {
+            let mut frame = pdu_loop.alloc_frame().expect("No frame");
+
+            let res = frame.push_pdu_slice_rest(Command::Nop, remaining);
+
+            let expected_pushed_bytes = DATA
+                - EthernetFrame::<&[u8]>::header_len()
+                - EthercatFrameHeader::header_len()
+                - CreatedFrame::PDU_OVERHEAD_BYTES;
+
+            assert_eq!(expected_pushed_bytes, 20);
+
+            assert_eq!(
+                res,
+                Ok(Some((
+                    expected_pushed_bytes,
+                    PduResponseHandle {
+                        index_in_frame: 0,
+                        pdu_idx: 0,
+                        command_code: 0,
+                        // We've used as much of the frame as possible
+                        alloc_size: pdu_loop.max_frame_data()
+                            - EthernetFrame::<&[u8]>::header_len()
+                            - EthercatFrameHeader::header_len()
+                    }
+                )))
+            );
+
+            res.unwrap().unwrap()
+        };
+
+        remaining = &remaining[sent..];
+
+        assert_eq!(remaining.len(), 44);
+
+        let (sent, _handle) = {
+            let mut frame = pdu_loop.alloc_frame().expect("No frame");
+
+            let res = frame.push_pdu_slice_rest(Command::Nop, remaining);
+
+            let expected_pushed_bytes = DATA
+                - EthernetFrame::<&[u8]>::header_len()
+                - EthercatFrameHeader::header_len()
+                - CreatedFrame::PDU_OVERHEAD_BYTES;
+
+            assert_eq!(expected_pushed_bytes, 20);
+
+            assert_eq!(
+                res,
+                Ok(Some((
+                    expected_pushed_bytes,
+                    PduResponseHandle {
+                        index_in_frame: 0,
+                        pdu_idx: 1,
+                        command_code: 0,
+                        // We've used as much of the frame as possible
+                        alloc_size: pdu_loop.max_frame_data()
+                            - EthernetFrame::<&[u8]>::header_len()
+                            - EthercatFrameHeader::header_len()
+                    }
+                )))
+            );
+
+            res.unwrap().unwrap()
+        };
+
+        remaining = &remaining[sent..];
+
+        assert_eq!(remaining.len(), 24);
+
+        let (sent, _handle) = {
+            let mut frame = pdu_loop.alloc_frame().expect("No frame");
+
+            let res = frame.push_pdu_slice_rest(Command::Nop, remaining);
+
+            let expected_pushed_bytes = DATA
+                - EthernetFrame::<&[u8]>::header_len()
+                - EthercatFrameHeader::header_len()
+                - CreatedFrame::PDU_OVERHEAD_BYTES;
+
+            assert_eq!(expected_pushed_bytes, 20);
+
+            assert_eq!(
+                res,
+                Ok(Some((
+                    expected_pushed_bytes,
+                    PduResponseHandle {
+                        index_in_frame: 0,
+                        pdu_idx: 2,
+                        command_code: 0,
+                        // We've used as much of the frame as possible
+                        alloc_size: pdu_loop.max_frame_data()
+                            - EthernetFrame::<&[u8]>::header_len()
+                            - EthercatFrameHeader::header_len()
+                    }
+                )))
+            );
+
+            res.unwrap().unwrap()
+        };
+
+        remaining = &remaining[sent..];
+
+        assert_eq!(remaining.len(), 4);
+
+        let (sent, _handle) = {
+            let mut frame = pdu_loop.alloc_frame().expect("No frame");
+
+            let res = frame.push_pdu_slice_rest(Command::Nop, remaining);
+
+            // Partial frame as we're at the end of the data we want to send
+            let expected_pushed_bytes = 4;
+
+            assert_eq!(
+                res,
+                Ok(Some((
+                    expected_pushed_bytes,
+                    PduResponseHandle {
+                        index_in_frame: 0,
+                        pdu_idx: 3,
+                        command_code: 0,
+                        // Partial write because we're at the end of our data
+                        alloc_size: expected_pushed_bytes + CreatedFrame::PDU_OVERHEAD_BYTES
+                    }
+                )))
+            );
+
+            res.unwrap().unwrap()
+        };
+
+        assert_eq!(&remaining[sent..], &[]);
     }
 }
