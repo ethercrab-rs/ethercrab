@@ -47,8 +47,7 @@ where
 
         self.request_subdevice_state(SubDeviceState::PreOp).await?;
 
-        if false {
-            panic!("No COE pls {:#06x}", self.configured_address());
+        if self.state.config.mailbox.has_coe {
             // TODO: Abstract this no-complete-access check into a method call so we can reuse it.
             // CA is currently only used here inside EtherCrab, but may need to be used in other
             // places eventually.
