@@ -21,6 +21,8 @@ An EtherCAT MainDevice written in Rust.
   from CoE transactions.
 - [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) **Windows:** Add `tx_rx_task_blocking`
   to use in a separate thread to send/receive EitherCAT frames.
+- [#242](https://github.com/ethercrab-rs/ethercrab/pull/242) Add support for PDIs longer than a
+  single PDU
 
 ### Changed
 
