@@ -152,7 +152,7 @@ pub fn ethercat_now() -> u64 {
         libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut time);
     };
 
-    let t = (time.tv_sec * 1000 * 1000 * 1000 + time.tv_nsec) as u64;
+    let t = (time.tv_sec as u64) * 1_000_000_000 + (time.tv_nsec as u64);
 
     // EtherCAT epoch is 2000-01-01
     t.saturating_sub(946684800)
