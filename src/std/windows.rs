@@ -156,6 +156,106 @@ pub fn tx_rx_task<'sto>(
     Ok(task)
 }
 
+/// Create a blocking task that waits for PDUs to send, and receives PDU responses.
+pub fn tx_rx_task_blocking<'sto>(
+    device: &str,
+    mut pdu_tx: PduTx<'sto>,
+    mut pdu_rx: PduRx<'sto>,
+) -> Result<(), std::io::Error> {
+    let (mut tx, mut rx) = get_tx_rx(device)?;
+
+    // TODO: Park and wake the thread when we've got nothing in flight. Currently this code pegs a
+    // core completely.
+
+    thread::scope(|s| {
+        let tx_thread: thread::ScopedJoinHandle<'_, Result<(), std::io::Error>> = s.spawn(|| {
+            loop {
+                while let Some(frame) = pdu_tx.next_sendable_frame() {
+                    let idx = frame.index();
+
+                    frame
+                        .send_blocking(|frame_bytes| {
+                            log::trace!("Send frame {:#04x}, {} bytes", idx, frame_bytes.len());
+
+                            tx.send_to(frame_bytes, None)
+                                .ok_or(Error::SendFrame)?
+                                .map_err(|e| {
+                                    log::error!("Failed to send packet: {}", e);
+
+                                    Error::SendFrame
+                                })?;
+
+                            Ok(frame_bytes.len())
+                        })
+                        .map_err(std::io::Error::other)?;
+                }
+
+                std::thread::yield_now();
+            }
+
+            #[allow(unreachable_code)]
+            Ok(())
+        });
+
+        let rx_thread: thread::ScopedJoinHandle<'_, Result<(), std::io::Error>> = s.spawn(|| {
+            let mut frame_buf: Vec<u8> = Vec::with_capacity(4096);
+
+            loop {
+                match rx.next() {
+                    Ok(ethernet_frame) => {
+                        match EthernetFrame::new_unchecked(ethernet_frame).check_len() {
+                            // We got a full frame
+                            Ok(_) => {
+                                if !frame_buf.is_empty() {
+                                    log::warn!("{} existing frame bytes", frame_buf.len());
+                                }
+
+                                frame_buf.extend_from_slice(ethernet_frame);
+                            }
+                            // Truncated frame - try adding them together
+                            Err(_) => {
+                                log::warn!("Truncated frame: len {}", ethernet_frame.len());
+
+                                frame_buf.extend_from_slice(ethernet_frame);
+
+                                continue;
+                            }
+                        };
+
+                        pdu_rx
+                            .receive_frame(&frame_buf)
+                            .map_err(|e| {
+                                dbg!(e);
+
+                                log::error!(
+                                    "Failed to parse received frame: {} (len {} bytes)",
+                                    e,
+                                    frame_buf.len()
+                                );
+
+                                e
+                            })
+                            .map_err(std::io::Error::other)?;
+
+                        frame_buf.truncate(0);
+                    }
+                    Err(e) => {
+                        log::error!("An error occurred while receiving frame bytes: {}", e);
+
+                        break;
+                    }
+                }
+
+                std::thread::yield_now();
+            }
+
+            Ok(())
+        });
+
+        tx_thread.join().unwrap().or(rx_thread.join().unwrap())
+    })
+}
+
 /// Get the current time in nanoseconds from the EtherCAT epoch, 2000-01-01.
 ///
 /// Note that on Windows this clock is not monotonic.
