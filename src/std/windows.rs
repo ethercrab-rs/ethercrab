@@ -49,6 +49,7 @@ fn get_tx_rx(
 }
 
 /// Create a task that waits for PDUs to send, and receives PDU responses.
+#[deprecated = "use `tx_rx_task_blocking` instead"]
 pub fn tx_rx_task<'sto>(
     device: &str,
     mut pdu_tx: PduTx<'sto>,

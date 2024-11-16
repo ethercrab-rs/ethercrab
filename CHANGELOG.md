@@ -6,6 +6,12 @@ An EtherCAT MainDevice written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Deprecated
+
+- [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) **Windows only**. `tx_rx_task` is
+  replaced with `tx_rx_task_blocking` which is no longer `async`. It must be spawned into its own
+  thread instead of an async task. `tx_rx_task` will be removed in a future release.
+
 ### Added
 
 - [#234](https://github.com/ethercrab-rs/ethercrab/pull/234) Added `SubDeviceRef::sdo_write_array`
