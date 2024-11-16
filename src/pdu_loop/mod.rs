@@ -10,6 +10,9 @@ pub mod storage;
 use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
 use core::time::Duration;
 pub use pdu_rx::PduRx;
+// NOTE: Allowing unused because `ReceiveAction` isn't used when `xdp` is not enabled.
+#[allow(unused)]
+pub use pdu_rx::ReceiveAction;
 pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
 
@@ -250,7 +253,7 @@ mod tests {
 
             let result = rx.receive_frame(&written_packet);
 
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok(crate::ReceiveAction::Processed));
 
             // The frame has received a response at this point so should be ready to get the data
             // from
@@ -377,7 +380,7 @@ mod tests {
 
             let result = rx.receive_frame(&ethernet_packet);
 
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok(crate::ReceiveAction::Processed));
 
             // The frame has received a response at this point so should be ready to get the data
             // from

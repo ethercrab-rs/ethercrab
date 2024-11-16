@@ -32,6 +32,8 @@ An EtherCAT MainDevice written in Rust.
   chunked into however many fit into a frame, instead of being sent separately.
 - [#241](https://github.com/ethercrab-rs/ethercrab/pull/241) (@david-boles) During init, SMs and
   FMMUs are reset one-by-one instead of the entire block being written to.
+- **(breaking)** [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) `PduRx::receive_frame`
+  now returns `Result<ReceiveAction, Error>` instead of `Result<(), Error>`.
 
 ### Fixed
 
