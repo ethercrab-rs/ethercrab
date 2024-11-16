@@ -42,6 +42,7 @@ quanta = "0.12.3"
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.34.0", features = ["std"], optional = true }
 async-channel = "2.2.0"
+pcap = "2.2.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.149"

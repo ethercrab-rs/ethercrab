@@ -1,13 +1,16 @@
 //! Items to use when not in `no_std` environments.
 
-use crate::ethernet::EthernetFrame;
 use crate::{
-    error::Error,
+    error::{Error, PduError},
+    ethernet::EthernetFrame,
+    fmt,
     pdu_loop::{PduRx, PduTx},
+    std::ParkSignal,
+    ReceiveAction,
 };
-use core::future::Future;
 use pnet_datalink::{self, channel, Channel, DataLinkReceiver, DataLinkSender};
-use std::{thread, time::SystemTime};
+use std::io;
+use std::{future::Future, sync::Arc, task::Waker, thread, time::SystemTime};
 
 /// Get a TX/RX pair.
 fn get_tx_rx(
@@ -18,12 +21,12 @@ fn get_tx_rx(
     let interface = match interfaces.iter().find(|interface| interface.name == device) {
         Some(interface) => interface,
         None => {
-            log::error!("Could not find interface {device}");
+            fmt::error!("Could not find interface {device}");
 
-            log::error!("Available interfaces:");
+            fmt::error!("Available interfaces:");
 
             for interface in interfaces.iter() {
-                log::error!("-> {} {}", interface.name, interface.description);
+                fmt::error!("-> {} {}", interface.name, interface.description);
             }
 
             panic!();
@@ -60,12 +63,12 @@ pub fn tx_rx_task<'sto>(
                     let idx = frame.index();
 
                     frame.send_blocking(|frame_bytes| {
-                        log::trace!("Send frame {:#04x}, {} bytes", idx, frame_bytes.len());
+                        fmt::trace!("Send frame {:#04x}, {} bytes", idx, frame_bytes.len());
 
                         tx.send_to(frame_bytes, None)
                             .ok_or(Error::SendFrame)?
                             .map_err(|e| {
-                                log::error!("Failed to send packet: {}", e);
+                                fmt::error!("Failed to send packet: {}", e);
 
                                 Error::SendFrame
                             })?;
@@ -94,14 +97,14 @@ pub fn tx_rx_task<'sto>(
                             // We got a full frame
                             Ok(_) => {
                                 if !frame_buf.is_empty() {
-                                    log::warn!("{} existing frame bytes", frame_buf.len());
+                                    fmt::warn!("{} existing frame bytes", frame_buf.len());
                                 }
 
                                 frame_buf.extend_from_slice(ethernet_frame);
                             }
                             // Truncated frame - try adding them together
                             Err(_) => {
-                                log::warn!("Truncated frame: len {}", ethernet_frame.len());
+                                fmt::warn!("Truncated frame: len {}", ethernet_frame.len());
 
                                 frame_buf.extend_from_slice(ethernet_frame);
 
@@ -116,7 +119,7 @@ pub fn tx_rx_task<'sto>(
                         frame_buf.truncate(0);
                     }
                     Err(e) => {
-                        log::error!("An error occurred while receiving frame bytes: {}", e);
+                        fmt::error!("An error occurred while receiving frame bytes: {}", e);
 
                         receive_frame_tx
                             .send_blocking(Err(Error::ReceiveFrame))
@@ -135,7 +138,7 @@ pub fn tx_rx_task<'sto>(
                 let frame_buf = frame_buf?;
 
                 pdu_rx.receive_frame(&frame_buf).map_err(|e| {
-                    log::error!(
+                    fmt::error!(
                         "Failed to parse received frame: {} (len {} bytes)",
                         e,
                         frame_buf.len()
@@ -162,98 +165,133 @@ pub fn tx_rx_task_blocking<'sto>(
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(), std::io::Error> {
-    let (mut tx, mut rx) = get_tx_rx(device)?;
+    let signal = Arc::new(ParkSignal::new());
+    let waker = Waker::from(Arc::clone(&signal));
 
-    // TODO: Park and wake the thread when we've got nothing in flight. Currently this code pegs a
-    // core completely.
+    let mut cap = pcap::Capture::from_device(device)
+        .expect("Device")
+        .immediate_mode(true)
+        .open()
+        .expect("Open device")
+        .setnonblock()
+        .expect("Can't set non-blocking");
 
-    thread::scope(|s| {
-        let tx_thread: thread::ScopedJoinHandle<'_, Result<(), std::io::Error>> = s.spawn(|| {
+    // 1MB send queue.
+    let mut sq = pcap::sendqueue::SendQueue::new(1024 * 1024).expect("Failed to create send queue");
+
+    let mut in_flight = 0usize;
+
+    loop {
+        fmt::trace!("Begin TX/RX iteration");
+
+        pdu_tx.replace_waker(&waker);
+
+        let mut sent_this_iter = 0usize;
+
+        while let Some(frame) = pdu_tx.next_sendable_frame() {
+            let idx = frame.index();
+
+            frame
+                .send_blocking(|frame_bytes| {
+                    fmt::trace!("Send frame {:#04x}, {} bytes", idx, frame_bytes.len());
+
+                    // Add 256 bytes of L2 payload
+                    sq.queue(None, frame_bytes).expect("Enqueue");
+
+                    Ok(frame_bytes.len())
+                })
+                .map_err(std::io::Error::other)?;
+
+            sent_this_iter += 1;
+        }
+
+        // Send any queued packets
+        if sent_this_iter > 0 {
+            fmt::trace!("Send {} enqueued frames", sent_this_iter);
+
+            // SendSync::Off = transmit with no delay between packets
+            sq.transmit(&mut cap, pcap::sendqueue::SendSync::Off)
+                .expect("Transmit");
+
+            in_flight += sent_this_iter;
+        }
+
+        if in_flight > 0 {
+            debug_assert!(cap.is_nonblock(), "Must be in non-blocking mode");
+
+            fmt::trace!("{} frames are in flight", in_flight);
+
+            // Receive any in-flight frames
             loop {
-                while let Some(frame) = pdu_tx.next_sendable_frame() {
-                    let idx = frame.index();
+                match cap.next_packet() {
+                    // NOTE: We receive our own sent frames. `receive_frame` will make sure they're
+                    // ignored.
+                    Ok(packet) => {
+                        let frame_buf = packet.data;
 
-                    frame
-                        .send_blocking(|frame_bytes| {
-                            log::trace!("Send frame {:#04x}, {} bytes", idx, frame_bytes.len());
+                        let frame_index = frame_buf
+                            .get(0x11)
+                            .ok_or_else(|| io::Error::other(Error::Internal))?;
 
-                            tx.send_to(frame_bytes, None)
-                                .ok_or(Error::SendFrame)?
-                                .map_err(|e| {
-                                    log::error!("Failed to send packet: {}", e);
+                        let res = loop {
+                            match pdu_rx.receive_frame(&frame_buf) {
+                                Ok(res) => break res,
+                                Err(Error::Pdu(PduError::NoWaker)) => {
+                                    fmt::trace!(
+                                        "No waker for received frame {:#04x}, retrying receive",
+                                        frame_index
+                                    );
 
-                                    Error::SendFrame
-                                })?;
-
-                            Ok(frame_bytes.len())
-                        })
-                        .map_err(std::io::Error::other)?;
-                }
-
-                std::thread::yield_now();
-            }
-
-            #[allow(unreachable_code)]
-            Ok(())
-        });
-
-        let rx_thread: thread::ScopedJoinHandle<'_, Result<(), std::io::Error>> = s.spawn(|| {
-            let mut frame_buf: Vec<u8> = Vec::with_capacity(4096);
-
-            loop {
-                match rx.next() {
-                    Ok(ethernet_frame) => {
-                        match EthernetFrame::new_unchecked(ethernet_frame).check_len() {
-                            // We got a full frame
-                            Ok(_) => {
-                                if !frame_buf.is_empty() {
-                                    log::warn!("{} existing frame bytes", frame_buf.len());
+                                    thread::yield_now();
                                 }
-
-                                frame_buf.extend_from_slice(ethernet_frame);
-                            }
-                            // Truncated frame - try adding them together
-                            Err(_) => {
-                                log::warn!("Truncated frame: len {}", ethernet_frame.len());
-
-                                frame_buf.extend_from_slice(ethernet_frame);
-
-                                continue;
+                                Err(e) => return Err(io::Error::other(e)),
                             }
                         };
 
-                        pdu_rx
-                            .receive_frame(&frame_buf)
-                            .map_err(|e| {
-                                dbg!(e);
+                        fmt::trace!(
+                            "Received and {:?} frame {:#04x} ({} bytes)",
+                            res,
+                            frame_index,
+                            packet.header.len
+                        );
 
-                                log::error!(
-                                    "Failed to parse received frame: {} (len {} bytes)",
-                                    e,
-                                    frame_buf.len()
-                                );
-
-                                e
-                            })
-                            .map_err(std::io::Error::other)?;
-
-                        frame_buf.truncate(0);
+                        if res == ReceiveAction::Processed {
+                            in_flight = in_flight
+                                .checked_sub(1)
+                                .expect("More frames processed than in flight");
+                        }
                     }
-                    Err(e) => {
-                        log::error!("An error occurred while receiving frame bytes: {}", e);
+                    Err(pcap::Error::NoMorePackets) => {
+                        // Nothing to read yet
 
                         break;
                     }
+                    Err(pcap::Error::TimeoutExpired) => {
+                        // Timeouts are instant as we're in non-blocking mode (I think), so we just
+                        // ignore them (we're spinlooping while packets are in flight essentially).
+
+                        break;
+                    }
+                    Err(e) => {
+                        fmt::error!("Packet receive failed: {}", e);
+
+                        // Quit the TX/RX loop - we failed somewhere
+                        // TODO: Allow this to be configured so we ignore RX failures
+                        return Err(io::Error::other(e));
+                    }
                 }
-
-                std::thread::yield_now();
             }
+        }
+        // No frames in flight. Wait to be woken again by something sending a frame
+        else {
+            fmt::trace!("No frames in flight, waiting to be woken with new frames to send");
 
-            Ok(())
-        });
+            signal.wait();
+        }
+    }
 
-        tx_thread.join().unwrap().or(rx_thread.join().unwrap())
-    })
+    #[allow(unreachable_code)]
+    Ok(())
 }
 
 /// Get the current time in nanoseconds from the EtherCAT epoch, 2000-01-01.
