@@ -8,9 +8,9 @@ An EtherCAT MainDevice written in Rust.
 
 ### Deprecated
 
-- [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) **Windows only**. `tx_rx_task` is
-  replaced with `tx_rx_task_blocking` which is no longer `async`. It must be spawned into its own
-  thread instead of an async task. `tx_rx_task` will be removed in a future release.
+- [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) **Windows:** `tx_rx_task` is replaced
+  with `tx_rx_task_blocking` which is no longer `async`. It must be spawned into its own thread
+  instead of an async task. `tx_rx_task` will be removed in a future release.
 
 ### Added
 
@@ -19,6 +19,8 @@ An EtherCAT MainDevice written in Rust.
 - [#239](https://github.com/ethercrab-rs/ethercrab/pull/239) Add
   `MailboxError::Emergency { error_code, error_register }` variant to surface EMERGENCY responses
   from CoE transactions.
+- [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) **Windows:** Add `tx_rx_task_blocking`
+  to use in a separate thread to send/receive EitherCAT frames.
 
 ### Changed
 
