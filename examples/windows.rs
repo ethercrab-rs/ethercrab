@@ -52,6 +52,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
             // Windows timers are rubbish (min delay is ~15ms) which will cause a bunch of timeouts
             // if `wait_loop_delay` is anything above 0.
             wait_loop_delay: Duration::ZERO,
+            eeprom: Duration::from_millis(50),
             // Other timeouts can be left alone, or increased if other issues are found.
             ..Default::default()
         },
