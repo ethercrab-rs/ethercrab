@@ -4,7 +4,7 @@ use ethercrab::{
     error::Error,
     internals::{EthercatFrameHeader, EthernetAddress, EthernetFrame, PduHeader},
     std::tx_rx_task,
-    PduRx, PduTx,
+    PduRx, PduTx, ReceiveAction,
 };
 use ethercrab_wire::EtherCrabWireRead;
 use pcap_file::pcapng::{Block, PcapNgReader};
@@ -80,7 +80,7 @@ struct DummyTxRxFut<'a> {
 }
 
 impl Future for DummyTxRxFut<'_> {
-    type Output = Result<(), Error>;
+    type Output = Result<ReceiveAction, Error>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
         self.tx.replace_waker(ctx.waker());
@@ -126,7 +126,7 @@ impl Future for DummyTxRxFut<'_> {
                 .pop_front()
                 .expect("Not enough packets for this preamble");
 
-            self.rx.receive_frame(expected.as_ref()).expect("Frame RX")
+            self.rx.receive_frame(expected.as_ref()).expect("Frame RX");
         }
 
         Poll::Pending
@@ -138,7 +138,7 @@ pub fn dummy_tx_rx_task(
     capture_file_path: &str,
     pdu_tx: PduTx<'static>,
     pdu_rx: PduRx<'static>,
-) -> Result<impl Future<Output = Result<(), Error>>, std::io::Error> {
+) -> Result<impl Future<Output = Result<ReceiveAction, Error>>, std::io::Error> {
     // let file_in = File::open(capture_file_path).expect("Error opening file");
     let file_in2 = File::open(capture_file_path).expect("Error opening file");
     // let pcapng_reader = PcapNgReader::new(file_in).expect("Failed to init PCAP reader");

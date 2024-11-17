@@ -6,6 +6,12 @@ An EtherCAT MainDevice written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Deprecated
+
+- [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) **Windows:** `tx_rx_task` is replaced
+  with `tx_rx_task_blocking` which is no longer `async`. It must be spawned into its own thread
+  instead of an async task. `tx_rx_task` will be removed in a future release.
+
 ### Added
 
 - [#234](https://github.com/ethercrab-rs/ethercrab/pull/234) Added `SubDeviceRef::sdo_write_array`
@@ -13,6 +19,8 @@ An EtherCAT MainDevice written in Rust.
 - [#239](https://github.com/ethercrab-rs/ethercrab/pull/239) Add
   `MailboxError::Emergency { error_code, error_register }` variant to surface EMERGENCY responses
   from CoE transactions.
+- [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) **Windows:** Add `tx_rx_task_blocking`
+  to use in a separate thread to send/receive EitherCAT frames.
 
 ### Changed
 
@@ -32,6 +40,8 @@ An EtherCAT MainDevice written in Rust.
   chunked into however many fit into a frame, instead of being sent separately.
 - [#241](https://github.com/ethercrab-rs/ethercrab/pull/241) (@david-boles) During init, SMs and
   FMMUs are reset one-by-one instead of the entire block being written to.
+- **(breaking)** [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) `PduRx::receive_frame`
+  now returns `Result<ReceiveAction, Error>` instead of `Result<(), Error>`.
 
 ### Fixed
 
