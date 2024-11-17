@@ -40,6 +40,7 @@ ethercrab-wire = { version = "0.2.0", path = "./ethercrab-wire" }
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.34.0", features = ["std"], optional = true }
 async-channel = "2.2.0"
+pcap = "2.2.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.149"
@@ -75,6 +76,8 @@ serde = { version = "1.0.190", default-features = false, features = ["derive"] }
 signal-hook = "0.3.17"
 core_affinity = "0.8.1"
 anyhow = "1.0.82"
+spin_sleep = "1.2.1"
+quanta = "0.12.3"
 
 [features]
 default = ["std"]
