@@ -2,6 +2,7 @@ use crate::{
     error::{Error, PduError},
     fmt,
     std::unix::RawSocketDesc,
+    std::ParkSignal,
     PduRx, PduTx,
 };
 use core::{mem::MaybeUninit, task::Waker};
@@ -19,32 +20,6 @@ use std::{
 /// Use the upper bit of a u64 to mark whether a frame is a write (`1`) or a read (`0`).
 const WRITE_MASK: u64 = 1 << 63;
 const ENTRIES: usize = 256;
-
-struct ParkSignal {
-    current_thread: Thread,
-}
-
-impl ParkSignal {
-    fn new() -> Self {
-        Self {
-            current_thread: thread::current(),
-        }
-    }
-
-    fn wait(&self) {
-        thread::park();
-    }
-
-    // fn wait_timeout(&self, timeout: Duration) {
-    //     thread::park_timeout(timeout)
-    // }
-}
-
-impl Wake for ParkSignal {
-    fn wake(self: Arc<Self>) {
-        self.current_thread.unpark();
-    }
-}
 
 /// Create a blocking TX/RX loop using `io_uring`.
 ///
@@ -236,7 +211,7 @@ pub fn tx_rx_task_io_uring<'sto>(
 
                 loop {
                     match pdu_rx.receive_frame(&frame) {
-                        Ok(()) => break,
+                        Ok(_) => break,
                         Err(Error::Pdu(PduError::NoWaker)) => {
                             fmt::trace!(
                                 "No waker for received frame {:#04x}, retrying receive",

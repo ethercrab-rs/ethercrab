@@ -6,6 +6,22 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Deprecated
+
+- [#248](https://github.com/ethercrab-rs/ethercrab/pull/248) **Windows:** `tx_rx_task` is replaced
+  with `tx_rx_task_blocking` which is no longer `async`. It must be spawned into its own thread
+  instead of an async task. `tx_rx_task` will be removed in a future release.
+
+### Added
+
+- [#248](https://github.com/ethercrab-rs/ethercrab/pull/248) **Windows:** Add `tx_rx_task_blocking`
+  to use in a separate thread to send/receive EitherCAT frames.
+
+### Changed
+
+- **(breaking)** [#248](https://github.com/ethercrab-rs/ethercrab/pull/248) `PduRx::receive_frame`
+  now returns `Result<ReceiveAction, Error>` instead of `Result<(), Error>`.
+
 ## [0.5.0] - 2024-07-28
 
 ### Changed
@@ -421,8 +437,8 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...HEAD
 [0.5.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.5.0
 [0.4.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.1...ethercrab-v0.4.2
 [0.4.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.0...ethercrab-v0.4.1
