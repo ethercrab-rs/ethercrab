@@ -171,8 +171,9 @@ impl<const N: usize> FrameElement<N> {
         // matters slightly less for all other state transitions because once we have a created
         // frame nothing else is able to take it unless it is put back into the `None` state.
         let this = Self::swap_state(this, FrameState::None, FrameState::Created).map_err(|e| {
-            fmt::debug!(
-                "Failed to claim frame: status is {:?}, expected {:?}",
+            fmt::trace!(
+                "Failed to claim frame {}: status is {:?}, expected {:?}",
+                frame_index,
                 e,
                 FrameState::None
             );
