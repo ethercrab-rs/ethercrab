@@ -496,10 +496,6 @@ impl<'sto> MainDevice<'sto> {
         .await
     }
 
-    pub(crate) fn max_frame_data(&self) -> usize {
-        self.pdu_loop.max_frame_data()
-    }
-
     /// Send a single PDU in a frame.
     pub(crate) async fn single_pdu(
         &'sto self,
@@ -509,7 +505,7 @@ impl<'sto> MainDevice<'sto> {
     ) -> Result<ReceivedPdu<'sto>, Error> {
         let mut frame = self.pdu_loop.alloc_frame()?;
 
-        let handle = frame.push_pdu(command, data, len_override, false)?;
+        let handle = frame.push_pdu(command, data, len_override)?;
 
         let frame = frame.mark_sendable(
             &self.pdu_loop,
