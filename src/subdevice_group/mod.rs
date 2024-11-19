@@ -645,9 +645,11 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
     ) -> Result<bool, Error> {
         fmt::trace!("Check group state");
 
-        let mut subdevices = self.inner().subdevices.iter();
+        let mut subdevices = self.inner().subdevices.iter().peekable();
 
         let mut frame_idx = 0;
+
+        let mut total_checks = 0;
 
         // Send as many frames as required to check statuses of all subdevices
         loop {
@@ -656,7 +658,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
             let mut num_in_this_frame = 0;
 
             // Fill frame with status requests
-            while let Some(sd) = subdevices.next() {
+            while let Some(sd) = subdevices.peek() {
                 match frame.push_pdu(
                     Command::fprd(
                         sd.borrow().configured_address(),
@@ -666,7 +668,13 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
                     (),
                     Some(AlControl::PACKED_LEN as u16),
                 ) {
-                    Ok(_) => (),
+                    Ok(_) => {
+                        total_checks += 1;
+
+                        // We peeked at the current item, so now we need to remove it from the
+                        // iterator because it was successfully inserted into the frame.
+                        let _ = subdevices.next();
+                    }
                     // Frame is full, we'll do more next time round
                     Err(PduError::TooLong) => {
                         fmt::trace!(
@@ -694,6 +702,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
 
             // Nothing to send, we've checked all SDs
             if num_in_this_frame == 0 {
+                fmt::trace!("--> No more state checks, pushed {}", total_checks);
+
                 break;
             }
 
@@ -719,6 +729,9 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
 
             frame_idx += 1;
         }
+
+        // Just sanity checking myself
+        debug_assert_eq!(total_checks, self.len());
 
         Ok(true)
     }
