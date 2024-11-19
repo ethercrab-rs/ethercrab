@@ -243,7 +243,7 @@ impl<'sto> CreatedFrame<'sto> {
             .pdu_buf_mut()
             .get_mut(buf_range.clone())
             .ok_or_else(|| {
-                fmt::error!(
+                fmt::trace!(
                     "Push PDU buf range too long: wanted {:?} from {:?}",
                     buf_range,
                     0..l
