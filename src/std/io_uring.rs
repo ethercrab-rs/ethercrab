@@ -8,14 +8,7 @@ use crate::{
 use core::{mem::MaybeUninit, task::Waker};
 use io_uring::{opcode, IoUring};
 use smallvec::{smallvec, SmallVec};
-use std::{
-    io,
-    os::fd::AsRawFd,
-    sync::Arc,
-    task::Wake,
-    thread::{self, Thread},
-    time::Instant,
-};
+use std::{io, os::fd::AsRawFd, sync::Arc, thread, time::Instant};
 
 /// Use the upper bit of a u64 to mark whether a frame is a write (`1`) or a read (`0`).
 const WRITE_MASK: u64 = 1 << 63;
