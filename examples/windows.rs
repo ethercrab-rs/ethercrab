@@ -8,7 +8,7 @@
 async fn main() -> Result<(), ethercrab::error::Error> {
     use env_logger::Env;
     use ethercrab::{
-        std::{ethercat_now, tx_rx_task_blocking},
+        std::{ethercat_now, tx_rx_task_blocking, TxRxTaskConfig},
         MainDevice, MainDeviceConfig, PduStorage, Timeouts,
     };
     use spin_sleep::{SpinSleeper, SpinStrategy};
@@ -72,6 +72,15 @@ async fn main() -> Result<(), ethercrab::error::Error> {
     // Pinning this and the TX/RX thread reduce packet RTT spikes significantly
     core_affinity::set_for_current(main_thread_core);
 
+    // Both `smol` and `tokio` use Windows' coarse timer, which has a resolution of at least
+    // 15ms. This isn't useful for decent cycle times, so we use a more accurate clock from
+    // `quanta` and a spin sleeper to get better timing accuracy.
+    let sleeper = SpinSleeper::default().with_spin_strategy(SpinStrategy::SpinLoopHint);
+
+    // NOTE: This takes ~200ms to return, so it must be called before any proper EtherCAT stuff
+    // happens.
+    let clock = quanta::Clock::new();
+
     // For best performance, use e.g.
     // https://www.techpowerup.com/download/microsoft-interrupt-affinity-tool/ to pin NIC IRQs to
     // the same core as the TX/RX thread.
@@ -86,7 +95,8 @@ async fn main() -> Result<(), ethercrab::error::Error> {
                 .then_some(())
                 .expect("Set TX/RX thread core");
 
-            tx_rx_task_blocking(&interface, tx, rx).expect("TX/RX task");
+            tx_rx_task_blocking(&interface, tx, rx, TxRxTaskConfig { spinloop: false })
+                .expect("TX/RX task");
         })
         .unwrap();
 
@@ -132,12 +142,6 @@ async fn main() -> Result<(), ethercrab::error::Error> {
     }
 
     let cycle_time = Duration::from_millis(5);
-
-    // Both `smol` and `tokio` use Windows' coarse timer, which has a resolution of at least
-    // 15ms. This isn't useful for decent cycle times, so we use a more accurate clock from
-    // `quanta` and a spin sleeper to get better timing accuracy.
-    let sleeper = SpinSleeper::default().with_spin_strategy(SpinStrategy::SpinLoopHint);
-    let clock = quanta::Clock::new();
 
     let shutdown = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown))
