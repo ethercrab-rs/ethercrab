@@ -63,6 +63,21 @@ Run as administrator, find your NIC and click "set mask".
 
 ## EtherCrab tweaks
 
+The
+[Windows example](https://github.com/ethercrab-rs/ethercrab/blob/fe55c9e1ba1a9d189ccab6ad234e086890950202/examples/windows.rs)
+is a good reference.
+
+### Use the blocking TX/RX task
+
+On Windows, `tx_rx_task` is deprecated since 0.5.1 as it has terrible performance.
+
+Instead, use `tx_rx_task_blocking` in a separate thread, e.g.
+[like this](https://github.com/ethercrab-rs/ethercrab/blob/master/examples/windows.rs#L98-L99).
+Performance is much improved over `tx_rx_task`.
+
+> You can set `spinloop: true` for... maybe some performance improvement? However this will peg one
+> CPU core to 100% for marginal gains.
+
 ### Core pinning
 
 EtherCrab requires at least two tasks; the main task/thread and a TX/RX thread. Pin these tasks to
