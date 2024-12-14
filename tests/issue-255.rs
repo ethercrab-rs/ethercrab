@@ -86,36 +86,35 @@ async fn check_issue_255() -> Result<(), Error> {
     let stop2 = stop.clone();
 
     std::thread::spawn(move || {
-        // cassette::block_on({
-        // async move {
-        // log::info!("Start TX/RX task");
+        cassette::block_on({
+            async move {
+                log::info!("Start TX/RX task");
 
-        for _ in 0..64 {
-            // group2.tx_rx(&maindevice2).await.expect("TX/RX failure");
+                for _ in 0..64 {
+                    group2.tx_rx(&maindevice2).await.expect("TX/RX failure");
 
-            std::thread::sleep(Duration::from_micros(50));
-            // std::thread::yield_now();
-        }
+                    std::thread::sleep(Duration::from_micros(50));
+                    // std::thread::yield_now();
+                }
 
-        // stop2.store(true, Ordering::Release);
-        //     }
-        // })
+                stop2.store(true, Ordering::Release);
+            }
+        })
     });
 
     // Animate slow pattern for 8 ticks
-    // while !stop.load(Ordering::Acquire) {
-    for _ in 0..64 {
-        // let mut el2889 = group.subdevice(&maindevice, 1).unwrap();
+    while !stop.load(Ordering::Acquire) {
+        let mut el2889 = group.subdevice(&maindevice, 1).unwrap();
 
-        // let (_i, o) = el2889.io_raw_mut();
+        let (_i, o) = el2889.io_raw_mut();
 
-        // black_box(do_stuff(black_box(o)));
+        black_box(do_stuff(black_box(o)));
 
         // std::thread::sleep(Duration::from_millis(1));
         std::thread::sleep(Duration::from_micros(50));
         // std::thread::yield_now();
 
-        // cycle_time.tick().await;
+        cycle_time.tick().await;
         // cycle_time.next().await;
     }
 
