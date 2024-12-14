@@ -1,0 +1,23 @@
+error[E0499]: cannot borrow `maindevice` as mutable more than once at a time
+  --> tests/ui/single-init-only.rs:36:17
+   |
+26 |       thread::scope(|s| {
+   |                      - has type `&'1 Scope<'1, '_>`
+27 |           s.spawn(|| {
+   |           -       -- first mutable borrow occurs here
+   |  _________|
+   | |
+28 | |             let _group = smol::block_on(
+29 | |                 Arc::get_mut(&mut maindevice)
+   | |                                   ---------- first borrow occurs due to use of `maindevice` in closure
+30 | |                     .unwrap()
+...  |
+33 | |             .expect("Init");
+34 | |         });
+   | |__________- argument requires that `maindevice` is borrowed for `'1`
+35 |
+36 |           s.spawn(|| {
+   |                   ^^ second mutable borrow occurs here
+37 |               let _group = smol::block_on(
+38 |                   Arc::get_mut(&mut maindevice)
+   |                                     ---------- second borrow occurs due to use of `maindevice` in closure

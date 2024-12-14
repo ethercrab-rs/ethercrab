@@ -47,10 +47,10 @@ miri_steps: &miri_steps
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
     - restore_cache:
-        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v9-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
-    - run: rustup toolchain add nightly-2024-07-13 --target $TARGET --component miri
+    - run: rustup toolchain add nightly-2024-12-12 --target $TARGET --component miri
     # - run: |
     #     binaries=( "cargo-nextest" )
 
@@ -66,10 +66,10 @@ miri_steps: &miri_steps
     #     done
     - run: |
         MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" \
-        cargo +nightly-2024-07-13 miri test --features '__internals' --target $TARGET
+        cargo +nightly-2024-12-12 miri test --features '__internals' --target $TARGET
 
     - save_cache:
-        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v9-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
