@@ -93,7 +93,10 @@ pub struct Timeouts {
 
 impl Timeouts {
     pub(crate) async fn loop_tick(&self) {
+        #[cfg(not(miri))]
         timer(self.wait_loop_delay).await;
+        #[cfg(miri)]
+        std::thread::yield_now();
     }
 }
 

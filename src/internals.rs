@@ -6,4 +6,3 @@ pub use crate::eeprom::device_reader::DeviceEeprom;
 pub use crate::eeprom::ChunkReader;
 pub use crate::eeprom::EepromDataProvider;
 pub use crate::ethernet::{EthernetAddress, EthernetFrame};
-pub use crate::pdu_loop::{EthercatFrameHeader, PduHeader};

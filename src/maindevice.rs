@@ -15,6 +15,7 @@ use crate::{
     MainDeviceConfig, SubDeviceGroup, Timeouts, BASE_SUBDEVICE_ADDRESS,
 };
 use core::{
+    cell::UnsafeCell,
     ops::Range,
     sync::atomic::{AtomicU16, Ordering},
 };
@@ -318,14 +319,16 @@ impl<'sto> MainDevice<'sto> {
                 unsafe { group.push(subdevice)? };
 
                 group_map
-                    .insert(usize::from(group.id()), group.as_ref())
+                    .insert(usize::from(group.id()), UnsafeCell::new(group))
                     .map_err(|_| Error::Capacity(Item::Group))?;
             }
 
             let mut offset = PdiOffset::default();
 
-            for (id, group) in group_map.iter_mut() {
-                offset = group.into_pre_op(offset, self).await?;
+            for (id, group) in group_map.into_iter() {
+                let group = unsafe { *group.get() };
+
+                offset = group.as_ref().into_pre_op(offset, self).await?;
 
                 fmt::debug!("After group ID {} offset: {:?}", id, offset);
             }
@@ -504,6 +507,7 @@ impl<'sto> MainDevice<'sto> {
         .await
     }
 
+    #[allow(unused)]
     pub(crate) const fn max_frame_data(&self) -> usize {
         self.pdu_loop.max_frame_data()
     }
