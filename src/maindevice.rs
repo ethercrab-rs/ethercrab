@@ -504,6 +504,7 @@ impl<'sto> MainDevice<'sto> {
         .await
     }
 
+    #[allow(unused)]
     pub(crate) const fn max_frame_data(&self) -> usize {
         self.pdu_loop.max_frame_data()
     }
