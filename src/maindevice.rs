@@ -9,12 +9,13 @@ use crate::{
     pdu_loop::{PduLoop, ReceivedPdu},
     register::RegisterAddress,
     subdevice::SubDevice,
-    subdevice_group::{self, SubDeviceGroupHandle},
+    subdevice_group::{self, MySyncUnsafeCell, SubDeviceGroupHandle},
     subdevice_state::SubDeviceState,
     timer_factory::IntoTimeout,
     MainDeviceConfig, SubDeviceGroup, Timeouts, BASE_SUBDEVICE_ADDRESS,
 };
 use core::{
+    cell::UnsafeCell,
     ops::Range,
     sync::atomic::{AtomicU16, Ordering},
 };
@@ -318,14 +319,16 @@ impl<'sto> MainDevice<'sto> {
                 unsafe { group.push(subdevice)? };
 
                 group_map
-                    .insert(usize::from(group.id()), group.as_ref())
+                    .insert(usize::from(group.id()), UnsafeCell::new(group))
                     .map_err(|_| Error::Capacity(Item::Group))?;
             }
 
             let mut offset = PdiOffset::default();
 
-            for (id, group) in group_map.iter_mut() {
-                offset = group.into_pre_op(offset, self).await?;
+            for (id, group) in group_map.into_iter() {
+                let group = unsafe { *group.get() };
+
+                offset = group.as_ref().into_pre_op(offset, self).await?;
 
                 fmt::debug!("After group ID {} offset: {:?}", id, offset);
             }
