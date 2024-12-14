@@ -3,7 +3,6 @@
 //! SubDevices can be divided into multiple groups to allow multiple tasks to run concurrently,
 //! potentially at different tick rates.
 
-mod configurator;
 mod group_id;
 mod handle;
 mod iterator;
@@ -30,7 +29,6 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
 pub use self::iterator::GroupSubDeviceIterator;
-pub use configurator::SubDeviceGroupRef;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 

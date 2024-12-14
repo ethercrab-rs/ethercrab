@@ -21,11 +21,6 @@ pub(crate) use frame_element::received_frame::ReceivedPdu;
 
 pub use frame_element::sendable_frame::SendableFrame;
 
-#[cfg(feature = "__internals")]
-pub use frame_header::EthercatFrameHeader;
-#[cfg(feature = "__internals")]
-pub use pdu_header::PduHeader;
-
 /// The core EtherCrab network communications driver.
 ///
 // TODO: Update the following docs. The current text is out of date.
@@ -405,7 +400,6 @@ mod tests {
     #[tokio::test]
     async fn tokio_spawn() {
         let _ = env_logger::builder().is_test(true).try_init();
-        env_logger::try_init().ok();
 
         static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
         let (mut tx, mut rx, pdu_loop) = STORAGE.try_split().unwrap();
@@ -480,7 +474,6 @@ mod tests {
     #[test]
     fn multiple_threads() {
         let _ = env_logger::builder().is_test(true).try_init();
-        env_logger::try_init().ok();
 
         const MAX_SUBDEVICES: usize = 16;
 
