@@ -3,7 +3,9 @@ use core::{future::Future, pin::Pin, task::Poll, time::Duration};
 
 #[cfg(not(feature = "std"))]
 pub(crate) type Timer = embassy_time::Timer;
-#[cfg(feature = "std")]
+#[cfg(miri)]
+pub(crate) type Timer = core::future::Pending<()>;
+#[cfg(all(not(miri), feature = "std"))]
 pub(crate) type Timer = async_io::Timer;
 
 #[cfg(not(feature = "std"))]
@@ -13,7 +15,12 @@ pub(crate) fn timer(duration: Duration) -> Timer {
     ))
 }
 
-#[cfg(feature = "std")]
+#[cfg(miri)]
+pub(crate) fn timer(_duration: Duration) -> Timer {
+    core::future::pending()
+}
+
+#[cfg(all(not(miri), feature = "std"))]
 pub(crate) fn timer(duration: Duration) -> Timer {
     async_io::Timer::after(duration)
 }
@@ -93,7 +100,10 @@ pub struct Timeouts {
 
 impl Timeouts {
     pub(crate) async fn loop_tick(&self) {
+        #[cfg(not(miri))]
         timer(self.wait_loop_delay).await;
+        #[cfg(miri)]
+        std::thread::yield_now();
     }
 }
 
