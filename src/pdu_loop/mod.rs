@@ -405,7 +405,6 @@ mod tests {
     #[tokio::test]
     async fn tokio_spawn() {
         let _ = env_logger::builder().is_test(true).try_init();
-        env_logger::try_init().ok();
 
         static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
         let (mut tx, mut rx, pdu_loop) = STORAGE.try_split().unwrap();
@@ -480,7 +479,6 @@ mod tests {
     #[test]
     fn multiple_threads() {
         let _ = env_logger::builder().is_test(true).try_init();
-        env_logger::try_init().ok();
 
         const MAX_SUBDEVICES: usize = 16;
 

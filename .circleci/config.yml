@@ -65,7 +65,7 @@ miri_steps: &miri_steps
     #       fi
     #     done
     - run: |
-        MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" \
+        MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zdeduplicate-diagnostics=yes" \
         cargo +nightly-2024-12-12 miri test --features '__internals' --target $TARGET
 
     - save_cache:

@@ -29,7 +29,7 @@ linux-test *args:
 
 miri *args:
     # MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly-2024-12-12 miri test --features '__internals' --target x86_64-unknown-linux-gnu {{args}}
-    MIRIFLAGS="-Zmiri-isolation-error=warn -Zdeduplicate-diagnostics=no" cargo +nightly-2024-12-12 miri test --features '__internals' --target x86_64-unknown-linux-gnu {{args}}
+    MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zdeduplicate-diagnostics=yes" cargo +nightly-2024-12-12 miri test --features '__internals' --target x86_64-unknown-linux-gnu {{args}}
 
 _generate-readme path:
      cargo readme --project-root "{{path}}" --template README.tpl --output README.md

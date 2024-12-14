@@ -21,8 +21,11 @@ const MAX_PDI: usize = 128;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn check_issue_255() -> Result<(), Error> {
-    // #[test]
-    // fn check_issue_255() -> Result<(), Error> {
+    if option_env!("CI").is_some() {
+        // This test is designed for miri and is skipped in CI because it is obscenely slow
+
+        return Ok(());
+    }
 
     #[cfg(not(miri))]
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
