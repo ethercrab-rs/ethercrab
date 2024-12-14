@@ -134,31 +134,6 @@ pub struct CycleInfo {
     pub cycle_start_offset: Duration,
 }
 
-// MSRV: Use core::cell::SyncUnsafeCell when stabilised <https://github.com/rust-lang/rust/issues/95439>
-pub(crate) struct MySyncUnsafeCell<T>(UnsafeCell<T>);
-
-impl<T> MySyncUnsafeCell<T> {
-    pub const fn new(inner: T) -> Self {
-        Self(UnsafeCell::new(inner))
-    }
-    pub const fn get(&self) -> *mut T {
-        self.0.get()
-    }
-    pub fn get_mut(&mut self) -> &mut T {
-        self.0.get_mut()
-    }
-}
-
-unsafe impl<T: Sync> Sync for MySyncUnsafeCell<T> {}
-
-// impl<T> Deref for MySyncUnsafeCell<T> {
-//     type Target = T;
-
-//     fn deref(&self) -> &Self::Target {
-//         todo!()
-//     }
-// }
-
 /// A group of one or more EtherCAT SubDevices.
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual

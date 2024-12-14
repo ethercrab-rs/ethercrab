@@ -9,7 +9,7 @@ use crate::{
     pdu_loop::{PduLoop, ReceivedPdu},
     register::RegisterAddress,
     subdevice::SubDevice,
-    subdevice_group::{self, MySyncUnsafeCell, SubDeviceGroupHandle},
+    subdevice_group::{self, SubDeviceGroupHandle},
     subdevice_state::SubDeviceState,
     timer_factory::IntoTimeout,
     MainDeviceConfig, SubDeviceGroup, Timeouts, BASE_SUBDEVICE_ADDRESS,
