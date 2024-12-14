@@ -103,17 +103,17 @@ serde = ["dep:serde", "bitflags/serde"]
 # Development only - DO NOT USE
 __internals = []
 
-[[example]]
-name = "akd"
-required-features = ["std"]
+# [[example]]
+# name = "akd"
+# required-features = ["std"]
 
 [[example]]
 name = "dc"
 required-features = ["std"]
 
-[[example]]
-name = "ec400"
-required-features = ["std"]
+# [[example]]
+# name = "ec400"
+# required-features = ["std"]
 
 [[example]]
 name = "ek1100"

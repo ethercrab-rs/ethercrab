@@ -1120,7 +1120,7 @@ where
     ///     subdevice.set_dc_sync(DcSync::Sync0);
     /// }
     ///
-    /// let group = group
+    /// let mut group = group
     ///     .into_pre_op_pdi(&maindevice)
     ///     .await
     ///     .expect("PRE-OP -> PRE-OP with PDI")
