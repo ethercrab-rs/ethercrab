@@ -74,7 +74,7 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
         fast_outputs,
     } = groups;
 
-    let slow_outputs = slow_outputs
+    let mut slow_outputs = slow_outputs
         .into_op(&maindevice)
         .await
         .expect("Slow into OP");
@@ -86,17 +86,23 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
     let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(10));
     slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let mut el2889 = slow_outputs
-        .subdevice(&maindevice, 1)
-        .expect("EL2889 not present!");
+    {
+        let mut el2889 = slow_outputs
+            .subdevice(&maindevice, 1)
+            .expect("EL2889 not present!");
 
-    // Set initial output state
-    el2889.io_raw_mut().1[0] = 0x01;
-    el2889.io_raw_mut().1[1] = 0x80;
+        // Set initial output state
+        el2889.io_raw_mut().1[0] = 0x01;
+        el2889.io_raw_mut().1[1] = 0x80;
+    }
 
     // Animate slow pattern for 8 ticks
     for _ in 0..8 {
         slow_outputs.tx_rx(&maindevice).await.expect("TX/RX");
+
+        let mut el2889 = slow_outputs
+            .subdevice(&maindevice, 1)
+            .expect("EL2889 not present!");
 
         let (_i, o) = el2889.io_raw_mut();
 

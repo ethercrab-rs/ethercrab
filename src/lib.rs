@@ -162,7 +162,6 @@ mod coe;
 mod command;
 mod dc;
 mod dl_status;
-pub mod ds402;
 mod eeprom;
 pub mod error;
 mod ethernet;

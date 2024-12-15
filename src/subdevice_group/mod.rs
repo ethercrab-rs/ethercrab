@@ -894,7 +894,7 @@ where
     ///
     /// This method will return with an error if the PDU could not be sent over the network, or the
     /// response times out.
-    pub async fn tx_rx<'sto>(&self, maindevice: &'sto MainDevice<'sto>) -> Result<u16, Error> {
+    pub async fn tx_rx<'sto>(&mut self, maindevice: &'sto MainDevice<'sto>) -> Result<u16, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -957,7 +957,7 @@ where
     /// This method will return with an error if the PDU could not be sent over the network, or the
     /// response times out.
     pub async fn tx_rx_sync_system_time<'sto>(
-        &self,
+        &mut self,
         maindevice: &'sto MainDevice<'sto>,
     ) -> Result<(u16, Option<u64>), Error> {
         fmt::trace!(
@@ -1120,7 +1120,7 @@ where
     ///     subdevice.set_dc_sync(DcSync::Sync0);
     /// }
     ///
-    /// let group = group
+    /// let mut group = group
     ///     .into_pre_op_pdi(&maindevice)
     ///     .await
     ///     .expect("PRE-OP -> PRE-OP with PDI")
@@ -1178,7 +1178,7 @@ where
     /// # }) }
     /// ```
     pub async fn tx_rx_dc<'sto>(
-        &self,
+        &mut self,
         maindevice: &'sto MainDevice<'sto>,
     ) -> Result<(u16, CycleInfo), Error> {
         fmt::trace!(

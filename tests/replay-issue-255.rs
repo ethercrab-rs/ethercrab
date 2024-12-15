@@ -26,7 +26,7 @@ async fn replay_issue_255() -> Result<(), Error> {
 
     let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let mut maindevice = MainDevice::new(
+    let maindevice = MainDevice::new(
         pdu_loop,
         Timeouts::default(),
         MainDeviceConfig {
