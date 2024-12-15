@@ -81,6 +81,7 @@ quanta = "0.12.3"
 savefile = { version = "0.18.5", default-features = false }
 savefile-derive = { version = "0.18.5", default-features = false }
 simple_logger = { version = "5.0.0", default-features = false }
+spin = { version = "0.9.8", default-features = false, features = ["rwlock"] }
 
 [features]
 default = ["std"]
