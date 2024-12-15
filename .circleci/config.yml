@@ -47,7 +47,7 @@ miri_steps: &miri_steps
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
     - restore_cache:
-        key: v10-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v11-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
     - run: rustup toolchain add nightly-2024-12-12 --target $TARGET --component miri
@@ -69,7 +69,7 @@ miri_steps: &miri_steps
         cargo +nightly-2024-12-12 miri test --features '__internals' --target $TARGET
 
     - save_cache:
-        key: v10-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v11-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
