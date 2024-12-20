@@ -1,7 +1,7 @@
 //! Items to use when not in `no_std` environments.
 
 use crate::{
-    error::{Error, PduError},
+    error::Error,
     ethernet::EthernetFrame,
     fmt,
     pdu_loop::{PduRx, PduTx},

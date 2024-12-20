@@ -11,14 +11,13 @@ use self::bpf::BpfDevice as RawSocketDesc;
 pub(in crate::std) use self::linux::RawSocketDesc;
 
 use crate::{
-    error::{Error, PduError},
+    error::Error,
     fmt,
     pdu_loop::{PduRx, PduTx},
 };
 use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
 use futures_lite::{AsyncRead, AsyncWrite};
-use std::thread;
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
