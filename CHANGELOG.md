@@ -499,10 +499,10 @@ An EtherCAT MainDevice written in Rust.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.1...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...HEAD
+[0.5.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...ethercrab-v0.5.1
 [0.5.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.5.0
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.3...HEAD
 [0.4.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.4.3
 [0.4.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.1...ethercrab-v0.4.2
 [0.4.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.0...ethercrab-v0.4.1
