@@ -24,6 +24,11 @@ An EtherCAT MainDevice written in Rust.
 - [#242](https://github.com/ethercrab-rs/ethercrab/pull/242) Add support for PDIs longer than a
   single PDU
 
+### Removed
+
+- **(breaking)** [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) The `PduError::NoWaker`
+  has been removed as it is no longer used or returned by any EtherCrab method.
+
 ### Changed
 
 - **(breaking)** [#258](https://github.com/ethercrab-rs/ethercrab/pull/258) Changed all
@@ -53,6 +58,8 @@ An EtherCAT MainDevice written in Rust.
 
 - [#229](https://github.com/ethercrab-rs/ethercrab/pull/229) Fix overflowing subtraction panic when
   calculating DC cycle offset.
+- [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) Frames received before their future's
+  waker is registered will no longer trigger a `NoWaker` error.
 
 ## [0.5.1] - 2024-11-26
 
@@ -499,8 +506,8 @@ An EtherCAT MainDevice written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.1...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.1...HEAD
 [0.5.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...ethercrab-v0.5.1
 [0.5.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.5.0
 [0.4.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.4.3
