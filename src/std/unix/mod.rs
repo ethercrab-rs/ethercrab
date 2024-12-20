@@ -85,8 +85,6 @@ impl Future for TxRxFut<'_> {
 
                 loop {
                     match self.rx.receive_frame(packet) {
-                        // Wait for frame RX future waker to be registered
-                        Err(Error::Pdu(PduError::NoWaker)) => thread::yield_now(),
                         Err(e) => {
                             fmt::error!("Failed to receive frame: {}", e);
 

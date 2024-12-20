@@ -251,14 +251,6 @@ pub fn tx_rx_task_blocking<'sto>(
                         let res = loop {
                             match pdu_rx.receive_frame(&frame_buf) {
                                 Ok(res) => break res,
-                                Err(Error::Pdu(PduError::NoWaker)) => {
-                                    fmt::trace!(
-                                        "No waker for received frame {:#04x}, retrying receive",
-                                        frame_index
-                                    );
-
-                                    thread::yield_now();
-                                }
                                 Err(e) => return Err(io::Error::other(e)),
                             }
                         };
