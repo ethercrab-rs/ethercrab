@@ -54,6 +54,24 @@ An EtherCAT MainDevice written in Rust.
 - [#229](https://github.com/ethercrab-rs/ethercrab/pull/229) Fix overflowing subtraction panic when
   calculating DC cycle offset.
 
+## [0.5.1] - 2024-11-26
+
+### Deprecated
+
+- [#248](https://github.com/ethercrab-rs/ethercrab/pull/248) **Windows:** `tx_rx_task` is replaced
+  with `tx_rx_task_blocking` which is no longer `async`. It must be spawned into its own thread
+  instead of an async task. `tx_rx_task` will be removed in a future release.
+
+### Added
+
+- [#248](https://github.com/ethercrab-rs/ethercrab/pull/248) **Windows:** Add `tx_rx_task_blocking`
+  to use in a separate thread to send/receive EitherCAT frames.
+
+### Changed
+
+- **(breaking)** [#248](https://github.com/ethercrab-rs/ethercrab/pull/248) `PduRx::receive_frame`
+  now returns `Result<ReceiveAction, Error>` instead of `Result<(), Error>`.
+
 ## [0.5.0] - 2024-07-28
 
 ### Changed
