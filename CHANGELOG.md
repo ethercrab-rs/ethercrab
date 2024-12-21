@@ -27,7 +27,7 @@ An EtherCAT MainDevice written in Rust.
 ### Removed
 
 - **(breaking)** [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) The `PduError::NoWaker`
-  has been removed as it is no longer used or returned by any EtherCrab method.
+  variant has been removed as it is no longer used or returned by any EtherCrab method.
 
 ### Changed
 

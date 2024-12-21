@@ -53,7 +53,7 @@ impl<'sto> ReceivingFrame<'sto> {
 
         // wake() returns an error if there is no waker. A frame might have no waker if the response
         // is received over the network before the chosen executor has a chance to poll the future
-        // for the first time.
+        // for the first time, so we'll ignore that error otherwise we might get false positives.
         let _ = self.inner.wake();
 
         Ok(())
