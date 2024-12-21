@@ -1,14 +1,8 @@
-use crate::{
-    error::{Error, PduError},
-    fmt,
-    std::unix::RawSocketDesc,
-    std::ParkSignal,
-    PduRx, PduTx,
-};
+use crate::{error::Error, fmt, std::unix::RawSocketDesc, std::ParkSignal, PduRx, PduTx};
 use core::{mem::MaybeUninit, task::Waker};
 use io_uring::{opcode, IoUring};
 use smallvec::{smallvec, SmallVec};
-use std::{io, os::fd::AsRawFd, sync::Arc, thread, time::Instant};
+use std::{io, os::fd::AsRawFd, sync::Arc, time::Instant};
 
 /// Use the upper bit of a u64 to mark whether a frame is a write (`1`) or a read (`0`).
 const WRITE_MASK: u64 = 1 << 63;
@@ -205,14 +199,6 @@ pub fn tx_rx_task_io_uring<'sto>(
                 loop {
                     match pdu_rx.receive_frame(&frame) {
                         Ok(_) => break,
-                        Err(Error::Pdu(PduError::NoWaker)) => {
-                            fmt::trace!(
-                                "No waker for received frame {:#04x}, retrying receive",
-                                frame_index
-                            );
-
-                            thread::yield_now();
-                        }
                         Err(e) => return Err(io::Error::other(e)),
                     }
                 }
