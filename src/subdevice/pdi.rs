@@ -68,7 +68,7 @@ impl<'a, 'group> SubDeviceRef<'a, SubDevicePdi<'group>> {
     ///
     /// let (i1, o1) = subdevice.io_raw_mut();
     ///
-    /// // Danger: second reference to mutable outputs! This will fail to copmile.
+    /// // Danger: second reference to mutable outputs! This will fail to compile.
     /// let (i2, o2) = subdevice.io_raw_mut();
     ///
     /// o1[0] = 0xaa;
