@@ -11,14 +11,13 @@ use self::bpf::BpfDevice as RawSocketDesc;
 pub(in crate::std) use self::linux::RawSocketDesc;
 
 use crate::{
-    error::{Error, PduError},
+    error::Error,
     fmt,
     pdu_loop::{PduRx, PduTx},
 };
 use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
 use futures_lite::{AsyncRead, AsyncWrite};
-use std::thread;
 
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
@@ -85,8 +84,6 @@ impl Future for TxRxFut<'_> {
 
                 loop {
                     match self.rx.receive_frame(packet) {
-                        // Wait for frame RX future waker to be registered
-                        Err(Error::Pdu(PduError::NoWaker)) => thread::yield_now(),
                         Err(e) => {
                             fmt::error!("Failed to receive frame: {}", e);
 
