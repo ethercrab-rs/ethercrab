@@ -796,6 +796,8 @@ mod tests {
             res.unwrap().unwrap()
         };
 
-        assert_eq!(&remaining[sent..], &[]);
+        let empty: &[u8] = &[];
+
+        assert_eq!(&remaining[sent..], empty);
     }
 }
