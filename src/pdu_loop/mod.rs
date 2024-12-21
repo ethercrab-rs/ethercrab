@@ -113,7 +113,7 @@ mod tests {
     use crate::{
         error::{Error, PduError},
         fmt,
-        pdu_loop::frame_element::created_frame::CreatedFrame,
+        pdu_loop::frame_element::{created_frame::CreatedFrame, received_frame::ReceivedFrame},
         timer_factory::IntoTimeout,
         Command, PduStorage, Reads,
     };
@@ -409,6 +409,73 @@ mod tests {
         });
 
         cassette::block_on(poller);
+    }
+
+    // Frames whos response is received from the network and ready for use before the first poll
+    // should still complete, instead of failing with a `NoWaker` error.
+    //
+    // Related to <https://github.com/ethercrab-rs/ethercrab/discussions/259>
+    #[test]
+    fn receive_frame_before_first_poll() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let ethernet_packet = [
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
+            0x12, 0x10, 0x10, 0x10, 0x10, 0x10, // Return to master address
+            0x88, 0xa4, // EtherCAT ethertype
+            0x10, 0x10, // EtherCAT frame header: type PDU, length 4 (plus header)
+            0x05, // Command: FPWR
+            0x00, // Frame index 0
+            0x89, 0x67, // SubDevice address,
+            0x34, 0x12, // Register address
+            0x04, 0x00, // Flags, 4 byte length
+            0x00, 0x00, // IRQ
+            0xdd, 0xcc, 0xbb, 0xaa, // Our payload, LE
+            0x00, 0x00, // Working counter
+        ];
+
+        // 1 frame, up to 128 bytes payload
+        let storage = PduStorage::<1, 128>::new();
+
+        let (mut tx, mut rx, pdu_loop) = storage.try_split().unwrap();
+
+        let data = 0xAABBCCDDu32;
+        let data_bytes = data.to_le_bytes();
+
+        let mut frame = pdu_loop.storage.alloc_frame().unwrap();
+
+        frame
+            .push_pdu(
+                Command::fpwr(0x6789, 0x1234).into(),
+                &data_bytes,
+                None,
+                false,
+            )
+            .expect("Push PDU");
+
+        let frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
+
+        let frame = tx.next_sendable_frame().expect("need a frame");
+
+        frame.send_blocking(|bytes| Ok(bytes.len())).expect("send");
+
+        // ---
+
+        let result = rx.receive_frame(&ethernet_packet);
+
+        assert_eq!(result, Ok(crate::ReceiveAction::Processed));
+
+        let mut frame_fut = Cassette::new(frame_fut);
+
+        // Poll future AFTER frame is received
+        let frame_poll = frame_fut.poll_on();
+
+        assert!(
+            matches!(frame_poll, Some(Ok(ReceivedFrame { .. }))),
+            "frame future should have completed"
+        );
+
+        // TODO: Check future result. Should be Poll::Ready
     }
 
     #[tokio::test]
