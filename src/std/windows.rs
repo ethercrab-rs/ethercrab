@@ -249,7 +249,7 @@ pub fn tx_rx_task_blocking<'sto>(
                             .ok_or_else(|| io::Error::other(Error::Internal))?;
 
                         let res = pdu_rx
-                            .receive_frame(&frame)
+                            .receive_frame(&frame_buf)
                             .map_err(|e| io::Error::other(e))?;
 
                         fmt::trace!(
