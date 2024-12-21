@@ -82,15 +82,10 @@ impl Future for TxRxFut<'_> {
                     fmt::warn!("Received zero bytes");
                 }
 
-                loop {
-                    match self.rx.receive_frame(packet) {
-                        Err(e) => {
-                            fmt::error!("Failed to receive frame: {}", e);
+                if let Err(e) = self.rx.receive_frame(packet) {
+                    fmt::error!("Failed to receive frame: {}", e);
 
-                            return Poll::Ready(Err(Error::ReceiveFrame));
-                        }
-                        Ok(_) => break,
-                    }
+                    return Poll::Ready(Err(Error::ReceiveFrame));
                 }
             }
             Poll::Ready(Err(e)) => {
