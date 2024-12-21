@@ -248,12 +248,9 @@ pub fn tx_rx_task_blocking<'sto>(
                             .get(0x11)
                             .ok_or_else(|| io::Error::other(Error::Internal))?;
 
-                        let res = loop {
-                            match pdu_rx.receive_frame(&frame_buf) {
-                                Ok(res) => break res,
-                                Err(e) => return Err(io::Error::other(e)),
-                            }
-                        };
+                        let res = pdu_rx
+                            .receive_frame(&frame_buf)
+                            .map_err(|e| io::Error::other(e))?;
 
                         fmt::trace!(
                             "Received and {:?} frame {:#04x} ({} bytes)",
