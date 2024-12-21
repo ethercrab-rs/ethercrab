@@ -24,7 +24,6 @@ targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu"]
 async-io = { version = "2.0.0", optional = true }
 atomic-waker = "1.1.2"
 atomic_enum = "0.3.0"
-atomic_refcell = "0.1.13"
 bitflags = "2.4.1"
 defmt = { version = "0.3.5", optional = true }
 embassy-time = "0.3.2"
@@ -36,6 +35,7 @@ sealed = "0.5.0"
 serde = { version = "1.0.190", features = ["derive"], optional = true }
 smlang = "0.6.0"
 ethercrab-wire = { version = "0.2.0", path = "./ethercrab-wire" }
+spin = { version = "0.9.8", default-features = false, features = ["rwlock"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.34.0", features = ["std"], optional = true }

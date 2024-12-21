@@ -1,7 +1,6 @@
 use crate::{
     error::Error, fmt, pdi::PdiOffset, GroupId, MainDevice, SubDevice, SubDeviceGroup, SubDeviceRef,
 };
-use atomic_refcell::AtomicRefCell;
 
 /// A trait implemented only by [`SubDeviceGroup`] so multiple groups with different const params
 /// can be stored in a hashmap, `Vec`, etc.
@@ -29,7 +28,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> SubDeviceGroupHandle
     unsafe fn push(&self, subdevice: SubDevice) -> Result<(), Error> {
         (*self.inner.get())
             .subdevices
-            .push(AtomicRefCell::new(subdevice))
+            .push(subdevice)
             .map_err(|_| Error::Capacity(crate::error::Item::SubDevice))
     }
 
@@ -50,7 +49,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> SubDeviceGroupHandle
 
 #[derive(Debug)]
 struct GroupInnerRef<'a> {
-    subdevices: &'a mut [AtomicRefCell<SubDevice>],
+    subdevices: &'a mut [SubDevice],
     pdi_start: &'a mut PdiOffset,
 }
 
@@ -85,8 +84,6 @@ impl<'a> SubDeviceGroupRef<'a> {
 
         // Configure master read PDI mappings in the first section of the PDI
         for subdevice in inner.subdevices.iter_mut() {
-            let subdevice = subdevice.get_mut();
-
             let mut subdevice_config =
                 SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice);
 

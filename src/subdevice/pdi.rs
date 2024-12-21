@@ -1,6 +1,6 @@
-use super::{SubDevice, SubDeviceRef};
-use atomic_refcell::AtomicRefMut;
-use core::ops::Deref;
+use super::{IoRanges, SubDevice, SubDeviceRef};
+use crate::subdevice_group::MySyncUnsafeCell;
+use core::{cell::UnsafeCell, ops::Deref, ptr::NonNull};
 
 /// Process Data Image (PDI) segments for a given SubDevice.
 ///
@@ -8,12 +8,14 @@ use core::ops::Deref;
 #[derive(Debug)]
 #[doc(alias = "SlavePdi")]
 pub struct SubDevicePdi<'group> {
-    subdevice: AtomicRefMut<'group, SubDevice>,
-
-    inputs: &'group [u8],
-
-    outputs: &'group mut [u8],
+    subdevice: &'group SubDevice,
+    ranges: IoRanges,
+    max_pdi: usize,
+    pdi: NonNull<spin::RwLock<UnsafeCell<[u8; 0]>>>,
 }
+
+unsafe impl<'group> Send for SubDevicePdi<'group> {}
+unsafe impl<'group> Sync for SubDevicePdi<'group> {}
 
 impl<'group> Deref for SubDevicePdi<'group> {
     type Target = SubDevice;
@@ -24,15 +26,21 @@ impl<'group> Deref for SubDevicePdi<'group> {
 }
 
 impl<'group> SubDevicePdi<'group> {
-    pub(crate) fn new(
-        subdevice: AtomicRefMut<'group, SubDevice>,
-        inputs: &'group [u8],
-        outputs: &'group mut [u8],
+    pub(crate) fn new<const MAX_PDI: usize>(
+        subdevice: &'group SubDevice,
+        max_pdi: usize,
+        pdi: &spin::RwLock<MySyncUnsafeCell<[u8; MAX_PDI]>>,
+        ranges: IoRanges,
     ) -> Self {
+        let pdi = NonNull::from(pdi);
+
+        let pdi: NonNull<spin::RwLock<UnsafeCell<[u8; 0]>>> = pdi.cast();
+
         Self {
             subdevice,
-            inputs,
-            outputs,
+            ranges,
+            max_pdi,
+            pdi,
         }
     }
 }
@@ -67,7 +75,8 @@ impl<'a, 'group> SubDeviceRef<'a, SubDevicePdi<'group>> {
     /// # }
     /// ```
     pub fn io_raw_mut(&mut self) -> (&[u8], &mut [u8]) {
-        (self.state.inputs, self.state.outputs)
+        // (self.state.inputs, self.state.outputs)
+        todo!()
     }
 
     /// Get a tuple of (&I, &O) for this SubDevice in the Process Data Image (PDI).
@@ -103,22 +112,26 @@ impl<'a, 'group> SubDeviceRef<'a, SubDevicePdi<'group>> {
     /// # }
     /// ```
     pub fn io_raw(&self) -> (&[u8], &[u8]) {
-        (self.state.inputs, self.state.outputs)
+        // (self.state.inputs, self.state.outputs)
+        todo!()
     }
 
     /// Get a reference to the raw input data for this SubDevice in the Process Data Image (PDI).
     pub fn inputs_raw(&self) -> &[u8] {
-        self.state.inputs
+        // self.state.inputs
+        todo!()
     }
 
     /// Get a reference to the raw output data for this SubDevice in the Process Data Image (PDI).
     pub fn outputs_raw(&self) -> &[u8] {
-        self.state.outputs
+        // self.state.outputs
+        todo!()
     }
 
     /// Get a mutable reference to the raw output data for this SubDevice in the Process Data Image
     /// (PDI).
     pub fn outputs_raw_mut(&mut self) -> &mut [u8] {
-        self.state.outputs
+        // self.state.outputs
+        todo!()
     }
 }

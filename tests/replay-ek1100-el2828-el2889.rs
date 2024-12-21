@@ -74,11 +74,11 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
         fast_outputs,
     } = groups;
 
-    let mut slow_outputs = slow_outputs
+    let slow_outputs = slow_outputs
         .into_op(&maindevice)
         .await
         .expect("Slow into OP");
-    let mut fast_outputs = fast_outputs
+    let fast_outputs = fast_outputs
         .into_op(&maindevice)
         .await
         .expect("Fast into OP");

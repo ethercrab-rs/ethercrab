@@ -101,7 +101,7 @@ fn main() -> Result<(), Error> {
 
         // The group will be in PRE-OP at this point
 
-        for mut subdevice in group.iter(&maindevice) {
+        for mut subdevice in group.iter_mut(&maindevice) {
             if subdevice.name() == "LAN9252-EVB-HBI" {
                 // Sync mode 02 = SYNC0
                 subdevice

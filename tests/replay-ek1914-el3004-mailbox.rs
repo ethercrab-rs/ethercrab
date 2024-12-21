@@ -41,7 +41,7 @@ async fn replay_ek1914_el3004_mailbox() -> Result<(), Error> {
     util::spawn_tx_rx(&format!("tests/{test_name}.pcapng"), tx, rx);
 
     // Read configurations from SubDevice EEPROMs and configure devices.
-    let mut group = maindevice
+    let group = maindevice
         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(|| 0)
         .await
         .expect("Init");

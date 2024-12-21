@@ -71,7 +71,7 @@ fn main() -> Result<(), Error> {
             .await
             .expect("Init");
 
-        for mut subdevice in slow_group.iter(&maindevice) {
+        for mut subdevice in slow_group.iter_mut(&maindevice) {
             // Sync mode 02 = SYNC0
             subdevice
                 .sdo_write(0x1c32, 1, 2u16)
@@ -105,7 +105,7 @@ fn main() -> Result<(), Error> {
             subdevice.set_dc_sync(DcSync::Sync0);
         }
 
-        for mut subdevice in fast_group.iter(&maindevice) {
+        for mut subdevice in fast_group.iter_mut(&maindevice) {
             // Sync mode 02 = SYNC0
             subdevice
                 .sdo_write(0x1c32, 1, 2u16)
