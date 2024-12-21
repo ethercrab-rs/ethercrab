@@ -51,46 +51,12 @@ impl<'sto> ReceivingFrame<'sto> {
                 PduError::InvalidFrameState
             })?;
 
-        // If the wake fails, release the receiving claim so the frame receive can possibly be
-        // reattempted at a later time.
-        if let Err(()) = self.inner.wake() {
-            fmt::trace!("Failed to wake frame {:#04x}: no waker", self.frame_index());
+        // wake() returns an error if there is no waker. A frame might have no waker if the response
+        // is received over the network before the chosen executor has a chance to poll the future
+        // for the first time, so we'll ignore that error otherwise we might get false positives.
+        let _ = self.inner.wake();
 
-            // Restore frame state to `Sent`, which is what `PduStorageRef::claim_receiving`
-            // expects. This allows us to reprocess the frame again later. The frame will be
-            // made reusable by `ReceiveFrameFut::drop` which sets the frame state to `None`,
-            // preventing a deadlock of this PDU frame slot.
-            //
-            // If the frame is in another state, e.g. `RxProcessing` or other states that are
-            // set after `RxDone`, the future is already being processed and likely doesn't even
-            // need waking. In this case we can ignore the swap failure here.
-            match self.inner.swap_state(FrameState::RxDone, FrameState::Sent) {
-                Ok(()) => (),
-                // Frame is being processed. We don't need to retry the receive
-                Err(bad_state)
-                    if matches!(bad_state, FrameState::RxProcessing | FrameState::None) =>
-                {
-                    fmt::trace!("--> Frame is {:?}, no need to wake", bad_state);
-
-                    return Ok(());
-                }
-                Err(bad_state) => {
-                    fmt::error!(
-                        "Failed to set frame {:#04x} state from RxDone -> Sent, got {:?}",
-                        self.frame_index(),
-                        bad_state
-                    );
-
-                    // Logic bug if the swap failed - no other threads should be using this
-                    // frame, and the code just above this block sets the state to `RxDone`.
-                    unreachable!();
-                }
-            }
-
-            Err(PduError::NoWaker)
-        } else {
-            Ok(())
-        }
+        Ok(())
     }
 
     pub(in crate::pdu_loop) fn buf_mut(&mut self) -> &mut [u8] {
