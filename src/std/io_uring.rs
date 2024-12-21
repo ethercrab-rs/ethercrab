@@ -196,12 +196,9 @@ pub fn tx_rx_task_io_uring<'sto>(
                     key,
                 );
 
-                loop {
-                    match pdu_rx.receive_frame(&frame) {
-                        Ok(_) => break,
-                        Err(e) => return Err(io::Error::other(e)),
-                    }
-                }
+                pdu_rx
+                    .receive_frame(&frame)
+                    .map_err(|e| io::Error::other(e))?;
 
                 fmt::trace!("Received frame in {} ns", received.elapsed().as_nanos());
             }
