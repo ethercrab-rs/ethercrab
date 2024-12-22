@@ -5,15 +5,7 @@
 [![Docs.rs](https://docs.rs/ethercrab/badge.svg)](https://docs.rs/ethercrab)
 [![Matrix chat](https://img.shields.io/matrix/ethercrab:matrix.org)](https://matrix.to/#/#ethercrab:matrix.org)
 
-A performant, `async`-first EtherCAT master written in pure Rust.
-
-> <div style="padding: var(--fbc-font-size); background: var(--code-block-background-color)">
->
-> Are you looking to use Rust in your next EtherCAT deployment? Commercial support for EtherCrab
-> is available! Send me a message at [james@wapl.es](mailto:james@wapl.es) to get started with a
-> free consulting call.
->
-> </div>
+A performant, `async`-first EtherCAT MainDevice written in pure Rust.
 
 ## Crate features
 
