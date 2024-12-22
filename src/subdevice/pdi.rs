@@ -120,14 +120,12 @@ impl<'group, const MAX_PDI: usize> SubDevicePdi<'group, MAX_PDI> {
 
 /// Methods used when a SubDevice is part of a group and part of the PDI has been mapped to it.
 impl<'a, 'group, const MAX_PDI: usize> SubDeviceRef<'a, SubDevicePdi<'group, MAX_PDI>> {
-    /// Get a tuple of (&I, &mut O) for this SubDevice in the Process Data Image (PDI).
+    /// Get a reference to the raw inputs and outputs for this SubDevice in the Process Data Image
+    /// (PDI). The inputs are read-only, while the outputs can be mutated.
     ///
     /// # Examples
     ///
-    /// ## Disallow multiple mutable references
-    ///
-    /// ```compile_fail,E0499
-    /// // error[E0499]: cannot borrow `SubDevice` as mutable more than once at a time
+    /// ```rust
     /// # use ethercrab::{
     /// #     error::Error, std::tx_rx_task, MainDevice, MainDeviceConfig, PduStorage, Timeouts,
     /// # };
@@ -141,9 +139,6 @@ impl<'a, 'group, const MAX_PDI: usize> SubDeviceRef<'a, SubDevicePdi<'group, MAX
     ///
     /// let (i1, o1) = subdevice.io_raw_mut();
     ///
-    /// // Danger: second reference to mutable outputs! This will fail to compile.
-    /// let (i2, o2) = subdevice.io_raw_mut();
-    ///
     /// o1[0] = 0xaa;
     /// # }
     /// ```
@@ -155,7 +150,8 @@ impl<'a, 'group, const MAX_PDI: usize> SubDeviceRef<'a, SubDevicePdi<'group, MAX
         }
     }
 
-    /// Get a tuple of (&I, &O) for this SubDevice in the Process Data Image (PDI).
+    /// Get a reference to both the inputs and outputs for this SubDevice in the Process Data Image
+    /// (PDI).
     ///
     /// To get a mutable reference to the SubDevice outputs, see either
     /// [`io_raw_mut`](SubDeviceRef::io_raw_mut) or
@@ -163,10 +159,7 @@ impl<'a, 'group, const MAX_PDI: usize> SubDeviceRef<'a, SubDevicePdi<'group, MAX
     ///
     /// # Examples
     ///
-    /// ## Disallow multiple mutable references
-    ///
-    /// ```compile_fail,E0502
-    /// // error[E0502]: cannot borrow `SubDevice` as immutable because it is also borrowed as mutable
+    /// ```rust
     /// # use ethercrab::{
     /// #     error::Error, std::tx_rx_task, MainDevice, MainDeviceConfig, PduStorage, Timeouts,
     /// # };
@@ -178,13 +171,14 @@ impl<'a, 'group, const MAX_PDI: usize> SubDeviceRef<'a, SubDevicePdi<'group, MAX
     /// let group = group.into_op(&maindevice).await.expect("Op");
     /// let mut subdevice = group.subdevice(&maindevice, 0).expect("No device");
     ///
-    /// let (i1, o1_mut) = subdevice.io_raw_mut();
+    /// let (i1, o1) = subdevice.io_raw();
     ///
-    /// // Not allowed: outputs are already mutably borrowed so we cannot hold another reference to
-    /// // them until that borrow is dropped.
-    /// let (i2, o2) = subdevice.io_raw();
+    /// dbg!(i1[0]);
     ///
-    /// o1_mut[0] = 0xff;
+    /// // Not allowed to mutate the outputs
+    /// // o1[0] = 0xff;
+    /// // But we can read them
+    /// dbg!(o1[0]);
     /// # }
     /// ```
     pub fn io_raw(&self) -> PdiIoRawReadGuard<'_, MAX_PDI> {

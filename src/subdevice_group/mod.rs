@@ -274,29 +274,6 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         ))
     }
 
-    /// TODO: Doc
-    pub fn subdevice_mut<'maindevice, 'group>(
-        &'group mut self,
-        maindevice: &'maindevice MainDevice<'maindevice>,
-        index: usize,
-    ) -> Result<SubDeviceRef<'maindevice, &'group mut SubDevice>, Error> {
-        let subdevice = self
-            .inner
-            .get_mut()
-            .subdevices
-            .get_mut(index)
-            .ok_or(Error::NotFound {
-                item: Item::SubDevice,
-                index: Some(index),
-            })?;
-
-        Ok(SubDeviceRef::new(
-            maindevice,
-            subdevice.configured_address(),
-            subdevice,
-        ))
-    }
-
     /// Transition the group from PRE-OP -> SAFE-OP -> OP.
     ///
     /// To transition individually from PRE-OP to SAFE-OP, then SAFE-OP to OP, see
