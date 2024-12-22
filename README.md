@@ -5,7 +5,15 @@
 [![Docs.rs](https://docs.rs/ethercrab/badge.svg)](https://docs.rs/ethercrab)
 [![Matrix chat](https://img.shields.io/matrix/ethercrab:matrix.org)](https://matrix.to/#/#ethercrab:matrix.org)
 
-A performant, `async`-first EtherCAT MainDevice (master) written in pure Rust.
+A performant, `async`-first EtherCAT master written in pure Rust.
+
+> <div style="padding: var(--fbc-font-size); background: var(--code-block-background-color)">
+>
+> Are you looking to use Rust in your next EtherCAT deployment? Commercial support for EtherCrab
+> is available! Send me a message at [james@wapl.es](mailto:james@wapl.es) to get started with a
+> free consulting call.
+>
+> </div>
 
 ## Crate features
 
@@ -113,14 +121,14 @@ async fn main() -> Result<(), Error> {
     let mut group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
 
     for subdevice in group.iter(&maindevice) {
-        let (i, o) = subdevice.io_raw();
+        let io = subdevice.io_raw();
 
         log::info!(
             "-> SubDevice {:#06x} {} inputs: {} bytes, outputs: {} bytes",
             subdevice.configured_address(),
             subdevice.name(),
-            i.len(),
-            o.len()
+            io.inputs().len(),
+            io.outputs().len()
         );
     }
 
@@ -132,9 +140,9 @@ async fn main() -> Result<(), Error> {
 
         // Increment every output byte for every SubDevice by one
         for mut subdevice in group.iter(&maindevice) {
-            let (_i, o) = subdevice.io_raw_mut();
+            let mut io = subdevice.io_raw_mut();
 
-            for byte in o.iter_mut() {
+            for byte in io.outputs().iter_mut() {
                 *byte = byte.wrapping_add(1);
             }
         }
