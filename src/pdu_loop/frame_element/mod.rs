@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn set_first_pdu_only_once() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const BUF_LEN: usize = 16;
 
@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     fn find_empty_frame() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const BUF_LEN: usize = 16;
 
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn find_frame_zero() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const BUF_LEN: usize = 16;
 
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn find_frame_1() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const BUF_LEN: usize = 16;
 

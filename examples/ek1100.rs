@@ -68,7 +68,7 @@ async fn main() -> Result<(), Error> {
 
     tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    let mut group = maindevice
+    let group = maindevice
         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init");
@@ -95,17 +95,17 @@ async fn main() -> Result<(), Error> {
         }
     }
 
-    let mut group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
+    let group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
 
     for subdevice in group.iter(&maindevice) {
-        let (i, o) = subdevice.io_raw();
+        let io = subdevice.io_raw();
 
         log::info!(
             "-> SubDevice {:#06x} {} inputs: {} bytes, outputs: {} bytes",
             subdevice.configured_address(),
             subdevice.name(),
-            i.len(),
-            o.len()
+            io.inputs().len(),
+            io.outputs().len()
         );
     }
 
@@ -127,8 +127,8 @@ async fn main() -> Result<(), Error> {
         group.tx_rx(&maindevice).await.expect("TX/RX");
 
         // Increment every output byte for every SubDevice by one
-        for mut subdevice in group.iter(&maindevice) {
-            let (_i, o) = subdevice.io_raw_mut();
+        for subdevice in group.iter(&maindevice) {
+            let mut o = subdevice.outputs_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);

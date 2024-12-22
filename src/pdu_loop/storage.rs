@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn zeroed_data() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         let storage: PduStorage<1, { PduStorage::element_size(8) }> = PduStorage::new();
 
@@ -323,7 +323,7 @@ mod tests {
 
     #[test]
     fn no_spare_frames() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const NUM_FRAMES: usize = 16;
         const DATA: usize = PduStorage::element_size(128);

@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn chunked_send() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const MAX_PAYLOAD: usize = 32;
 
@@ -386,7 +386,7 @@ mod tests {
 
     #[test]
     fn too_long() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const BUF_LEN: usize = 16;
 
@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn auto_more_follows() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const BUF_LEN: usize = 64;
 
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn push_rest_too_long() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const BUF_LEN: usize = 32;
 
@@ -527,7 +527,7 @@ mod tests {
 
     #[test]
     fn push_rest_after_dc_sync() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const BUF_LEN: usize = 64;
 

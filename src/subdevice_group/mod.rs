@@ -5,35 +5,68 @@
 
 mod group_id;
 mod handle;
-mod iterator;
 
 use crate::{
     al_control::AlControl,
     command::Command,
     error::{DistributedClockError, Error, Item, PduError},
     fmt,
+    // lending_lock::LendingLock,
     pdi::PdiOffset,
     pdu_loop::{CreatedFrame, ReceivedPdu},
     subdevice::{
         configuration::PdoDirection, pdi::SubDevicePdi, IoRanges, SubDevice, SubDeviceRef,
     },
     timer_factory::IntoTimeout,
-    DcSync, MainDevice, RegisterAddress, SubDeviceState,
+    DcSync,
+    MainDevice,
+    RegisterAddress,
+    SubDeviceState,
 };
-use atomic_refcell::{AtomicRefCell, AtomicRefMut};
-use core::{
-    cell::UnsafeCell, marker::PhantomData, slice, sync::atomic::AtomicUsize, time::Duration,
-};
+use core::{cell::UnsafeCell, marker::PhantomData, sync::atomic::AtomicUsize, time::Duration};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
-pub use self::iterator::GroupSubDeviceIterator;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 
 /// The size of a DC sync PDU.
 const DC_PDU_SIZE: usize = CreatedFrame::PDU_OVERHEAD_BYTES + u64::PACKED_LEN;
+
+// MSRV: Remove when core SyncUnsafeCell is stabilised
+#[derive(Debug)]
+pub(crate) struct MySyncUnsafeCell<T: ?Sized>(pub UnsafeCell<T>);
+
+impl<T> MySyncUnsafeCell<T> {
+    pub fn new(inner: T) -> Self {
+        Self(UnsafeCell::new(inner))
+    }
+}
+
+unsafe impl<T: ?Sized + Sync> Sync for MySyncUnsafeCell<T> {}
+
+impl<T: ?Sized> MySyncUnsafeCell<T> {
+    /// Gets a mutable pointer to the wrapped value.
+    ///
+    /// This can be cast to a pointer of any kind.
+    /// Ensure that the access is unique (no active references, mutable or not)
+    /// when casting to `&mut T`, and ensure that there are no mutations
+    /// or mutable aliases going on when casting to `&T`
+    #[inline]
+    pub const fn get(&self) -> *mut T {
+        self.0.get()
+    }
+
+    /// Returns a mutable reference to the underlying data.
+    ///
+    /// This call borrows the `SyncUnsafeCell` mutably (at compile-time) which
+    /// guarantees that we possess the only reference.
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut T {
+        self.0.get_mut()
+    }
+}
 
 /// A typestate for [`SubDeviceGroup`] representing a group that is shut down.
 ///
@@ -91,7 +124,7 @@ impl IsPreOp for PreOpPdi {}
 
 #[derive(Default)]
 struct GroupInner<const MAX_SUBDEVICES: usize> {
-    subdevices: heapless::Vec<AtomicRefCell<SubDevice>, MAX_SUBDEVICES>,
+    subdevices: heapless::Vec<SubDevice, MAX_SUBDEVICES>,
     pdi_start: PdiOffset,
 }
 
@@ -141,12 +174,12 @@ pub struct CycleInfo {
 #[doc(alias = "SlaveGroup")]
 pub struct SubDeviceGroup<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S = PreOp, DC = NoDc> {
     id: GroupId,
-    pdi: UnsafeCell<[u8; MAX_PDI]>,
+    pdi: spin::rwlock::RwLock<MySyncUnsafeCell<[u8; MAX_PDI]>, crate::SpinStrategy>,
     /// The number of bytes at the beginning of the PDI reserved for SubDevice inputs.
     read_pdi_len: usize,
     /// The total length (I and O) of the PDI for this group.
     pdi_len: usize,
-    inner: UnsafeCell<GroupInner<MAX_SUBDEVICES>>,
+    inner: MySyncUnsafeCell<GroupInner<MAX_SUBDEVICES>>,
     dc_conf: DC,
     _state: PhantomData<S>,
 }
@@ -167,7 +200,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         );
 
         // Configure master read PDI mappings in the first section of the PDI
-        for subdevice in inner.subdevices.iter_mut().map(AtomicRefCell::get_mut) {
+        for subdevice in inner.subdevices.iter_mut() {
             // We're in PRE-OP at this point
             pdi_position = SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
                 .configure_fmmus(
@@ -185,7 +218,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
-        for subdevice in inner.subdevices.iter_mut().map(AtomicRefCell::get_mut) {
+        for subdevice in inner.subdevices.iter_mut() {
             let addr = subdevice.configured_address();
 
             let mut subdevice_config = SubDeviceRef::new(maindevice, addr, subdevice);
@@ -222,36 +255,17 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     }
 
     /// Borrow an individual SubDevice.
-    ///
-    /// Each SubDevice in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
-    /// single reference to it at any one time. Multiple different SubDevices can be borrowed
-    /// simultaneously, but multiple references to the same SubDevice are not allowed.
-    ///
-    /// # Errors
-    ///
-    /// This method will return an error if the given index is out of range of the current group, or
-    /// if the SubDevice at the given index is already borrowed.
     #[deny(clippy::panic)]
     #[doc(alias = "slave")]
     pub fn subdevice<'maindevice, 'group>(
         &'group self,
         maindevice: &'maindevice MainDevice<'maindevice>,
         index: usize,
-    ) -> Result<SubDeviceRef<'maindevice, AtomicRefMut<'group, SubDevice>>, Error> {
-        let subdevice = self
-            .inner()
-            .subdevices
-            .get(index)
-            .ok_or(Error::NotFound {
-                item: Item::SubDevice,
-                index: Some(index),
-            })?
-            .try_borrow_mut()
-            .map_err(|_e| {
-                fmt::error!("SubDevice index {} already borrowed", index);
-
-                Error::Borrow
-            })?;
+    ) -> Result<SubDeviceRef<'maindevice, &'group SubDevice>, Error> {
+        let subdevice = self.inner().subdevices.get(index).ok_or(Error::NotFound {
+            item: Item::SubDevice,
+            index: Some(index),
+        })?;
 
         Ok(SubDeviceRef::new(
             maindevice,
@@ -289,7 +303,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
             pdi_len: self.pdi_len,
-            inner: UnsafeCell::new(self.inner.into_inner()),
+            inner: self.inner,
             dc_conf: self.dc_conf,
             _state: PhantomData,
         })
@@ -319,10 +333,25 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
 
     /// Get an iterator over all SubDevices in this group.
     pub fn iter<'group, 'maindevice>(
+        &'group self,
+        maindevice: &'maindevice MainDevice<'maindevice>,
+    ) -> impl Iterator<Item = SubDeviceRef<'maindevice, &'group SubDevice>> {
+        self.inner()
+            .subdevices
+            .iter()
+            .map(|sd| SubDeviceRef::new(maindevice, sd.configured_address, sd))
+    }
+
+    /// Get a mutable iterator over all SubDevices in this group
+    pub fn iter_mut<'group, 'maindevice>(
         &'group mut self,
         maindevice: &'maindevice MainDevice<'maindevice>,
-    ) -> GroupSubDeviceIterator<'group, 'maindevice, MAX_SUBDEVICES, MAX_PDI, PreOp, DC> {
-        GroupSubDeviceIterator::new(maindevice, self)
+    ) -> impl Iterator<Item = SubDeviceRef<'maindevice, &'group mut SubDevice>> {
+        self.inner
+            .get_mut()
+            .subdevices
+            .iter_mut()
+            .map(|sd| SubDeviceRef::new(maindevice, sd.configured_address, sd))
     }
 }
 
@@ -363,13 +392,13 @@ where
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
             pdi_len: self.pdi_len,
-            inner: UnsafeCell::new(self.inner.into_inner()),
+            inner: self.inner,
             dc_conf: NoDc,
             _state: PhantomData::<PreOp>,
         };
 
         // Only configure DC for those devices that want and support it
-        let dc_devices = GroupSubDeviceIterator::new(maindevice, &self_).filter(|subdevice| {
+        let dc_devices = self_.iter(maindevice).filter(|subdevice| {
             subdevice.dc_support().any() && !matches!(subdevice.dc_sync(), DcSync::Disabled)
         });
 
@@ -444,7 +473,7 @@ where
             pdi: self_.pdi,
             read_pdi_len: self_.read_pdi_len,
             pdi_len: self_.pdi_len,
-            inner: UnsafeCell::new(self_.inner.into_inner()),
+            inner: self_.inner,
             dc_conf: HasDc {
                 sync0_period: sync0_period.as_nanos() as u64,
                 sync0_shift: sync0_shift.as_nanos() as u64,
@@ -536,13 +565,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         mut self,
         maindevice: &MainDevice<'_>,
     ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
-        for subdevice in self
-            .inner
-            .get_mut()
-            .subdevices
-            .iter_mut()
-            .map(|subdevice| subdevice.get_mut())
-        {
+        for subdevice in self.inner.get_mut().subdevices.iter_mut() {
             SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
                 .request_subdevice_state_nowait(SubDeviceState::Op)
                 .await?;
@@ -553,7 +576,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
             pdi_len: self.pdi_len,
-            inner: UnsafeCell::new(self.inner.into_inner()),
+            inner: self.inner,
             dc_conf: self.dc_conf,
             _state: PhantomData,
         })
@@ -577,33 +600,21 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     }
 }
 
-unsafe impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Sync
-    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S>
-{
-}
-unsafe impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC> Send
-    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
-{
-}
-
 impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Default
     for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S>
 {
     fn default() -> Self {
         Self {
             id: GroupId(GROUP_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)),
-            pdi: UnsafeCell::new([0u8; MAX_PDI]),
+            pdi: spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
             read_pdi_len: Default::default(),
             pdi_len: Default::default(),
-            inner: UnsafeCell::new(GroupInner::default()),
+            inner: MySyncUnsafeCell::new(GroupInner::default()),
             dc_conf: NoDc,
             _state: PhantomData,
         }
     }
 }
-
-/// Returned when a SubDevice's input or output PDI segment is empty.
-static EMPTY_PDI_SLICE: &[u8] = &[];
 
 impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
     SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
@@ -620,19 +631,6 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
     /// Check whether this SubDevice group is empty or not.
     pub fn is_empty(&self) -> bool {
         self.inner().subdevices.is_empty()
-    }
-
-    #[allow(clippy::mut_from_ref)]
-    fn pdi_mut(&self) -> &mut [u8] {
-        let all_buf = unsafe { &mut *self.pdi.get() };
-
-        &mut all_buf[0..self.pdi_len]
-    }
-
-    fn pdi(&self) -> &[u8] {
-        let all_buf = unsafe { &*self.pdi.get() };
-
-        &all_buf[0..self.pdi_len]
     }
 
     /// Check if all SubDevices in the group are the given desired state.
@@ -658,11 +656,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
             // Fill frame with status requests
             while let Some(sd) = subdevices.peek() {
                 match frame.push_pdu(
-                    Command::fprd(
-                        sd.borrow().configured_address(),
-                        RegisterAddress::AlStatus.into(),
-                    )
-                    .into(),
+                    Command::fprd(sd.configured_address(), RegisterAddress::AlStatus.into()).into(),
                     (),
                     Some(AlControl::PACKED_LEN as u16),
                 ) {
@@ -761,13 +755,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
     ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, TO, DC>, Error> {
         // We're done configuring FMMUs, etc, now we can request all SubDevices in this group go into
         // SAFE-OP
-        for subdevice in self
-            .inner
-            .get_mut()
-            .subdevices
-            .iter_mut()
-            .map(AtomicRefCell::get_mut)
-        {
+        for subdevice in self.inner.get_mut().subdevices.iter_mut() {
             SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
                 .request_subdevice_state_nowait(desired_state)
                 .await?;
@@ -784,7 +772,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
             pdi_len: self.pdi_len,
-            inner: UnsafeCell::new(self.inner.into_inner()),
+            inner: self.inner,
             dc_conf: self.dc_conf,
             _state: PhantomData,
         })
@@ -798,89 +786,54 @@ where
     S: HasPdi,
 {
     /// Borrow an individual SubDevice.
-    ///
-    /// Each SubDevice in the group is wrapped in an `AtomicRefCell`, meaning it may only have a
-    /// single reference to it at any one time. Multiple different SubDevices can be borrowed
-    /// simultaneously, but multiple references to the same SubDevice are not allowed.
     #[doc(alias = "slave")]
     pub fn subdevice<'maindevice, 'group>(
         &'group self,
         maindevice: &'maindevice MainDevice<'maindevice>,
         index: usize,
-    ) -> Result<SubDeviceRef<'maindevice, SubDevicePdi<'group>>, Error> {
-        let subdevice = self
-            .inner()
-            .subdevices
-            .get(index)
-            .ok_or(Error::NotFound {
-                item: Item::SubDevice,
-                index: Some(index),
-            })?
-            .try_borrow_mut()
-            .map_err(|_e| {
-                fmt::error!("SubDevice index {} already borrowed", index);
+    ) -> Result<SubDeviceRef<'maindevice, SubDevicePdi<'group, MAX_PDI>>, Error> {
+        let subdevice = self.inner().subdevices.get(index).ok_or(Error::NotFound {
+            item: Item::SubDevice,
+            index: Some(index),
+        })?;
 
-                Error::Borrow
-            })?;
+        let io_ranges = subdevice.io_segments().clone();
 
         let IoRanges {
             input: input_range,
             output: output_range,
-        } = subdevice.io_segments();
-
-        // SAFETY: Multiple references are ok as long as I and O ranges do not overlap.
-        let i_data = self.pdi();
-        let o_data = self.pdi_mut();
+        } = &io_ranges;
 
         fmt::trace!(
-            "Get SubDevice {:#06x} IO ranges I: {}, O: {}",
+            "Get SubDevice {:#06x} IO ranges I: {}, O: {} (group PDI {} byte subset of {} byte max)",
             subdevice.configured_address(),
             input_range,
-            output_range
+            output_range,
+            self.pdi_len, MAX_PDI
         );
-
-        fmt::trace!(
-            "--> Group PDI: {:?} ({} byte subset of {} max)",
-            i_data,
-            self.pdi_len,
-            MAX_PDI
-        );
-
-        // NOTE: Using panicking `[]` indexing as the indices and arrays should all be correct by
-        // this point. If something isn't right, that's a bug.
-        let inputs = if input_range.is_empty() {
-            EMPTY_PDI_SLICE
-        } else {
-            i_data
-                .get(input_range.bytes.clone())
-                .ok_or(Error::Internal)?
-        };
-
-        let outputs = if output_range.is_empty() {
-            // SAFETY: Slice is empty so can never be mutated
-            unsafe { slice::from_raw_parts_mut(EMPTY_PDI_SLICE.as_ptr().cast_mut(), 0) }
-        } else {
-            o_data
-                .get_mut(output_range.bytes.clone())
-                .ok_or(Error::Internal)?
-        };
 
         Ok(SubDeviceRef::new(
             maindevice,
             subdevice.configured_address(),
-            // SAFETY: A given SubDevice contained in a `SubDevicePdi` MUST only be borrowed once
-            // (currently enforced by `AtomicRefCell`). If it is borrowed more than once, immutable
-            // APIs in `SubDeviceRef<SubDevicePdi>` will be unsound.
-            SubDevicePdi::new(subdevice, inputs, outputs),
+            SubDevicePdi::new(subdevice, &self.pdi),
         ))
     }
 
     /// Get an iterator over all SubDevices in this group.
     pub fn iter<'group, 'maindevice>(
-        &'group mut self,
+        &'group self,
         maindevice: &'maindevice MainDevice<'maindevice>,
-    ) -> GroupSubDeviceIterator<'group, 'maindevice, MAX_SUBDEVICES, MAX_PDI, S, DC> {
-        GroupSubDeviceIterator::new(maindevice, self)
+    ) -> impl Iterator<Item = SubDeviceRef<'group, SubDevicePdi<'group, MAX_PDI>>>
+    where
+        'maindevice: 'group,
+    {
+        self.inner().subdevices.iter().map(|sd| {
+            SubDeviceRef::new(
+                maindevice,
+                sd.configured_address,
+                SubDevicePdi::new(sd, &self.pdi),
+            )
+        })
     }
 
     /// Drive the SubDevice group's inputs and outputs.
@@ -894,30 +847,44 @@ where
     ///
     /// This method will return with an error if the PDU could not be sent over the network, or the
     /// response times out.
-    pub async fn tx_rx<'sto>(&mut self, maindevice: &'sto MainDevice<'sto>) -> Result<u16, Error> {
+    pub async fn tx_rx<'sto>(&self, maindevice: &'sto MainDevice<'sto>) -> Result<u16, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
-            self.pdi().len(),
+            self.pdi_len,
             self.read_pdi_len
         );
 
-        let mut remaining = self.pdi();
+        let pdi_lock = self.pdi.write();
+
         let mut total_bytes_sent = 0;
         let mut lrw_wkc_sum = 0;
 
-        while !remaining.is_empty() {
+        loop {
+            let len = self.pdi_len.saturating_sub(total_bytes_sent);
+
+            if len == 0 {
+                break;
+            }
+
+            let chunk = unsafe {
+                let chunk_start = total_bytes_sent.min(self.pdi_len);
+
+                let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
+
+                core::slice::from_raw_parts(ptr, len)
+            };
+
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
+            // Start offset in the EtherCAT address space
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
             let Some((bytes_in_this_chunk, pdu_handle)) =
-                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?
+                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
             else {
                 continue;
             };
-
-            remaining = &remaining[bytes_in_this_chunk..];
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
@@ -933,6 +900,7 @@ where
                 total_bytes_sent,
                 bytes_in_this_chunk,
                 &received.pdu(pdu_handle)?,
+                &pdi_lock,
             )?;
 
             total_bytes_sent += bytes_in_this_chunk;
@@ -957,18 +925,20 @@ where
     /// This method will return with an error if the PDU could not be sent over the network, or the
     /// response times out.
     pub async fn tx_rx_sync_system_time<'sto>(
-        &mut self,
+        &self,
         maindevice: &'sto MainDevice<'sto>,
     ) -> Result<(u16, Option<u64>), Error> {
+        let pdi_lock = self.pdi.write();
+
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
-            self.pdi().len(),
+            self.pdi_len,
             self.read_pdi_len
         );
 
         if let Some(dc_ref) = maindevice.dc_ref_address() {
-            let mut remaining = self.pdi();
+            // let mut remaining = &*pdi;
             let mut total_bytes_sent = 0;
             let mut time = 0;
             let mut lrw_wkc_sum = 0;
@@ -992,17 +962,25 @@ where
                     None
                 };
 
+                let len = self.pdi_len.saturating_sub(total_bytes_sent);
+
+                let chunk = unsafe {
+                    let chunk_start = total_bytes_sent.min(self.pdi_len);
+
+                    let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
+
+                    core::slice::from_raw_parts(ptr, len)
+                };
+
                 let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
                 let Some((bytes_in_this_chunk, pdu_handle)) =
-                    frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?
+                    frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
                 else {
                     continue;
                 };
 
                 fmt::trace!("Wrote {} byte chunk", bytes_in_this_chunk);
-
-                remaining = &remaining[bytes_in_this_chunk..];
 
                 let frame = frame.mark_sendable(
                     &maindevice.pdu_loop,
@@ -1026,6 +1004,7 @@ where
                     total_bytes_sent,
                     bytes_in_this_chunk,
                     &received.pdu(pdu_handle)?,
+                    &pdi_lock,
                 )?;
 
                 total_bytes_sent += bytes_in_this_chunk;
@@ -1033,7 +1012,7 @@ where
 
                 // NOTE: Not using a while loop as we want to always send the DC sync PDU even if
                 // the PDI is empty.
-                if remaining.is_empty() {
+                if len == 0 {
                     break Ok((lrw_wkc_sum, Some(time)));
                 }
             }
@@ -1047,20 +1026,24 @@ where
         total_bytes_sent: usize,
         bytes_in_this_chunk: usize,
         data: &ReceivedPdu<'_>,
+        pdi_lock: &spin::rwlock::RwLockWriteGuard<
+            '_,
+            MySyncUnsafeCell<[u8; MAX_PDI]>,
+            crate::SpinStrategy,
+        >,
     ) -> Result<u16, Error> {
         let wkc = data.working_counter;
 
-        // If we've read the inputs chunk, write it back into the PDI (PDI is organised as
-        // IIIIOOOO)
-        if bytes_in_this_chunk > 0 && total_bytes_sent < self.read_pdi_len {
-            let inputs_range =
-                total_bytes_sent..(total_bytes_sent + self.read_pdi_len.min(bytes_in_this_chunk));
+        let rx_range = total_bytes_sent.min(self.read_pdi_len)
+            ..(total_bytes_sent + bytes_in_this_chunk).min(self.read_pdi_len);
 
-            self.pdi_mut()
-                .get_mut(inputs_range.clone())
-                .ok_or(Error::Internal)?
-                .copy_from_slice(data.get(0..inputs_range.len()).ok_or(Error::Internal)?);
-        }
+        let inputs_chunk = unsafe {
+            let ptr: *mut u8 = pdi_lock.get().byte_add(rx_range.start).cast();
+
+            core::slice::from_raw_parts_mut(ptr, rx_range.len())
+        };
+
+        inputs_chunk.copy_from_slice(data.get(0..inputs_chunk.len()).ok_or(Error::Internal)?);
 
         Ok(wkc)
     }
@@ -1116,7 +1099,7 @@ where
     ///     .expect("Init");
     ///
     /// // This example enables SYNC0 for every detected SubDevice
-    /// for mut subdevice in group.iter(&maindevice) {
+    /// for mut subdevice in group.iter_mut(&maindevice) {
     ///     subdevice.set_dc_sync(DcSync::Sync0);
     /// }
     ///
@@ -1178,17 +1161,18 @@ where
     /// # }) }
     /// ```
     pub async fn tx_rx_dc<'sto>(
-        &mut self,
+        &self,
         maindevice: &'sto MainDevice<'sto>,
     ) -> Result<(u16, CycleInfo), Error> {
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
-            self.pdi().len(),
+            self.pdi_len,
             self.read_pdi_len
         );
 
-        let mut remaining = self.pdi();
+        let pdi_lock = self.pdi.write();
+
         let mut total_bytes_sent = 0;
         let mut time = 0;
         let mut lrw_wkc_sum = 0;
@@ -1213,15 +1197,23 @@ where
                 None
             };
 
+            let len = self.pdi_len.saturating_sub(total_bytes_sent);
+
+            let chunk = unsafe {
+                let chunk_start = total_bytes_sent.min(self.pdi_len);
+
+                let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
+
+                core::slice::from_raw_parts(ptr, len)
+            };
+
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
             let Some((bytes_in_this_chunk, pdu_handle)) =
-                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?
+                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
             else {
                 continue;
             };
-
-            remaining = &remaining[bytes_in_this_chunk..];
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
@@ -1245,6 +1237,7 @@ where
                 total_bytes_sent,
                 bytes_in_this_chunk,
                 &received.pdu(pdu_handle)?,
+                &pdi_lock,
             )?;
 
             total_bytes_sent += bytes_in_this_chunk;
@@ -1252,7 +1245,7 @@ where
 
             // NOTE: Not using a while loop as we want to always send the DC sync PDU even if the
             // PDI is empty.
-            if remaining.is_empty() {
+            if len == 0 {
                 break;
             }
         }
@@ -1272,5 +1265,123 @@ where
                 next_cycle_wait: Duration::from_nanos(time_to_next_iter),
             },
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        ethernet::{EthernetAddress, EthernetFrame},
+        MainDeviceConfig, PduStorage, Timeouts,
+    };
+    use core::sync::atomic::{AtomicBool, Ordering};
+    use std::{sync::Arc, thread};
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+    async fn tx_rx_miri() {
+        const MAX_SUBDEVICES: usize = 16;
+        const MAX_PDU_DATA: usize = PduStorage::element_size(8);
+        const MAX_FRAMES: usize = 128;
+        const MAX_PDI: usize = 128;
+
+        static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+
+        #[cfg(not(miri))]
+        crate::test_logger();
+
+        #[cfg(miri)]
+        let _ = simple_logger::init_with_level(log::Level::Debug);
+
+        let (mock_net_tx, mock_net_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(16);
+
+        let (mut tx, mut rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+
+        let stop = Arc::new(AtomicBool::new(false));
+
+        let stop1 = stop.clone();
+
+        let tx_handle = thread::spawn(move || {
+            fmt::info!("Spawn TX task");
+
+            while !stop1.load(Ordering::Relaxed) {
+                while let Some(frame) = tx.next_sendable_frame() {
+                    fmt::info!("Sendable frame");
+
+                    frame
+                        .send_blocking(|bytes| {
+                            mock_net_tx.send(bytes.to_vec()).unwrap();
+
+                            Ok(bytes.len())
+                        })
+                        .unwrap();
+
+                    thread::yield_now();
+                }
+
+                thread::sleep(Duration::from_millis(1));
+            }
+        });
+
+        let stop1 = stop.clone();
+
+        let rx_handle = thread::spawn(move || {
+            fmt::info!("Spawn RX task");
+
+            while let Ok(ethernet_frame) = mock_net_rx.recv() {
+                fmt::info!("RX task received packet");
+
+                // Let frame settle for a mo
+                thread::sleep(Duration::from_millis(1));
+
+                // Munge fake sent frame into a fake received frame
+                let ethernet_frame = {
+                    let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
+                    frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+                    frame.into_inner()
+                };
+
+                while rx.receive_frame(&ethernet_frame).is_err() {}
+
+                thread::yield_now();
+
+                if stop1.load(Ordering::Relaxed) {
+                    break;
+                }
+            }
+        });
+
+        let maindevice = Arc::new(MainDevice::new(
+            pdu_loop,
+            Timeouts {
+                pdu: Duration::from_secs(1),
+                wait_loop_delay: Duration::ZERO,
+                ..Timeouts::default()
+            },
+            MainDeviceConfig::default(),
+        ));
+
+        let group: SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, NoDc> = SubDeviceGroup {
+            id: GroupId(0),
+            pdi: spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
+            read_pdi_len: 32,
+            pdi_len: 96,
+            inner: MySyncUnsafeCell::new(GroupInner {
+                subdevices: heapless::Vec::new(),
+                pdi_start: PdiOffset::default(),
+            }),
+            dc_conf: NoDc,
+            _state: PhantomData,
+        };
+
+        let out = group.tx_rx(&maindevice).await;
+
+        // No subdevices so no WKC, but success
+        assert_eq!(out, Ok(0));
+
+        stop.store(true, Ordering::Relaxed);
+
+        tx_handle.join().unwrap();
+        rx_handle.join().unwrap();
     }
 }
