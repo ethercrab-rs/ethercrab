@@ -161,7 +161,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
         // Increment every output byte for every SubDevice by one
         for mut subdevice in group.iter(&maindevice) {
-            let o = subdevice.outputs_raw_mut();
+            let mut o = subdevice.outputs_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);
