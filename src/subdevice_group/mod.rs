@@ -1213,70 +1213,100 @@ where
                 // Just double checking
                 debug_assert_eq!(dc_handle.alloc_size, DC_PDU_SIZE);
 
-                Some(dc_handle)
-            } else {
-                None
-            };
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        ethernet::{EthernetAddress, EthernetFrame},
+        MainDeviceConfig, PduStorage, Timeouts,
+    };
+    use env_logger::Env;
+    use std::{sync::Arc, thread};
 
-            let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
+    #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+    async fn tx_rx_miri() {
+        const MAX_SUBDEVICES: usize = 16;
+        const MAX_PDU_DATA: usize = PduStorage::element_size(8);
+        const MAX_FRAMES: usize = 128;
+        const MAX_PDI: usize = 128;
 
-            let Some((bytes_in_this_chunk, pdu_handle)) =
-                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?
-            else {
-                continue;
-            };
+        static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-            remaining = &remaining[bytes_in_this_chunk..];
+        #[cfg(not(miri))]
+        env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-            let frame = frame.mark_sendable(
-                &maindevice.pdu_loop,
-                maindevice.timeouts.pdu,
-                maindevice.config.retry_behaviour.retry_count(),
-            );
+        #[cfg(miri)]
+        simple_logger::init_with_level(log::Level::Debug).unwrap();
 
-            maindevice.pdu_loop.wake_sender();
+        let (mock_net_tx, mock_net_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(16);
 
-            let received = frame.await?;
+        let (mut tx, mut rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-            if let Some(dc_handle) = dc_handle {
-                time = received
-                    .pdu(dc_handle)
-                    .and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
+        thread::spawn(move || {
+            fmt::info!("Spawn TX task");
 
-                time_read = true;
+            loop {
+                while let Some(frame) = tx.next_sendable_frame() {
+                    fmt::info!("Sendable frame");
+
+                    frame
+                        .send_blocking(|bytes| {
+                            mock_net_tx.send(bytes.to_vec()).unwrap();
+
+                            Ok(bytes.len())
+                        })
+                        .unwrap();
+
+                    thread::yield_now();
+                }
+
+                thread::sleep(Duration::from_millis(1));
             }
+        });
+        thread::spawn(move || {
+            fmt::info!("Spawn RX task");
 
-            let wkc = self.process_received_pdi_chunk(
-                total_bytes_sent,
-                bytes_in_this_chunk,
-                &received.pdu(pdu_handle)?,
-                pdi_lock.get_mut().as_mut_slice(),
-            )?;
+            while let Ok(ethernet_frame) = mock_net_rx.recv() {
+                fmt::info!("RX task received packet");
 
-            total_bytes_sent += bytes_in_this_chunk;
-            lrw_wkc_sum += wkc;
+                // Let frame settle for a mo
+                thread::sleep(Duration::from_millis(1));
 
-            // NOTE: Not using a while loop as we want to always send the DC sync PDU even if the
-            // PDI is empty.
-            if remaining.is_empty() {
-                break;
+                // Munge fake sent frame into a fake received frame
+                let ethernet_frame = {
+                    let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
+                    frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+                    frame.into_inner()
+                };
+
+                while rx.receive_frame(&ethernet_frame).is_err() {}
+
+                thread::yield_now();
             }
-        }
+        });
 
-        // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
-        // time is rounded to a whole number of `sync0_period`-length cycles.
-        let cycle_start_offset = time % self.dc_conf.sync0_period;
+        let maindevice = Arc::new(MainDevice::new(
+            pdu_loop,
+            Timeouts::default(),
+            MainDeviceConfig::default(),
+        ));
 
-        let time_to_next_iter =
-            (self.dc_conf.sync0_period - cycle_start_offset) + self.dc_conf.sync0_shift;
+        let group: SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, NoDc> = SubDeviceGroup {
+            id: GroupId(0),
+            pdi: spin::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
+            read_pdi_len: 32,
+            pdi_len: 96,
+            inner: MySyncUnsafeCell::new(GroupInner {
+                subdevices: heapless::Vec::new(),
+                pdi_start: PdiOffset::default(),
+            }),
+            dc_conf: NoDc,
+            _state: PhantomData,
+        };
 
-        Ok((
-            lrw_wkc_sum,
-            CycleInfo {
-                dc_system_time: time,
-                cycle_start_offset: Duration::from_nanos(cycle_start_offset),
-                next_cycle_wait: Duration::from_nanos(time_to_next_iter),
-            },
-        ))
+        let out = cassette::block_on(group.tx_rx(&maindevice));
+
+        // No subdevices so no WKC, but success
+        assert_eq!(out, Ok(0));
     }
 }
