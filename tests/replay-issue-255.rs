@@ -58,7 +58,7 @@ async fn replay_issue_255() -> Result<(), Error> {
     for _ in 0..64 {
         group.tx_rx(&maindevice).await.expect("TX/RX");
 
-        let mut el2889 = group.subdevice(&maindevice, 1).unwrap();
+        let el2889 = group.subdevice(&maindevice, 1).unwrap();
 
         let mut o = el2889.outputs_raw_mut();
 

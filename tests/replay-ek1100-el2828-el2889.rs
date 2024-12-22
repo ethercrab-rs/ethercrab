@@ -87,7 +87,7 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
     slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     {
-        let mut el2889 = slow_outputs
+        let el2889 = slow_outputs
             .subdevice(&maindevice, 1)
             .expect("EL2889 not present!");
 
@@ -100,7 +100,7 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
     for _ in 0..8 {
         slow_outputs.tx_rx(&maindevice).await.expect("TX/RX");
 
-        let mut el2889 = slow_outputs
+        let el2889 = slow_outputs
             .subdevice(&maindevice, 1)
             .expect("EL2889 not present!");
 
@@ -121,7 +121,7 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
         fast_outputs.tx_rx(&maindevice).await.expect("TX/RX");
 
         // Increment every output byte for every SubDevice by one
-        for mut subdevice in fast_outputs.iter(&maindevice) {
+        for subdevice in fast_outputs.iter(&maindevice) {
             let mut o = subdevice.outputs_raw_mut();
 
             for byte in o.iter_mut() {

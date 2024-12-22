@@ -108,7 +108,7 @@ async fn check_issue_255() -> Result<(), Error> {
     while !stop.load(Ordering::Acquire) {
         // IMPORTANT: Use a block to make sure we drop the group write guard as soon as possible
         {
-            let mut el2889 = group.subdevice(&maindevice, 1).unwrap();
+            let el2889 = group.subdevice(&maindevice, 1).unwrap();
 
             let mut o = el2889.outputs_raw_mut();
 

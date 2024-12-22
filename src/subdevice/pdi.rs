@@ -54,13 +54,7 @@ impl<'a, const N: usize> PdiIoRawWriteGuard<'a, N> {
         &all[self.ranges.input.bytes.clone()]
     }
 
-    pub fn outputs(&self) -> &[u8] {
-        let all = unsafe { &*self.lock.get() }.as_slice();
-
-        &all[self.ranges.output.bytes.clone()]
-    }
-
-    pub fn outputs_mut(&mut self) -> &mut [u8] {
+    pub fn outputs(&mut self) -> &mut [u8] {
         let all = unsafe { &mut *self.lock.get() }.as_mut_slice();
 
         &mut all[self.ranges.output.bytes.clone()]
@@ -130,16 +124,16 @@ impl<'a, 'group, const MAX_PDI: usize> SubDeviceRef<'a, SubDevicePdi<'group, MAX
     /// #     error::Error, std::tx_rx_task, MainDevice, MainDeviceConfig, PduStorage, Timeouts,
     /// # };
     /// # async fn case() {
-    /// # static PDU_STORAGE: PduStorage<8, 8> = PduStorage::new();
+    /// # static PDU_STORAGE: PduStorage<8, 32> = PduStorage::new();
     /// # let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
     /// # let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
     /// let mut group = maindevice.init_single_group::<8, 8>(ethercrab::std::ethercat_now).await.expect("Init");
     /// let group = group.into_op(&maindevice).await.expect("Op");
     /// let mut subdevice = group.subdevice(&maindevice, 0).expect("No device");
     ///
-    /// let (i1, o1) = subdevice.io_raw_mut();
+    /// let mut io = subdevice.io_raw_mut();
     ///
-    /// o1[0] = 0xaa;
+    /// io.outputs()[0] = 0xaa;
     /// # }
     /// ```
     pub fn io_raw_mut(&self) -> PdiIoRawWriteGuard<'_, MAX_PDI> {
@@ -164,21 +158,21 @@ impl<'a, 'group, const MAX_PDI: usize> SubDeviceRef<'a, SubDevicePdi<'group, MAX
     /// #     error::Error, std::tx_rx_task, MainDevice, MainDeviceConfig, PduStorage, Timeouts,
     /// # };
     /// # async fn case() {
-    /// # static PDU_STORAGE: PduStorage<8, 8> = PduStorage::new();
+    /// # static PDU_STORAGE: PduStorage<8, 32> = PduStorage::new();
     /// # let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
     /// # let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
     /// let mut group = maindevice.init_single_group::<8, 8>(ethercrab::std::ethercat_now).await.expect("Init");
     /// let group = group.into_op(&maindevice).await.expect("Op");
     /// let mut subdevice = group.subdevice(&maindevice, 0).expect("No device");
     ///
-    /// let (i1, o1) = subdevice.io_raw();
+    /// let io = subdevice.io_raw();
     ///
-    /// dbg!(i1[0]);
+    /// dbg!(io.inputs()[0]);
     ///
     /// // Not allowed to mutate the outputs
-    /// // o1[0] = 0xff;
+    /// // io.outputs()[0] = 0xff;
     /// // But we can read them
-    /// dbg!(o1[0]);
+    /// dbg!(io.outputs()[0]);
     /// # }
     /// ```
     pub fn io_raw(&self) -> PdiIoRawReadGuard<'_, MAX_PDI> {

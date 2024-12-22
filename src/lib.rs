@@ -135,7 +135,7 @@
 //!         for mut subdevice in group.iter(&maindevice) {
 //!             let mut io = subdevice.io_raw_mut();
 //!
-//!             for byte in io.outputs_mut().iter_mut() {
+//!             for byte in io.outputs().iter_mut() {
 //!                 *byte = byte.wrapping_add(1);
 //!             }
 //!         }
