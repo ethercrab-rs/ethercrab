@@ -429,9 +429,11 @@ mod tests {
 
     #[tokio::test]
     async fn read_device_name() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/el2889.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/el2889.hex"
+        )));
 
         assert_eq!(
             e.device_name::<64>().await,
@@ -441,9 +443,11 @@ mod tests {
 
     #[tokio::test]
     async fn sync_managers() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd.hex"
+        )));
 
         let expected = [
             SyncManager {
@@ -508,9 +512,11 @@ mod tests {
 
     #[tokio::test]
     async fn empty_string() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/el2828.hex"
+        )));
 
         // Ensure we have at least one string.
         assert_eq!(
@@ -524,9 +530,11 @@ mod tests {
 
     #[tokio::test]
     async fn short_buffer() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd.hex"
+        )));
 
         // Pick a decently long string from the EEPROM file. This is just an arbitrary index.
         let idx = 12;
@@ -553,9 +561,11 @@ mod tests {
 
     #[tokio::test]
     async fn single_null_terminator() -> Result<(), Error> {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd_null_strings.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd_null_strings.hex"
+        )));
 
         // Index 4 was originally "AKD EtherCAT Drive (CoE)", now modified to "AKD EtherCA\0"
         let s = e.find_string::<64>(4).await?;
@@ -567,9 +577,11 @@ mod tests {
 
     #[tokio::test]
     async fn null_terminators() -> Result<(), Error> {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd_null_strings.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd_null_strings.hex"
+        )));
 
         // Index 10 was originally "Statusword", now modified to "Statu\0\0\0\0\0"
         let s = e.find_string::<64>(10).await?;
@@ -581,9 +593,11 @@ mod tests {
 
     #[tokio::test]
     async fn strings() -> Result<(), Error> {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd.hex"
+        )));
 
         let mut strings = Vec::new();
 
@@ -647,7 +661,9 @@ mod tests {
     // EK1100 doesn't have any IO so doesn't have any PDOs.
     #[tokio::test]
     async fn subdevice_no_pdos() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/ek1100.hex"
+        )));
 
         assert_eq!(e.maindevice_read_pdos().await, Ok(heapless::Vec::new()));
         assert_eq!(e.maindevice_write_pdos().await, Ok(heapless::Vec::new()));
@@ -655,7 +671,9 @@ mod tests {
 
     #[tokio::test]
     async fn output_pdos_only() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/el2828.hex"
+        )));
 
         fn pdo(index: u16, name_string_idx: u8, _entry_idx: u16) -> Pdo {
             // let entry_defaults = PdoEntry {
@@ -720,7 +738,9 @@ mod tests {
     // and start reading it" codepath.
     #[tokio::test]
     async fn get_mailbox_config() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd.hex"
+        )));
 
         assert_eq!(
             e.mailbox_config().await,
@@ -738,7 +758,9 @@ mod tests {
 
     #[tokio::test]
     async fn default_mailbox_config_matches_sms() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd.hex"
+        )));
 
         let sms = e.sync_managers().await.expect("Read sync managers");
 
@@ -765,9 +787,11 @@ mod tests {
     #[tokio::test]
     async fn get_fmmu_usage() {
         assert_eq!(
-            SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"))
-                .fmmus()
-                .await,
+            SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+                "../../dumps/eeprom/akd.hex"
+            )))
+            .fmmus()
+            .await,
             Ok(heapless::Vec::from_slice(&[
                 FmmuUsage::Outputs,
                 FmmuUsage::Inputs,
@@ -778,23 +802,29 @@ mod tests {
         );
 
         assert_eq!(
-            SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/el2828.hex"))
-                .fmmus()
-                .await,
+            SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+                "../../dumps/eeprom/el2828.hex"
+            )))
+            .fmmus()
+            .await,
             Ok(heapless::Vec::from_slice(&[FmmuUsage::Outputs, FmmuUsage::Unused,]).unwrap())
         );
     }
 
     #[tokio::test]
     async fn no_fmmus() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/ek1100.hex"
+        )));
 
         assert_eq!(e.fmmus().await, Ok(heapless::Vec::new()));
     }
 
     #[tokio::test]
     async fn identity() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd.hex"
+        )));
 
         assert_eq!(
             e.identity().await,
@@ -809,7 +839,9 @@ mod tests {
 
     #[tokio::test]
     async fn get_general_akd() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd.hex"
+        )));
 
         assert_eq!(
             e.general().await,
@@ -838,7 +870,9 @@ mod tests {
 
     #[tokio::test]
     async fn get_general_ek1100() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/ek1100.hex"
+        )));
 
         assert_eq!(
             e.general().await,
@@ -865,7 +899,9 @@ mod tests {
 
     #[tokio::test]
     async fn akd_strings() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd.hex"
+        )));
 
         let general = e.general().await.expect("Get general");
 
@@ -885,7 +921,9 @@ mod tests {
 
     #[tokio::test]
     async fn ek1100_string_no_image() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/ek1100.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/ek1100.hex"
+        )));
 
         let general = e.general().await.expect("Get general");
 
@@ -898,7 +936,9 @@ mod tests {
 
     #[tokio::test]
     async fn akd_fmmu_ex() {
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/akd.hex"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/akd.hex"
+        )));
 
         let fmmu_ex = e.fmmu_mappings().await.expect("Get FMMU_EX");
 
@@ -908,9 +948,11 @@ mod tests {
 
     #[tokio::test]
     async fn clipx_device_name() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/hbm_clipx_eeprom_dump.bin"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/hbm_clipx_eeprom_dump.bin"
+        )));
 
         assert_eq!(
             e.device_name::<128>().await,
@@ -927,9 +969,11 @@ mod tests {
 
     #[tokio::test]
     async fn el2262_device_name() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let e = SubDeviceEeprom::new(EepromFile::new("dumps/eeprom/el2262.bin"));
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/el2262.bin"
+        )));
 
         assert_eq!(
             e.device_name::<128>().await,

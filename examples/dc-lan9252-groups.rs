@@ -71,7 +71,7 @@ fn main() -> Result<(), Error> {
             .await
             .expect("Init");
 
-        for mut subdevice in slow_group.iter(&maindevice) {
+        for mut subdevice in slow_group.iter_mut(&maindevice) {
             // Sync mode 02 = SYNC0
             subdevice
                 .sdo_write(0x1c32, 1, 2u16)
@@ -105,7 +105,7 @@ fn main() -> Result<(), Error> {
             subdevice.set_dc_sync(DcSync::Sync0);
         }
 
-        for mut subdevice in fast_group.iter(&maindevice) {
+        for mut subdevice in fast_group.iter_mut(&maindevice) {
             // Sync mode 02 = SYNC0
             subdevice
                 .sdo_write(0x1c32, 1, 2u16)
@@ -141,8 +141,8 @@ fn main() -> Result<(), Error> {
 
         log::info!("Moving into PRE-OP with PDI");
 
-        let mut slow_group = slow_group.into_pre_op_pdi(&maindevice).await?;
-        let mut fast_group = fast_group.into_pre_op_pdi(&maindevice).await?;
+        let slow_group = slow_group.into_pre_op_pdi(&maindevice).await?;
+        let fast_group = fast_group.into_pre_op_pdi(&maindevice).await?;
 
         log::info!("Done. PDI available. Waiting for SubDevices to align");
 
@@ -310,11 +310,11 @@ fn main() -> Result<(), Error> {
         // Request OP state without waiting for all SubDevices to reach it. Allows the immediate
         // start of the process data cycle, which is required when DC sync is used, otherwise
         // SubDevices never reach OP, most often timing out with a SyncManagerWatchdog error.
-        let mut slow_group = slow_group
+        let slow_group = slow_group
             .request_into_op(&maindevice)
             .await
             .expect("SAFE-OP -> OP");
-        let mut fast_group = fast_group
+        let fast_group = fast_group
             .request_into_op(&maindevice)
             .await
             .expect("SAFE-OP -> OP");
@@ -387,8 +387,8 @@ fn main() -> Result<(), Error> {
                         },
                     ) = slow_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
-                    for mut subdevice in slow_group.iter(&maindevice) {
-                        let (_i, o) = subdevice.io_raw_mut();
+                    for subdevice in slow_group.iter(&maindevice) {
+                        let mut o = subdevice.outputs_raw_mut();
 
                         for byte in o.iter_mut() {
                             *byte = byte.wrapping_add(1);
@@ -415,8 +415,8 @@ fn main() -> Result<(), Error> {
                         },
                     ) = fast_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
-                    for mut subdevice in fast_group.iter(&maindevice) {
-                        let (_i, o) = subdevice.io_raw_mut();
+                    for subdevice in fast_group.iter(&maindevice) {
+                        let mut o = subdevice.outputs_raw_mut();
 
                         for byte in o.iter_mut() {
                             *byte = byte.wrapping_add(1);

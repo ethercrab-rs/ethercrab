@@ -28,7 +28,7 @@ linux-test *args:
     cargo test --features '__internals' {{args}}
 
 miri *args:
-    MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zdeduplicate-diagnostics=yes" cargo +nightly-2024-12-12 miri test --features '__internals' --target aarch64-unknown-linux-gnu {{args}}
+    MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zdeduplicate-diagnostics=yes" cargo +nightly-2024-12-20 miri test --features '__internals' --target aarch64-unknown-linux-gnu {{args}}
 
 _generate-readme path:
      cargo readme --project-root "{{path}}" --template README.tpl --output README.md

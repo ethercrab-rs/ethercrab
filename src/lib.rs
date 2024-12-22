@@ -1,4 +1,4 @@
-//! A performant, `async`-first EtherCAT MainDevice (master) written in pure Rust.
+//! A performant, `async`-first EtherCAT MainDevice written in pure Rust.
 //!
 //! # Crate features
 //!
@@ -106,14 +106,14 @@
 //!     let mut group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
 //!
 //!     for subdevice in group.iter(&maindevice) {
-//!         let (i, o) = subdevice.io_raw();
+//!         let io = subdevice.io_raw();
 //!
 //!         log::info!(
 //!             "-> SubDevice {:#06x} {} inputs: {} bytes, outputs: {} bytes",
 //!             subdevice.configured_address(),
 //!             subdevice.name(),
-//!             i.len(),
-//!             o.len()
+//!             io.inputs().len(),
+//!             io.outputs().len()
 //!         );
 //!     }
 //!
@@ -125,9 +125,9 @@
 //!
 //!         // Increment every output byte for every SubDevice by one
 //!         for mut subdevice in group.iter(&maindevice) {
-//!             let (_i, o) = subdevice.io_raw_mut();
+//!             let mut io = subdevice.io_raw_mut();
 //!
-//!             for byte in o.iter_mut() {
+//!             for byte in io.outputs().iter_mut() {
 //!                 *byte = byte.wrapping_add(1);
 //!             }
 //!         }
@@ -199,7 +199,7 @@ pub use maindevice_config::{MainDeviceConfig, RetryBehaviour};
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, ReceiveAction, SendableFrame};
 pub use register::{DcSupport, RegisterAddress};
 pub use subdevice::{DcSync, SubDevice, SubDeviceIdentity, SubDevicePdi, SubDeviceRef};
-pub use subdevice_group::{GroupId, GroupSubDeviceIterator, SubDeviceGroup, SubDeviceGroupHandle};
+pub use subdevice_group::{GroupId, SubDeviceGroup, SubDeviceGroupHandle};
 pub use subdevice_state::SubDeviceState;
 pub use timer_factory::Timeouts;
 
@@ -209,3 +209,17 @@ const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x
 
 /// Starting address for discovered subdevices.
 const BASE_SUBDEVICE_ADDRESS: u16 = 0x1000;
+
+#[cfg(feature = "std")]
+type SpinStrategy = spin::Yield;
+#[cfg(not(feature = "std"))]
+type SpinStrategy = spin::Spin;
+
+#[allow(unused)]
+fn test_logger() {
+    #[cfg(all(not(miri), test))]
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    #[cfg(all(miri, test))]
+    let _ = simple_logger::init_with_level(log::Level::Debug);
+}

@@ -739,7 +739,7 @@ mod tests {
     // are computed correctly.
     #[test]
     fn propagation_delay_calc_fork() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         let defaults = SubDevice {
             configured_address: 0x999,
@@ -849,7 +849,7 @@ mod tests {
 
     #[test]
     fn propagation_delay_calc_cross() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         let defaults = SubDevice {
             configured_address: 0x999,

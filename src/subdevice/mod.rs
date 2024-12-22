@@ -317,13 +317,13 @@ impl SubDevice {
 /// writing of a SubDevice's process data.
 #[derive(Debug)]
 #[doc(alias = "SlaveRef")]
-pub struct SubDeviceRef<'a, S> {
-    pub(crate) maindevice: &'a MainDevice<'a>,
+pub struct SubDeviceRef<'maindevice, S> {
+    pub(crate) maindevice: &'maindevice MainDevice<'maindevice>,
     pub(crate) configured_address: u16,
     state: S,
 }
 
-impl<'a> Clone for SubDeviceRef<'a, ()> {
+impl<'maindevice> Clone for SubDeviceRef<'maindevice, ()> {
     fn clone(&self) -> Self {
         Self {
             maindevice: self.maindevice,
@@ -333,7 +333,7 @@ impl<'a> Clone for SubDeviceRef<'a, ()> {
     }
 }
 
-impl<'a, S> SubDeviceRef<'a, S>
+impl<'maindevice, S> SubDeviceRef<'maindevice, S>
 where
     S: DerefMut<Target = SubDevice>,
 {
@@ -346,7 +346,7 @@ where
     }
 }
 
-impl<'a, S> SubDeviceRef<'a, S>
+impl<'maindevice, S> SubDeviceRef<'maindevice, S>
 where
     S: Deref<Target = SubDevice>,
 {
@@ -547,7 +547,7 @@ where
 
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
     /// and return as a slice.
-    async fn send_coe_service<R>(&'a self, request: R) -> Result<(R, ReceivedPdu), Error>
+    async fn send_coe_service<R>(&'maindevice self, request: R) -> Result<(R, ReceivedPdu), Error>
     where
         R: CoeServiceRequest + Debug,
     {
@@ -909,8 +909,12 @@ where
 }
 
 // General impl with no bounds
-impl<'a, S> SubDeviceRef<'a, S> {
-    pub(crate) fn new(maindevice: &'a MainDevice<'a>, configured_address: u16, state: S) -> Self {
+impl<'maindevice, S> SubDeviceRef<'maindevice, S> {
+    pub(crate) fn new(
+        maindevice: &'maindevice MainDevice<'maindevice>,
+        configured_address: u16,
+        state: S,
+    ) -> Self {
         Self {
             maindevice,
             configured_address,

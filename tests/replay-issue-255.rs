@@ -49,7 +49,7 @@ async fn replay_issue_255() -> Result<(), Error> {
         .await
         .expect("Init");
 
-    let mut group = group.into_op(&maindevice).await.expect("Slow into OP");
+    let group = group.into_op(&maindevice).await.expect("Slow into OP");
 
     let mut cycle_time = tokio::time::interval(Duration::from_millis(2));
     cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -58,11 +58,11 @@ async fn replay_issue_255() -> Result<(), Error> {
     for _ in 0..64 {
         group.tx_rx(&maindevice).await.expect("TX/RX");
 
-        let mut el2889 = group.subdevice(&maindevice, 1).unwrap();
+        let el2889 = group.subdevice(&maindevice, 1).unwrap();
 
-        let (_i, o) = el2889.io_raw_mut();
+        let mut o = el2889.outputs_raw_mut();
 
-        black_box(do_stuff(black_box(o)));
+        black_box(do_stuff(black_box(&mut o)));
 
         cycle_time.tick().await;
     }

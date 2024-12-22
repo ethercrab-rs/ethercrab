@@ -145,7 +145,7 @@ fn main() -> Result<(), ethercrab::error::Error> {
                 .expect("Set slow thread core");
 
             futures_lite::future::block_on::<Result<(), Error>>(async {
-                let mut slow_outputs = slow_outputs
+                let slow_outputs = slow_outputs
                     .into_op(&maindevice_slow)
                     .await
                     .expect("PRE-OP -> OP");
@@ -167,16 +167,14 @@ fn main() -> Result<(), ethercrab::error::Error> {
                 // Only update "slow" outputs every 250ms using this instant
                 let mut tick = Instant::now();
 
-                {
-                    // EK1100 is first SubDevice, EL2889 is second
-                    let mut el2889 = slow_outputs
-                        .subdevice(&maindevice_slow, 1)
-                        .expect("EL2889 not present!");
+                // EK1100 is first SubDevice, EL2889 is second
+                let el2889 = slow_outputs
+                    .subdevice(&maindevice_slow, 1)
+                    .expect("EL2889 not present!");
 
-                    // Set initial output state
-                    el2889.io_raw_mut().1[0] = 0x01;
-                    el2889.io_raw_mut().1[1] = 0x80;
-                }
+                // Set initial output state
+                el2889.outputs_raw_mut()[0] = 0x01;
+                el2889.outputs_raw_mut()[1] = 0x80;
 
                 loop {
                     slow_outputs.tx_rx(&maindevice_slow).await.expect("TX/RX");
@@ -185,11 +183,11 @@ fn main() -> Result<(), ethercrab::error::Error> {
                     if tick.elapsed() > slow_duration {
                         tick = Instant::now();
 
-                        let mut el2889 = slow_outputs
+                        let el2889 = slow_outputs
                             .subdevice(&maindevice_slow, 1)
                             .expect("EL2889 not present!");
 
-                        let (_i, o) = el2889.io_raw_mut();
+                        let mut o = el2889.outputs_raw_mut();
 
                         // Make a nice pattern on EL2889 LEDs
                         o[0] = o[0].rotate_left(1);
@@ -220,7 +218,7 @@ fn main() -> Result<(), ethercrab::error::Error> {
                 .expect("Set fast thread core");
 
             futures_lite::future::block_on::<Result<(), Error>>(async {
-                let mut fast_outputs = fast_outputs
+                let fast_outputs = fast_outputs
                     .into_op(&maindevice)
                     .await
                     .expect("PRE-OP -> OP");
@@ -241,8 +239,8 @@ fn main() -> Result<(), ethercrab::error::Error> {
                     fast_outputs.tx_rx(&maindevice).await.expect("TX/RX");
 
                     // Increment every output byte for every SubDevice by one
-                    for mut subdevice in fast_outputs.iter(&maindevice) {
-                        let (_i, o) = subdevice.io_raw_mut();
+                    for subdevice in fast_outputs.iter(&maindevice) {
+                        let mut o = subdevice.outputs_raw_mut();
 
                         for byte in o.iter_mut() {
                             *byte = byte.wrapping_add(1);

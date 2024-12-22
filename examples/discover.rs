@@ -41,7 +41,7 @@ fn main() {
     smol::block_on(async {
         smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
-        let mut group = maindevice
+        let group = maindevice
             .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
             .await
             .expect("Init");

@@ -192,14 +192,22 @@ mod tests {
 
     #[tokio::test]
     async fn skip_past_end() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/akd.hex"), 0, 32);
+        let mut r = ChunkReader::new(
+            EepromFile::new(include_bytes!("../../dumps/eeprom/akd.hex")),
+            0,
+            32,
+        );
 
         // Current position is zero, so 32 words = 64 bytes = ok
         assert_eq!(r.skip_ahead_bytes(63), Ok(()), "63 bytes");
 
-        let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/akd.hex"), 0, 32);
+        let mut r = ChunkReader::new(
+            EepromFile::new(include_bytes!("../../dumps/eeprom/akd.hex")),
+            0,
+            32,
+        );
 
         // Off by one errors are always fun
         assert_eq!(
@@ -208,7 +216,11 @@ mod tests {
             "64 bytes"
         );
 
-        let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/akd.hex"), 0, 32);
+        let mut r = ChunkReader::new(
+            EepromFile::new(include_bytes!("../../dumps/eeprom/akd.hex")),
+            0,
+            32,
+        );
 
         // 65 is one byte off the end
         assert_eq!(
@@ -217,7 +229,11 @@ mod tests {
             "65 bytes"
         );
 
-        let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/akd.hex"), 0, 32);
+        let mut r = ChunkReader::new(
+            EepromFile::new(include_bytes!("../../dumps/eeprom/akd.hex")),
+            0,
+            32,
+        );
 
         // Madness
         assert_eq!(
@@ -229,9 +245,13 @@ mod tests {
 
     #[tokio::test]
     async fn read_single_bytes() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
-        let mut r = ChunkReader::new(EepromFile::new("dumps/eeprom/el2828.hex"), 0, 32);
+        let mut r = ChunkReader::new(
+            EepromFile::new(include_bytes!("../../dumps/eeprom/el2828.hex")),
+            0,
+            32,
+        );
 
         let expected = [
             0x04u8, 0x01, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, // First 8

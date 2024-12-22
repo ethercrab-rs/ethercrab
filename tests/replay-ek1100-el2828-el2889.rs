@@ -74,11 +74,11 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
         fast_outputs,
     } = groups;
 
-    let mut slow_outputs = slow_outputs
+    let slow_outputs = slow_outputs
         .into_op(&maindevice)
         .await
         .expect("Slow into OP");
-    let mut fast_outputs = fast_outputs
+    let fast_outputs = fast_outputs
         .into_op(&maindevice)
         .await
         .expect("Fast into OP");
@@ -87,24 +87,24 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
     slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     {
-        let mut el2889 = slow_outputs
+        let el2889 = slow_outputs
             .subdevice(&maindevice, 1)
             .expect("EL2889 not present!");
 
         // Set initial output state
-        el2889.io_raw_mut().1[0] = 0x01;
-        el2889.io_raw_mut().1[1] = 0x80;
+        el2889.outputs_raw_mut()[0] = 0x01;
+        el2889.outputs_raw_mut()[1] = 0x80;
     }
 
     // Animate slow pattern for 8 ticks
     for _ in 0..8 {
         slow_outputs.tx_rx(&maindevice).await.expect("TX/RX");
 
-        let mut el2889 = slow_outputs
+        let el2889 = slow_outputs
             .subdevice(&maindevice, 1)
             .expect("EL2889 not present!");
 
-        let (_i, o) = el2889.io_raw_mut();
+        let mut o = el2889.outputs_raw_mut();
 
         // Make a nice pattern on EL2889 LEDs
         o[0] = o[0].rotate_left(1);
@@ -121,8 +121,8 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
         fast_outputs.tx_rx(&maindevice).await.expect("TX/RX");
 
         // Increment every output byte for every SubDevice by one
-        for mut subdevice in fast_outputs.iter(&maindevice) {
-            let (_i, o) = subdevice.io_raw_mut();
+        for subdevice in fast_outputs.iter(&maindevice) {
+            let mut o = subdevice.outputs_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);

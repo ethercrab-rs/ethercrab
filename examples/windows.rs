@@ -130,14 +130,14 @@ async fn main() -> Result<(), ethercrab::error::Error> {
     let mut group = group.into_op(&maindevice).await.expect("PRE-OP -> OP");
 
     for subdevice in group.iter(&maindevice) {
-        let (i, o) = subdevice.io_raw();
+        let io = subdevice.io_raw();
 
         log::info!(
             "-> SubDevice {:#06x} {} inputs: {} bytes, outputs: {} bytes",
             subdevice.configured_address(),
             subdevice.name(),
-            i.len(),
-            o.len()
+            io.inputs().len(),
+            io.outputs().len()
         );
     }
 
@@ -161,7 +161,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
         // Increment every output byte for every SubDevice by one
         for mut subdevice in group.iter(&maindevice) {
-            let (_i, o) = subdevice.io_raw_mut();
+            let mut o = subdevice.outputs_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);
