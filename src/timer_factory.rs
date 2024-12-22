@@ -5,8 +5,8 @@ use core::{future::Future, pin::Pin, task::Poll, time::Duration};
 pub(crate) type Timer = embassy_time::Timer;
 #[cfg(all(not(miri), feature = "std"))]
 pub(crate) type Timer = async_io::Timer;
-#[cfg(all(miri, feature = "std"))]
-pub(crate) type Timer = Pin<Box<tokio::time::Sleep>>;
+#[cfg(miri)]
+pub(crate) type Timer = core::future::Pending<()>;
 
 #[cfg(not(feature = "std"))]
 pub(crate) fn timer(duration: Duration) -> Timer {
@@ -20,9 +20,9 @@ pub(crate) fn timer(duration: Duration) -> Timer {
     async_io::Timer::after(duration)
 }
 
-#[cfg(all(miri, feature = "std"))]
-pub(crate) fn timer(duration: Duration) -> Timer {
-    Box::pin(tokio::time::sleep(duration))
+#[cfg(miri)]
+pub(crate) fn timer(_duration: Duration) -> Timer {
+    core::future::pending()
 }
 
 pub(crate) trait IntoTimeout<O> {
@@ -34,16 +34,20 @@ where
     T: Future<Output = Result<O, Error>>,
 {
     fn timeout(self, timeout: Duration) -> TimeoutFuture<impl Future<Output = Result<O, Error>>> {
-        let timeout = timer(timeout);
-
-        TimeoutFuture { f: self, timeout }
+        TimeoutFuture {
+            f: self,
+            timeout: timer(timeout),
+            #[cfg(miri)]
+            duration: timeout,
+        }
     }
 }
 
 pub(crate) struct TimeoutFuture<F> {
     f: F,
-
     timeout: Timer,
+    #[cfg(miri)]
+    duration: Duration,
 }
 
 impl<F, O> Future for TimeoutFuture<F>
@@ -56,6 +60,11 @@ where
         let this = unsafe { self.get_unchecked_mut() };
         let timeout = unsafe { Pin::new_unchecked(&mut this.timeout) };
         let f = unsafe { Pin::new_unchecked(&mut this.f) };
+
+        #[cfg(miri)]
+        if this.duration == Duration::ZERO {
+            return Poll::Ready(Err(Error::Timeout));
+        }
 
         if timeout.poll(cx).is_ready() {
             return Poll::Ready(Err(Error::Timeout));

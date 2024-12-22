@@ -1288,7 +1288,7 @@ mod tests {
         static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
         #[cfg(not(miri))]
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         #[cfg(miri)]
         let _ = simple_logger::init_with_level(log::Level::Debug);

@@ -222,3 +222,12 @@ const BASE_SUBDEVICE_ADDRESS: u16 = 0x1000;
 type SpinStrategy = spin::Yield;
 #[cfg(not(feature = "std"))]
 type SpinStrategy = spin::Spin;
+
+#[allow(unused)]
+fn test_logger() {
+    #[cfg(all(not(miri), test))]
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    #[cfg(all(miri, test))]
+    let _ = simple_logger::init_with_level(log::Level::Debug);
+}

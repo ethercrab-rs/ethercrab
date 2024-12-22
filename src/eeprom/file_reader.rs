@@ -4,23 +4,19 @@
 //! contain quite a few panics, unwraps and poor assumptions.
 
 use crate::{eeprom::EepromDataProvider, error::Error};
-use std::{
-    fs::File,
-    io::{Read, Seek},
-    path::PathBuf,
-};
+use std::io::{BufReader, Cursor, Read, Seek};
 
 pub struct EepromFile<const CHUNK: usize> {
-    path: PathBuf,
-    file: File,
+    file_len: usize,
+    bytes: BufReader<Cursor<&'static [u8]>>,
     buf: [u8; CHUNK],
 }
 
 impl<const CHUNK: usize> Clone for EepromFile<CHUNK> {
     fn clone(&self) -> Self {
         Self {
-            path: self.path.clone(),
-            file: File::open(&self.path).expect("Could not open EEPROM file in clone"),
+            bytes: BufReader::new(self.bytes.get_ref().clone()),
+            file_len: self.file_len,
             buf: self.buf,
         }
     }
@@ -30,12 +26,10 @@ impl EepromFile<8> {
     /// Create an EEPROM file reader that returns chunks of 8 bytes.
     // Allow unused as this is only used in unit tests.
     #[allow(unused)]
-    pub fn new(path: impl Into<PathBuf>) -> Self {
-        let path = path.into();
-
+    pub fn new(bytes: &'static [u8]) -> Self {
         Self {
-            file: File::open(&path).expect("Could not open EEPROM file"),
-            path,
+            file_len: bytes.len(),
+            bytes: BufReader::new(Cursor::new(bytes)),
             buf: [0u8; 8],
         }
     }
@@ -44,12 +38,10 @@ impl EepromFile<8> {
 impl EepromFile<4> {
     // Allow unused as this is only used in unit tests.
     #[allow(unused)]
-    pub fn new_short(path: impl Into<PathBuf>) -> Self {
-        let path = path.into();
-
+    pub fn new_short(bytes: &'static [u8]) -> Self {
         Self {
-            file: File::open(&path).expect("Could not open EEPROM file"),
-            path,
+            file_len: bytes.len(),
+            bytes: BufReader::new(Cursor::new(bytes)),
             buf: [0u8; 4],
         }
     }
@@ -60,9 +52,9 @@ impl<const CHUNK: usize> EepromDataProvider for EepromFile<CHUNK> {
         &mut self,
         start_word: u16,
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
-        let file_len = self.file.metadata().unwrap().len() as usize;
+        let file_len = self.file_len;
 
-        self.file
+        self.bytes
             .seek(std::io::SeekFrom::Start(u64::from(start_word) * 2))
             .expect("Bad seek!");
 
@@ -78,7 +70,7 @@ impl<const CHUNK: usize> EepromDataProvider for EepromFile<CHUNK> {
             buf_len
         );
 
-        self.file
+        self.bytes
             .read_exact(buf)
             .expect("Could not read from EEPROM file");
 

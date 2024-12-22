@@ -1,6 +1,5 @@
 mod util;
 
-use env_logger::Env;
 use ethercrab::{error::Error, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
 use std::{
     hint::black_box,
@@ -27,7 +26,7 @@ async fn check_issue_255() -> Result<(), Error> {
     }
 
     #[cfg(not(miri))]
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     #[cfg(miri)]
     simple_logger::init_with_level(log::Level::Debug).unwrap();

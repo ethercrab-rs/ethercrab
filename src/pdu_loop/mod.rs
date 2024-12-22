@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn write_frame() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         static STORAGE: PduStorage<1, 128> = PduStorage::<1, 128>::new();
         let (_tx, _rx, pdu_loop) = STORAGE.try_split().unwrap();
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn single_frame_round_trip() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const FRAME_OVERHEAD: usize = 28;
 
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn receive_frame() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         let ethernet_packet = [
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
@@ -404,7 +404,7 @@ mod tests {
     // Related to <https://github.com/ethercrab-rs/ethercrab/discussions/259>
     #[test]
     fn receive_frame_before_first_poll() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         let ethernet_packet = [
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Broadcast address
@@ -462,7 +462,7 @@ mod tests {
 
     #[tokio::test]
     async fn tokio_spawn() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         static STORAGE: PduStorage<16, 128> = PduStorage::<16, 128>::new();
         let (mut tx, mut rx, pdu_loop) = STORAGE.try_split().unwrap();
@@ -536,7 +536,7 @@ mod tests {
 
     #[test]
     fn multiple_threads() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const MAX_SUBDEVICES: usize = 16;
 
@@ -656,7 +656,7 @@ mod tests {
 
     #[test]
     fn split_pdi() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        crate::test_logger();
 
         const DATA: usize = 48;
 
