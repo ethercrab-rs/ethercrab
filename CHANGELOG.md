@@ -31,12 +31,10 @@ An EtherCAT MainDevice written in Rust.
 
 ### Changed
 
-- **(breaking)** [#258](https://github.com/ethercrab-rs/ethercrab/pull/258) Changed all
-  `SubDeviceGroup::tx_rx*` methods to now take `&mut self` instead of `&self`. This closes a
-  soundness bug when holding a reference to a SubDevice in a different task/thread than where
-  `tx_rx*` is called.
-- **(breaking)** [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) Increase MSRV from 1.77
-  to 1.79.
+- [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) Remove `Error::Borrow` as it's no
+  longer returned from any EtherCrab method.
+- **(breaking)** [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) Increase MSRV from 1.77
+  to 1.80.
 - [#231](https://github.com/ethercrab-rs/ethercrab/pull/231) Enable reading of up to 64 PDO entries
   per PDO from EEPROM.
 - [#232](https://github.com/ethercrab-rs/ethercrab/pull/232) Use string index from EEPROM to read

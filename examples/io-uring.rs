@@ -167,16 +167,14 @@ fn main() -> Result<(), ethercrab::error::Error> {
                 // Only update "slow" outputs every 250ms using this instant
                 let mut tick = Instant::now();
 
-                {
-                    // EK1100 is first SubDevice, EL2889 is second
-                    let el2889 = slow_outputs
-                        .subdevice(&maindevice_slow, 1)
-                        .expect("EL2889 not present!");
+                // EK1100 is first SubDevice, EL2889 is second
+                let el2889 = slow_outputs
+                    .subdevice(&maindevice_slow, 1)
+                    .expect("EL2889 not present!");
 
-                    // Set initial output state
-                    el2889.outputs_raw_mut()[0] = 0x01;
-                    el2889.outputs_raw_mut()[1] = 0x80;
-                }
+                // Set initial output state
+                el2889.outputs_raw_mut()[0] = 0x01;
+                el2889.outputs_raw_mut()[1] = 0x80;
 
                 loop {
                     slow_outputs.tx_rx(&maindevice_slow).await.expect("TX/RX");
