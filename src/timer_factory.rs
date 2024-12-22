@@ -3,8 +3,10 @@ use core::{future::Future, pin::Pin, task::Poll, time::Duration};
 
 #[cfg(not(feature = "std"))]
 pub(crate) type Timer = embassy_time::Timer;
-#[cfg(feature = "std")]
+#[cfg(all(not(miri), feature = "std"))]
 pub(crate) type Timer = async_io::Timer;
+#[cfg(all(miri, feature = "std"))]
+pub(crate) type Timer = Pin<Box<tokio::time::Sleep>>;
 
 #[cfg(not(feature = "std"))]
 pub(crate) fn timer(duration: Duration) -> Timer {
@@ -13,9 +15,14 @@ pub(crate) fn timer(duration: Duration) -> Timer {
     ))
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(not(miri), feature = "std"))]
 pub(crate) fn timer(duration: Duration) -> Timer {
     async_io::Timer::after(duration)
+}
+
+#[cfg(all(miri, feature = "std"))]
+pub(crate) fn timer(duration: Duration) -> Timer {
+    Box::pin(tokio::time::sleep(duration))
 }
 
 pub(crate) trait IntoTimeout<O> {

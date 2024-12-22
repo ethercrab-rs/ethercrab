@@ -624,8 +624,9 @@ mod tests {
                         .push_pdu(Command::fpwr(0x1000, 0x980).into(), data, None)
                         .expect("Push PDU");
 
-                    let mut x =
-                        Cassette::new(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
+                    let frame = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
+
+                    let mut x = Cassette::new(frame);
 
                     let result = loop {
                         if let Some(res) = x.poll_on() {

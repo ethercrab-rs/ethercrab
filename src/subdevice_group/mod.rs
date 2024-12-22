@@ -1291,7 +1291,7 @@ mod tests {
         let _ = env_logger::builder().is_test(true).try_init();
 
         #[cfg(miri)]
-        simple_logger::init_with_level(log::Level::Debug).unwrap();
+        let _ = simple_logger::init_with_level(log::Level::Debug);
 
         let (mock_net_tx, mock_net_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(16);
 
@@ -1301,7 +1301,7 @@ mod tests {
 
         let stop1 = stop.clone();
 
-        thread::spawn(move || {
+        let tx_handle = thread::spawn(move || {
             fmt::info!("Spawn TX task");
 
             while !stop1.load(Ordering::Relaxed) {
@@ -1325,7 +1325,7 @@ mod tests {
 
         let stop1 = stop.clone();
 
-        thread::spawn(move || {
+        let rx_handle = thread::spawn(move || {
             fmt::info!("Spawn RX task");
 
             while let Ok(ethernet_frame) = mock_net_rx.recv() {
@@ -1353,7 +1353,11 @@ mod tests {
 
         let maindevice = Arc::new(MainDevice::new(
             pdu_loop,
-            Timeouts::default(),
+            Timeouts {
+                pdu: Duration::from_secs(1),
+                wait_loop_delay: Duration::ZERO,
+                ..Timeouts::default()
+            },
             MainDeviceConfig::default(),
         ));
 
@@ -1370,11 +1374,14 @@ mod tests {
             _state: PhantomData,
         };
 
-        let out = cassette::block_on(group.tx_rx(&maindevice));
+        let out = group.tx_rx(&maindevice).await;
 
         // No subdevices so no WKC, but success
         assert_eq!(out, Ok(0));
 
         stop.store(true, Ordering::Relaxed);
+
+        tx_handle.join().unwrap();
+        rx_handle.join().unwrap();
     }
 }
