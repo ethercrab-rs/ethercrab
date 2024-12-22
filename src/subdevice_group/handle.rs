@@ -20,6 +20,8 @@ pub trait SubDeviceGroupHandle: Sync {
 #[sealed::sealed]
 impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> SubDeviceGroupHandle
     for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S>
+where
+    S: Sync,
 {
     fn id(&self) -> GroupId {
         self.id

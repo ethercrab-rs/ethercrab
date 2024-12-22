@@ -92,8 +92,8 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
             .expect("EL2889 not present!");
 
         // Set initial output state
-        el2889.io_raw_mut().1[0] = 0x01;
-        el2889.io_raw_mut().1[1] = 0x80;
+        el2889.outputs_raw_mut()[0] = 0x01;
+        el2889.outputs_raw_mut()[1] = 0x80;
     }
 
     // Animate slow pattern for 8 ticks
@@ -104,7 +104,7 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
             .subdevice(&maindevice, 1)
             .expect("EL2889 not present!");
 
-        let (_i, o) = el2889.io_raw_mut();
+        let mut o = el2889.outputs_raw_mut();
 
         // Make a nice pattern on EL2889 LEDs
         o[0] = o[0].rotate_left(1);
@@ -122,7 +122,7 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
 
         // Increment every output byte for every SubDevice by one
         for mut subdevice in fast_outputs.iter(&maindevice) {
-            let (_i, o) = subdevice.io_raw_mut();
+            let mut o = subdevice.outputs_raw_mut();
 
             for byte in o.iter_mut() {
                 *byte = byte.wrapping_add(1);

@@ -209,7 +209,7 @@ fn main() -> Result<(), Error> {
 
         log::info!("Moving into PRE-OP with PDI");
 
-        let mut group = group.into_pre_op_pdi(&maindevice).await?;
+        let group = group.into_pre_op_pdi(&maindevice).await?;
 
         log::info!("Done. PDI available. Waiting for SubDevices to align");
 
@@ -344,7 +344,7 @@ fn main() -> Result<(), Error> {
         // Request OP state without waiting for all SubDevices to reach it. Allows the immediate
         // start of the process data cycle, which is required when DC sync is used, otherwise
         // SubDevices never reach OP, most often timing out with a SyncManagerWatchdog error.
-        let mut group = group
+        let group = group
             .request_into_op(&maindevice)
             .await
             .expect("SAFE-OP -> OP");
@@ -419,8 +419,8 @@ fn main() -> Result<(), Error> {
                 process_stats.serialize(stat).ok();
             }
 
-            for mut subdevice in group.iter(&maindevice) {
-                let (_i, o) = subdevice.io_raw_mut();
+            for subdevice in group.iter(&maindevice) {
+                let mut o = subdevice.outputs_raw_mut();
 
                 for byte in o.iter_mut() {
                     *byte = byte.wrapping_add(1);

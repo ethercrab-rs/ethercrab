@@ -11,16 +11,21 @@ use crate::{
     command::Command,
     error::{DistributedClockError, Error, Item, PduError},
     fmt,
+    // lending_lock::LendingLock,
     pdi::PdiOffset,
     pdu_loop::{CreatedFrame, ReceivedPdu},
     subdevice::{
         configuration::PdoDirection, pdi::SubDevicePdi, IoRanges, SubDevice, SubDeviceRef,
     },
     timer_factory::IntoTimeout,
-    DcSync, MainDevice, RegisterAddress, SubDeviceState,
+    DcSync,
+    MainDevice,
+    RegisterAddress,
+    SubDeviceState,
 };
 use core::{cell::UnsafeCell, marker::PhantomData, sync::atomic::AtomicUsize, time::Duration};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
+use spin::RwLockWriteGuard;
 
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
@@ -31,6 +36,7 @@ static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 const DC_PDU_SIZE: usize = CreatedFrame::PDU_OVERHEAD_BYTES + u64::PACKED_LEN;
 
 // MSRV: Remove when core SyncUnsafeCell is stabilised
+#[derive(Debug)]
 pub(crate) struct MySyncUnsafeCell<T: ?Sized>(pub UnsafeCell<T>);
 
 impl<T> MySyncUnsafeCell<T> {
@@ -174,7 +180,7 @@ pub struct SubDeviceGroup<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S =
     read_pdi_len: usize,
     /// The total length (I and O) of the PDI for this group.
     pdi_len: usize,
-    inner: UnsafeCell<GroupInner<MAX_SUBDEVICES>>,
+    inner: MySyncUnsafeCell<GroupInner<MAX_SUBDEVICES>>,
     dc_conf: DC,
     _state: PhantomData<S>,
 }
@@ -321,7 +327,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
             pdi_len: self.pdi_len,
-            inner: UnsafeCell::new(self.inner.into_inner()),
+            inner: self.inner,
             dc_conf: self.dc_conf,
             _state: PhantomData,
         })
@@ -410,7 +416,7 @@ where
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
             pdi_len: self.pdi_len,
-            inner: UnsafeCell::new(self.inner.into_inner()),
+            inner: self.inner,
             dc_conf: NoDc,
             _state: PhantomData::<PreOp>,
         };
@@ -491,7 +497,7 @@ where
             pdi: self_.pdi,
             read_pdi_len: self_.read_pdi_len,
             pdi_len: self_.pdi_len,
-            inner: UnsafeCell::new(self_.inner.into_inner()),
+            inner: self_.inner,
             dc_conf: HasDc {
                 sync0_period: sync0_period.as_nanos() as u64,
                 sync0_shift: sync0_shift.as_nanos() as u64,
@@ -594,7 +600,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
             pdi_len: self.pdi_len,
-            inner: UnsafeCell::new(self.inner.into_inner()),
+            inner: self.inner,
             dc_conf: self.dc_conf,
             _state: PhantomData,
         })
@@ -618,15 +624,6 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     }
 }
 
-unsafe impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Sync
-    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S>
-{
-}
-unsafe impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC> Send
-    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
-{
-}
-
 impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Default
     for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S>
 {
@@ -636,15 +633,12 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Default
             pdi: spin::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
             read_pdi_len: Default::default(),
             pdi_len: Default::default(),
-            inner: UnsafeCell::new(GroupInner::default()),
+            inner: MySyncUnsafeCell::new(GroupInner::default()),
             dc_conf: NoDc,
             _state: PhantomData,
         }
     }
 }
-
-/// Returned when a SubDevice's input or output PDI segment is empty.
-static EMPTY_PDI_SLICE: &[u8] = &[];
 
 impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
     SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
@@ -802,7 +796,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
             pdi: self.pdi,
             read_pdi_len: self.read_pdi_len,
             pdi_len: self.pdi_len,
-            inner: UnsafeCell::new(self.inner.into_inner()),
+            inner: self.inner,
             dc_conf: self.dc_conf,
             _state: PhantomData,
         })
@@ -821,7 +815,7 @@ where
         &'group self,
         maindevice: &'maindevice MainDevice<'maindevice>,
         index: usize,
-    ) -> Result<SubDeviceRef<'maindevice, SubDevicePdi<'group>>, Error> {
+    ) -> Result<SubDeviceRef<'maindevice, SubDevicePdi<'group, MAX_PDI>>, Error> {
         let subdevice = self.inner().subdevices.get(index).ok_or(Error::NotFound {
             item: Item::SubDevice,
             index: Some(index),
@@ -845,7 +839,7 @@ where
         Ok(SubDeviceRef::new(
             maindevice,
             subdevice.configured_address(),
-            SubDevicePdi::new(subdevice, MAX_PDI, &self.pdi, io_ranges),
+            SubDevicePdi::new(subdevice, &self.pdi),
         ))
     }
 
@@ -853,23 +847,15 @@ where
     pub fn iter<'group, 'maindevice>(
         &'group self,
         maindevice: &'maindevice MainDevice<'maindevice>,
-    ) -> impl Iterator<Item = SubDeviceRef<'group, SubDevicePdi<'group>>>
+    ) -> impl Iterator<Item = SubDeviceRef<'group, SubDevicePdi<'group, MAX_PDI>>>
     where
         'maindevice: 'group,
     {
         self.inner().subdevices.iter().map(|sd| {
-            // TODO
-            // TODO
-            // TODO
-            // TODO
-            // TODO
-            // TODO
-            let ranges = IoRanges::default();
-
             SubDeviceRef::new(
                 maindevice,
                 sd.configured_address,
-                SubDevicePdi::new(sd, MAX_PDI, &self.pdi, ranges),
+                SubDevicePdi::new(sd, &self.pdi),
             )
         })
     }
@@ -893,26 +879,36 @@ where
             self.read_pdi_len
         );
 
-        let mut pdi_lock = self.pdi.write();
+        let pdi_lock = self.pdi.write();
 
-        let pdi = &unsafe { &*pdi_lock.get() }[0..self.pdi_len];
-
-        let mut remaining = pdi;
         let mut total_bytes_sent = 0;
         let mut lrw_wkc_sum = 0;
 
-        while !remaining.is_empty() {
+        loop {
+            let len = self.pdi_len.saturating_sub(total_bytes_sent);
+
+            if len == 0 {
+                break;
+            }
+
+            let chunk = unsafe {
+                let chunk_start = total_bytes_sent.min(self.pdi_len);
+
+                let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
+
+                core::slice::from_raw_parts(ptr, len)
+            };
+
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
+            // Start offset in the EtherCAT address space
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
             let Some((bytes_in_this_chunk, pdu_handle)) =
-                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?
+                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
             else {
                 continue;
             };
-
-            remaining = &remaining[bytes_in_this_chunk..];
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
@@ -928,7 +924,7 @@ where
                 total_bytes_sent,
                 bytes_in_this_chunk,
                 &received.pdu(pdu_handle)?,
-                pdi_lock.get_mut().as_mut_slice(),
+                &pdi_lock,
             )?;
 
             total_bytes_sent += bytes_in_this_chunk;
@@ -956,19 +952,17 @@ where
         &self,
         maindevice: &'sto MainDevice<'sto>,
     ) -> Result<(u16, Option<u64>), Error> {
-        let mut pdi_lock = self.pdi.write();
-
-        let pdi = &unsafe { &*pdi_lock.get() }[0..self.pdi_len];
+        let pdi_lock = self.pdi.write();
 
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
-           pdi.len(),
+            self.pdi_len,
             self.read_pdi_len
         );
 
         if let Some(dc_ref) = maindevice.dc_ref_address() {
-            let mut remaining = &*pdi;
+            // let mut remaining = &*pdi;
             let mut total_bytes_sent = 0;
             let mut time = 0;
             let mut lrw_wkc_sum = 0;
@@ -992,17 +986,25 @@ where
                     None
                 };
 
+                let len = self.pdi_len.saturating_sub(total_bytes_sent);
+
+                let chunk = unsafe {
+                    let chunk_start = total_bytes_sent.min(self.pdi_len);
+
+                    let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
+
+                    core::slice::from_raw_parts(ptr, len)
+                };
+
                 let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
                 let Some((bytes_in_this_chunk, pdu_handle)) =
-                    frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), remaining)?
+                    frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
                 else {
                     continue;
                 };
 
                 fmt::trace!("Wrote {} byte chunk", bytes_in_this_chunk);
-
-                remaining = &remaining[bytes_in_this_chunk..];
 
                 let frame = frame.mark_sendable(
                     &maindevice.pdu_loop,
@@ -1026,7 +1028,7 @@ where
                     total_bytes_sent,
                     bytes_in_this_chunk,
                     &received.pdu(pdu_handle)?,
-                    pdi_lock.get_mut().as_mut_slice(),
+                    &pdi_lock,
                 )?;
 
                 total_bytes_sent += bytes_in_this_chunk;
@@ -1034,7 +1036,7 @@ where
 
                 // NOTE: Not using a while loop as we want to always send the DC sync PDU even if
                 // the PDI is empty.
-                if remaining.is_empty() {
+                if len == 0 {
                     break Ok((lrw_wkc_sum, Some(time)));
                 }
             }
@@ -1048,20 +1050,20 @@ where
         total_bytes_sent: usize,
         bytes_in_this_chunk: usize,
         data: &ReceivedPdu<'_>,
-        pdi: &mut [u8],
+        pdi_lock: &RwLockWriteGuard<'_, MySyncUnsafeCell<[u8; MAX_PDI]>>,
     ) -> Result<u16, Error> {
         let wkc = data.working_counter;
 
-        // If we've read the inputs chunk, write it back into the PDI (PDI is organised as
-        // IIIIOOOO)
-        if bytes_in_this_chunk > 0 && total_bytes_sent < self.read_pdi_len {
-            let inputs_range =
-                total_bytes_sent..(total_bytes_sent + self.read_pdi_len.min(bytes_in_this_chunk));
+        let rx_range = total_bytes_sent.min(self.read_pdi_len)
+            ..(total_bytes_sent + bytes_in_this_chunk).min(self.read_pdi_len);
 
-            pdi.get_mut(inputs_range.clone())
-                .ok_or(Error::Internal)?
-                .copy_from_slice(data.get(0..inputs_range.len()).ok_or(Error::Internal)?);
-        }
+        let inputs_chunk = unsafe {
+            let ptr: *mut u8 = pdi_lock.get().byte_add(rx_range.start).cast();
+
+            core::slice::from_raw_parts_mut(ptr, rx_range.len())
+        };
+
+        inputs_chunk.copy_from_slice(data.get(0..inputs_chunk.len()).ok_or(Error::Internal)?);
 
         Ok(wkc)
     }
@@ -1117,7 +1119,7 @@ where
     ///     .expect("Init");
     ///
     /// // This example enables SYNC0 for every detected SubDevice
-    /// for mut subdevice in group.iter(&maindevice) {
+    /// for mut subdevice in group.iter_mut(&maindevice) {
     ///     subdevice.set_dc_sync(DcSync::Sync0);
     /// }
     ///
@@ -1189,11 +1191,8 @@ where
             self.read_pdi_len
         );
 
-        let mut pdi_lock = self.pdi.write();
+        let pdi_lock = self.pdi.write();
 
-        let pdi = &unsafe { &*pdi_lock.get() }[0..self.pdi_len];
-
-        let mut remaining = pdi;
         let mut total_bytes_sent = 0;
         let mut time = 0;
         let mut lrw_wkc_sum = 0;
@@ -1213,6 +1212,82 @@ where
                 // Just double checking
                 debug_assert_eq!(dc_handle.alloc_size, DC_PDU_SIZE);
 
+                Some(dc_handle)
+            } else {
+                None
+            };
+
+            let len = self.pdi_len.saturating_sub(total_bytes_sent);
+
+            let chunk = unsafe {
+                let chunk_start = total_bytes_sent.min(self.pdi_len);
+
+                let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
+
+                core::slice::from_raw_parts(ptr, len)
+            };
+
+            let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
+
+            let Some((bytes_in_this_chunk, pdu_handle)) =
+                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
+            else {
+                continue;
+            };
+
+            let frame = frame.mark_sendable(
+                &maindevice.pdu_loop,
+                maindevice.timeouts.pdu,
+                maindevice.config.retry_behaviour.retry_count(),
+            );
+
+            maindevice.pdu_loop.wake_sender();
+
+            let received = frame.await?;
+
+            if let Some(dc_handle) = dc_handle {
+                time = received
+                    .pdu(dc_handle)
+                    .and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
+
+                time_read = true;
+            }
+
+            let wkc = self.process_received_pdi_chunk(
+                total_bytes_sent,
+                bytes_in_this_chunk,
+                &received.pdu(pdu_handle)?,
+                &pdi_lock,
+            )?;
+
+            total_bytes_sent += bytes_in_this_chunk;
+            lrw_wkc_sum += wkc;
+
+            // NOTE: Not using a while loop as we want to always send the DC sync PDU even if the
+            // PDI is empty.
+            if len == 0 {
+                break;
+            }
+        }
+
+        // Nanoseconds from the start of the cycle. This works because the first SYNC0 pulse
+        // time is rounded to a whole number of `sync0_period`-length cycles.
+        let cycle_start_offset = time % self.dc_conf.sync0_period;
+
+        let time_to_next_iter =
+            (self.dc_conf.sync0_period - cycle_start_offset) + self.dc_conf.sync0_shift;
+
+        Ok((
+            lrw_wkc_sum,
+            CycleInfo {
+                dc_system_time: time,
+                cycle_start_offset: Duration::from_nanos(cycle_start_offset),
+                next_cycle_wait: Duration::from_nanos(time_to_next_iter),
+            },
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1220,7 +1295,7 @@ mod tests {
         ethernet::{EthernetAddress, EthernetFrame},
         MainDeviceConfig, PduStorage, Timeouts,
     };
-    use env_logger::Env;
+    use core::sync::atomic::{AtomicBool, Ordering};
     use std::{sync::Arc, thread};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
@@ -1233,7 +1308,7 @@ mod tests {
         static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
         #[cfg(not(miri))]
-        env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+        let _ = env_logger::builder().is_test(true).try_init();
 
         #[cfg(miri)]
         simple_logger::init_with_level(log::Level::Debug).unwrap();
@@ -1242,10 +1317,14 @@ mod tests {
 
         let (mut tx, mut rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
+        let stop = Arc::new(AtomicBool::new(false));
+
+        let stop1 = stop.clone();
+
         thread::spawn(move || {
             fmt::info!("Spawn TX task");
 
-            loop {
+            while !stop1.load(Ordering::Relaxed) {
                 while let Some(frame) = tx.next_sendable_frame() {
                     fmt::info!("Sendable frame");
 
@@ -1263,6 +1342,9 @@ mod tests {
                 thread::sleep(Duration::from_millis(1));
             }
         });
+
+        let stop1 = stop.clone();
+
         thread::spawn(move || {
             fmt::info!("Spawn RX task");
 
@@ -1282,6 +1364,10 @@ mod tests {
                 while rx.receive_frame(&ethernet_frame).is_err() {}
 
                 thread::yield_now();
+
+                if stop1.load(Ordering::Relaxed) {
+                    break;
+                }
             }
         });
 
@@ -1308,5 +1394,7 @@ mod tests {
 
         // No subdevices so no WKC, but success
         assert_eq!(out, Ok(0));
+
+        stop.store(true, Ordering::Relaxed);
     }
 }

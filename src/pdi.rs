@@ -80,9 +80,9 @@ impl PdiSegment {
         self.bytes.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
+    // pub fn is_empty(&self) -> bool {
+    //     self.len() == 0
+    // }
 }
 
 impl core::fmt::Display for PdiSegment {

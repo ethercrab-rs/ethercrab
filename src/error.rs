@@ -2,7 +2,7 @@
 
 pub use crate::coe::abort_code::CoeAbortCode;
 use crate::{command::Command, fmt, AlStatusCode, SubDeviceState};
-use core::{cell::BorrowError, num::TryFromIntError};
+use core::num::TryFromIntError;
 
 /// An EtherCrab error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -18,8 +18,6 @@ pub enum Error {
         /// The actual value received.
         received: u16,
     },
-    /// Failed to borrow an item. This likely points to a race condition.
-    Borrow,
     /// Something timed out.
     Timeout,
     /// An EEPROM error was encountered.
@@ -109,7 +107,6 @@ impl core::fmt::Display for Error {
             Error::WorkingCounter { expected, received } => {
                 write!(f, "working counter expected {}, got {}", expected, received)
             }
-            Error::Borrow => f.write_str("already borrowed"),
             Error::Timeout => f.write_str("timeout"),
             Error::Eeprom(e) => write!(f, "eeprom: {}", e),
             Error::Capacity(item) => write!(f, "not enough capacity for {:?}", item),
@@ -158,12 +155,6 @@ impl core::fmt::Display for Error {
             Error::SubDevice(e) => write!(f, "subdevice error: {}", e),
             Error::DistributedClock(e) => write!(f, "distributed clock: {}", e),
         }
-    }
-}
-
-impl From<BorrowError> for Error {
-    fn from(_: BorrowError) -> Self {
-        Self::Borrow
     }
 }
 
