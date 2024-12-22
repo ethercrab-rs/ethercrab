@@ -99,6 +99,7 @@ std = [
     "futures-lite/std",
     "embedded-io-async/std",
     "ethercrab-wire/std",
+    "spin/std",
 ]
 serde = ["dep:serde", "bitflags/serde"]
 # Development only - DO NOT USE

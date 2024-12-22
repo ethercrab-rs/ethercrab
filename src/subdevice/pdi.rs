@@ -42,7 +42,7 @@ impl<'a, const N: usize> PdiIoRawReadGuard<'a, N> {
 }
 
 pub struct PdiIoRawWriteGuard<'a, const N: usize> {
-    lock: spin::RwLockWriteGuard<'a, MySyncUnsafeCell<[u8; N]>>,
+    lock: spin::rwlock::RwLockWriteGuard<'a, MySyncUnsafeCell<[u8; N]>, crate::SpinStrategy>,
     ranges: IoRanges,
     _lt: PhantomData<&'a ()>,
 }
@@ -68,7 +68,7 @@ impl<'a, const N: usize> PdiIoRawWriteGuard<'a, N> {
 }
 
 pub struct PdiWriteGuard<'a, const N: usize> {
-    lock: spin::RwLockWriteGuard<'a, MySyncUnsafeCell<[u8; N]>>,
+    lock: spin::rwlock::RwLockWriteGuard<'a, MySyncUnsafeCell<[u8; N]>, crate::SpinStrategy>,
     range: Range<usize>,
     _lt: PhantomData<&'a ()>,
 }
@@ -95,7 +95,7 @@ impl<'a, const N: usize> DerefMut for PdiWriteGuard<'a, N> {
 #[doc(alias = "SlavePdi")]
 pub struct SubDevicePdi<'group, const MAX_PDI: usize> {
     subdevice: &'group SubDevice,
-    pdi: &'group spin::RwLock<MySyncUnsafeCell<[u8; MAX_PDI]>>,
+    pdi: &'group spin::rwlock::RwLock<MySyncUnsafeCell<[u8; MAX_PDI]>, crate::SpinStrategy>,
 }
 
 unsafe impl<'group, const MAX_PDI: usize> Send for SubDevicePdi<'group, MAX_PDI> {}
@@ -112,7 +112,7 @@ impl<'group, const MAX_PDI: usize> Deref for SubDevicePdi<'group, MAX_PDI> {
 impl<'group, const MAX_PDI: usize> SubDevicePdi<'group, MAX_PDI> {
     pub(crate) fn new(
         subdevice: &'group SubDevice,
-        pdi: &'group spin::RwLock<MySyncUnsafeCell<[u8; MAX_PDI]>>,
+        pdi: &'group spin::rwlock::RwLock<MySyncUnsafeCell<[u8; MAX_PDI]>, crate::SpinStrategy>,
     ) -> Self {
         Self { subdevice, pdi }
     }
@@ -250,7 +250,7 @@ mod tests {
 
         const LEN: usize = 64;
 
-        let pdi_storage = spin::RwLock::new(MySyncUnsafeCell::new([0xabu8; LEN]));
+        let pdi_storage = spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0xabu8; LEN]));
 
         let pdi = SubDevicePdi::new(&sd, &pdi_storage);
 

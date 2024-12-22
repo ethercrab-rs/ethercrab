@@ -209,3 +209,8 @@ const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x
 
 /// Starting address for discovered subdevices.
 const BASE_SUBDEVICE_ADDRESS: u16 = 0x1000;
+
+#[cfg(feature = "std")]
+type SpinStrategy = spin::Yield;
+#[cfg(not(feature = "std"))]
+type SpinStrategy = spin::Spin;

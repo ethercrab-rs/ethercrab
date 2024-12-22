@@ -25,7 +25,6 @@ use crate::{
 };
 use core::{cell::UnsafeCell, marker::PhantomData, sync::atomic::AtomicUsize, time::Duration};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
-use spin::RwLockWriteGuard;
 
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
@@ -175,7 +174,7 @@ pub struct CycleInfo {
 #[doc(alias = "SlaveGroup")]
 pub struct SubDeviceGroup<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S = PreOp, DC = NoDc> {
     id: GroupId,
-    pdi: spin::RwLock<MySyncUnsafeCell<[u8; MAX_PDI]>>,
+    pdi: spin::rwlock::RwLock<MySyncUnsafeCell<[u8; MAX_PDI]>, crate::SpinStrategy>,
     /// The number of bytes at the beginning of the PDI reserved for SubDevice inputs.
     read_pdi_len: usize,
     /// The total length (I and O) of the PDI for this group.
@@ -630,7 +629,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Default
     fn default() -> Self {
         Self {
             id: GroupId(GROUP_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)),
-            pdi: spin::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
+            pdi: spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
             read_pdi_len: Default::default(),
             pdi_len: Default::default(),
             inner: MySyncUnsafeCell::new(GroupInner::default()),
@@ -1050,7 +1049,11 @@ where
         total_bytes_sent: usize,
         bytes_in_this_chunk: usize,
         data: &ReceivedPdu<'_>,
-        pdi_lock: &RwLockWriteGuard<'_, MySyncUnsafeCell<[u8; MAX_PDI]>>,
+        pdi_lock: &spin::rwlock::RwLockWriteGuard<
+            '_,
+            MySyncUnsafeCell<[u8; MAX_PDI]>,
+            crate::SpinStrategy,
+        >,
     ) -> Result<u16, Error> {
         let wkc = data.working_counter;
 
@@ -1379,7 +1382,7 @@ mod tests {
 
         let group: SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, NoDc> = SubDeviceGroup {
             id: GroupId(0),
-            pdi: spin::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
+            pdi: spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
             read_pdi_len: 32,
             pdi_len: 96,
             inner: MySyncUnsafeCell::new(GroupInner {
