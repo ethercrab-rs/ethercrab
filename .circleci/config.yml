@@ -50,7 +50,7 @@ miri_steps: &miri_steps
         key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
-    - run: rustup toolchain add nightly-2024-08-08 --target $TARGET --component miri,rust-src
+    - run: rustup toolchain add nightly-2025-01-15 --target $TARGET --component miri,rust-src
     # - run: |
     #     binaries=( "cargo-nextest" )
 
@@ -66,7 +66,7 @@ miri_steps: &miri_steps
     #     done
     - run: |
         MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-isolation-error=warn -Zdeduplicate-diagnostics=yes" \
-        cargo +nightly-2024-08-08 miri test --features '__internals' --target $TARGET
+        cargo +nightly-2025-01-15 miri test --features '__internals' --target $TARGET
 
     - save_cache:
         key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
