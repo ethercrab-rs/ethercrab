@@ -46,8 +46,9 @@ miri_steps: &miri_steps
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
-    - restore_cache:
-        key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+    # MIRI really hates cached stuff for some reason
+    # - restore_cache:
+    #     key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
     - run: rustup toolchain add nightly-2025-01-15 --target $TARGET --component miri,rust-src
@@ -68,10 +69,10 @@ miri_steps: &miri_steps
         MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-isolation-error=warn -Zdeduplicate-diagnostics=yes" \
         cargo +nightly-2025-01-15 miri test --features '__internals' --target $TARGET
 
-    - save_cache:
-        key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
-        paths:
-          - ./target
+    # - save_cache:
+    #     key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+    #     paths:
+    #       - ./target
 
 target_steps_no_std: &target_steps_no_std
   docker:
