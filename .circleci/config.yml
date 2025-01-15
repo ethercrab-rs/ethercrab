@@ -1,7 +1,7 @@
 target_steps_std: &target_steps_std
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.83
+    - image: cimg/rust:1.80
   steps:
     - checkout
     - restore_cache:
@@ -42,15 +42,15 @@ target_steps_std: &target_steps_std
 miri_steps: &miri_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.83
+    - image: cimg/rust:1.80
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
     - restore_cache:
-        key: v14-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
-    - run: rustup toolchain add nightly-2024-12-20 --target $TARGET --component miri
+    - run: rustup toolchain add nightly-2025-01-15 --target $TARGET --component miri,rust-src
     # - run: |
     #     binaries=( "cargo-nextest" )
 
@@ -66,17 +66,17 @@ miri_steps: &miri_steps
     #     done
     - run: |
         MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-isolation-error=warn -Zdeduplicate-diagnostics=yes" \
-        cargo +nightly-2024-12-20 miri test --features '__internals' --target $TARGET
+        cargo +nightly-2025-01-15 miri test --features '__internals' --target $TARGET
 
     - save_cache:
-        key: v14-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
 
 target_steps_no_std: &target_steps_no_std
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.83
+    - image: cimg/rust:1.80
   steps:
     - checkout
     - restore_cache:
@@ -90,12 +90,11 @@ target_steps_no_std: &target_steps_no_std
         key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
         paths:
           - ./target
-          - /home/circleci/.cargo/registry
 
 target_steps_embassy: &target_steps_embassy
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.83
+    - image: cimg/rust:1.80
   steps:
     - checkout
     - restore_cache:
@@ -115,7 +114,7 @@ basic_steps: &basic_steps
   resource_class: large
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.83
+    - image: cimg/rust:1.80
   steps:
     - checkout
     - restore_cache:
@@ -157,7 +156,7 @@ jobs:
     resource_class: large
     docker:
       # NOTE: Exact version is overridden in `rust-toolchain.toml`
-      - image: cimg/rust:1.83
+      - image: cimg/rust:1.80
     steps:
       - checkout
       - restore_cache:
