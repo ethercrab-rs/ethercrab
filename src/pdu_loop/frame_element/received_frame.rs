@@ -122,6 +122,13 @@ impl<'sto> ReceivedFrame<'sto> {
             _storage: PhantomData,
         })
     }
+
+    pub fn into_iter(self) -> ReceivedPduIter<'sto> {
+        ReceivedPduIter {
+            frame: self,
+            buf_pos: 0,
+        }
+    }
 }
 
 impl<'sto> Drop for ReceivedFrame<'sto> {
@@ -131,6 +138,69 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
         fmt::unwrap!(self
             .inner
             .swap_state(FrameState::RxProcessing, FrameState::None));
+
+        // Set frame empty sentinel so we don't get false-positive matches when receiving frames
+        self.inner.clear_first_pdu();
+    }
+}
+
+// NOTE: Takes ownership of frame so we can't do double reads with handles
+pub struct ReceivedPduIter<'sto> {
+    frame: ReceivedFrame<'sto>,
+    buf_pos: usize,
+}
+
+impl<'sto> Iterator for ReceivedPduIter<'sto> {
+    type Item = Result<ReceivedPdu<'sto>, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let buf = self.frame.inner.pdu_buf().get(self.buf_pos..)?;
+
+        let pdu_header = match PduHeader::unpack_from_slice(buf) {
+            Ok(h) => h,
+            Err(e) => return Some(Err(e.into())),
+        };
+
+        let payload_len = usize::from(pdu_header.flags.len());
+        let this_pdu_len = PduHeader::PACKED_LEN + payload_len + 2;
+
+        // If buffer isn't long enough to hold payload and WKC, this is probably a corrupt PDU or
+        // someone is committing epic haxx.
+        if buf.len() < payload_len + 2 {
+            return Some(Err(Error::Pdu(PduError::TooLong)));
+        }
+
+        let payload_ptr = unsafe {
+            NonNull::new_unchecked(buf.get(PduHeader::PACKED_LEN..)?.as_ptr().cast_mut())
+        };
+
+        let working_counter = match buf
+            .get((PduHeader::PACKED_LEN + payload_len)..)
+            .ok_or(Error::Internal)
+            .and_then(|b| u16::unpack_from_slice(b).map_err(Error::from))
+        {
+            Ok(wkc) => wkc,
+            Err(e) => return Some(Err(e)),
+        };
+
+        let res = Ok(ReceivedPdu {
+            data_start: payload_ptr,
+            len: payload_len,
+            working_counter,
+            _storage: PhantomData,
+        });
+
+        // Update buffer pos for next iteration if there are more PDUs to come
+        if pdu_header.flags.more_follows {
+            self.buf_pos += this_pdu_len;
+        }
+        // No more frames, so quit the next time round by trying to read way off the end of the
+        // buffer.
+        else {
+            self.buf_pos = usize::MAX
+        }
+
+        Some(res)
     }
 }
 

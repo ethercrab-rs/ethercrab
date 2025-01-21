@@ -294,12 +294,7 @@ mod tests {
         let mut frame = pdu_loop.alloc_frame().expect("Allocate first frame");
 
         frame
-            .push_pdu(
-                Command::bwr(0x1000).into(),
-                [0xaa, 0xbb, 0xcc, 0xdd],
-                None,
-                false,
-            )
+            .push_pdu(Command::bwr(0x1000).into(), [0xaa, 0xbb, 0xcc, 0xdd], None)
             .unwrap();
 
         // Drop frame future to reset its state to `FrameState::None`
@@ -309,9 +304,7 @@ mod tests {
 
         const LEN: usize = 8;
 
-        frame
-            .push_pdu(Command::Nop, (), Some(LEN as u16), false)
-            .unwrap();
+        frame.push_pdu(Command::Nop, (), Some(LEN as u16)).unwrap();
 
         let pdu_start = EthernetFrame::<&[u8]>::header_len()
             + EthercatFrameHeader::header_len()

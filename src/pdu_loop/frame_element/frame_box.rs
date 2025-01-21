@@ -60,8 +60,11 @@ impl<'sto> FrameBox<'sto> {
     pub fn init(&mut self) {
         unsafe {
             addr_of_mut!((*self.frame.as_ptr()).waker).write(AtomicWaker::new());
+
             (&*addr_of_mut!((*self.frame.as_ptr()).first_pdu))
                 .store(FIRST_PDU_EMPTY, Ordering::Relaxed);
+
+            addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len).write(0);
         }
 
         let mut ethernet_frame = self.ethernet_frame_mut();
@@ -154,6 +157,7 @@ impl<'sto> FrameBox<'sto> {
         }
     }
 
+    /// Get the number of bytes consumed in the region of the frame used to store one or more PDUs.
     pub fn pdu_payload_len(&self) -> usize {
         unsafe { *addr_of!((*self.frame.as_ptr()).pdu_payload_len) }
     }
@@ -166,6 +170,15 @@ impl<'sto> FrameBox<'sto> {
         unsafe { FrameElement::swap_state(self.frame, from, to) }.map(|_| ())
     }
 
+    pub fn clear_first_pdu(&self) {
+        unsafe {
+            FrameElement::<0>::clear_first_pdu(self.frame);
+        }
+    }
+
+    /// Add the given number of bytes in `alloc_size` to the consumed bytes counter in the frame.
+    ///
+    /// Also sets the first PDU index if it hasn't already been set.
     pub fn add_pdu(&mut self, alloc_size: usize, pdu_idx: u8) {
         unsafe { *addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len) += alloc_size };
 
