@@ -57,7 +57,7 @@ fn main() {
                     .description()
                     .await
                     .expect("Failed to read description")
-                    .unwrap_or(heapless::String::<64>::from_str("[no description]").unwrap()),
+                    .unwrap_or(heapless::String::from_str("[no description]").unwrap()),
                 subdevice.identity()
             );
         }
