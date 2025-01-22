@@ -70,6 +70,18 @@ An EtherCAT MainDevice written in Rust.
 - [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) Frames received before their future's
   waker is registered will no longer trigger a `NoWaker` error.
 
+## [0.5.2] - 2024-12-21
+
+### Removed
+
+- **(breaking)** [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) The `PduError::NoWaker`
+  variant has been removed as it is no longer used or returned by any EtherCrab method.
+
+### Fixed
+
+- [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) Frames received before their future's
+  waker is registered will no longer trigger a `NoWaker` error.
+
 ## [0.5.1] - 2024-11-26
 
 ### Deprecated
@@ -516,7 +528,8 @@ An EtherCAT MainDevice written in Rust.
 
 <!-- next-url -->
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.1...HEAD
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.2...HEAD
+[0.5.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.1...ethercrab-v0.5.2
 [0.5.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...ethercrab-v0.5.1
 [0.5.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.5.0
 [0.4.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.4.3
