@@ -199,7 +199,7 @@ pub use maindevice_config::{MainDeviceConfig, RetryBehaviour};
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, ReceiveAction, SendableFrame};
 pub use register::{DcSupport, RegisterAddress};
 pub use subdevice::{DcSync, SubDevice, SubDeviceIdentity, SubDevicePdi, SubDeviceRef};
-pub use subdevice_group::{GroupId, SubDeviceGroup, SubDeviceGroupHandle};
+pub use subdevice_group::{GroupId, SubDeviceGroup, SubDeviceGroupHandle, TxRxResponse};
 pub use subdevice_state::SubDeviceState;
 pub use timer_factory::Timeouts;
 

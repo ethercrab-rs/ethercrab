@@ -842,7 +842,8 @@ where
     /// A `SubDeviceGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update SubDevice outputs and read SubDevice inputs.
     ///
-    /// This method returns the working counter on success.
+    /// This method returns a [`TxRxResponse`] containing the working counter and a list of all
+    /// SubDevice states on success.
     ///
     /// # Errors
     ///
@@ -943,9 +944,10 @@ where
     /// A `SubDeviceGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update SubDevice outputs and read SubDevice inputs.
     ///
-    /// This method returns the working counter and the current EtherCAT system time in nanoseconds
-    /// on success. If the PDI must be sent in multiple chunks, the returned working counter is the
-    /// sum of all returned working counter values.
+    /// This method returns a [`TxRxResponse`] struct, containing the working counter, group
+    /// SubDevice statuses and the current EtherCAT system time in nanoseconds on success. If the
+    /// PDI must be sent in multiple chunks, the returned working counter is the sum of all returned
+    /// working counter values.
     ///
     /// # Errors
     ///
@@ -1113,14 +1115,15 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S>
 where
     S: HasPdi,
 {
-    /// Drive the SubDevice group's inputs and outputs, synchronise EtherCAT system time with `FRMW`,
-    /// and return cycle timing information.
+    /// Drive the SubDevice group's inputs and outputs, synchronise EtherCAT system time with
+    /// `FRMW`, and return cycle timing and SubDevice state information.
     ///
     /// A `SubDeviceGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update SubDevice outputs and read SubDevice inputs.
     ///
-    /// This method returns the working counter and a [`CycleInfo`], containing values that can be
-    /// used to synchronise the MainDevice to the network SYNC0 event.
+    /// This method returns a [`TxRxResponse`] struct, containing the working counter, a
+    /// [`CycleInfo`] containing values that can be used to synchronise the MainDevice to the
+    /// network SYNC0 event, and the state of all SubDevices in the group.
     ///
     /// # Errors
     ///

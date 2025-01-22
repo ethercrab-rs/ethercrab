@@ -1,4 +1,5 @@
 use crate::SubDeviceState;
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// Response information from transmitting the Process Data Image (PDI).
 #[derive(Debug, PartialEq)]
@@ -30,6 +31,23 @@ bitflags::bitflags! {
         const SAFE_OP = 0x04;
         /// EtherCAT `OP` state.
         const OP = 0x08;
+    }
+}
+
+impl EtherCrabWireSized for GroupState {
+    const PACKED_LEN: usize = 1;
+
+    type Buffer = [u8; Self::PACKED_LEN];
+
+    fn buffer() -> Self::Buffer {
+        [0u8; Self::PACKED_LEN]
+    }
+}
+
+impl EtherCrabWireRead for GroupState {
+    fn unpack_from_slice(buf: &[u8]) -> Result<Self, ethercrab_wire::WireError> {
+        u8::unpack_from_slice(buf)
+            .and_then(|value| Self::from_bits(value).ok_or(ethercrab_wire::WireError::InvalidValue))
     }
 }
 
