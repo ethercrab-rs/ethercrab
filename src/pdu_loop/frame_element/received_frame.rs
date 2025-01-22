@@ -156,6 +156,11 @@ impl<'sto> Iterator for ReceivedPduIter<'sto> {
     type Item = Result<ReceivedPdu<'sto>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // Mostly used in tests, but this check will ensure the frame actually has a PDU in it
+        if self.frame.inner.pdu_payload_len() == 0 {
+            return None;
+        }
+
         let buf = self.frame.inner.pdu_buf().get(self.buf_pos..)?;
 
         let pdu_header = match PduHeader::unpack_from_slice(buf) {
