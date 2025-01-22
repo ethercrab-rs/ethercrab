@@ -3,6 +3,7 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// Response information from transmitting the Process Data Image (PDI).
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub struct TxRxResponse<const N: usize, T = ()> {
     /// Working counter.
     pub working_counter: u16,
