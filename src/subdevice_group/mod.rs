@@ -860,7 +860,7 @@ where
             self.read_pdi_len
         );
 
-        let pdi_lock = self.pdi.write();
+        let mut pdi_lock = self.pdi.write();
 
         let mut total_bytes_sent = 0;
         let mut lrw_wkc_sum = 0;
@@ -870,19 +870,14 @@ where
         let mut subdevice_states = heapless::Vec::<_, MAX_SUBDEVICES>::new();
 
         loop {
-            let len = self.pdi_len.saturating_sub(total_bytes_sent);
+            let chunk_len = self.pdi_len.saturating_sub(total_bytes_sent);
 
-            if len == 0 && total_checks >= self.len() {
+            if chunk_len == 0 && total_checks >= self.len() {
                 break;
             }
 
-            let chunk = unsafe {
-                let chunk_start = total_bytes_sent.min(self.pdi_len);
-
-                let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
-
-                core::slice::from_raw_parts(ptr, len)
-            };
+            let chunk_start = total_bytes_sent.min(self.pdi_len);
+            let chunk = pdi_lock.get_mut()[chunk_start..(chunk_start + chunk_len)].as_ref();
 
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
@@ -914,7 +909,7 @@ where
                     total_bytes_sent,
                     bytes_in_this_chunk,
                     &pdus.next().ok_or(Error::Internal)??,
-                    &pdi_lock,
+                    &mut pdi_lock,
                 )?;
 
                 total_bytes_sent += bytes_in_this_chunk;
@@ -957,7 +952,7 @@ where
         &self,
         maindevice: &'sto MainDevice<'sto>,
     ) -> Result<TxRxResponse<MAX_SUBDEVICES, Option<u64>>, Error> {
-        let pdi_lock = self.pdi.write();
+        let mut pdi_lock = self.pdi.write();
 
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
@@ -995,15 +990,9 @@ where
                     None
                 };
 
-                let len = self.pdi_len.saturating_sub(total_bytes_sent);
-
-                let chunk = unsafe {
-                    let chunk_start = total_bytes_sent.min(self.pdi_len);
-
-                    let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
-
-                    core::slice::from_raw_parts(ptr, len)
-                };
+                let chunk_start = total_bytes_sent.min(self.pdi_len);
+                let chunk_len = self.pdi_len.saturating_sub(total_bytes_sent);
+                let chunk = pdi_lock.get_mut()[chunk_start..(chunk_start + chunk_len)].as_ref();
 
                 let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
@@ -1046,7 +1035,7 @@ where
                         total_bytes_sent,
                         bytes_in_this_chunk,
                         &pdus.next().ok_or(Error::Internal)??,
-                        &pdi_lock,
+                        &mut pdi_lock,
                     )?;
 
                     total_bytes_sent += bytes_in_this_chunk;
@@ -1064,7 +1053,7 @@ where
 
                 // NOTE: Not using a while loop as we want to always send the DC sync PDU even if
                 // the PDI is empty.
-                if len == 0 && total_checks >= self.len() {
+                if chunk_len == 0 && total_checks >= self.len() {
                     break Ok(TxRxResponse {
                         working_counter: lrw_wkc_sum,
                         subdevice_states,
@@ -1086,7 +1075,7 @@ where
         total_bytes_sent: usize,
         bytes_in_this_chunk: usize,
         data: &ReceivedPdu<'_>,
-        pdi_lock: &spin::rwlock::RwLockWriteGuard<
+        pdi_lock: &mut spin::rwlock::RwLockWriteGuard<
             '_,
             MySyncUnsafeCell<[u8; MAX_PDI]>,
             crate::SpinStrategy,
@@ -1097,11 +1086,7 @@ where
         let rx_range = total_bytes_sent.min(self.read_pdi_len)
             ..(total_bytes_sent + bytes_in_this_chunk).min(self.read_pdi_len);
 
-        let inputs_chunk = unsafe {
-            let ptr: *mut u8 = pdi_lock.get().byte_add(rx_range.start).cast();
-
-            core::slice::from_raw_parts_mut(ptr, rx_range.len())
-        };
+        let inputs_chunk = &mut pdi_lock.get_mut()[rx_range];
 
         inputs_chunk.copy_from_slice(data.get(0..inputs_chunk.len()).ok_or(Error::Internal)?);
 
@@ -1234,7 +1219,7 @@ where
             self.read_pdi_len
         );
 
-        let pdi_lock = self.pdi.write();
+        let mut pdi_lock = self.pdi.write();
 
         let mut total_bytes_sent = 0;
         let mut time = 0;
@@ -1264,15 +1249,9 @@ where
                 None
             };
 
-            let len = self.pdi_len.saturating_sub(total_bytes_sent);
-
-            let chunk = unsafe {
-                let chunk_start = total_bytes_sent.min(self.pdi_len);
-
-                let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
-
-                core::slice::from_raw_parts(ptr, len)
-            };
+            let chunk_start = total_bytes_sent.min(self.pdi_len);
+            let chunk_len = self.pdi_len.saturating_sub(total_bytes_sent);
+            let chunk = pdi_lock.get_mut()[chunk_start..(chunk_start + chunk_len)].as_ref();
 
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
@@ -1309,7 +1288,7 @@ where
                     total_bytes_sent,
                     bytes_in_this_chunk,
                     &pdus.next().ok_or(Error::Internal)??,
-                    &pdi_lock,
+                    &mut pdi_lock,
                 )?;
 
                 total_bytes_sent += bytes_in_this_chunk;
@@ -1329,7 +1308,7 @@ where
             // PDI is empty.
             // This condition will exit the loop if the whole PDI has been sent as well as all
             // SubDevice status check PDUs.
-            if len == 0 && total_checks >= self.len() {
+            if chunk_len == 0 && total_checks >= self.len() {
                 break;
             }
         }
@@ -1581,6 +1560,7 @@ mod tests {
         const MAX_SUBDEVICES: usize = 32;
         const MAX_PDU_DATA: usize = PduStorage::element_size(256);
         const MAX_FRAMES: usize = 32;
+        const MAX_PDI: usize = 512;
         static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
         crate::test_logger();
@@ -1676,7 +1656,7 @@ mod tests {
 
         let group = SubDeviceGroup {
             id: GroupId(0),
-            pdi: spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDU_DATA])),
+            pdi: spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
             read_pdi_len: 406,
             pdi_len: 474,
             inner: MySyncUnsafeCell::new(GroupInner {
@@ -1732,16 +1712,10 @@ mod tests {
             let expected_pdu_count = expected_lens.len();
             let mut actual_pdu_count = 0;
 
-            println!("---");
-
-            dbg!(i);
-
             for (pdu_idx, pdu) in b.into_pdu_iter().enumerate() {
                 let pdu = pdu.unwrap();
 
                 actual_pdu_count += 1;
-
-                // dbg!(i, pdu_idx, expected_lens);
 
                 assert_eq!(
                     pdu.len(),
@@ -1750,8 +1724,6 @@ mod tests {
                     i,
                     pdu_idx
                 );
-
-                dbg!(pdu_idx, pdu.len());
             }
 
             assert_eq!(
