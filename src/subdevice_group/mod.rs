@@ -5,6 +5,7 @@
 
 mod group_id;
 mod handle;
+mod tx_rx_response;
 
 use crate::{
     al_control::AlControl,
@@ -28,6 +29,7 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
+pub use self::tx_rx_response::TxRxResponse;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -649,9 +651,9 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
         loop {
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
-            let (new, num_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
+            let (rest, num_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
 
-            subdevices = new;
+            subdevices = rest;
 
             // Nothing to send, we've checked all SDs
             if num_in_this_frame == 0 {
@@ -851,7 +853,10 @@ where
     ///
     /// This method will return with an error if the PDU could not be sent over the network, or the
     /// response times out.
-    pub async fn tx_rx<'sto>(&self, maindevice: &'sto MainDevice<'sto>) -> Result<u16, Error> {
+    pub async fn tx_rx<'sto>(
+        &self,
+        maindevice: &'sto MainDevice<'sto>,
+    ) -> Result<TxRxResponse, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -911,7 +916,10 @@ where
             lrw_wkc_sum += wkc;
         }
 
-        Ok(lrw_wkc_sum)
+        Ok(TxRxResponse {
+            working_counter: lrw_wkc_sum,
+            extra: (),
+        })
     }
 
     /// Drive the SubDevice group's inputs and outputs and synchronise EtherCAT system time with
@@ -931,7 +939,7 @@ where
     pub async fn tx_rx_sync_system_time<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
-    ) -> Result<(u16, Option<u64>), Error> {
+    ) -> Result<TxRxResponse<Option<u64>>, Error> {
         let pdi_lock = self.pdi.write();
 
         fmt::trace!(
@@ -1017,11 +1025,17 @@ where
                 // NOTE: Not using a while loop as we want to always send the DC sync PDU even if
                 // the PDI is empty.
                 if len == 0 {
-                    break Ok((lrw_wkc_sum, Some(time)));
+                    break Ok(TxRxResponse {
+                        working_counter: lrw_wkc_sum,
+                        extra: Some(time),
+                    });
                 }
             }
         } else {
-            self.tx_rx(maindevice).await.map(|wkc| (wkc, None))
+            self.tx_rx(maindevice).await.map(|response| TxRxResponse {
+                working_counter: response.working_counter,
+                extra: None,
+            })
         }
     }
 
@@ -1080,7 +1094,7 @@ where
     /// ```rust,no_run
     /// # use ethercrab::{
     /// #     error::Error,
-    /// #     subdevice_group::{CycleInfo, DcConfiguration},
+    /// #     subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
     /// #     std::ethercat_now,
     /// #     MainDevice, MainDeviceConfig, PduStorage, Timeouts, DcSync,
     /// # };
@@ -1133,12 +1147,12 @@ where
     /// loop {
     ///     let now = Instant::now();
     ///
-    ///     let (
-    ///         _wkc,
-    ///         CycleInfo {
+    ///     let TxRxResponse {
+    ///         working_counter: _wkc,
+    ///         extra: CycleInfo {
     ///             next_cycle_wait, ..
     ///         },
-    ///     ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+    ///     } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
     ///
     ///     if group.all_op(&maindevice).await? {
     ///         break;
@@ -1151,12 +1165,12 @@ where
     /// loop {
     ///     let now = Instant::now();
     ///
-    ///     let (
-    ///         _wkc,
-    ///         CycleInfo {
+    ///     let TxRxResponse {
+    ///         working_counter: _wkc,
+    ///         extra: CycleInfo {
     ///             next_cycle_wait, ..
     ///         },
-    ///     ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+    ///     } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
     ///
     ///     // Process data computations happen here
     ///
@@ -1167,7 +1181,7 @@ where
     pub async fn tx_rx_dc<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
-    ) -> Result<(u16, CycleInfo), Error> {
+    ) -> Result<TxRxResponse<CycleInfo>, Error> {
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -1181,6 +1195,10 @@ where
         let mut time = 0;
         let mut lrw_wkc_sum = 0;
         let mut time_read = false;
+
+        let mut subdevices = self.inner().subdevices.iter();
+        let mut total_checks = 0;
+        let mut subdevice_states = heapless::Vec::<_, MAX_SUBDEVICES>::new();
 
         loop {
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
@@ -1219,6 +1237,11 @@ where
                 continue;
             };
 
+            // If there's space left, push as many state checks as we can into the frame
+            let (rest, num_checks_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
+            subdevices = rest;
+            total_checks += num_checks_in_this_frame;
+
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
                 maindevice.timeouts.pdu,
@@ -1249,9 +1272,20 @@ where
             total_bytes_sent += bytes_in_this_chunk;
             lrw_wkc_sum += wkc;
 
+            // If there are any more PDUs, these are state checks
+            for state_check_pdu in pdus {
+                let state_check_pdu = state_check_pdu?;
+
+                let state = AlControl::unpack_from_slice(&state_check_pdu)?;
+
+                let _ = subdevice_states.push(state.state);
+            }
+
             // NOTE: Not using a while loop as we want to always send the DC sync PDU even if the
             // PDI is empty.
-            if len == 0 {
+            // This condition will exit the loop if the whole PDI has been sent as well as all
+            // SubDevice status check PDUs.
+            if len == 0 && total_checks >= self.len() {
                 break;
             }
         }
@@ -1263,14 +1297,14 @@ where
         let time_to_next_iter =
             (self.dc_conf.sync0_period - cycle_start_offset) + self.dc_conf.sync0_shift;
 
-        Ok((
-            lrw_wkc_sum,
-            CycleInfo {
+        Ok(TxRxResponse {
+            working_counter: lrw_wkc_sum,
+            extra: CycleInfo {
                 dc_system_time: time,
                 cycle_start_offset: Duration::from_nanos(cycle_start_offset),
                 next_cycle_wait: Duration::from_nanos(time_to_next_iter),
             },
-        ))
+        })
     }
 }
 
@@ -1383,7 +1417,13 @@ mod tests {
         let out = group.tx_rx(&maindevice).await;
 
         // No subdevices so no WKC, but success
-        assert_eq!(out, Ok(0));
+        assert_eq!(
+            out,
+            Ok(TxRxResponse {
+                working_counter: 0,
+                extra: ()
+            })
+        );
 
         stop.store(true, Ordering::Relaxed);
 

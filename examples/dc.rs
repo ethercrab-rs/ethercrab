@@ -7,7 +7,7 @@ use env_logger::Env;
 use ethercrab::{
     error::Error,
     std::{ethercat_now, tx_rx_task},
-    subdevice_group::{CycleInfo, DcConfiguration},
+    subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
     DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
@@ -359,12 +359,12 @@ fn main() -> Result<(), Error> {
         loop {
             let now = Instant::now();
 
-            let (
-                _wkc,
-                CycleInfo {
+            let TxRxResponse {
+                working_counter: _wkc,
+                extra: CycleInfo {
                     next_cycle_wait, ..
                 },
-            ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+            } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
             if group.all_op(&maindevice).await? {
                 break;
@@ -386,14 +386,15 @@ fn main() -> Result<(), Error> {
         loop {
             let now = Instant::now();
 
-            let (
-                _wkc,
-                CycleInfo {
-                    dc_system_time,
-                    next_cycle_wait,
-                    cycle_start_offset,
-                },
-            ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+            let TxRxResponse {
+                working_counter: _wkc,
+                extra:
+                    CycleInfo {
+                        dc_system_time,
+                        next_cycle_wait,
+                        cycle_start_offset,
+                    },
+            } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
             // Debug logging
             {
