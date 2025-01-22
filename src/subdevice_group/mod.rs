@@ -9,7 +9,7 @@ mod handle;
 use crate::{
     al_control::AlControl,
     command::Command,
-    error::{DistributedClockError, Error, Item, PduError},
+    error::{DistributedClockError, Error, Item},
     fmt,
     // lending_lock::LendingLock,
     pdi::PdiOffset,
@@ -649,38 +649,9 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
         loop {
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
-            let mut num_in_this_frame = 0;
+            let (new, num_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
 
-            while frame.can_push_pdu_payload(AlControl::PACKED_LEN) {
-                let Some(sd) = subdevices.next() else {
-                    break;
-                };
-
-                // A too-long error here should be unreachable as we check if the payload can be
-                // pushed in the loop condition.
-                frame.push_pdu(
-                    Command::fprd(sd.configured_address(), RegisterAddress::AlStatus.into()).into(),
-                    (),
-                    Some(AlControl::PACKED_LEN as u16),
-                )?;
-
-                total_checks += 1;
-                num_in_this_frame += 1;
-
-                // A status check datagram is 14 bytes, meaning we can fit at most just over 100
-                // checks per normal EtherCAT frame. This leaves spare PDU indices available for
-                // other purposes, however if the user is using jumbo frames or something, we should
-                // always leave some indices free for e.g. other threads.
-                if num_in_this_frame > 128 {
-                    break;
-                }
-            }
-
-            fmt::trace!(
-                "--> Pushed {} status checks into frame {:#04x}",
-                num_in_this_frame,
-                frame.index()
-            );
+            subdevices = new;
 
             // Nothing to send, we've checked all SDs
             if num_in_this_frame == 0 {
@@ -688,6 +659,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
 
                 break;
             }
+
+            total_checks += num_in_this_frame;
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
@@ -766,6 +739,48 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
             _state: PhantomData,
         })
     }
+}
+
+fn push_state_checks<'group, I>(
+    mut subdevices: I,
+    frame: &mut CreatedFrame<'group>,
+) -> Result<(I, usize), Error>
+where
+    I: Iterator<Item = &'group SubDevice>,
+{
+    let mut num_in_this_frame = 0;
+
+    while frame.can_push_pdu_payload(AlControl::PACKED_LEN) {
+        let Some(sd) = subdevices.next() else {
+            break;
+        };
+
+        // A too-long error here should be unreachable as we check if the payload can be
+        // pushed in the loop condition.
+        frame.push_pdu(
+            Command::fprd(sd.configured_address(), RegisterAddress::AlStatus.into()).into(),
+            (),
+            Some(AlControl::PACKED_LEN as u16),
+        )?;
+
+        num_in_this_frame += 1;
+
+        // A status check datagram is 14 bytes, meaning we can fit at most just over 100
+        // checks per normal EtherCAT frame. This leaves spare PDU indices available for
+        // other purposes, however if the user is using jumbo frames or something, we should
+        // always leave some indices free for e.g. other threads.
+        if num_in_this_frame > 128 {
+            break;
+        }
+    }
+
+    fmt::trace!(
+        "--> Pushed {} status checks into frame {:#04x}",
+        num_in_this_frame,
+        frame.index()
+    );
+
+    Ok((subdevices, num_in_this_frame))
 }
 
 // Methods for any state where a PDI has been configured.
@@ -1372,5 +1387,95 @@ mod tests {
 
         tx_handle.join().unwrap();
         rx_handle.join().unwrap();
+    }
+
+    #[test]
+    fn multi_state_checks_single_frame() {
+        const MAX_FRAMES: usize = 1;
+        const MAX_PDU_DATA: usize = PduStorage::element_size(AlControl::PACKED_LEN);
+        static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+
+        #[cfg(not(miri))]
+        crate::test_logger();
+        #[cfg(miri)]
+        let _ = simple_logger::init_with_level(log::Level::Debug);
+
+        let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+
+        let mut frame = pdu_loop.alloc_frame().expect("No frame");
+
+        assert_eq!(
+            frame.can_push_pdu_payload(AlControl::PACKED_LEN),
+            true,
+            "should be possible to push one status check PDU"
+        );
+        assert_eq!(
+            frame.can_push_pdu_payload(AlControl::PACKED_LEN + 12),
+            false,
+            "test requires the frame to fit exactly one status check PDU"
+        );
+
+        let single_sd = vec![SubDevice {
+            ..SubDevice::default()
+        }];
+
+        let subdevices = single_sd.iter();
+
+        let (rest, num_pushed) =
+            push_state_checks(subdevices, &mut frame).expect("Could not push status check");
+
+        assert_eq!(rest.count(), 0);
+        assert_eq!(num_pushed, single_sd.len());
+
+        assert_eq!(frame.can_push_pdu_payload(1), false, "frame should be full");
+    }
+
+    #[test]
+    fn multi_state_checks_space_left_over() {
+        // 1 byte left. AlControl takes 2 bytes.
+        const SPACE_LEFT: usize = 1;
+
+        const MAX_FRAMES: usize = 1;
+        const MAX_PDU_DATA: usize = (AlControl::PACKED_LEN + CreatedFrame::PDU_OVERHEAD_BYTES) * 2
+            + (SPACE_LEFT + CreatedFrame::PDU_OVERHEAD_BYTES)
+            // Ethernet and EtherCAT frame headers
+            + 16;
+        static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+
+        #[cfg(not(miri))]
+        crate::test_logger();
+        #[cfg(miri)]
+        let _ = simple_logger::init_with_level(log::Level::Debug);
+
+        let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+
+        let mut frame = pdu_loop.alloc_frame().expect("No frame");
+
+        let sds = vec![
+            SubDevice {
+                ..SubDevice::default()
+            },
+            SubDevice {
+                ..SubDevice::default()
+            },
+            SubDevice {
+                ..SubDevice::default()
+            },
+        ];
+
+        let subdevices = sds.iter();
+
+        let (rest, num_pushed) =
+            push_state_checks(subdevices, &mut frame).expect("Could not push status check");
+
+        assert_eq!(num_pushed, 2, "frame should hold two SD status checks");
+        assert_eq!(rest.count(), 1, "frame can only hold two SD status checks");
+
+        assert_eq!(
+            frame.can_push_pdu_payload(SPACE_LEFT),
+            true,
+            "frame has {} bytes available",
+            SPACE_LEFT
+        );
     }
 }

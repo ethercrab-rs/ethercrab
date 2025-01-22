@@ -208,7 +208,7 @@ impl<'sto> CreatedFrame<'sto> {
 
         let start_byte = self.inner.pdu_payload_len();
 
-        start_byte + alloc_size < self.inner.pdu_buf().len()
+        start_byte + alloc_size <= self.inner.pdu_buf().len()
     }
 
     /// Push a PDU into this frame.
