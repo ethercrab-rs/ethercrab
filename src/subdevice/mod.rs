@@ -247,7 +247,7 @@ impl SubDevice {
     pub async fn description(
         &self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<Option<heapless::String<64>>, Error> {
+    ) -> Result<Option<heapless::String<128>>, Error> {
         let subdevice_ref = SubDeviceRef::new(maindevice, self.configured_address, ());
 
         subdevice_ref.eeprom().device_description().await
@@ -362,7 +362,7 @@ where
     ///
     /// In the case that a SubDevice does not have a description, this method will return
     /// `Ok(None)`.
-    pub async fn description(&self) -> Result<Option<heapless::String<64>>, Error> {
+    pub async fn description(&self) -> Result<Option<heapless::String<128>>, Error> {
         SubDevice::description(&self.state, &self.maindevice).await
     }
 
