@@ -123,7 +123,7 @@ impl<'sto> ReceivedFrame<'sto> {
         })
     }
 
-    pub fn into_iter(self) -> ReceivedPduIter<'sto> {
+    pub fn into_pdu_iter(self) -> ReceivedPduIter<'sto> {
         ReceivedPduIter {
             frame: self,
             buf_pos: 0,

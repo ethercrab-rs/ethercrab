@@ -54,6 +54,10 @@ impl<'sto> CreatedFrame<'sto> {
         })
     }
 
+    pub fn index(&self) -> u8 {
+        self.inner.frame_index()
+    }
+
     /// The frame has been initialised, filled with a data payload (if required), and is now ready
     /// to be sent.
     ///
@@ -81,7 +85,8 @@ impl<'sto> CreatedFrame<'sto> {
 
     /// Push a PDU into this frame, consuming as much space as possible.
     ///
-    /// Returns the number of bytes from the given `data` that were written into the frame.
+    /// Returns the number of bytes from the given `data` that were written into the frame, or
+    /// `None` if the input slice is empty or the frame is full.
     pub(crate) fn push_pdu_slice_rest(
         &mut self,
         command: Command,
@@ -198,6 +203,14 @@ impl<'sto> CreatedFrame<'sto> {
         )))
     }
 
+    pub(crate) fn can_push_pdu_payload(&self, packed_len: usize) -> bool {
+        let alloc_size = packed_len + Self::PDU_OVERHEAD_BYTES;
+
+        let start_byte = self.inner.pdu_payload_len();
+
+        start_byte + alloc_size < self.inner.pdu_buf().len()
+    }
+
     /// Push a PDU into this frame.
     ///
     /// # Errors
@@ -219,10 +232,12 @@ impl<'sto> CreatedFrame<'sto> {
         // actually write it)
         let alloc_size = data_length_usize + Self::PDU_OVERHEAD_BYTES;
 
-        let consumed = self.inner.pdu_payload_len();
+        // The number of payload bytes already consumed in this frame (e.g. from prior PDU
+        // insertions). This is the start byte of the current PDU we want to push.
+        let start_byte = self.inner.pdu_payload_len();
 
         // Comprises PDU header, body, working counter
-        let buf_range = consumed..(consumed + alloc_size);
+        let buf_range = start_byte..(start_byte + alloc_size);
 
         // Establish mapping between this PDU index and the Ethernet frame it's being put in
         let pdu_idx = self.inner.next_pdu_idx();

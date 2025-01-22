@@ -641,9 +641,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
     ) -> Result<bool, Error> {
         fmt::trace!("Check group state");
 
-        let mut subdevices = self.inner().subdevices.iter().peekable();
-
-        let mut frame_idx = 0;
+        let mut subdevices = self.inner().subdevices.iter();
 
         let mut total_checks = 0;
 
@@ -653,34 +651,20 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
 
             let mut num_in_this_frame = 0;
 
-            // Fill frame with status requests
-            while let Some(sd) = subdevices.peek() {
-                match frame.push_pdu(
+            while frame.can_push_pdu_payload(AlControl::PACKED_LEN) {
+                let Some(sd) = subdevices.next() else {
+                    break;
+                };
+
+                // A too-long error here should be unreachable as we check if the payload can be
+                // pushed in the loop condition.
+                frame.push_pdu(
                     Command::fprd(sd.configured_address(), RegisterAddress::AlStatus.into()).into(),
                     (),
                     Some(AlControl::PACKED_LEN as u16),
-                ) {
-                    Ok(_) => {
-                        total_checks += 1;
+                )?;
 
-                        // We peeked at the current item, so now we need to remove it from the
-                        // iterator because it was successfully inserted into the frame.
-                        let _ = subdevices.next();
-                    }
-                    // Frame is full, we'll do more next time round
-                    Err(PduError::TooLong) => {
-                        fmt::trace!(
-                            "--> Pushed {} checks into frame {}",
-                            num_in_this_frame,
-                            frame_idx
-                        );
-
-                        break;
-                    }
-                    // Bail on a legitimate failure
-                    Err(e) => return Err(e.into()),
-                }
-
+                total_checks += 1;
                 num_in_this_frame += 1;
 
                 // A status check datagram is 14 bytes, meaning we can fit at most just over 100
@@ -691,6 +675,12 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
                     break;
                 }
             }
+
+            fmt::trace!(
+                "--> Pushed {} status checks into frame {:#04x}",
+                num_in_this_frame,
+                frame.index()
+            );
 
             // Nothing to send, we've checked all SDs
             if num_in_this_frame == 0 {
@@ -709,17 +699,16 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
 
             let received = frame.await?;
 
-            for pdu in received.into_iter() {
+            for pdu in received.into_pdu_iter() {
                 let pdu = pdu?;
 
                 let result = AlControl::unpack_from_slice(&pdu)?;
 
+                // Return from this fn as soon as the first undesired state is found
                 if result.state != desired_state {
                     return Ok(false);
                 }
             }
-
-            frame_idx += 1;
         }
 
         // Just sanity checking myself
