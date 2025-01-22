@@ -510,14 +510,14 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         self_.transition_to(maindevice, SubDeviceState::Op).await
     }
 
-    /// Like [`into_op`](SubDeviceGroup::into_op), however does not wait for all SubDevices to enter OP
-    /// state.
+    /// Like [`into_op`](SubDeviceGroup::into_op), however does not wait for all SubDevices to enter
+    /// OP state.
     ///
     /// This allows the application process data loop to be started, so as to e.g. not time out
     /// watchdogs, or provide valid data to prevent DC sync errors.
     ///
-    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SubDeviceGroup::all_op) to
-    /// check if the group has reached OP state.
+    /// The group's state can be checked by testing the result of a `tx_rx_*` call using methods on
+    /// the [`TxRxResponse`] struct.
     pub async fn request_into_op(
         self,
         maindevice: &MainDevice<'_>,
@@ -561,8 +561,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     /// This allows the application process data loop to be started, so as to e.g. not time out
     /// watchdogs, or provide valid data to prevent DC sync errors.
     ///
-    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SubDeviceGroup::all_op) to
-    /// check if the group has reached OP state.
+    /// The group's state can be checked by testing the result of a `tx_rx_*` call using methods on
+    /// the [`TxRxResponse`] struct.
     pub async fn request_into_op(
         mut self,
         maindevice: &MainDevice<'_>,
@@ -1187,7 +1187,7 @@ where
     /// loop {
     ///     let now = Instant::now();
     ///
-    ///     let TxRxResponse {
+    ///     let response @ TxRxResponse {
     ///         working_counter: _wkc,
     ///         extra: CycleInfo {
     ///             next_cycle_wait, ..
@@ -1195,7 +1195,7 @@ where
     ///         ..
     ///     } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
     ///
-    ///     if group.all_op(&maindevice).await? {
+    ///     if response.all_op() {
     ///         break;
     ///     }
     ///
