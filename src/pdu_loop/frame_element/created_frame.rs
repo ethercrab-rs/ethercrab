@@ -54,6 +54,10 @@ impl<'sto> CreatedFrame<'sto> {
         })
     }
 
+    pub fn index(&self) -> u8 {
+        self.inner.frame_index()
+    }
+
     /// The frame has been initialised, filled with a data payload (if required), and is now ready
     /// to be sent.
     ///
@@ -81,13 +85,18 @@ impl<'sto> CreatedFrame<'sto> {
 
     /// Push a PDU into this frame, consuming as much space as possible.
     ///
-    /// Returns the number of bytes from the given `data` that were written into the frame.
+    /// Returns the number of bytes from the given `data` that were written into the frame, or
+    /// `None` if the input slice is empty or the frame is full.
     pub(crate) fn push_pdu_slice_rest(
         &mut self,
         command: Command,
         bytes: &[u8],
     ) -> Result<Option<(usize, PduResponseHandle)>, PduError> {
         let consumed = self.inner.pdu_payload_len();
+
+        if bytes.is_empty() {
+            return Ok(None);
+        }
 
         // The maximum number of bytes we can insert into this frame
         let max_bytes = self
@@ -198,6 +207,14 @@ impl<'sto> CreatedFrame<'sto> {
         )))
     }
 
+    pub(crate) fn can_push_pdu_payload(&self, packed_len: usize) -> bool {
+        let alloc_size = packed_len + Self::PDU_OVERHEAD_BYTES;
+
+        let start_byte = self.inner.pdu_payload_len();
+
+        start_byte + alloc_size <= self.inner.pdu_buf().len()
+    }
+
     /// Push a PDU into this frame.
     ///
     /// # Errors
@@ -219,10 +236,12 @@ impl<'sto> CreatedFrame<'sto> {
         // actually write it)
         let alloc_size = data_length_usize + Self::PDU_OVERHEAD_BYTES;
 
-        let consumed = self.inner.pdu_payload_len();
+        // The number of payload bytes already consumed in this frame (e.g. from prior PDU
+        // insertions). This is the start byte of the current PDU we want to push.
+        let start_byte = self.inner.pdu_payload_len();
 
         // Comprises PDU header, body, working counter
-        let buf_range = consumed..(consumed + alloc_size);
+        let buf_range = start_byte..(start_byte + alloc_size);
 
         // Establish mapping between this PDU index and the Ethernet frame it's being put in
         let pdu_idx = self.inner.next_pdu_idx();
@@ -318,6 +337,8 @@ unsafe impl<'sto> Send for CreatedFrame<'sto> {}
 #[derive(Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct PduResponseHandle {
+    // Might want this in the future
+    #[allow(unused)]
     pub index_in_frame: u8,
 
     /// PDU wire index and command used to validate response match.
@@ -590,5 +611,39 @@ mod tests {
         let res = created.push_pdu_slice_rest(Command::Nop, &data);
 
         assert_eq!(res, Ok(None));
+    }
+
+    #[test]
+    fn push_rest_empty() {
+        crate::test_logger();
+
+        const BUF_LEN: usize = 64;
+
+        let pdu_idx = AtomicU8::new(0);
+
+        let frames = UnsafeCell::new([FrameElement {
+            frame_index: 0xab,
+            status: AtomicFrameState::new(FrameState::None),
+            waker: AtomicWaker::default(),
+            ethernet_frame: [0u8; BUF_LEN],
+            pdu_payload_len: 0,
+            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
+        }]);
+
+        let mut created = CreatedFrame::claim_created(
+            unsafe { NonNull::new_unchecked(frames.get().cast()) },
+            0xab,
+            &pdu_idx,
+            BUF_LEN,
+        )
+        .expect("Claim created");
+
+        assert_eq!(
+            created.push_pdu_slice_rest(
+                Command::frmw(0x1000, RegisterAddress::DcSystemTime.into()).into(),
+                &[]
+            ),
+            Ok(None)
+        );
     }
 }

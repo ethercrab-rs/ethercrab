@@ -258,7 +258,7 @@ impl<'sto> PduStorageRef<'sto> {
     ///
     /// If the given index is greater than the value in `PduStorage::N`, this will return garbage
     /// data off the end of the frame element buffer.
-    pub(in crate::pdu_loop) fn frame_at_index(&self, idx: usize) -> NonNull<FrameElement<0>> {
+    pub(crate) fn frame_at_index(&self, idx: usize) -> NonNull<FrameElement<0>> {
         assert!(idx < self.num_frames);
 
         // SAFETY: `self.frames` was created by Rust, so will always be valid. The index is checked

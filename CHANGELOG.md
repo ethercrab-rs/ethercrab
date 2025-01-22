@@ -23,6 +23,9 @@ An EtherCAT MainDevice written in Rust.
   to use in a separate thread to send/receive EitherCAT frames.
 - [#242](https://github.com/ethercrab-rs/ethercrab/pull/242) Add support for PDIs longer than a
   single PDU
+- **(breaking)** [#269](https://github.com/ethercrab-rs/ethercrab/pull/269)
+  `SubDeviceGroup::tx_rx_*` methods now read the state (PRE-OP, OP, etc) of each SubDevice in the
+  group, along with methods on `TxRxResponse` to test for various state conditions.
 
 ### Removed
 
@@ -57,6 +60,8 @@ An EtherCAT MainDevice written in Rust.
   FMMUs are reset one-by-one instead of the entire block being written to.
 - **(breaking)** [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) `PduRx::receive_frame`
   now returns `Result<ReceiveAction, Error>` instead of `Result<(), Error>`.
+- **(breaking)** [#269](https://github.com/ethercrab-rs/ethercrab/pull/269)
+  `SubDeviceGroup::tx_rx_*` methods now return a `TxRxResponse` struct instead of a tuple.
 
 ### Fixed
 

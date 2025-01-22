@@ -86,7 +86,7 @@ async fn check_issue_255() -> Result<(), Error> {
     let maindevice2 = maindevice.clone();
     let stop2 = stop.clone();
 
-    std::thread::spawn(move || {
+    let handle = std::thread::spawn(move || {
         cassette::block_on({
             async move {
                 log::info!("Start TX/RX task");
@@ -104,7 +104,7 @@ async fn check_issue_255() -> Result<(), Error> {
     });
 
     // Animate slow pattern for 8 ticks
-    while !stop.load(Ordering::Acquire) {
+    while !stop.load(Ordering::Acquire) && !handle.is_finished() {
         // IMPORTANT: Use a block to make sure we drop the group write guard as soon as possible
         {
             let el2889 = group.subdevice(&maindevice, 1).unwrap();

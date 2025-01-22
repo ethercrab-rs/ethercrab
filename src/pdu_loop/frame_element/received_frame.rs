@@ -23,6 +23,22 @@ impl<'sto> ReceivedFrame<'sto> {
         Self { inner }
     }
 
+    #[cfg(test)]
+    pub(crate) fn from_frame_element_for_test_only(
+        frame: NonNull<super::FrameElement<0>>,
+        pdu_idx: &'sto core::sync::atomic::AtomicU8,
+        max_len: usize,
+    ) -> ReceivedFrame<'sto> {
+        let f = Self {
+            inner: FrameBox::new(frame, pdu_idx, max_len),
+        };
+
+        // So we don't panic on drop
+        f.inner.set_state(FrameState::RxProcessing);
+
+        f
+    }
+
     pub fn first_pdu(self, handle: PduResponseHandle) -> Result<ReceivedPdu<'sto>, Error> {
         let buf = self.inner.pdu_buf();
 
@@ -66,6 +82,8 @@ impl<'sto> ReceivedFrame<'sto> {
         })
     }
 
+    // Might want this in the future
+    #[allow(unused)]
     pub fn pdu<'pdu>(&'sto self, handle: PduResponseHandle) -> Result<ReceivedPdu<'pdu>, Error>
     where
         'sto: 'pdu,
@@ -123,7 +141,7 @@ impl<'sto> ReceivedFrame<'sto> {
         })
     }
 
-    pub fn into_iter(self) -> ReceivedPduIter<'sto> {
+    pub fn into_pdu_iter(self) -> ReceivedPduIter<'sto> {
         ReceivedPduIter {
             frame: self,
             buf_pos: 0,
@@ -154,6 +172,11 @@ impl<'sto> Iterator for ReceivedPduIter<'sto> {
     type Item = Result<ReceivedPdu<'sto>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // Mostly used in tests, but this check will ensure the frame actually has a PDU in it
+        if self.frame.inner.pdu_payload_len() == 0 {
+            return None;
+        }
+
         let buf = self.frame.inner.pdu_buf().get(self.buf_pos..)?;
 
         let pdu_header = match PduHeader::unpack_from_slice(buf) {
