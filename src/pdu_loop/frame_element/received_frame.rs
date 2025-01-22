@@ -66,6 +66,8 @@ impl<'sto> ReceivedFrame<'sto> {
         })
     }
 
+    // Might want this in the future
+    #[allow(unused)]
     pub fn pdu<'pdu>(&'sto self, handle: PduResponseHandle) -> Result<ReceivedPdu<'pdu>, Error>
     where
         'sto: 'pdu,

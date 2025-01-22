@@ -595,11 +595,6 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
         self.transition_to(maindevice, SubDeviceState::SafeOp).await
     }
-
-    /// Returns true if all SubDevices in the group are in OP state
-    pub async fn all_op(&self, maindevice: &MainDevice<'_>) -> Result<bool, Error> {
-        self.is_state(maindevice, SubDeviceState::Op).await
-    }
 }
 
 impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Default
@@ -856,7 +851,7 @@ where
     pub async fn tx_rx<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
-    ) -> Result<TxRxResponse, Error> {
+    ) -> Result<TxRxResponse<MAX_SUBDEVICES>, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -869,10 +864,14 @@ where
         let mut total_bytes_sent = 0;
         let mut lrw_wkc_sum = 0;
 
+        let mut subdevices = self.inner().subdevices.iter();
+        let mut total_checks = 0;
+        let mut subdevice_states = heapless::Vec::<_, MAX_SUBDEVICES>::new();
+
         loop {
             let len = self.pdi_len.saturating_sub(total_bytes_sent);
 
-            if len == 0 {
+            if len == 0 && total_checks >= self.len() {
                 break;
             }
 
@@ -889,11 +888,16 @@ where
             // Start offset in the EtherCAT address space
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-            let Some((bytes_in_this_chunk, pdu_handle)) =
+            let Some((bytes_in_this_chunk, _pdu_handle)) =
                 frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
             else {
                 continue;
             };
+
+            // If there's space left, push as many state checks as we can into the frame
+            let (rest, num_checks_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
+            subdevices = rest;
+            total_checks += num_checks_in_this_frame;
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
@@ -905,12 +909,23 @@ where
 
             let received = frame.await?;
 
+            let mut pdus = received.into_pdu_iter();
+
             let wkc = self.process_received_pdi_chunk(
                 total_bytes_sent,
                 bytes_in_this_chunk,
-                &received.pdu(pdu_handle)?,
+                &pdus.next().ok_or(Error::Internal)??,
                 &pdi_lock,
             )?;
+
+            // If there are any more PDUs, these are state checks
+            for state_check_pdu in pdus {
+                let state_check_pdu = state_check_pdu?;
+
+                let state = AlControl::unpack_from_slice(&state_check_pdu)?;
+
+                let _ = subdevice_states.push(state.state);
+            }
 
             total_bytes_sent += bytes_in_this_chunk;
             lrw_wkc_sum += wkc;
@@ -918,6 +933,7 @@ where
 
         Ok(TxRxResponse {
             working_counter: lrw_wkc_sum,
+            subdevice_states,
             extra: (),
         })
     }
@@ -939,7 +955,7 @@ where
     pub async fn tx_rx_sync_system_time<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
-    ) -> Result<TxRxResponse<Option<u64>>, Error> {
+    ) -> Result<TxRxResponse<MAX_SUBDEVICES, Option<u64>>, Error> {
         let pdi_lock = self.pdi.write();
 
         fmt::trace!(
@@ -955,6 +971,10 @@ where
             let mut time = 0;
             let mut lrw_wkc_sum = 0;
             let mut time_read = false;
+
+            let mut subdevices = self.inner().subdevices.iter();
+            let mut total_checks = 0;
+            let mut subdevice_states = heapless::Vec::<_, MAX_SUBDEVICES>::new();
 
             loop {
                 let mut frame = maindevice.pdu_loop.alloc_frame()?;
@@ -986,13 +1006,18 @@ where
 
                 let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-                let Some((bytes_in_this_chunk, pdu_handle)) =
+                let Some((bytes_in_this_chunk, _pdu_handle)) =
                     frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
                 else {
                     continue;
                 };
 
                 fmt::trace!("Wrote {} byte chunk", bytes_in_this_chunk);
+
+                // If there's space left, push as many state checks as we can into the frame
+                let (rest, num_checks_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
+                subdevices = rest;
+                total_checks += num_checks_in_this_frame;
 
                 let frame = frame.mark_sendable(
                     &maindevice.pdu_loop,
@@ -1004,10 +1029,13 @@ where
 
                 let received = frame.await?;
 
-                if let Some(dc_handle) = dc_handle {
-                    time = received
-                        .pdu(dc_handle)
-                        .and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
+                let mut pdus = received.into_pdu_iter();
+
+                if let Some(_) = dc_handle {
+                    let dc_pdu = pdus.next().ok_or(Error::Internal)?;
+
+                    time =
+                        dc_pdu.and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
 
                     time_read = true;
                 }
@@ -1015,18 +1043,28 @@ where
                 let wkc = self.process_received_pdi_chunk(
                     total_bytes_sent,
                     bytes_in_this_chunk,
-                    &received.pdu(pdu_handle)?,
+                    &pdus.next().ok_or(Error::Internal)??,
                     &pdi_lock,
                 )?;
 
                 total_bytes_sent += bytes_in_this_chunk;
                 lrw_wkc_sum += wkc;
 
+                // If there are any more PDUs, these are state checks
+                for state_check_pdu in pdus {
+                    let state_check_pdu = state_check_pdu?;
+
+                    let state = AlControl::unpack_from_slice(&state_check_pdu)?;
+
+                    let _ = subdevice_states.push(state.state);
+                }
+
                 // NOTE: Not using a while loop as we want to always send the DC sync PDU even if
                 // the PDI is empty.
-                if len == 0 {
+                if len == 0 && total_checks >= self.len() {
                     break Ok(TxRxResponse {
                         working_counter: lrw_wkc_sum,
+                        subdevice_states,
                         extra: Some(time),
                     });
                 }
@@ -1034,6 +1072,7 @@ where
         } else {
             self.tx_rx(maindevice).await.map(|response| TxRxResponse {
                 working_counter: response.working_counter,
+                subdevice_states: response.subdevice_states,
                 extra: None,
             })
         }
@@ -1152,6 +1191,7 @@ where
     ///         extra: CycleInfo {
     ///             next_cycle_wait, ..
     ///         },
+    ///         ..
     ///     } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
     ///
     ///     if group.all_op(&maindevice).await? {
@@ -1170,6 +1210,7 @@ where
     ///         extra: CycleInfo {
     ///             next_cycle_wait, ..
     ///         },
+    ///         ..
     ///     } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
     ///
     ///     // Process data computations happen here
@@ -1181,7 +1222,7 @@ where
     pub async fn tx_rx_dc<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
-    ) -> Result<TxRxResponse<CycleInfo>, Error> {
+    ) -> Result<TxRxResponse<MAX_SUBDEVICES, CycleInfo>, Error> {
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -1299,6 +1340,7 @@ where
 
         Ok(TxRxResponse {
             working_counter: lrw_wkc_sum,
+            subdevice_states,
             extra: CycleInfo {
                 dc_system_time: time,
                 cycle_start_offset: Duration::from_nanos(cycle_start_offset),
@@ -1421,6 +1463,7 @@ mod tests {
             out,
             Ok(TxRxResponse {
                 working_counter: 0,
+                subdevice_states: heapless::Vec::new(),
                 extra: ()
             })
         );

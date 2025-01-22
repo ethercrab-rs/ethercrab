@@ -333,6 +333,8 @@ unsafe impl<'sto> Send for CreatedFrame<'sto> {}
 #[derive(Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct PduResponseHandle {
+    // Might want this in the future
+    #[allow(unused)]
     pub index_in_frame: u8,
 
     /// PDU wire index and command used to validate response match.

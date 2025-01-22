@@ -331,15 +331,16 @@ fn main() -> Result<(), Error> {
                 loop {
                     let now = Instant::now();
 
-                    let TxRxResponse {
+                    let response @ TxRxResponse {
                         working_counter: _wkc,
                         extra:
                             CycleInfo {
                                 next_cycle_wait, ..
                             },
+                        ..
                     } = slow_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
-                    if slow_group.all_op(&maindevice).await? {
+                    if response.all_op() {
                         break;
                     }
 
@@ -352,15 +353,16 @@ fn main() -> Result<(), Error> {
                 loop {
                     let now = Instant::now();
 
-                    let TxRxResponse {
+                    let response @ TxRxResponse {
                         working_counter: _wkc,
                         extra:
                             CycleInfo {
                                 next_cycle_wait, ..
                             },
+                        ..
                     } = fast_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
-                    if fast_group.all_op(&maindevice).await? {
+                    if response.all_op() {
                         break;
                     }
 
@@ -388,6 +390,7 @@ fn main() -> Result<(), Error> {
                             CycleInfo {
                                 next_cycle_wait, ..
                             },
+                        ..
                     } = slow_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
                     for subdevice in slow_group.iter(&maindevice) {
@@ -417,6 +420,7 @@ fn main() -> Result<(), Error> {
                             CycleInfo {
                                 next_cycle_wait, ..
                             },
+                        ..
                     } = fast_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
                     for subdevice in fast_group.iter(&maindevice) {
