@@ -7,7 +7,7 @@ use env_logger::Env;
 use ethercrab::{
     error::Error,
     std::{ethercat_now, tx_rx_task},
-    subdevice_group::{CycleInfo, DcConfiguration},
+    subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
     DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
@@ -359,14 +359,15 @@ fn main() -> Result<(), Error> {
         loop {
             let now = Instant::now();
 
-            let (
-                _wkc,
-                CycleInfo {
+            let response @ TxRxResponse {
+                working_counter: _wkc,
+                extra: CycleInfo {
                     next_cycle_wait, ..
                 },
-            ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+                ..
+            } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
-            if group.all_op(&maindevice).await? {
+            if response.all_op() {
                 break;
             }
 
@@ -386,14 +387,16 @@ fn main() -> Result<(), Error> {
         loop {
             let now = Instant::now();
 
-            let (
-                _wkc,
-                CycleInfo {
-                    dc_system_time,
-                    next_cycle_wait,
-                    cycle_start_offset,
-                },
-            ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+            let response @ TxRxResponse {
+                working_counter: _wkc,
+                extra:
+                    CycleInfo {
+                        dc_system_time,
+                        next_cycle_wait,
+                        cycle_start_offset,
+                    },
+                ..
+            } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
             // Debug logging
             {
@@ -409,10 +412,11 @@ fn main() -> Result<(), Error> {
                     print_tick = Instant::now();
 
                     log::info!(
-                        "Offset from start of cycle {} ({:0.2} ms), next tick in {:0.3} ms",
+                        "Offset from start of cycle {} ({:0.2} ms), next tick in {:0.3} ms, group status {:?}",
                         cycle_start_offset,
                         (cycle_start_offset as f32) / 1000.0 / 1000.0,
-                        (next_cycle_wait.as_nanos() as f32) / 1000.0 / 1000.0
+                        (next_cycle_wait.as_nanos() as f32) / 1000.0 / 1000.0,
+                        response.group_state()
                     );
                 }
 

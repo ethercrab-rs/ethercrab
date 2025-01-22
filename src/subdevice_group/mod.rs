@@ -5,11 +5,12 @@
 
 mod group_id;
 mod handle;
+mod tx_rx_response;
 
 use crate::{
     al_control::AlControl,
     command::Command,
-    error::{DistributedClockError, Error, Item, PduError},
+    error::{DistributedClockError, Error, Item},
     fmt,
     // lending_lock::LendingLock,
     pdi::PdiOffset,
@@ -28,6 +29,7 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
+pub use self::tx_rx_response::TxRxResponse;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -508,14 +510,14 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         self_.transition_to(maindevice, SubDeviceState::Op).await
     }
 
-    /// Like [`into_op`](SubDeviceGroup::into_op), however does not wait for all SubDevices to enter OP
-    /// state.
+    /// Like [`into_op`](SubDeviceGroup::into_op), however does not wait for all SubDevices to enter
+    /// OP state.
     ///
     /// This allows the application process data loop to be started, so as to e.g. not time out
     /// watchdogs, or provide valid data to prevent DC sync errors.
     ///
-    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SubDeviceGroup::all_op) to
-    /// check if the group has reached OP state.
+    /// The group's state can be checked by testing the result of a `tx_rx_*` call using methods on
+    /// the [`TxRxResponse`] struct.
     pub async fn request_into_op(
         self,
         maindevice: &MainDevice<'_>,
@@ -559,8 +561,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     /// This allows the application process data loop to be started, so as to e.g. not time out
     /// watchdogs, or provide valid data to prevent DC sync errors.
     ///
-    /// If the SubDevice status is not mapped to the PDI, use [`all_op`](SubDeviceGroup::all_op) to
-    /// check if the group has reached OP state.
+    /// The group's state can be checked by testing the result of a `tx_rx_*` call using methods on
+    /// the [`TxRxResponse`] struct.
     pub async fn request_into_op(
         mut self,
         maindevice: &MainDevice<'_>,
@@ -592,11 +594,6 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         maindevice: &MainDevice<'_>,
     ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
         self.transition_to(maindevice, SubDeviceState::SafeOp).await
-    }
-
-    /// Returns true if all SubDevices in the group are in OP state
-    pub async fn all_op(&self, maindevice: &MainDevice<'_>) -> Result<bool, Error> {
-        self.is_state(maindevice, SubDeviceState::Op).await
     }
 }
 
@@ -641,9 +638,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
     ) -> Result<bool, Error> {
         fmt::trace!("Check group state");
 
-        let mut subdevices = self.inner().subdevices.iter().peekable();
-
-        let mut frame_idx = 0;
+        let mut subdevices = self.inner().subdevices.iter();
 
         let mut total_checks = 0;
 
@@ -651,46 +646,9 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
         loop {
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
-            let mut num_in_this_frame = 0;
+            let (rest, num_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
 
-            // Fill frame with status requests
-            while let Some(sd) = subdevices.peek() {
-                match frame.push_pdu(
-                    Command::fprd(sd.configured_address(), RegisterAddress::AlStatus.into()).into(),
-                    (),
-                    Some(AlControl::PACKED_LEN as u16),
-                ) {
-                    Ok(_) => {
-                        total_checks += 1;
-
-                        // We peeked at the current item, so now we need to remove it from the
-                        // iterator because it was successfully inserted into the frame.
-                        let _ = subdevices.next();
-                    }
-                    // Frame is full, we'll do more next time round
-                    Err(PduError::TooLong) => {
-                        fmt::trace!(
-                            "--> Pushed {} checks into frame {}",
-                            num_in_this_frame,
-                            frame_idx
-                        );
-
-                        break;
-                    }
-                    // Bail on a legitimate failure
-                    Err(e) => return Err(e.into()),
-                }
-
-                num_in_this_frame += 1;
-
-                // A status check datagram is 14 bytes, meaning we can fit at most just over 100
-                // checks per normal EtherCAT frame. This leaves spare PDU indices available for
-                // other purposes, however if the user is using jumbo frames or something, we should
-                // always leave some indices free for e.g. other threads.
-                if num_in_this_frame > 128 {
-                    break;
-                }
-            }
+            subdevices = rest;
 
             // Nothing to send, we've checked all SDs
             if num_in_this_frame == 0 {
@@ -698,6 +656,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
 
                 break;
             }
+
+            total_checks += num_in_this_frame;
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
@@ -709,17 +669,16 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
 
             let received = frame.await?;
 
-            for pdu in received.into_iter() {
+            for pdu in received.into_pdu_iter() {
                 let pdu = pdu?;
 
                 let result = AlControl::unpack_from_slice(&pdu)?;
 
+                // Return from this fn as soon as the first undesired state is found
                 if result.state != desired_state {
                     return Ok(false);
                 }
             }
-
-            frame_idx += 1;
         }
 
         // Just sanity checking myself
@@ -777,6 +736,48 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
             _state: PhantomData,
         })
     }
+}
+
+fn push_state_checks<'group, I>(
+    mut subdevices: I,
+    frame: &mut CreatedFrame<'group>,
+) -> Result<(I, usize), Error>
+where
+    I: Iterator<Item = &'group SubDevice>,
+{
+    let mut num_in_this_frame = 0;
+
+    while frame.can_push_pdu_payload(AlControl::PACKED_LEN) {
+        let Some(sd) = subdevices.next() else {
+            break;
+        };
+
+        // A too-long error here should be unreachable as we check if the payload can be
+        // pushed in the loop condition.
+        frame.push_pdu(
+            Command::fprd(sd.configured_address(), RegisterAddress::AlStatus.into()).into(),
+            (),
+            Some(AlControl::PACKED_LEN as u16),
+        )?;
+
+        num_in_this_frame += 1;
+
+        // A status check datagram is 14 bytes, meaning we can fit at most just over 100
+        // checks per normal EtherCAT frame. This leaves spare PDU indices available for
+        // other purposes, however if the user is using jumbo frames or something, we should
+        // always leave some indices free for e.g. other threads.
+        if num_in_this_frame > 128 {
+            break;
+        }
+    }
+
+    fmt::trace!(
+        "--> Pushed {} status checks into frame {:#04x}",
+        num_in_this_frame,
+        frame.index()
+    );
+
+    Ok((subdevices, num_in_this_frame))
 }
 
 // Methods for any state where a PDI has been configured.
@@ -841,13 +842,17 @@ where
     /// A `SubDeviceGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update SubDevice outputs and read SubDevice inputs.
     ///
-    /// This method returns the working counter on success.
+    /// This method returns a [`TxRxResponse`] containing the working counter and a list of all
+    /// SubDevice states on success.
     ///
     /// # Errors
     ///
     /// This method will return with an error if the PDU could not be sent over the network, or the
     /// response times out.
-    pub async fn tx_rx<'sto>(&self, maindevice: &'sto MainDevice<'sto>) -> Result<u16, Error> {
+    pub async fn tx_rx<'sto>(
+        &self,
+        maindevice: &'sto MainDevice<'sto>,
+    ) -> Result<TxRxResponse<MAX_SUBDEVICES>, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -855,36 +860,36 @@ where
             self.read_pdi_len
         );
 
-        let pdi_lock = self.pdi.write();
+        let mut pdi_lock = self.pdi.write();
 
         let mut total_bytes_sent = 0;
         let mut lrw_wkc_sum = 0;
 
-        loop {
-            let len = self.pdi_len.saturating_sub(total_bytes_sent);
+        let mut subdevices = self.inner().subdevices.iter();
+        let mut total_checks = 0;
+        let mut subdevice_states = heapless::Vec::<_, MAX_SUBDEVICES>::new();
 
-            if len == 0 {
+        loop {
+            let chunk_len = self.pdi_len.saturating_sub(total_bytes_sent);
+
+            if chunk_len == 0 && total_checks >= self.len() {
                 break;
             }
 
-            let chunk = unsafe {
-                let chunk_start = total_bytes_sent.min(self.pdi_len);
-
-                let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
-
-                core::slice::from_raw_parts(ptr, len)
-            };
+            let chunk_start = total_bytes_sent.min(self.pdi_len);
+            let chunk = pdi_lock.get_mut()[chunk_start..(chunk_start + chunk_len)].as_ref();
 
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
             // Start offset in the EtherCAT address space
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-            let Some((bytes_in_this_chunk, pdu_handle)) =
-                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
-            else {
-                continue;
-            };
+            let pushed_chunk = frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?;
+
+            // If there's space left, push as many state checks as we can into the frame
+            let (rest, num_checks_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
+            subdevices = rest;
+            total_checks += num_checks_in_this_frame;
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
@@ -896,18 +901,36 @@ where
 
             let received = frame.await?;
 
-            let wkc = self.process_received_pdi_chunk(
-                total_bytes_sent,
-                bytes_in_this_chunk,
-                &received.pdu(pdu_handle)?,
-                &pdi_lock,
-            )?;
+            let mut pdus = received.into_pdu_iter();
 
-            total_bytes_sent += bytes_in_this_chunk;
-            lrw_wkc_sum += wkc;
+            // If we pushed a non-zero amount of PDI bytes, process the response
+            if let Some((bytes_in_this_chunk, _pdu_handle)) = pushed_chunk {
+                let wkc = self.process_received_pdi_chunk(
+                    total_bytes_sent,
+                    bytes_in_this_chunk,
+                    &pdus.next().ok_or(Error::Internal)??,
+                    &mut pdi_lock,
+                )?;
+
+                total_bytes_sent += bytes_in_this_chunk;
+                lrw_wkc_sum += wkc;
+            }
+
+            // If there are any more PDUs, these are state checks
+            for state_check_pdu in pdus {
+                let state_check_pdu = state_check_pdu?;
+
+                let state = AlControl::unpack_from_slice(&state_check_pdu)?;
+
+                let _ = subdevice_states.push(state.state);
+            }
         }
 
-        Ok(lrw_wkc_sum)
+        Ok(TxRxResponse {
+            working_counter: lrw_wkc_sum,
+            subdevice_states,
+            extra: (),
+        })
     }
 
     /// Drive the SubDevice group's inputs and outputs and synchronise EtherCAT system time with
@@ -916,9 +939,10 @@ where
     /// A `SubDeviceGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update SubDevice outputs and read SubDevice inputs.
     ///
-    /// This method returns the working counter and the current EtherCAT system time in nanoseconds
-    /// on success. If the PDI must be sent in multiple chunks, the returned working counter is the
-    /// sum of all returned working counter values.
+    /// This method returns a [`TxRxResponse`] struct, containing the working counter, group
+    /// SubDevice statuses and the current EtherCAT system time in nanoseconds on success. If the
+    /// PDI must be sent in multiple chunks, the returned working counter is the sum of all returned
+    /// working counter values.
     ///
     /// # Errors
     ///
@@ -927,8 +951,8 @@ where
     pub async fn tx_rx_sync_system_time<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
-    ) -> Result<(u16, Option<u64>), Error> {
-        let pdi_lock = self.pdi.write();
+    ) -> Result<TxRxResponse<MAX_SUBDEVICES, Option<u64>>, Error> {
+        let mut pdi_lock = self.pdi.write();
 
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
@@ -943,6 +967,10 @@ where
             let mut time = 0;
             let mut lrw_wkc_sum = 0;
             let mut time_read = false;
+
+            let mut subdevices = self.inner().subdevices.iter();
+            let mut total_checks = 0;
+            let mut subdevice_states = heapless::Vec::<_, MAX_SUBDEVICES>::new();
 
             loop {
                 let mut frame = maindevice.pdu_loop.alloc_frame()?;
@@ -962,25 +990,23 @@ where
                     None
                 };
 
-                let len = self.pdi_len.saturating_sub(total_bytes_sent);
-
-                let chunk = unsafe {
-                    let chunk_start = total_bytes_sent.min(self.pdi_len);
-
-                    let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
-
-                    core::slice::from_raw_parts(ptr, len)
-                };
+                let chunk_start = total_bytes_sent.min(self.pdi_len);
+                let chunk_len = self.pdi_len.saturating_sub(total_bytes_sent);
+                let chunk = pdi_lock.get_mut()[chunk_start..(chunk_start + chunk_len)].as_ref();
 
                 let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-                let Some((bytes_in_this_chunk, pdu_handle)) =
-                    frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
-                else {
-                    continue;
-                };
+                let pushed_chunk =
+                    frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?;
 
-                fmt::trace!("Wrote {} byte chunk", bytes_in_this_chunk);
+                if let Some((bytes_in_this_chunk, _)) = pushed_chunk {
+                    fmt::trace!("Wrote {} byte chunk", bytes_in_this_chunk);
+                }
+
+                // If there's space left, push as many state checks as we can into the frame
+                let (rest, num_checks_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
+                subdevices = rest;
+                total_checks += num_checks_in_this_frame;
 
                 let frame = frame.mark_sendable(
                     &maindevice.pdu_loop,
@@ -992,32 +1018,55 @@ where
 
                 let received = frame.await?;
 
-                if let Some(dc_handle) = dc_handle {
-                    time = received
-                        .pdu(dc_handle)
-                        .and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
+                let mut pdus = received.into_pdu_iter();
+
+                if let Some(_) = dc_handle {
+                    let dc_pdu = pdus.next().ok_or(Error::Internal)?;
+
+                    time =
+                        dc_pdu.and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
 
                     time_read = true;
                 }
 
-                let wkc = self.process_received_pdi_chunk(
-                    total_bytes_sent,
-                    bytes_in_this_chunk,
-                    &received.pdu(pdu_handle)?,
-                    &pdi_lock,
-                )?;
+                // If we pushed a non-zero amount of PDI bytes, process the response
+                if let Some((bytes_in_this_chunk, _pdu_handle)) = pushed_chunk {
+                    let wkc = self.process_received_pdi_chunk(
+                        total_bytes_sent,
+                        bytes_in_this_chunk,
+                        &pdus.next().ok_or(Error::Internal)??,
+                        &mut pdi_lock,
+                    )?;
 
-                total_bytes_sent += bytes_in_this_chunk;
-                lrw_wkc_sum += wkc;
+                    total_bytes_sent += bytes_in_this_chunk;
+                    lrw_wkc_sum += wkc;
+                }
+
+                // If there are any more PDUs, these are state checks
+                for state_check_pdu in pdus {
+                    let state_check_pdu = state_check_pdu?;
+
+                    let state = AlControl::unpack_from_slice(&state_check_pdu)?;
+
+                    let _ = subdevice_states.push(state.state);
+                }
 
                 // NOTE: Not using a while loop as we want to always send the DC sync PDU even if
                 // the PDI is empty.
-                if len == 0 {
-                    break Ok((lrw_wkc_sum, Some(time)));
+                if chunk_len == 0 && total_checks >= self.len() {
+                    break Ok(TxRxResponse {
+                        working_counter: lrw_wkc_sum,
+                        subdevice_states,
+                        extra: Some(time),
+                    });
                 }
             }
         } else {
-            self.tx_rx(maindevice).await.map(|wkc| (wkc, None))
+            self.tx_rx(maindevice).await.map(|response| TxRxResponse {
+                working_counter: response.working_counter,
+                subdevice_states: response.subdevice_states,
+                extra: None,
+            })
         }
     }
 
@@ -1026,7 +1075,7 @@ where
         total_bytes_sent: usize,
         bytes_in_this_chunk: usize,
         data: &ReceivedPdu<'_>,
-        pdi_lock: &spin::rwlock::RwLockWriteGuard<
+        pdi_lock: &mut spin::rwlock::RwLockWriteGuard<
             '_,
             MySyncUnsafeCell<[u8; MAX_PDI]>,
             crate::SpinStrategy,
@@ -1037,11 +1086,7 @@ where
         let rx_range = total_bytes_sent.min(self.read_pdi_len)
             ..(total_bytes_sent + bytes_in_this_chunk).min(self.read_pdi_len);
 
-        let inputs_chunk = unsafe {
-            let ptr: *mut u8 = pdi_lock.get().byte_add(rx_range.start).cast();
-
-            core::slice::from_raw_parts_mut(ptr, rx_range.len())
-        };
+        let inputs_chunk = &mut pdi_lock.get_mut()[rx_range];
 
         inputs_chunk.copy_from_slice(data.get(0..inputs_chunk.len()).ok_or(Error::Internal)?);
 
@@ -1055,14 +1100,15 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S>
 where
     S: HasPdi,
 {
-    /// Drive the SubDevice group's inputs and outputs, synchronise EtherCAT system time with `FRMW`,
-    /// and return cycle timing information.
+    /// Drive the SubDevice group's inputs and outputs, synchronise EtherCAT system time with
+    /// `FRMW`, and return cycle timing and SubDevice state information.
     ///
     /// A `SubDeviceGroup` will not process any inputs or outputs unless this method is called
     /// periodically. It will send an `LRW` to update SubDevice outputs and read SubDevice inputs.
     ///
-    /// This method returns the working counter and a [`CycleInfo`], containing values that can be
-    /// used to synchronise the MainDevice to the network SYNC0 event.
+    /// This method returns a [`TxRxResponse`] struct, containing the working counter, a
+    /// [`CycleInfo`] containing values that can be used to synchronise the MainDevice to the
+    /// network SYNC0 event, and the state of all SubDevices in the group.
     ///
     /// # Errors
     ///
@@ -1076,7 +1122,7 @@ where
     /// ```rust,no_run
     /// # use ethercrab::{
     /// #     error::Error,
-    /// #     subdevice_group::{CycleInfo, DcConfiguration},
+    /// #     subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
     /// #     std::ethercat_now,
     /// #     MainDevice, MainDeviceConfig, PduStorage, Timeouts, DcSync,
     /// # };
@@ -1129,14 +1175,15 @@ where
     /// loop {
     ///     let now = Instant::now();
     ///
-    ///     let (
-    ///         _wkc,
-    ///         CycleInfo {
+    ///     let response @ TxRxResponse {
+    ///         working_counter: _wkc,
+    ///         extra: CycleInfo {
     ///             next_cycle_wait, ..
     ///         },
-    ///     ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+    ///         ..
+    ///     } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
     ///
-    ///     if group.all_op(&maindevice).await? {
+    ///     if response.all_op() {
     ///         break;
     ///     }
     ///
@@ -1147,12 +1194,13 @@ where
     /// loop {
     ///     let now = Instant::now();
     ///
-    ///     let (
-    ///         _wkc,
-    ///         CycleInfo {
+    ///     let TxRxResponse {
+    ///         working_counter: _wkc,
+    ///         extra: CycleInfo {
     ///             next_cycle_wait, ..
     ///         },
-    ///     ) = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+    ///         ..
+    ///     } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
     ///
     ///     // Process data computations happen here
     ///
@@ -1163,7 +1211,7 @@ where
     pub async fn tx_rx_dc<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
-    ) -> Result<(u16, CycleInfo), Error> {
+    ) -> Result<TxRxResponse<MAX_SUBDEVICES, CycleInfo>, Error> {
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
             self.inner().pdi_start.start_address,
@@ -1171,12 +1219,16 @@ where
             self.read_pdi_len
         );
 
-        let pdi_lock = self.pdi.write();
+        let mut pdi_lock = self.pdi.write();
 
         let mut total_bytes_sent = 0;
         let mut time = 0;
         let mut lrw_wkc_sum = 0;
         let mut time_read = false;
+
+        let mut subdevices = self.inner().subdevices.iter();
+        let mut total_checks = 0;
+        let mut subdevice_states = heapless::Vec::<_, MAX_SUBDEVICES>::new();
 
         loop {
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
@@ -1197,23 +1249,18 @@ where
                 None
             };
 
-            let len = self.pdi_len.saturating_sub(total_bytes_sent);
-
-            let chunk = unsafe {
-                let chunk_start = total_bytes_sent.min(self.pdi_len);
-
-                let ptr: *mut u8 = pdi_lock.get().byte_add(chunk_start).cast();
-
-                core::slice::from_raw_parts(ptr, len)
-            };
+            let chunk_start = total_bytes_sent.min(self.pdi_len);
+            let chunk_len = self.pdi_len.saturating_sub(total_bytes_sent);
+            let chunk = pdi_lock.get_mut()[chunk_start..(chunk_start + chunk_len)].as_ref();
 
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-            let Some((bytes_in_this_chunk, pdu_handle)) =
-                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
-            else {
-                continue;
-            };
+            let pushed_chunk = frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?;
+
+            // If there's space left, push as many state checks as we can into the frame
+            let (rest, num_checks_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
+            subdevices = rest;
+            total_checks += num_checks_in_this_frame;
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
@@ -1225,27 +1272,43 @@ where
 
             let received = frame.await?;
 
-            if let Some(dc_handle) = dc_handle {
-                time = received
-                    .pdu(dc_handle)
-                    .and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
+            let mut pdus = received.into_pdu_iter();
+
+            if let Some(_) = dc_handle {
+                let dc_pdu = pdus.next().ok_or(Error::Internal)?;
+
+                time = dc_pdu.and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
 
                 time_read = true;
             }
 
-            let wkc = self.process_received_pdi_chunk(
-                total_bytes_sent,
-                bytes_in_this_chunk,
-                &received.pdu(pdu_handle)?,
-                &pdi_lock,
-            )?;
+            // If we pushed a non-zero amount of PDI bytes, process the response
+            if let Some((bytes_in_this_chunk, _pdu_handle)) = pushed_chunk {
+                let wkc = self.process_received_pdi_chunk(
+                    total_bytes_sent,
+                    bytes_in_this_chunk,
+                    &pdus.next().ok_or(Error::Internal)??,
+                    &mut pdi_lock,
+                )?;
 
-            total_bytes_sent += bytes_in_this_chunk;
-            lrw_wkc_sum += wkc;
+                total_bytes_sent += bytes_in_this_chunk;
+                lrw_wkc_sum += wkc;
+            }
+
+            // If there are any more PDUs, these are state checks
+            for state_check_pdu in pdus {
+                let state_check_pdu = state_check_pdu?;
+
+                let state = AlControl::unpack_from_slice(&state_check_pdu)?;
+
+                let _ = subdevice_states.push(state.state);
+            }
 
             // NOTE: Not using a while loop as we want to always send the DC sync PDU even if the
             // PDI is empty.
-            if len == 0 {
+            // This condition will exit the loop if the whole PDI has been sent as well as all
+            // SubDevice status check PDUs.
+            if chunk_len == 0 && total_checks >= self.len() {
                 break;
             }
         }
@@ -1257,14 +1320,15 @@ where
         let time_to_next_iter =
             (self.dc_conf.sync0_period - cycle_start_offset) + self.dc_conf.sync0_shift;
 
-        Ok((
-            lrw_wkc_sum,
-            CycleInfo {
+        Ok(TxRxResponse {
+            working_counter: lrw_wkc_sum,
+            subdevice_states,
+            extra: CycleInfo {
                 dc_system_time: time,
                 cycle_start_offset: Duration::from_nanos(cycle_start_offset),
                 next_cycle_wait: Duration::from_nanos(time_to_next_iter),
             },
-        ))
+        })
     }
 }
 
@@ -1273,9 +1337,10 @@ mod tests {
     use super::*;
     use crate::{
         ethernet::{EthernetAddress, EthernetFrame},
+        pdu_loop::ReceivedFrame,
         MainDeviceConfig, PduStorage, Timeouts,
     };
-    use core::sync::atomic::{AtomicBool, Ordering};
+    use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
     use std::{sync::Arc, thread};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
@@ -1287,11 +1352,7 @@ mod tests {
 
         static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-        #[cfg(not(miri))]
         crate::test_logger();
-
-        #[cfg(miri)]
-        let _ = simple_logger::init_with_level(log::Level::Debug);
 
         let (mock_net_tx, mock_net_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(16);
 
@@ -1377,11 +1438,309 @@ mod tests {
         let out = group.tx_rx(&maindevice).await;
 
         // No subdevices so no WKC, but success
-        assert_eq!(out, Ok(0));
+        assert_eq!(
+            out,
+            Ok(TxRxResponse {
+                working_counter: 0,
+                subdevice_states: heapless::Vec::new(),
+                extra: ()
+            })
+        );
 
         stop.store(true, Ordering::Relaxed);
 
         tx_handle.join().unwrap();
         rx_handle.join().unwrap();
+    }
+
+    #[test]
+    fn multi_state_checks_single_frame() {
+        const MAX_FRAMES: usize = 1;
+        const MAX_PDU_DATA: usize = PduStorage::element_size(AlControl::PACKED_LEN);
+        static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+
+        crate::test_logger();
+
+        let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+
+        let mut frame = pdu_loop.alloc_frame().expect("No frame");
+
+        assert_eq!(
+            frame.can_push_pdu_payload(AlControl::PACKED_LEN),
+            true,
+            "should be possible to push one status check PDU"
+        );
+        assert_eq!(
+            frame.can_push_pdu_payload(AlControl::PACKED_LEN + 12),
+            false,
+            "test requires the frame to fit exactly one status check PDU"
+        );
+
+        let single_sd = vec![SubDevice {
+            ..SubDevice::default()
+        }];
+
+        let subdevices = single_sd.iter();
+
+        let (rest, num_pushed) =
+            push_state_checks(subdevices, &mut frame).expect("Could not push status check");
+
+        assert_eq!(rest.count(), 0);
+        assert_eq!(num_pushed, single_sd.len());
+
+        assert_eq!(frame.can_push_pdu_payload(1), false, "frame should be full");
+    }
+
+    #[test]
+    fn multi_state_checks_space_left_over() {
+        // 1 byte left. AlControl takes 2 bytes.
+        const SPACE_LEFT: usize = 1;
+
+        const MAX_FRAMES: usize = 1;
+        const MAX_PDU_DATA: usize = (AlControl::PACKED_LEN + CreatedFrame::PDU_OVERHEAD_BYTES) * 2
+            + (SPACE_LEFT + CreatedFrame::PDU_OVERHEAD_BYTES)
+            // Ethernet and EtherCAT frame headers
+            + 16;
+        static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+
+        crate::test_logger();
+
+        let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+
+        let mut frame = pdu_loop.alloc_frame().expect("No frame");
+
+        let sds = vec![
+            SubDevice {
+                ..SubDevice::default()
+            },
+            SubDevice {
+                ..SubDevice::default()
+            },
+            SubDevice {
+                ..SubDevice::default()
+            },
+        ];
+
+        let subdevices = sds.iter();
+
+        let (rest, num_pushed) =
+            push_state_checks(subdevices, &mut frame).expect("Could not push status check");
+
+        assert_eq!(num_pushed, 2, "frame should hold two SD status checks");
+        assert_eq!(rest.count(), 1, "frame can only hold two SD status checks");
+
+        assert_eq!(
+            frame.can_push_pdu_payload(SPACE_LEFT),
+            true,
+            "frame has {} bytes available",
+            SPACE_LEFT
+        );
+    }
+
+    // This records the behaviour of a DC setup of the following 16 SubDevices:
+    //
+    // - EK1100
+    // - EL2828
+    // - EL2889
+    // - EL2004
+    // - EL1004
+    // - EL1018
+    // - EL1008
+    // - EL1004
+    // - EL2004
+    // - EL2008
+    // - EL1008
+    // - EL2008
+    // - EL2008
+    // - EL2522
+    // - EL1258
+    // - EL9505
+    #[test]
+    fn large_group_frame_split() {
+        const MAX_SUBDEVICES: usize = 32;
+        const MAX_PDU_DATA: usize = PduStorage::element_size(256);
+        const MAX_FRAMES: usize = 32;
+        const MAX_PDI: usize = 512;
+        static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
+
+        crate::test_logger();
+
+        let (mock_net_tx, mock_net_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(16);
+
+        let (mut tx, mut rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+
+        let maindevice = Arc::new(MainDevice::new(
+            pdu_loop,
+            Timeouts::default(),
+            MainDeviceConfig::default(),
+        ));
+
+        let stop = Arc::new(AtomicBool::new(false));
+
+        let stop1 = stop.clone();
+
+        let tx_handle = thread::spawn(move || {
+            fmt::info!("Spawn TX task");
+
+            while !stop1.load(Ordering::Relaxed) {
+                while let Some(frame) = tx.next_sendable_frame() {
+                    fmt::info!("Sendable frame");
+
+                    frame
+                        .send_blocking(|bytes| {
+                            mock_net_tx.send(bytes.to_vec()).unwrap();
+
+                            Ok(bytes.len())
+                        })
+                        .unwrap();
+
+                    thread::yield_now();
+                }
+            }
+        });
+
+        let stop1 = stop.clone();
+
+        let rx_handle = thread::spawn(move || {
+            fmt::info!("Spawn RX task");
+
+            while let Ok(ethernet_frame) = mock_net_rx.recv() {
+                fmt::info!("RX task received packet");
+
+                // Munge fake sent frame into a fake received frame
+                let ethernet_frame = {
+                    let mut frame = EthernetFrame::new_checked(ethernet_frame).unwrap();
+                    frame.set_src_addr(EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]));
+                    frame.into_inner()
+                };
+
+                while rx.receive_frame(&ethernet_frame).is_err() {}
+
+                thread::yield_now();
+
+                if stop1.load(Ordering::Relaxed) {
+                    break;
+                }
+            }
+        });
+
+        fn sd(addr: u16) -> SubDevice {
+            SubDevice {
+                configured_address: addr,
+                ..SubDevice::default()
+            }
+        }
+
+        let subdevices = heapless::Vec::<_, MAX_SUBDEVICES>::from_slice(&[
+            sd(0x1000),
+            sd(0x1001),
+            sd(0x1002),
+            sd(0x1003),
+            sd(0x1004),
+            sd(0x1005),
+            sd(0x1006),
+            sd(0x1007),
+            sd(0x1008),
+            sd(0x1009),
+            sd(0x100a),
+            sd(0x100b),
+            sd(0x100c),
+            sd(0x100d),
+            sd(0x100e),
+            sd(0x100f),
+        ])
+        .unwrap();
+
+        // Test setup had 16 devices
+        assert_eq!(subdevices.len(), 16);
+
+        let group = SubDeviceGroup {
+            id: GroupId(0),
+            pdi: spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
+            read_pdi_len: 406,
+            pdi_len: 474,
+            inner: MySyncUnsafeCell::new(GroupInner {
+                subdevices,
+                pdi_start: PdiOffset { start_address: 0 },
+            }),
+            dc_conf: HasDc {
+                sync0_period: 100_000,
+                sync0_shift: 0,
+                reference: 0,
+            },
+            _state: PhantomData::<Op>,
+        };
+
+        cassette::block_on(group.tx_rx_dc(&maindevice)).unwrap();
+
+        stop.store(true, Ordering::Relaxed);
+
+        tx_handle.join().unwrap();
+        rx_handle.join().unwrap();
+
+        const PDI_FRAME_0: usize = 236;
+        const PDI_FRAME_1: usize = 238;
+
+        assert_eq!(PDI_FRAME_0 + PDI_FRAME_1, 474);
+
+        // Expected PDU lengths for each frame
+        let expected_pdus = [
+            [
+                8,           // DC FRMW
+                PDI_FRAME_0, // Consume rest of frame with PDI
+            ]
+            .as_slice(),
+            &[
+                PDI_FRAME_1, // Entire frame filled with PDI
+                2,           // First status check
+            ],
+            // 15 remaining SubDevice status checks
+            &[2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+        ];
+
+        // We should have sent 3 frames in this test
+        for (i, expected_lens) in expected_pdus.iter().enumerate() {
+            let f = maindevice
+                .pdu_loop
+                .test_only_storage_ref()
+                .frame_at_index(i);
+
+            let idx = AtomicU8::new(i as u8);
+
+            let b = ReceivedFrame::from_frame_element_for_test_only(f, &idx, MAX_PDU_DATA);
+
+            let expected_pdu_count = expected_lens.len();
+            let mut actual_pdu_count = 0;
+
+            for (pdu_idx, pdu) in b.into_pdu_iter().enumerate() {
+                let pdu = pdu.unwrap();
+
+                actual_pdu_count += 1;
+
+                assert_eq!(
+                    pdu.len(),
+                    expected_lens[pdu_idx],
+                    "frame {}, PDU {} length",
+                    i,
+                    pdu_idx
+                );
+            }
+
+            assert_eq!(
+                actual_pdu_count, expected_pdu_count,
+                "frame {} PDU count",
+                i
+            );
+        }
+
+        let f = maindevice
+            .pdu_loop
+            .test_only_storage_ref()
+            .frame_at_index(3);
+        let idx = AtomicU8::new(3);
+        let b = ReceivedFrame::from_frame_element_for_test_only(f, &idx, MAX_PDU_DATA);
+
+        // 4th frame should be empty as we only sent 3
+        assert_eq!(b.into_pdu_iter().count(), 0);
     }
 }

@@ -5,7 +5,7 @@ use env_logger::Env;
 use ethercrab::{
     error::Error,
     std::{ethercat_now, tx_rx_task},
-    subdevice_group::{CycleInfo, DcConfiguration},
+    subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
     DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, SubDeviceGroup, Timeouts,
 };
 use futures_lite::StreamExt;
@@ -331,14 +331,16 @@ fn main() -> Result<(), Error> {
                 loop {
                     let now = Instant::now();
 
-                    let (
-                        _wkc,
-                        CycleInfo {
-                            next_cycle_wait, ..
-                        },
-                    ) = slow_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+                    let response @ TxRxResponse {
+                        working_counter: _wkc,
+                        extra:
+                            CycleInfo {
+                                next_cycle_wait, ..
+                            },
+                        ..
+                    } = slow_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
-                    if slow_group.all_op(&maindevice).await? {
+                    if response.all_op() {
                         break;
                     }
 
@@ -351,14 +353,16 @@ fn main() -> Result<(), Error> {
                 loop {
                     let now = Instant::now();
 
-                    let (
-                        _wkc,
-                        CycleInfo {
-                            next_cycle_wait, ..
-                        },
-                    ) = fast_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+                    let response @ TxRxResponse {
+                        working_counter: _wkc,
+                        extra:
+                            CycleInfo {
+                                next_cycle_wait, ..
+                            },
+                        ..
+                    } = fast_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
-                    if fast_group.all_op(&maindevice).await? {
+                    if response.all_op() {
                         break;
                     }
 
@@ -380,12 +384,14 @@ fn main() -> Result<(), Error> {
                 loop {
                     let now = Instant::now();
 
-                    let (
-                        _wkc,
-                        CycleInfo {
-                            next_cycle_wait, ..
-                        },
-                    ) = slow_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+                    let TxRxResponse {
+                        working_counter: _wkc,
+                        extra:
+                            CycleInfo {
+                                next_cycle_wait, ..
+                            },
+                        ..
+                    } = slow_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
                     for subdevice in slow_group.iter(&maindevice) {
                         let mut o = subdevice.outputs_raw_mut();
@@ -408,12 +414,14 @@ fn main() -> Result<(), Error> {
                 loop {
                     let now = Instant::now();
 
-                    let (
-                        _wkc,
-                        CycleInfo {
-                            next_cycle_wait, ..
-                        },
-                    ) = fast_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+                    let TxRxResponse {
+                        working_counter: _wkc,
+                        extra:
+                            CycleInfo {
+                                next_cycle_wait, ..
+                            },
+                        ..
+                    } = fast_group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
                     for subdevice in fast_group.iter(&maindevice) {
                         let mut o = subdevice.outputs_raw_mut();
