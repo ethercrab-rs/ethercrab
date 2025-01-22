@@ -1213,7 +1213,7 @@ where
 
             let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-            let Some((bytes_in_this_chunk, pdu_handle)) =
+            let Some((bytes_in_this_chunk, _pdu_handle)) =
                 frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
             else {
                 continue;
@@ -1229,10 +1229,12 @@ where
 
             let received = frame.await?;
 
-            if let Some(dc_handle) = dc_handle {
-                time = received
-                    .pdu(dc_handle)
-                    .and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
+            let mut pdus = received.into_pdu_iter();
+
+            if let Some(_) = dc_handle {
+                let dc_pdu = pdus.next().ok_or(Error::Internal)?;
+
+                time = dc_pdu.and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
 
                 time_read = true;
             }
@@ -1240,7 +1242,7 @@ where
             let wkc = self.process_received_pdi_chunk(
                 total_bytes_sent,
                 bytes_in_this_chunk,
-                &received.pdu(pdu_handle)?,
+                &pdus.next().ok_or(Error::Internal)??,
                 &pdi_lock,
             )?;
 
