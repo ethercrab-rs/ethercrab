@@ -23,6 +23,22 @@ impl<'sto> ReceivedFrame<'sto> {
         Self { inner }
     }
 
+    #[cfg(test)]
+    pub(crate) fn from_frame_element_for_test_only(
+        frame: NonNull<super::FrameElement<0>>,
+        pdu_idx: &'sto core::sync::atomic::AtomicU8,
+        max_len: usize,
+    ) -> ReceivedFrame<'sto> {
+        let f = Self {
+            inner: FrameBox::new(frame, pdu_idx, max_len),
+        };
+
+        // So we don't panic on drop
+        f.inner.set_state(FrameState::RxProcessing);
+
+        f
+    }
+
     pub fn first_pdu(self, handle: PduResponseHandle) -> Result<ReceivedPdu<'sto>, Error> {
         let buf = self.inner.pdu_buf();
 

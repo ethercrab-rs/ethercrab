@@ -608,40 +608,6 @@ mod tests {
         );
 
         // Can't push anything else
-
-    #[test]
-    fn push_rest_empty() {
-        crate::test_logger();
-
-        const BUF_LEN: usize = 64;
-
-        let pdu_idx = AtomicU8::new(0);
-
-        let frames = UnsafeCell::new([FrameElement {
-            frame_index: 0xab,
-            status: AtomicFrameState::new(FrameState::None),
-            waker: AtomicWaker::default(),
-            ethernet_frame: [0u8; BUF_LEN],
-            pdu_payload_len: 0,
-            first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
-        }]);
-
-        let mut created = CreatedFrame::claim_created(
-            unsafe { NonNull::new_unchecked(frames.get().cast()) },
-            0xab,
-            &pdu_idx,
-            BUF_LEN,
-        )
-        .expect("Claim created");
-
-        assert_eq!(
-            created.push_pdu_slice_rest(
-                Command::frmw(0x1000, RegisterAddress::DcSystemTime.into()).into(),
-                &[]
-            ),
-            Ok(None)
-        );
-    }
         let res = created.push_pdu_slice_rest(Command::Nop, &data);
 
         assert_eq!(res, Ok(None));

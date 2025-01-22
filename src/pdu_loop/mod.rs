@@ -17,8 +17,9 @@ pub use pdu_tx::PduTx;
 pub use storage::PduStorage;
 
 pub(crate) use self::frame_element::created_frame::CreatedFrame;
+#[cfg(test)]
+pub(crate) use frame_element::received_frame::ReceivedFrame;
 pub(crate) use frame_element::received_frame::ReceivedPdu;
-
 pub use frame_element::sendable_frame::SendableFrame;
 
 /// The core EtherCrab network communications driver.
@@ -60,6 +61,11 @@ impl<'sto> PduLoop<'sto> {
         assert!(storage.num_frames <= u8::MAX as usize);
 
         Self { storage }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_only_storage_ref(&self) -> &PduStorageRef<'sto> {
+        &self.storage
     }
 
     pub(crate) const fn max_frame_data(&self) -> usize {
