@@ -8,7 +8,7 @@ An EtherCAT master written in Rust.
 
 ## [0.5.3] - 2025-01-24
 
-## Added
+### Added
 
 - [#242](https://github.com/ethercrab-rs/ethercrab/pull/242) Add support for PDIs longer than a
   single PDU
