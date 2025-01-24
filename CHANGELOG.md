@@ -70,6 +70,13 @@ An EtherCAT MainDevice written in Rust.
 - [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) Frames received before their future's
   waker is registered will no longer trigger a `NoWaker` error.
 
+## [0.5.3] - 2025-01-24
+
+### Added
+
+- [#242](https://github.com/ethercrab-rs/ethercrab/pull/242) Add support for PDIs longer than a
+  single PDU
+
 ## [0.5.2] - 2024-12-21
 
 ### Removed
@@ -527,8 +534,9 @@ An EtherCAT MainDevice written in Rust.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.3...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.2...HEAD
+[0.5.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.2...ethercrab-v0.5.3
 [0.5.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.1...ethercrab-v0.5.2
 [0.5.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...ethercrab-v0.5.1
 [0.5.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.4.2...ethercrab-v0.5.0
