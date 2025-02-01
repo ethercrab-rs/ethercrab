@@ -75,8 +75,17 @@ impl<'sto> PduTx<'sto> {
 
     /// Returns `true` if the PDU sender should exit.
     ///
-    /// This will be triggered by [`MainDevice::release_all`](crate::MainDevice::release_all).
+    /// This will be triggered by [`MainDevice::release_all`](crate::MainDevice::release_all). When
+    /// giving back ownership of the `PduTx`, be sure to call [`release`](crate::PduTx::release) to
+    /// ensure all internal state is correct before reuse.
     pub fn should_exit(&self) -> bool {
         self.storage.exit_flag.load(Ordering::Acquire)
+    }
+
+    /// Reset this object ready for reuse.
+    pub fn release(self) -> Self {
+        self.storage.exit_flag.store(false, Ordering::Relaxed);
+
+        self
     }
 }

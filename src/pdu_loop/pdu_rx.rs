@@ -131,4 +131,14 @@ impl<'sto> PduRx<'sto> {
     pub fn should_exit(&self) -> bool {
         self.storage.exit_flag.load(Ordering::Acquire)
     }
+
+    /// Reset this object ready for reuse.
+    ///
+    /// When giving back ownership of the `PduRx`, be sure to call
+    /// [`release`](crate::PduRx::release) to ensure all internal state is correct before reuse.
+    pub fn release(self) -> Self {
+        self.storage.exit_flag.store(false, Ordering::Relaxed);
+
+        self
+    }
 }

@@ -66,7 +66,7 @@ pub fn tx_rx_task_blocking<'sto>(
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
     config: TxRxTaskConfig,
-) -> Result<(), std::io::Error> {
+) -> Result<(PduTx<'sto>, PduRx<'sto>), io::Error> {
     let signal = Arc::new(ParkSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
 
@@ -178,6 +178,12 @@ pub fn tx_rx_task_blocking<'sto>(
             fmt::trace!("No frames in flight, waiting to be woken with new frames to send");
 
             signal.wait();
+
+            if pdu_tx.should_exit() {
+                fmt::debug!("io_uring TX/RX was asked to exit");
+
+                return Ok((pdu_tx.release(), pdu_rx.release()));
+            }
         } else {
             std::hint::spin_loop()
         }
