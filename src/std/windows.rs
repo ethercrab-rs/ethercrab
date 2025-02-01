@@ -182,15 +182,15 @@ pub fn tx_rx_task_blocking<'sto>(
             if pdu_tx.should_exit() {
                 fmt::debug!("io_uring TX/RX was asked to exit");
 
-                return Ok((pdu_tx.release(), pdu_rx.release()));
+                // Break out of entire TX/RX loop
+                break;
             }
         } else {
             std::hint::spin_loop()
         }
     }
 
-    #[allow(unreachable_code)]
-    Ok(())
+    Ok((pdu_tx.release(), pdu_rx.release()))
 }
 
 /// Get the current time in nanoseconds from the EtherCAT epoch, 2000-01-01.
