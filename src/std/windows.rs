@@ -2,7 +2,6 @@
 
 use crate::{
     error::Error,
-    ethernet::EthernetFrame,
     fmt,
     pdu_loop::{PduRx, PduTx},
     std::ParkSignal,
@@ -10,7 +9,7 @@ use crate::{
 };
 use pnet_datalink::{self, channel, Channel, DataLinkReceiver, DataLinkSender};
 use std::io;
-use std::{future::Future, sync::Arc, task::Waker, thread, time::SystemTime};
+use std::{sync::Arc, task::Waker, time::SystemTime};
 
 /// Get a TX/RX pair.
 fn get_tx_rx(
@@ -46,118 +45,6 @@ fn get_tx_rx(
     };
 
     Ok((tx, rx))
-}
-
-/// Create a task that waits for PDUs to send, and receives PDU responses.
-#[deprecated = "use `tx_rx_task_blocking` instead"]
-pub fn tx_rx_task<'sto>(
-    device: &str,
-    mut pdu_tx: PduTx<'sto>,
-    mut pdu_rx: PduRx<'sto>,
-) -> Result<impl Future<Output = Result<(), Error>> + 'sto, std::io::Error> {
-    let (mut tx, mut rx) = get_tx_rx(device)?;
-
-    let task = async move {
-        let tx_task = async {
-            loop {
-                while let Some(frame) = pdu_tx.next_sendable_frame() {
-                    let idx = frame.index();
-
-                    frame.send_blocking(|frame_bytes| {
-                        fmt::trace!("Send frame {:#04x}, {} bytes", idx, frame_bytes.len());
-
-                        tx.send_to(frame_bytes, None)
-                            .ok_or(Error::SendFrame)?
-                            .map_err(|e| {
-                                fmt::error!("Failed to send packet: {}", e);
-
-                                Error::SendFrame
-                            })?;
-
-                        Ok(frame_bytes.len())
-                    })?;
-                }
-
-                futures_lite::future::yield_now().await;
-            }
-
-            #[allow(unreachable_code)]
-            Ok::<(), Error>(())
-        };
-
-        let (receive_frame_tx, receive_frame_rx) =
-            async_channel::unbounded::<Result<Vec<u8>, Error>>();
-
-        thread::spawn(move || {
-            let mut frame_buf: Vec<u8> = Vec::new();
-
-            loop {
-                match rx.next() {
-                    Ok(ethernet_frame) => {
-                        match EthernetFrame::new_unchecked(ethernet_frame).check_len() {
-                            // We got a full frame
-                            Ok(_) => {
-                                if !frame_buf.is_empty() {
-                                    fmt::warn!("{} existing frame bytes", frame_buf.len());
-                                }
-
-                                frame_buf.extend_from_slice(ethernet_frame);
-                            }
-                            // Truncated frame - try adding them together
-                            Err(_) => {
-                                fmt::warn!("Truncated frame: len {}", ethernet_frame.len());
-
-                                frame_buf.extend_from_slice(ethernet_frame);
-
-                                continue;
-                            }
-                        };
-
-                        receive_frame_tx
-                            .send_blocking(Ok(frame_buf.clone()))
-                            .expect("Channel full or closed");
-
-                        frame_buf.truncate(0);
-                    }
-                    Err(e) => {
-                        fmt::error!("An error occurred while receiving frame bytes: {}", e);
-
-                        receive_frame_tx
-                            .send_blocking(Err(Error::ReceiveFrame))
-                            .ok();
-
-                        break;
-                    }
-                }
-
-                std::thread::yield_now();
-            }
-        });
-
-        let rx_task = async {
-            while let Ok(frame_buf) = receive_frame_rx.recv().await {
-                let frame_buf = frame_buf?;
-
-                pdu_rx.receive_frame(&frame_buf).map_err(|e| {
-                    fmt::error!(
-                        "Failed to parse received frame: {} (len {} bytes)",
-                        e,
-                        frame_buf.len()
-                    );
-
-                    e
-                })?;
-            }
-
-            Result::<(), Error>::Ok(())
-        };
-
-        futures_lite::future::try_zip(tx_task, rx_task)
-            .await
-            .map(|_| ())
-    };
-
-    Ok(task)
 }
 
 /// Windows-specific configuration for [`tx_rx_task_blocking`].
