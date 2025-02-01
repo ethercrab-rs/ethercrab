@@ -218,6 +218,12 @@ pub fn tx_rx_task_io_uring<'sto>(
             signal.wait();
 
             fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
+
+            if pdu_tx.should_exit() {
+                fmt::debug!("io_uring TX/RX was asked to exit");
+
+                return Ok(());
+            }
         } else {
             fmt::trace!(
                 "Buf keys {:?} in flight",

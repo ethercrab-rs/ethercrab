@@ -33,6 +33,12 @@ impl Future for TxRxFut<'_> {
         // Re-register waker to make sure this future is polled again
         self.tx.replace_waker(ctx.waker());
 
+        if self.tx.should_exit() {
+            fmt::debug!("TX/RX future was asked to exit");
+
+            return Poll::Ready(Ok(()));
+        }
+
         while let Some(frame) = self.tx.next_sendable_frame() {
             let res = frame.send_blocking(|data| {
                 match Pin::new(&mut self.socket).poll_write(ctx, data) {

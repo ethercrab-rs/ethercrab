@@ -6,6 +6,7 @@ use crate::{
     pdu_loop::frame_header::EthercatFrameHeader,
     ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
+use core::sync::atomic::Ordering;
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// What happened to a received Ethernet frame.
@@ -48,6 +49,10 @@ impl<'sto> PduRx<'sto> {
     /// sent the frame.
     // NOTE: &mut self so this struct can only be used in one place.
     pub fn receive_frame(&mut self, ethernet_frame: &[u8]) -> Result<ReceiveAction, Error> {
+        if self.should_exit() {
+            return Ok(ReceiveAction::Ignored);
+        }
+
         let raw_packet = EthernetFrame::new_checked(ethernet_frame)?;
 
         // Look for EtherCAT packets whilst ignoring broadcast packets sent from self. As per
@@ -118,5 +123,12 @@ impl<'sto> PduRx<'sto> {
         frame.mark_received()?;
 
         Ok(ReceiveAction::Processed)
+    }
+
+    /// Returns `true` if the PDU sender should exit.
+    ///
+    /// This will be triggered by [`MainDevice::release_all`](crate::MainDevice::release_all).
+    pub fn should_exit(&self) -> bool {
+        self.storage.exit_flag.load(Ordering::Acquire)
     }
 }
