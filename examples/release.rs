@@ -3,11 +3,12 @@
 //!
 //! The process data loop does 256 iterations then moves on to the next scenario.
 
+// For Windows
+#![allow(unused)]
+
 use env_logger::Env;
 use ethercrab::{
-    error::Error,
-    std::{ethercat_now, tx_rx_task},
-    MainDevice, MainDeviceConfig, PduStorage, Timeouts,
+    error::Error, std::ethercat_now, MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
 use std::time::Duration;
 use tokio::time::MissedTickBehavior;
@@ -23,6 +24,7 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
+#[cfg(not(windows))]
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -44,7 +46,8 @@ async fn main() -> Result<(), Error> {
 
     let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 
-    let tx_rx_handle = tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
+    let tx_rx_handle =
+        tokio::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     process_loop(&maindevice).await;
 
@@ -84,7 +87,8 @@ async fn main() -> Result<(), Error> {
     log::info!("PduLoop, PduTx and PduRx were released, starting new TX/RX task and making new MainDevice...");
 
     // Now spawn a new TX/RX task. You could use a different network interface here, for example.
-    let tx_rx_handle = tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
+    let tx_rx_handle =
+        tokio::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 
@@ -188,4 +192,9 @@ async fn process_loop(maindevice: &MainDevice<'_>) {
         .into_init(&maindevice)
         .await
         .expect("PRE-OP -> INIT");
+}
+
+#[cfg(windows)]
+fn main() {
+    eprintln!("This example only supports non-Windows OSes");
 }
