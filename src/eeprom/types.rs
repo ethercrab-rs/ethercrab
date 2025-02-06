@@ -860,7 +860,7 @@ mod tests {
     fn sii_request_read_unpack() {
         let packed = SiiRequest::read(0x1234);
 
-        let buf = [0x00, 0x01, 0x34, 0x12, 0x00, 0x00];
+        let buf = [0x00, 0x01, 0x34, 0x12, 0x00, 0x00, 0x00, 0x00];
 
         assert_eq!(SiiRequest::unpack_from_slice(&buf), Ok(packed));
     }
