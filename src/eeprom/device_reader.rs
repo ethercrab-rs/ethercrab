@@ -72,6 +72,67 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
             })
     }
 
+    async fn write_chunk(&mut self, start_word: u16, data: &[u8]) -> Result<(), Error> {
+        // verify yhay data is only 2 bytes
+        if data.len() != 2 {
+            return Err(Error::Eeprom(EepromError::InvalidDataLength));
+        }
+
+        // Check if the EEPROM is busy
+        async {
+            loop {
+                let control: SiiControl =
+                    Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
+                        .receive::<SiiControl>(self.maindevice)
+                        .await?;
+
+                if !control.busy {
+                    break Ok(control);
+                }
+
+                self.maindevice.timeouts.loop_tick().await;
+            }
+        }
+        .timeout(self.maindevice.timeouts.eeprom)
+        .await?;
+
+        Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
+            .send(
+                self.maindevice,
+                SiiRequest::write(
+                    start_word,
+                    u16::from_le_bytes(
+                        data.try_into()
+                            .or_else(|_| Err(Error::Eeprom(EepromError::InvalidDataLength)))?,
+                    ),
+                ),
+            )
+            .await?;
+
+        async {
+            loop {
+                let control: SiiControl =
+                    Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
+                        .receive::<SiiControl>(self.maindevice)
+                        .await?;
+
+                if control.has_error() {
+                    break Err(Error::Eeprom(EepromError::WriteError));
+                }
+
+                if !control.busy {
+                    break Ok(control);
+                }
+
+                self.maindevice.timeouts.loop_tick().await;
+            }
+        }
+        .timeout(self.maindevice.timeouts.eeprom)
+        .await?;
+
+        Ok(())
+    }
+
     async fn clear_errors(&self) -> Result<(), Error> {
         let status = Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
             .receive::<SiiControl>(self.maindevice)

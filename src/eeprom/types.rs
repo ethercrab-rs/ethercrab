@@ -69,6 +69,14 @@ impl SiiControl {
             ..Default::default()
         }
     }
+
+    fn write() -> Self {
+        Self {
+            access: SiiAccess::ReadWrite,
+            write: true,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
@@ -108,7 +116,7 @@ pub enum SiiAddressSize {
 }
 
 #[derive(PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
-#[wire(bytes = 6)]
+#[wire(bytes = 8)]
 pub struct SiiRequest {
     #[wire(bytes = 2)]
     control: SiiControl,
@@ -117,6 +125,8 @@ pub struct SiiRequest {
     // the extra 16 bits of padding here for the unusedhigh WORD.
     #[wire(bytes = 2, post_skip = 16)]
     address: u16,
+    #[wire(bytes = 2)]
+    data: u16,
 }
 
 impl core::fmt::Debug for SiiRequest {
@@ -133,6 +143,24 @@ impl SiiRequest {
         Self {
             control: SiiControl::read(),
             address,
+            data: 0,
+        }
+    }
+    pub fn write(address: u16, data: u16) -> Self {
+        Self {
+            control: SiiControl::write(),
+            address,
+            data,
+        }
+    }
+    pub fn reload() -> Self {
+        Self {
+            control: SiiControl {
+                reload: true,
+                ..Default::default()
+            },
+            address: 0,
+            data: 0,
         }
     }
 }
@@ -802,7 +830,7 @@ mod tests {
     fn sii_request_read_pack() {
         let packed = SiiRequest::read(0x1234).pack();
 
-        assert_eq!(packed, [0x00, 0x01, 0x34, 0x12, 0x00, 0x00]);
+        assert_eq!(packed, [0x00, 0x01, 0x34, 0x12, 0x00, 0x00, 0x00, 0x00]);
     }
 
     #[test]

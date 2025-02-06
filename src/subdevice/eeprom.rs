@@ -10,7 +10,7 @@ use crate::{
     subdevice::SubDeviceIdentity,
 };
 use core::marker::PhantomData;
-use embedded_io_async::{Read, ReadExactError};
+use embedded_io_async::{Read, ReadExactError, Write};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized};
 
 pub struct SubDeviceEeprom<P> {
@@ -141,6 +141,28 @@ where
         reader.read_exact(&mut buf).await?;
 
         Ok(SubDeviceIdentity::unpack_from_slice(&buf)?)
+    }
+
+    pub async fn write(&self, word_addr: u16, data: u16) -> Result<(), Error> {
+        let mut reader = self.start_at(word_addr, 2_u16);
+
+        fmt::trace!("Write {} bytes to {:#x}", 2, word_addr);
+
+        reader.write_all(&data.to_le_bytes()).await?;
+
+        Ok(())
+    }
+
+    pub async fn read(&self, word_addr: u16) -> Result<u16, Error> {
+        let mut reader = self.start_at(word_addr, 2_u16);
+
+        fmt::trace!("Read 2 bytes from {:#x}", word_addr);
+
+        let mut buf = [0u8; 2];
+
+        reader.read_exact(&mut buf).await?;
+
+        Ok(u16::from_le_bytes(buf))
     }
 
     pub(crate) async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {

@@ -80,4 +80,8 @@ impl<const CHUNK: usize> EepromDataProvider for EepromFile<CHUNK> {
     async fn clear_errors(&self) -> Result<(), Error> {
         Ok(())
     }
+
+    async fn write_chunk(&mut self, start_word: u16, data: &[u8]) -> Result<(), Error> {
+        unimplemented!()
+    }
 }

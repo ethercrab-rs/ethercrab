@@ -4,7 +4,7 @@ use crate::{
     error::{EepromError, Error},
     fmt,
 };
-use embedded_io_async::{ErrorType, Read, ReadExactError};
+use embedded_io_async::{ErrorType, Read, ReadExactError, Write};
 
 pub mod device_reader;
 pub mod types;
@@ -17,6 +17,10 @@ pub trait EepromDataProvider: Clone {
     /// Read a chunk of either 4 or 8 bytes from the backing store.
     #[cfg_attr(feature = "__internals", allow(async_fn_in_trait))]
     async fn read_chunk(&mut self, start_word: u16) -> Result<impl Deref<Target = [u8]>, Error>;
+
+    /// Write a chunk of either 4 or 8 bytes to the backing store.
+    #[cfg_attr(feature = "__internals", allow(async_fn_in_trait))]
+    async fn write_chunk(&mut self, start_word: u16, data: &[u8]) -> Result<(), Error>;
 
     /// Attempt to clear any errors in the EEPROM source.
     #[cfg_attr(feature = "__internals", allow(async_fn_in_trait))]
@@ -178,6 +182,57 @@ where
         );
 
         Ok(bytes_read)
+    }
+}
+
+impl<P> Write for ChunkReader<P>
+where
+    P: EepromDataProvider,
+{
+    async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        fmt::trace!("Write EEPROM chunk from byte {:#06x}", self.pos);
+
+        let requested_write_len = buf.len();
+
+        let max_write = usize::from(self.end - self.pos);
+
+        let mut bytes_written = 0;
+
+        // The write pointer has reached the end of the chunk
+        if max_write == 0 {
+            return Ok(0);
+        }
+
+        // We can't write past the end of the chunk, so clamp the buffer's length to the remaining
+        // part of the chunk if necessary.
+        let mut buf = buf
+            .get(0..requested_write_len.min(max_write))
+            .ok_or(Error::Internal)?;
+
+        self.reader.clear_errors().await?;
+
+        while !buf.is_empty() {
+            let chunk_len = buf.len().min(8);
+
+            self.reader
+                .write_chunk(self.pos / 2, &buf[0..chunk_len])
+                .await?;
+
+            bytes_written += chunk_len;
+            self.pos += chunk_len as u16;
+
+            // Shorten the buffer so the next write starts after the one we just did.
+            buf = &buf[chunk_len..];
+        }
+
+        fmt::trace!(
+            "--> Done. Wrote {} of requested {} B, pos is now {:#06x}",
+            bytes_written,
+            requested_write_len,
+            self.pos
+        );
+
+        Ok(bytes_written)
     }
 }
 
