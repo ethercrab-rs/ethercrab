@@ -1,6 +1,6 @@
 use crate::{
     eeprom::{
-        types::{SiiControl, SiiRequest},
+        types::{SiiControl, SiiRequest, SiiWriteRequest},
         EepromDataProvider,
     },
     error::{EepromError, Error},
@@ -99,7 +99,7 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
         Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
             .send(
                 self.maindevice,
-                SiiRequest::write(
+                SiiWriteRequest::write(
                     start_word,
                     u16::from_le_bytes(
                         data.try_into()
