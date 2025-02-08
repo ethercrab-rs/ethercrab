@@ -19,7 +19,7 @@ pub enum SiiOwner {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 2)]
 pub struct SiiControl {
-    // First byte, but second octet because little endian
+    // First byte
     #[wire(bits = 1)]
     pub access: SiiAccess,
     // reserved4: u8,
@@ -30,6 +30,7 @@ pub struct SiiControl {
     #[wire(bits = 1)]
     pub address_type: SiiAddressSize,
 
+    // Second byte
     #[wire(bits = 1)]
     pub read: bool,
     #[wire(bits = 1)]
@@ -40,6 +41,9 @@ pub struct SiiControl {
     pub checksum_error: bool,
     #[wire(bits = 1)]
     pub device_info_error: bool,
+    // NOTE: This comes back as `1` when setting the station alias, however the alias is set
+    // correctly on EK1100, and the same behaviour happens with SOEM's `eepromtool` as well, so I
+    // don't know what this field is for/does.
     #[wire(bits = 1)]
     pub command_error: bool,
     #[wire(bits = 1)]
@@ -50,7 +54,7 @@ pub struct SiiControl {
 
 impl SiiControl {
     pub fn has_error(&self) -> bool {
-        self.checksum_error || self.device_info_error || self.command_error || self.write_error
+        self.checksum_error || self.device_info_error || self.write_error
     }
 
     pub fn error_reset(self) -> Self {
@@ -66,6 +70,14 @@ impl SiiControl {
     fn read() -> Self {
         Self {
             read: true,
+            ..Default::default()
+        }
+    }
+
+    fn write() -> Self {
+        Self {
+            access: SiiAccess::ReadWrite,
+            write: true,
             ..Default::default()
         }
     }
@@ -132,6 +144,13 @@ impl SiiRequest {
     pub fn read(address: u16) -> Self {
         Self {
             control: SiiControl::read(),
+            address,
+        }
+    }
+
+    pub fn write(address: u16) -> Self {
+        Self {
+            control: SiiControl::write(),
             address,
         }
     }

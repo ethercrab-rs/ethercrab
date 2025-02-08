@@ -10,6 +10,7 @@ pub struct EepromFile<const CHUNK: usize> {
     file_len: usize,
     bytes: BufReader<Cursor<&'static [u8]>>,
     buf: [u8; CHUNK],
+    pub write_cache: Vec<u8>,
 }
 
 impl<const CHUNK: usize> Clone for EepromFile<CHUNK> {
@@ -18,6 +19,7 @@ impl<const CHUNK: usize> Clone for EepromFile<CHUNK> {
             bytes: BufReader::new(self.bytes.get_ref().clone()),
             file_len: self.file_len,
             buf: self.buf,
+            write_cache: self.write_cache.clone(),
         }
     }
 }
@@ -31,6 +33,7 @@ impl EepromFile<8> {
             file_len: bytes.len(),
             bytes: BufReader::new(Cursor::new(bytes)),
             buf: [0u8; 8],
+            write_cache: vec![0u8; bytes.len()],
         }
     }
 }
@@ -43,6 +46,7 @@ impl EepromFile<4> {
             file_len: bytes.len(),
             bytes: BufReader::new(Cursor::new(bytes)),
             buf: [0u8; 4],
+            write_cache: vec![0u8; bytes.len()],
         }
     }
 }
@@ -75,6 +79,14 @@ impl<const CHUNK: usize> EepromDataProvider for EepromFile<CHUNK> {
             .expect("Could not read from EEPROM file");
 
         Ok(buf)
+    }
+
+    async fn write_word(&mut self, start_word: u16, data: [u8; 2]) -> Result<(), Error> {
+        let start = usize::from(start_word * 2);
+
+        self.write_cache[start..(start + 2)].copy_from_slice(&data);
+
+        Ok(())
     }
 
     async fn clear_errors(&self) -> Result<(), Error> {
