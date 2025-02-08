@@ -330,6 +330,8 @@ pub enum EepromError {
     SectionUnderrun,
     /// An attempt to clear errors on the device failed.
     ClearErrors,
+    /// A general EEPROM error occurred.
+    General,
 }
 
 impl core::fmt::Display for EepromError {
@@ -340,6 +342,7 @@ impl core::fmt::Display for EepromError {
             EepromError::NoCategory => f.write_str("category not found"),
             EepromError::SectionUnderrun => f.write_str("section too short to fill buffer"),
             EepromError::ClearErrors => f.write_str("clear device errors failed"),
+            EepromError::General => f.write_str("general EEPROM error"),
         }
     }
 }

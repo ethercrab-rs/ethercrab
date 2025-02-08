@@ -1,16 +1,19 @@
 use crate::{
-    eeprom::types::{CategoryType, DefaultMailbox, PdoEntry, SiiGeneral},
     eeprom::{
-        device_reader::SII_FIRST_CATEGORY_START,
-        types::{FmmuEx, FmmuUsage, Pdo, PdoType, SyncManager},
-        ChunkReader, EepromDataProvider,
+        device_provider::SII_FIRST_CATEGORY_START,
+        types::{
+            CategoryType, DefaultMailbox, FmmuEx, FmmuUsage, Pdo, PdoEntry, PdoType, SiiGeneral,
+            SyncManager,
+        },
+        EepromDataProvider, EepromRange, CHECKSUM_POSITION, STATION_ALIAS_CRC,
+        STATION_ALIAS_POSITION,
     },
     error::{EepromError, Error, Item},
     fmt,
     subdevice::SubDeviceIdentity,
 };
 use core::marker::PhantomData;
-use embedded_io_async::{Read, ReadExactError};
+use embedded_io_async::{Read, ReadExactError, Write};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized};
 
 pub struct SubDeviceEeprom<P> {
@@ -27,13 +30,13 @@ where
     }
 
     /// Start a reader at the given address in words, returning at most `len` bytes.
-    fn start_at(&self, word_addr: u16, len_bytes: u16) -> ChunkReader<P> {
-        ChunkReader::new(self.provider.clone(), word_addr, len_bytes / 2)
+    fn start_at(&self, word_addr: u16, len_bytes: u16) -> EepromRange<P> {
+        EepromRange::new(self.provider.clone(), word_addr, len_bytes / 2)
     }
 
     /// Search for a given category and return a reader over the bytes contained within the category
     /// if it is found.
-    async fn category(&self, category: CategoryType) -> Result<Option<ChunkReader<P>>, Error> {
+    async fn category(&self, category: CategoryType) -> Result<Option<EepromRange<P>>, Error> {
         let mut reader = self.provider.clone();
 
         let mut word_addr = SII_FIRST_CATEGORY_START;
@@ -59,7 +62,7 @@ where
 
             match category_type {
                 cat if cat == category => {
-                    break Ok(Some(ChunkReader::new(
+                    break Ok(Some(EepromRange::new(
                         self.provider.clone(),
                         word_addr,
                         len_words,
@@ -72,6 +75,49 @@ where
             // Next category starts after the current category's data. This is a WORD address.
             word_addr += len_words;
         }
+    }
+
+    /// Read the configured station alias for the device from its EEPROM.
+    pub(crate) async fn station_alias(&self) -> Result<u16, Error> {
+        let mut reader = self.start_at((STATION_ALIAS_POSITION.start / 2) as u16, 2);
+
+        fmt::trace!("Get station alias");
+
+        let mut buf = [0u8; 2];
+
+        reader.read_exact(&mut buf).await?;
+
+        let alias = u16::from_le_bytes(buf);
+
+        Ok(alias)
+    }
+
+    /// Set the configured station alias for the device.
+    pub(crate) async fn set_station_alias(&self, new_alias: u16) -> Result<(), Error> {
+        fmt::trace!("Set station alias to {:#06x}", new_alias);
+
+        // Read first 14 bytes of EEPROM
+        let mut reader = self.start_at(0x0000, 14);
+
+        // 14 bytes plus two more to write updated checksum to later
+        let mut chunk = [0u8; 16];
+
+        reader.read_exact(&mut chunk[0..14]).await?;
+
+        chunk[STATION_ALIAS_POSITION].copy_from_slice(&new_alias.to_le_bytes());
+
+        let checksum = u16::from(STATION_ALIAS_CRC.checksum(&chunk[0..14]));
+
+        // Update checksum ready to write back into EEPROM
+        chunk[CHECKSUM_POSITION].copy_from_slice(&checksum.to_le_bytes());
+
+        drop(reader);
+
+        let mut writer = self.start_at(0x0000, 16);
+
+        writer.write_all(&chunk).await?;
+
+        Ok(())
     }
 
     /// Get the device name.
@@ -353,7 +399,7 @@ where
         T: EtherCrabWireReadSized,
     {
         let Some(reader) = self.category(category).await? else {
-            return Ok(CategoryIterator::new(ChunkReader::new(
+            return Ok(CategoryIterator::new(EepromRange::new(
                 self.provider.clone(),
                 0,
                 0,
@@ -365,7 +411,7 @@ where
 }
 
 pub struct CategoryIterator<P, T> {
-    reader: ChunkReader<P>,
+    reader: EepromRange<P>,
     item: PhantomData<T>,
 }
 
@@ -374,7 +420,7 @@ where
     T: EtherCrabWireReadSized,
     P: EepromDataProvider,
 {
-    pub fn new(reader: ChunkReader<P>) -> Self {
+    pub fn new(reader: EepromRange<P>) -> Self {
         Self {
             reader,
             item: PhantomData,
@@ -418,7 +464,7 @@ mod tests {
     use super::*;
     use crate::{
         eeprom::{
-            file_reader::EepromFile,
+            file_provider::EepromFile,
             types::{
                 CoeDetails, Flags, MailboxProtocols, PdoFlags, PortStatus, PortStatuses,
                 SyncManagerEnable, SyncManagerType,
@@ -989,5 +1035,22 @@ mod tests {
             )),
             "device description"
         );
+    }
+
+    #[tokio::test]
+    async fn el2262_set_alias() {
+        crate::test_logger();
+
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/el2262.bin"
+        )));
+
+        assert_eq!(e.station_alias().await, Ok(0));
+
+        e.set_station_alias(0xabcd).await.expect("set alias");
+
+        // TODO: Current file test harness loses written data when calling `start_at` because it's
+        // cloned, so we can't do a proper assertion. This would be nice to fix in the future. At
+        // the moment the test in `eeprom::mod::write_station_alias` covers this case.
     }
 }

@@ -31,6 +31,31 @@ impl<'subdevice> DeviceEeprom<'subdevice> {
             configured_address,
         }
     }
+
+    async fn wait_while_busy(&self) -> Result<SiiControl, Error> {
+        let res = async {
+            loop {
+                let control: SiiControl =
+                    Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
+                        .receive::<SiiControl>(self.maindevice)
+                        .await?;
+
+                if control.has_error() {
+                    break Err(Error::Eeprom(EepromError::General));
+                }
+
+                if !control.busy {
+                    break Ok(control);
+                }
+
+                self.maindevice.timeouts.loop_tick().await;
+            }
+        }
+        .timeout(self.maindevice.timeouts.eeprom)
+        .await?;
+
+        Ok(res)
+    }
 }
 
 impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
@@ -42,22 +67,7 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
             .send_receive(self.maindevice, SiiRequest::read(start_word))
             .await?;
 
-        let status = async {
-            loop {
-                let control: SiiControl =
-                    Command::fprd(self.configured_address, RegisterAddress::SiiControl.into())
-                        .receive::<SiiControl>(self.maindevice)
-                        .await?;
-
-                if !control.busy {
-                    break Ok(control);
-                }
-
-                self.maindevice.timeouts.loop_tick().await;
-            }
-        }
-        .timeout(self.maindevice.timeouts.eeprom)
-        .await?;
+        let status = self.wait_while_busy().await?;
 
         Command::fprd(self.configured_address, RegisterAddress::SiiData.into())
             .receive_slice(self.maindevice, status.read_size.chunk_len())
@@ -70,6 +80,27 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
 
                 data
             })
+    }
+
+    async fn write_word(&mut self, start_word: u16, data: [u8; 2]) -> Result<(), Error> {
+        // Check if the EEPROM is busy
+        self.wait_while_busy().await?;
+
+        // Set data to write
+        Command::fpwr(self.configured_address, RegisterAddress::SiiData.into())
+            .send(self.maindevice, data)
+            .await?;
+
+        // Send control and address registers. A rising edge on the write flag will store whatever
+        // is in `SiiAddress` into the EEPROM at the given address.
+        Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
+            .send_receive(self.maindevice, SiiRequest::write(start_word))
+            .await?;
+
+        // Wait for error or not busy
+        self.wait_while_busy().await?;
+
+        Ok(())
     }
 
     async fn clear_errors(&self) -> Result<(), Error> {

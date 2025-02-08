@@ -14,7 +14,7 @@ use crate::{
     },
     command::Command,
     dl_status::DlStatus,
-    eeprom::{device_reader::DeviceEeprom, types::SiiOwner},
+    eeprom::{device_provider::DeviceEeprom, types::SiiOwner},
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::{MailboxHeader, MailboxType},
@@ -182,10 +182,7 @@ impl SubDevice {
             .receive::<SupportFlags>(maindevice)
             .await?;
 
-        let alias_address = subdevice_ref
-            .read(RegisterAddress::ConfiguredStationAlias)
-            .receive::<u16>(maindevice)
-            .await?;
+        let alias_address = subdevice_ref.eeprom().station_alias().await?;
 
         let ports = subdevice_ref
             .read(RegisterAddress::DlStatus)
@@ -268,6 +265,21 @@ impl SubDevice {
         self.alias_address
     }
 
+    /// Set the alias address for the SubDevice and store it in EEPROM.
+    pub async fn set_alias_address(
+        &mut self,
+        maindevice: &MainDevice<'_>,
+        new_alias: u16,
+    ) -> Result<(), Error> {
+        let subdevice_ref = SubDeviceRef::new(maindevice, self.configured_address, ());
+
+        subdevice_ref.eeprom().set_station_alias(new_alias).await?;
+
+        self.alias_address = new_alias;
+
+        Ok(())
+    }
+
     /// Get the network propagation delay of this device in nanoseconds.
     ///
     /// Note that before [`MainDevice::init`](crate::MainDevice::init) is called, this method will
@@ -343,6 +355,11 @@ where
     /// used by [`SubDeviceGroup::configure_dc_sync`](crate::SubDeviceGroup::configure_dc_sync).
     pub fn set_dc_sync(&mut self, dc_sync: DcSync) {
         self.state.dc_sync = dc_sync;
+    }
+
+    /// Set the alias address for the SubDevice and store it in EEPROM.
+    pub async fn set_alias_address(&mut self, new_alias: u16) -> Result<(), Error> {
+        SubDevice::set_alias_address(&mut self.state, &self.maindevice, new_alias).await
     }
 }
 

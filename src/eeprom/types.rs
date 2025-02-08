@@ -19,7 +19,7 @@ pub enum SiiOwner {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 2)]
 pub struct SiiControl {
-    // First byte, but second octet because little endian
+    // First byte
     #[wire(bits = 1)]
     pub access: SiiAccess,
     // reserved4: u8,
@@ -30,6 +30,7 @@ pub struct SiiControl {
     #[wire(bits = 1)]
     pub address_type: SiiAddressSize,
 
+    // Second byte
     #[wire(bits = 1)]
     pub read: bool,
     #[wire(bits = 1)]
@@ -66,6 +67,14 @@ impl SiiControl {
     fn read() -> Self {
         Self {
             read: true,
+            ..Default::default()
+        }
+    }
+
+    fn write() -> Self {
+        Self {
+            access: SiiAccess::ReadWrite,
+            write: true,
             ..Default::default()
         }
     }
@@ -132,6 +141,13 @@ impl SiiRequest {
     pub fn read(address: u16) -> Self {
         Self {
             control: SiiControl::read(),
+            address,
+        }
+    }
+
+    pub fn write(address: u16) -> Self {
+        Self {
+            control: SiiControl::write(),
             address,
         }
     }
