@@ -287,4 +287,100 @@ mod tests {
             actual
         );
     }
+
+    #[tokio::test]
+    async fn read_checksum_el2828() {
+        let mut r = ChunkReader::new(
+            EepromFile::new(include_bytes!("../../dumps/eeprom/el2828.hex")),
+            // Start at beginning of EEPROM
+            0,
+            // 8 words, 16 bytes
+            8,
+        );
+
+        // 8 words or 16 bytes
+        let mut all = [0u8; 16];
+
+        r.read_exact(&mut all).await.expect("Read");
+
+        let (rest, checksum) = all.split_last_chunk::<2>().unwrap();
+
+        assert_eq!(rest.len(), 14);
+
+        // The lower byte of the last word is the checksum of the previous 14 bytes
+        let checksum = u16::from_le_bytes(*checksum);
+
+        let expected_checksum = 0x00e2u16;
+
+        assert_eq!(checksum, expected_checksum);
+
+        const ECAT_CRC: crc::Algorithm<u8> = crc::Algorithm {
+            width: 8,
+            poly: 0x07,
+            init: 0xff,
+            refin: false,
+            refout: false,
+            xorout: 0x00,
+            check: 0x80,
+            residue: 0x00,
+        };
+
+        const EEPROM_CRC: crc::Crc<u8> = crc::Crc::<u8>::new(&ECAT_CRC);
+
+        let cs = u16::from(EEPROM_CRC.checksum(rest));
+
+        assert_eq!(
+            cs, expected_checksum,
+            "{:#04x} {:#04x}",
+            cs, expected_checksum
+        );
+    }
+
+    #[tokio::test]
+    async fn read_checksum_akd() {
+        let mut r = ChunkReader::new(
+            EepromFile::new(include_bytes!("../../dumps/eeprom/akd.hex")),
+            // Start at beginning of EEPROM
+            0,
+            // 8 words, 16 bytes
+            8,
+        );
+
+        // 8 words or 16 bytes
+        let mut all = [0u8; 16];
+
+        r.read_exact(&mut all).await.expect("Read");
+
+        let (rest, checksum) = all.split_last_chunk::<2>().unwrap();
+
+        assert_eq!(rest.len(), 14);
+
+        // The lower byte of the last word is the checksum of the previous 14 bytes
+        let checksum = u16::from_le_bytes(*checksum);
+
+        let expected_checksum = 0x0010u16;
+
+        assert_eq!(checksum, expected_checksum);
+
+        const ECAT_CRC: crc::Algorithm<u8> = crc::Algorithm {
+            width: 8,
+            poly: 0x07,
+            init: 0xff,
+            refin: false,
+            refout: false,
+            xorout: 0x00,
+            check: 0x80,
+            residue: 0x00,
+        };
+
+        const EEPROM_CRC: crc::Crc<u8> = crc::Crc::<u8>::new(&ECAT_CRC);
+
+        let cs = u16::from(EEPROM_CRC.checksum(rest));
+
+        assert_eq!(
+            cs, expected_checksum,
+            "{:#04x} {:#04x}",
+            cs, expected_checksum
+        );
+    }
 }

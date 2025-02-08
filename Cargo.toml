@@ -36,6 +36,7 @@ serde = { version = "1.0.190", features = ["derive"], optional = true }
 smlang = "0.6.0"
 ethercrab-wire = { version = "0.2.0", path = "./ethercrab-wire" }
 spin = { version = "0.9.8", default-features = false, features = ["rwlock"] }
+crc = { version = "3.2.1", default-features = false }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.34.0", features = ["std"], optional = true }
