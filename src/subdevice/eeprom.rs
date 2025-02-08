@@ -110,11 +110,7 @@ where
 
             reader.read_exact(&mut chunk).await?;
 
-            fmt::debug!("--> Read EEPROM start bytes {:02x?}", &chunk);
-
             chunk[STATION_ALIAS_POSITION].copy_from_slice(&new_alias.to_le_bytes());
-
-            fmt::debug!("--> After updating alias    {:02x?}", &chunk);
 
             u16::from(STATION_ALIAS_CRC.checksum(&chunk))
         };
