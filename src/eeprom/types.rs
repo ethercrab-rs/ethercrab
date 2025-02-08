@@ -41,6 +41,9 @@ pub struct SiiControl {
     pub checksum_error: bool,
     #[wire(bits = 1)]
     pub device_info_error: bool,
+    // NOTE: This comes back as `1` when setting the station alias, however the alias is set
+    // correctly on EK1100, and the same behaviour happens with SOEM's `eepromtool` as well, so I
+    // don't know what this field is for/does.
     #[wire(bits = 1)]
     pub command_error: bool,
     #[wire(bits = 1)]
@@ -51,7 +54,7 @@ pub struct SiiControl {
 
 impl SiiControl {
     pub fn has_error(&self) -> bool {
-        self.checksum_error || self.device_info_error || self.command_error || self.write_error
+        self.checksum_error || self.device_info_error || self.write_error
     }
 
     pub fn error_reset(self) -> Self {

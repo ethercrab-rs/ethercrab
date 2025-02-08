@@ -40,10 +40,6 @@ impl<'subdevice> DeviceEeprom<'subdevice> {
                         .receive::<SiiControl>(self.maindevice)
                         .await?;
 
-                if control.has_error() {
-                    break Err(Error::Eeprom(EepromError::General));
-                }
-
                 if !control.busy {
                     break Ok(control);
                 }
@@ -74,9 +70,9 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
             .await
             .map(|data| {
                 #[cfg(not(feature = "defmt"))]
-                fmt::trace!("Read addr {:#06x}: {:02x?}", start_word, data);
+                fmt::trace!("Read addr {:#06x}: {:02x?}", start_word, &data[..]);
                 #[cfg(feature = "defmt")]
-                fmt::trace!("Read addr {:#06x}: {=[u8]}", start_word, data);
+                fmt::trace!("Read addr {:#06x}: {=[u8]}", start_word, &data[..]);
 
                 data
             })
@@ -86,19 +82,31 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
         // Check if the EEPROM is busy
         self.wait_while_busy().await?;
 
-        // Set data to write
-        Command::fpwr(self.configured_address, RegisterAddress::SiiData.into())
-            .send(self.maindevice, data)
-            .await?;
+        let mut retry_count = 0;
 
-        // Send control and address registers. A rising edge on the write flag will store whatever
-        // is in `SiiAddress` into the EEPROM at the given address.
-        Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
-            .send_receive(self.maindevice, SiiRequest::write(start_word))
-            .await?;
+        loop {
+            // Set data to write
+            Command::fpwr(self.configured_address, RegisterAddress::SiiData.into())
+                .send(self.maindevice, data)
+                .await?;
 
-        // Wait for error or not busy
-        self.wait_while_busy().await?;
+            // Send control and address registers. A rising edge on the write flag will store whatever
+            // is in `SiiAddress` into the EEPROM at the given address.
+            Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
+                .send_receive(self.maindevice, SiiRequest::write(start_word))
+                .await?;
+
+            // Wait for error or not busy
+            let status = self.wait_while_busy().await?;
+
+            if status.command_error && retry_count < 20 {
+                fmt::debug!("Retrying EEPROM write");
+
+                retry_count += 1;
+            } else {
+                break;
+            }
+        }
 
         Ok(())
     }

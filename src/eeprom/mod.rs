@@ -217,6 +217,7 @@ where
             self.byte_pos
         );
 
+        let len = buf.len();
         let mut written = 0;
 
         loop {
@@ -248,7 +249,7 @@ where
         fmt::trace!(
             "--> Done. Wrote {} of requested {} B, position is now {:#06x}",
             written,
-            buf.len(),
+            len,
             self.byte_pos
         );
 

@@ -396,6 +396,19 @@ where
         self.state.alias_address
     }
 
+    /// INTERNAL: Read address from EEPROM.
+    ///
+    /// Useful for testing. Please don't rely on this as a public API item.
+    #[cfg(feature = "__internals")]
+    pub async fn read_alias_address_from_eeprom(
+        &self,
+        maindevice: &MainDevice<'_>,
+    ) -> Result<u16, Error> {
+        let subdevice_ref = SubDeviceRef::new(maindevice, self.configured_address, ());
+
+        subdevice_ref.eeprom().station_alias().await
+    }
+
     /// Get the network propagation delay of this device in nanoseconds.
     ///
     /// Note that before [`MainDevice::init`](crate::MainDevice::init) is called, this method will

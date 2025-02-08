@@ -80,13 +80,19 @@ where
     /// Read the configured station alias for the device from its EEPROM.
     #[allow(unused)]
     pub(crate) async fn station_alias(&self) -> Result<u16, Error> {
-        let mut reader = self.start_at((STATION_ALIAS_POSITION.start / 2) as u16, 2);
+        let start_word = (STATION_ALIAS_POSITION.start / 2) as u16;
 
-        fmt::trace!("Get station alias");
+        let mut reader = self.start_at(start_word, 2);
 
         let mut buf = [0u8; 2];
 
         reader.read_exact(&mut buf).await?;
+
+        fmt::debug!(
+            "Get station alias at start word {:#06x}, raw bytes {:?}",
+            start_word,
+            buf
+        );
 
         let alias = u16::from_le_bytes(buf);
 
@@ -95,28 +101,40 @@ where
 
     /// Set the configured station alias for the device.
     pub(crate) async fn set_station_alias(&self, new_alias: u16) -> Result<(), Error> {
-        fmt::trace!("Set station alias to {:#06x}", new_alias);
+        let new_checksum = {
+            // Read first 14 bytes of EEPROM
+            let mut reader = self.start_at(0x0000, 14);
 
-        // Read first 14 bytes of EEPROM
-        let mut reader = self.start_at(0x0000, 14);
+            // 14 bytes plus two more to write updated checksum to later
+            let mut chunk = [0u8; 14];
 
-        // 14 bytes plus two more to write updated checksum to later
-        let mut chunk = [0u8; 16];
+            reader.read_exact(&mut chunk).await?;
 
-        reader.read_exact(&mut chunk[0..14]).await?;
+            fmt::debug!("--> Read EEPROM start bytes {:02x?}", &chunk);
 
-        chunk[STATION_ALIAS_POSITION].copy_from_slice(&new_alias.to_le_bytes());
+            chunk[STATION_ALIAS_POSITION].copy_from_slice(&new_alias.to_le_bytes());
 
-        let checksum = u16::from(STATION_ALIAS_CRC.checksum(&chunk[0..14]));
+            fmt::debug!("--> After updating alias    {:02x?}", &chunk);
 
-        // Update checksum ready to write back into EEPROM
-        chunk[CHECKSUM_POSITION].copy_from_slice(&checksum.to_le_bytes());
+            u16::from(STATION_ALIAS_CRC.checksum(&chunk))
+        };
 
-        drop(reader);
+        fmt::debug!(
+            "--> Set station alias to {:#06x} with checksum {:#04x}",
+            new_alias,
+            new_checksum
+        );
 
-        let mut writer = self.start_at(0x0000, 16);
+        // Write new alias address
+        self.start_at((STATION_ALIAS_POSITION.start / 2) as u16, 2)
+            .write_all(&new_alias.to_le_bytes())
+            .await?;
 
-        writer.write_all(&chunk).await?;
+        // Write new checksum
+        // Write new alias address
+        self.start_at((CHECKSUM_POSITION.start / 2) as u16, 2)
+            .write_all(&new_checksum.to_le_bytes())
+            .await?;
 
         Ok(())
     }
