@@ -269,6 +269,9 @@ impl SubDevice {
     }
 
     /// Set the alias address for the SubDevice and store it in EEPROM.
+    ///
+    /// The new alias address can be used within EtherCrab immediately, but a power cycle is
+    /// recommended to properly refresh all state.
     pub async fn set_alias_address(
         &mut self,
         maindevice: &MainDevice<'_>,
@@ -361,6 +364,9 @@ where
     }
 
     /// Set the alias address for the SubDevice and store it in EEPROM.
+    ///
+    /// The new alias address can be used within EtherCrab immediately, but a power cycle is
+    /// recommended to properly refresh all state.
     pub async fn set_alias_address(&mut self, new_alias: u16) -> Result<(), Error> {
         SubDevice::set_alias_address(&mut self.state, &self.maindevice, new_alias).await
     }
