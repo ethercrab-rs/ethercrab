@@ -131,7 +131,7 @@ impl<const N: usize> FrameElement<N> {
     }
 
     /// Set the frame's state without checking its current state.
-    unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
+    pub(in crate::pdu_loop) unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
         let fptr = this.as_ptr();
 
         (*addr_of_mut!((*fptr).status)).store(state, Ordering::Release);

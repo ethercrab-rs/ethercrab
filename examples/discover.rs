@@ -1,10 +1,7 @@
 //! Discover devices connected to the network.
 
 use env_logger::Env;
-use ethercrab::{
-    std::{ethercat_now, tx_rx_task},
-    MainDevice, MainDeviceConfig, PduStorage, Timeouts,
-};
+use ethercrab::{std::ethercat_now, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
 use std::{str::FromStr, sync::Arc};
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
@@ -39,7 +36,19 @@ fn main() {
     ));
 
     smol::block_on(async {
-        smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
+        #[cfg(target_os = "windows")]
+        std::thread::spawn(move || {
+            ethercrab::std::tx_rx_task_blocking(
+                &interface,
+                tx,
+                rx,
+                ethercrab::std::TxRxTaskConfig { spinloop: false },
+            )
+            .expect("TX/RX task")
+        });
+        #[cfg(not(target_os = "windows"))]
+        smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
+            .detach();
 
         let group = maindevice
             .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)

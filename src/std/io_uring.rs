@@ -16,7 +16,7 @@ pub fn tx_rx_task_io_uring<'sto>(
     interface: &str,
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
-) -> Result<(), io::Error> {
+) -> Result<(PduTx<'sto>, PduRx<'sto>), io::Error> {
     let mut socket = RawSocketDesc::new(interface)?;
 
     let mtu = socket.interface_mtu()?;
@@ -218,6 +218,12 @@ pub fn tx_rx_task_io_uring<'sto>(
             signal.wait();
 
             fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
+
+            if pdu_tx.should_exit() {
+                fmt::debug!("io_uring TX/RX was asked to exit");
+
+                return Ok((pdu_tx.release(), pdu_rx.release()));
+            }
         } else {
             fmt::trace!(
                 "Buf keys {:?} in flight",
