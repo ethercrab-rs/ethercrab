@@ -1,5 +1,5 @@
 use super::{frame_element::sendable_frame::SendableFrame, storage::PduStorageRef};
-use core::task::Waker;
+use core::{sync::atomic::Ordering, task::Waker};
 
 /// EtherCAT frame transmit adapter.
 pub struct PduTx<'sto> {
@@ -20,6 +20,10 @@ impl<'sto> PduTx<'sto> {
     // NOTE: Mutable so it can only be used in one task.
     pub fn next_sendable_frame(&mut self) -> Option<SendableFrame<'sto>> {
         for idx in 0..self.storage.num_frames {
+            if self.should_exit() {
+                return None;
+            }
+
             let frame = self.storage.frame_at_index(idx);
 
             let Some(sending) = SendableFrame::claim_sending(
@@ -67,5 +71,21 @@ impl<'sto> PduTx<'sto> {
     )]
     pub fn replace_waker(&self, waker: &Waker) {
         self.storage.tx_waker.register(waker);
+    }
+
+    /// Returns `true` if the PDU sender should exit.
+    ///
+    /// This will be triggered by [`MainDevice::release_all`](crate::MainDevice::release_all). When
+    /// giving back ownership of the `PduTx`, be sure to call [`release`](crate::PduTx::release) to
+    /// ensure all internal state is correct before reuse.
+    pub fn should_exit(&self) -> bool {
+        self.storage.exit_flag.load(Ordering::Acquire)
+    }
+
+    /// Reset this object ready for reuse.
+    pub fn release(self) -> Self {
+        self.storage.exit_flag.store(false, Ordering::Relaxed);
+
+        self
     }
 }

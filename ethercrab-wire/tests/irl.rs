@@ -3,7 +3,7 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
 #[test]
 fn sync_manager_channel() {
     #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCrabWireReadWrite)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
     #[wire(bits = 8)]
     pub struct Control {
         #[wire(bits = 2)]
@@ -40,7 +40,7 @@ fn sync_manager_channel() {
 #[test]
 fn pdo() {
     #[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
     #[wire(bytes = 6)]
     pub struct Pdo {
         #[wire(bytes = 2)]
@@ -107,7 +107,7 @@ fn bare_enum() {
 #[test]
 fn arr() {
     #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, EtherCrabWireReadWrite)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
     #[wire(bytes = 4)]
     pub struct Control {
         #[wire(bytes = 4)]
@@ -118,7 +118,7 @@ fn arr() {
 #[test]
 fn enum_u16() {
     #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
     #[repr(u16)]
     pub enum AlStatusCode {
         NoError = 0x0000,
@@ -132,7 +132,7 @@ fn enum_alternatives() {
     #[derive(
         Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite,
     )]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
     #[repr(u16)]
     pub enum Alternatives {
         #[default]
@@ -145,7 +145,7 @@ fn enum_alternatives() {
 #[test]
 fn enum_default_and_catch_all() {
     #[derive(Default, Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
     #[repr(u16)]
     pub enum AlStatusCode {
         NoError = 0x0000,
@@ -159,7 +159,7 @@ fn enum_default_and_catch_all() {
 #[test]
 fn enum_default_only() {
     #[derive(Default, Debug, Copy, Clone, ethercrab_wire::EtherCrabWireReadWrite)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
     #[repr(u16)]
     pub enum AlStatusCode {
         NoError = 0x0000,
@@ -173,7 +173,7 @@ fn heapless_vec() {
     #[derive(
         Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite,
     )]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
     #[repr(u8)]
     pub enum SyncManagerType {
         /// Not used or unknown.

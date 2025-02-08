@@ -22,18 +22,33 @@ use futures_lite::{AsyncRead, AsyncWrite};
 struct TxRxFut<'a> {
     socket: Async<RawSocketDesc>,
     mtu: usize,
-    tx: PduTx<'a>,
-    rx: PduRx<'a>,
+    tx: Option<PduTx<'a>>,
+    rx: Option<PduRx<'a>>,
 }
 
-impl Future for TxRxFut<'_> {
-    type Output = Result<(), Error>;
+impl<'a> Future for TxRxFut<'a> {
+    type Output = Result<(PduTx<'a>, PduRx<'a>), Error>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
-        // Re-register waker to make sure this future is polled again
-        self.tx.replace_waker(ctx.waker());
+        unsafe {
+            // Re-register waker to make sure this future is polled again
+            self.tx
+                .as_mut()
+                .unwrap_unchecked()
+                .replace_waker(ctx.waker());
 
-        while let Some(frame) = self.tx.next_sendable_frame() {
+            if self.tx.as_mut().unwrap_unchecked().should_exit() {
+                fmt::debug!("TX/RX future was asked to exit");
+
+                return Poll::Ready(Ok((
+                    self.tx.take().unwrap().release(),
+                    self.rx.take().unwrap().release(),
+                )));
+            }
+        }
+
+        while let Some(frame) = unsafe { self.tx.as_mut().unwrap_unchecked() }.next_sendable_frame()
+        {
             let res = frame.send_blocking(|data| {
                 match Pin::new(&mut self.socket).poll_write(ctx, data) {
                     Poll::Ready(Ok(bytes_written)) => {
@@ -82,7 +97,8 @@ impl Future for TxRxFut<'_> {
                     fmt::warn!("Received zero bytes");
                 }
 
-                if let Err(e) = self.rx.receive_frame(packet) {
+                if let Err(e) = unsafe { self.rx.as_mut().unwrap_unchecked() }.receive_frame(packet)
+                {
                     fmt::error!("Failed to receive frame: {}", e);
 
                     return Poll::Ready(Err(Error::ReceiveFrame));
@@ -103,7 +119,8 @@ pub fn tx_rx_task<'sto>(
     interface: &str,
     pdu_tx: PduTx<'sto>,
     #[allow(unused_mut)] mut pdu_rx: PduRx<'sto>,
-) -> Result<impl Future<Output = Result<(), Error>> + 'sto, std::io::Error> {
+) -> Result<impl Future<Output = Result<(PduTx<'sto>, PduRx<'sto>), Error>> + 'sto, std::io::Error>
+{
     let mut socket = RawSocketDesc::new(interface)?;
 
     // macOS forcibly sets the source address to the NIC's MAC, so instead of using `MASTER_ADDR`
@@ -124,8 +141,8 @@ pub fn tx_rx_task<'sto>(
     let task = TxRxFut {
         socket: async_socket,
         mtu,
-        tx: pdu_tx,
-        rx: pdu_rx,
+        tx: Some(pdu_tx),
+        rx: Some(pdu_rx),
     };
 
     Ok(task)

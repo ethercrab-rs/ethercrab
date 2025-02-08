@@ -8,9 +8,8 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error,
-    std::{ethercat_now, tx_rx_task},
-    MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
+    error::Error, std::ethercat_now, MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup,
+    Timeouts,
 };
 use std::{
     sync::Arc,
@@ -65,10 +64,21 @@ async fn main() -> Result<(), Error> {
         MainDeviceConfig::default(),
     );
 
+    #[cfg(target_os = "windows")]
+    std::thread::spawn(move || {
+        ethercrab::std::tx_rx_task_blocking(
+            &interface,
+            tx,
+            rx,
+            ethercrab::std::TxRxTaskConfig { spinloop: false },
+        )
+        .expect("TX/RX task")
+    });
     // Network TX/RX should run in a separate thread to avoid timeouts. Tokio doesn't guarantee a
     // separate thread is used but this is good enough for an example. If using `tokio`, make sure
     // the `rt-multi-thread` feature is enabled.
-    tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
+    #[cfg(not(target_os = "windows"))]
+    tokio::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     let maindevice = Arc::new(maindevice);
 

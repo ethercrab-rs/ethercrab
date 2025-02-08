@@ -6,12 +6,6 @@ An EtherCAT MainDevice written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
-### Deprecated
-
-- [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) **Windows:** `tx_rx_task` is replaced
-  with `tx_rx_task_blocking` which is no longer `async`. It must be spawned into its own thread
-  instead of an async task. `tx_rx_task` will be removed in a future release.
-
 ### Added
 
 - [#234](https://github.com/ethercrab-rs/ethercrab/pull/234) Added `SubDeviceRef::sdo_write_array`
@@ -36,6 +30,9 @@ An EtherCAT MainDevice written in Rust.
 - **(breaking)** [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) `SubDeviceIterator` is
   removed. The returned iterator's type signature is now
   `impl Iterator<Item = SubDeviceRef<'group, ...>>`
+- **(breaking)** [#270](https://github.com/ethercrab-rs/ethercrab/pull/270) **Windows:**
+  `tx_rx_task` is removed and replaced with `tx_rx_task_blocking` which is no longer `async`. It
+  must be spawned into its own thread instead of an async task.
 
 ### Changed
 
