@@ -78,6 +78,7 @@ where
     }
 
     /// Read the configured station alias for the device from its EEPROM.
+    #[allow(unused)]
     pub(crate) async fn station_alias(&self) -> Result<u16, Error> {
         let mut reader = self.start_at((STATION_ALIAS_POSITION.start / 2) as u16, 2);
 

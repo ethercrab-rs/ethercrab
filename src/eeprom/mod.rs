@@ -127,7 +127,7 @@ where
     }
 
     #[allow(unused)]
-    pub fn into_inner(self) -> P {
+    pub(crate) fn into_inner(self) -> P {
         self.reader
     }
 }
@@ -494,7 +494,7 @@ mod tests {
             0x09, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, // Etc
             0xcd, 0xab, // Station alias, LE
             0x00, 0x00, 0x00, 0x00, // Reserved bytes
-            0x03, 0x00, // Checksum
+            0x04, 0x00, // Checksum
         ];
 
         // Check what we're going to write is correct

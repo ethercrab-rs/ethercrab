@@ -182,7 +182,10 @@ impl SubDevice {
             .receive::<SupportFlags>(maindevice)
             .await?;
 
-        let alias_address = subdevice_ref.eeprom().station_alias().await?;
+        let alias_address = subdevice_ref
+            .read(RegisterAddress::ConfiguredStationAlias)
+            .receive::<u16>(maindevice)
+            .await?;
 
         let ports = subdevice_ref
             .read(RegisterAddress::DlStatus)
