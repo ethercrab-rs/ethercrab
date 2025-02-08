@@ -8,7 +8,7 @@ use embedded_io_async::Read;
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    internals::{ChunkReader, DeviceEeprom},
+    internals::{DeviceEeprom, EepromRange},
     std::{ethercat_now, tx_rx_task},
     MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
@@ -90,7 +90,7 @@ async fn main() -> Result<(), Error> {
     let mut len_buf = [0u8; 2];
 
     // ETG2020 page 7: 0x003e is the EEPROM address size register in kilobit minus 1 (u16).
-    ChunkReader::new(
+    EepromRange::new(
         DeviceEeprom::new(&maindevice, base_address + index),
         0x003e,
         2,
@@ -105,7 +105,7 @@ async fn main() -> Result<(), Error> {
     log::info!("--> Device EEPROM is {} bytes long", len);
 
     let mut provider =
-        ChunkReader::new(DeviceEeprom::new(&maindevice, base_address + index), 0, len);
+        EepromRange::new(DeviceEeprom::new(&maindevice, base_address + index), 0, len);
 
     let mut buf = vec![0u8; usize::from(len)];
 

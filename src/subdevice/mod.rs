@@ -14,7 +14,7 @@ use crate::{
     },
     command::Command,
     dl_status::DlStatus,
-    eeprom::{device_reader::DeviceEeprom, types::SiiOwner},
+    eeprom::{device_provider::DeviceEeprom, types::SiiOwner},
     error::{Error, MailboxError, PduError},
     fmt,
     mailbox::{MailboxHeader, MailboxType},
@@ -268,6 +268,24 @@ impl SubDevice {
         self.alias_address
     }
 
+    /// Set the alias address for the SubDevice and store it in EEPROM.
+    ///
+    /// The new alias address can be used within EtherCrab immediately, but a power cycle is
+    /// recommended to properly refresh all state.
+    pub async fn set_alias_address(
+        &mut self,
+        maindevice: &MainDevice<'_>,
+        new_alias: u16,
+    ) -> Result<(), Error> {
+        let subdevice_ref = SubDeviceRef::new(maindevice, self.configured_address, ());
+
+        subdevice_ref.eeprom().set_station_alias(new_alias).await?;
+
+        self.alias_address = new_alias;
+
+        Ok(())
+    }
+
     /// Get the network propagation delay of this device in nanoseconds.
     ///
     /// Note that before [`MainDevice::init`](crate::MainDevice::init) is called, this method will
@@ -344,6 +362,14 @@ where
     pub fn set_dc_sync(&mut self, dc_sync: DcSync) {
         self.state.dc_sync = dc_sync;
     }
+
+    /// Set the alias address for the SubDevice and store it in EEPROM.
+    ///
+    /// The new alias address can be used within EtherCrab immediately, but a power cycle is
+    /// recommended to properly refresh all state.
+    pub async fn set_alias_address(&mut self, new_alias: u16) -> Result<(), Error> {
+        SubDevice::set_alias_address(&mut self.state, &self.maindevice, new_alias).await
+    }
 }
 
 impl<'maindevice, S> SubDeviceRef<'maindevice, S>
@@ -374,6 +400,19 @@ where
     /// Get alias address for the SubDevice.
     pub fn alias_address(&self) -> u16 {
         self.state.alias_address
+    }
+
+    /// INTERNAL: Read address from EEPROM.
+    ///
+    /// Useful for testing. Please don't rely on this as a public API item.
+    #[cfg(feature = "__internals")]
+    pub async fn read_alias_address_from_eeprom(
+        &self,
+        maindevice: &MainDevice<'_>,
+    ) -> Result<u16, Error> {
+        let subdevice_ref = SubDeviceRef::new(maindevice, self.configured_address, ());
+
+        subdevice_ref.eeprom().station_alias().await
     }
 
     /// Get the network propagation delay of this device in nanoseconds.
