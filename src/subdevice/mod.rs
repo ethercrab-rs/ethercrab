@@ -901,7 +901,7 @@ where
         if len as u64 > MAX_ENTRIES as u64 {
             return Err(Error::Mailbox(MailboxError::TooLong {
                 address: index,
-                sub_index: 0,
+                sub_index: len + 1,
             }));
         }
 
