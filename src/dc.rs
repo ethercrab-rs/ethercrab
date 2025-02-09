@@ -4,6 +4,8 @@
 //! [Hardware Data Sheet Section
 //! I](https://download.beckhoff.com/download/document/io/ethercat-development-products/ethercat_esc_datasheet_sec1_technology_2i3.pdf).
 
+use core::num::NonZeroU16;
+
 use crate::{
     command::Command,
     error::Error,
@@ -327,7 +329,8 @@ fn assign_parent_relationships(subdevices: &mut [SubDevice]) -> Result<(), Error
                 fmt::unwrap_opt!(parents.iter_mut().find(|parent| parent.index == parent_idx));
 
             fmt::unwrap_opt!(
-                parent.ports.assign_next_downstream_port(subdevice.index),
+                NonZeroU16::new(subdevice.index)
+                    .and_then(|index| parent.ports.assign_next_downstream_port(index)),
                 "no free ports on parent"
             );
         }
