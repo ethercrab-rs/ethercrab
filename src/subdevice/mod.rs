@@ -241,8 +241,8 @@ impl SubDevice {
 
     /// Get the long name of the SubDevice.
     ///
-    /// Using the EK1100 as an example, [`SubDevice::name`] will return `"EK1100"` wherease this
-    /// method will return `"EK1100 EtherCAT-Koppler (2A E-Bus)"`.
+    /// Using the EK1100 as an example, [`SubDevice::name`](fn@crate::SubDevice::name) will return
+    /// `"EK1100"` whereas this method will return `"EK1100 EtherCAT-Koppler (2A E-Bus)"`.
     ///
     /// In the case that a SubDevice does not have a description, this method will return
     /// `Ok(None)`.
@@ -438,6 +438,15 @@ impl<'maindevice> Clone for SubDeviceRef<'maindevice, ()> {
     }
 }
 
+impl<'maindevice, S> DerefMut for SubDeviceRef<'maindevice, S>
+where
+    S: DerefMut<Target = SubDevice>,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.state
+    }
+}
+
 impl<'maindevice, S> SubDeviceRef<'maindevice, S>
 where
     S: DerefMut<Target = SubDevice>,
@@ -459,34 +468,30 @@ where
     }
 }
 
+impl<'maindevice, S> Deref for SubDeviceRef<'maindevice, S>
+where
+    S: Deref<Target = SubDevice>,
+{
+    type Target = SubDevice;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
 impl<'maindevice, S> SubDeviceRef<'maindevice, S>
 where
     S: Deref<Target = SubDevice>,
 {
-    /// Get the human readable name of the SubDevice.
-    pub fn name(&self) -> &str {
-        self.state.name.as_str()
-    }
-
     /// Get the long name of the SubDevice.
     ///
-    /// Using the EK1100 as an example, [`SubDeviceRef::name`] will return `"EK1100"` wherease this
-    /// method will return `"EK1100 EtherCAT-Koppler (2A E-Bus)"`.
+    /// Using the EK1100 as an example, the [`name`](crate::SubDevice::name) method will return
+    /// `"EK1100"` whereas this method will return `"EK1100 EtherCAT-Koppler (2A E-Bus)"`.
     ///
     /// In the case that a SubDevice does not have a description, this method will return
     /// `Ok(None)`.
     pub async fn description(&self) -> Result<Option<heapless::String<128>>, Error> {
         SubDevice::description(&self.state, self.maindevice).await
-    }
-
-    /// Get additional identifying details for the SubDevice.
-    pub fn identity(&self) -> SubDeviceIdentity {
-        self.state.identity
-    }
-
-    /// Get alias address for the SubDevice.
-    pub fn alias_address(&self) -> u16 {
-        self.state.alias_address
     }
 
     /// INTERNAL: Read address from EEPROM.
@@ -500,19 +505,6 @@ where
         let subdevice_ref = SubDeviceRef::new(maindevice, self.configured_address, ());
 
         subdevice_ref.eeprom().station_alias().await
-    }
-
-    /// Get the network propagation delay of this device in nanoseconds.
-    ///
-    /// Note that before [`MainDevice::init`](crate::MainDevice::init) is called, this method will
-    /// always return `0`.
-    pub fn propagation_delay(&self) -> u32 {
-        self.state.propagation_delay
-    }
-
-    /// Distributed Clock (DC) support.
-    pub fn dc_support(&self) -> DcSupport {
-        self.state.dc_support
     }
 
     pub(crate) fn dc_sync(&self) -> DcSync {
@@ -1103,11 +1095,6 @@ impl<'maindevice, S> SubDeviceRef<'maindevice, S> {
             configured_address,
             state,
         }
-    }
-
-    /// Get the configured station address of the SubDevice.
-    pub fn configured_address(&self) -> u16 {
-        self.configured_address
     }
 
     /// Get the sub device status.
