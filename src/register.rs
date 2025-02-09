@@ -217,7 +217,7 @@ impl From<RegisterAddress> for u16 {
 
 impl RegisterAddress {
     /// FMMU by index.
-    pub fn fmmu(index: u8) -> Self {
+    pub const fn fmmu(index: u8) -> Self {
         match index {
             0 => Self::Fmmu0,
             1 => Self::Fmmu1,
@@ -235,12 +235,12 @@ impl RegisterAddress {
             13 => Self::Fmmu13,
             14 => Self::Fmmu14,
             15 => Self::Fmmu15,
-            index => unreachable!("Bad FMMU index {}", index),
+            _index => unreachable!(),
         }
     }
 
     /// Sync manager by index.
-    pub fn sync_manager(index: u8) -> Self {
+    pub const fn sync_manager(index: u8) -> Self {
         match index {
             0 => Self::Sm0,
             1 => Self::Sm1,
@@ -258,7 +258,7 @@ impl RegisterAddress {
             13 => Self::Sm13,
             14 => Self::Sm14,
             15 => Self::Sm15,
-            index => unreachable!("Bad SM index {}", index),
+            _index => unreachable!(),
         }
     }
 
