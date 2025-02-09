@@ -289,9 +289,7 @@ mod tests {
 
         let frame_ptr = NonNull::from(&frame);
 
-        assert!(
-            !unsafe { FrameElement::<0>::first_pdu_is(frame_ptr.cast(), 0) }
-        );
+        assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr.cast(), 0) });
     }
 
     #[test]
@@ -313,9 +311,7 @@ mod tests {
 
         unsafe { FrameElement::<0>::set_first_pdu(frame_ptr.cast(), 0) }
 
-        assert!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr.cast(), 0) }
-        );
+        assert!(unsafe { FrameElement::<0>::first_pdu_is(frame_ptr.cast(), 0) });
     }
 
     #[test]
@@ -354,24 +350,12 @@ mod tests {
 
         // ---
 
-        assert!(
-            !unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 0) }
-        );
-        assert!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 123) }
-        );
-        assert!(
-            !unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 0xff) }
-        );
+        assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 0) });
+        assert!(unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 123) });
+        assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 0xff) });
 
-        assert!(
-            !unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0) }
-        );
-        assert!(
-            !unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 123) }
-        );
-        assert!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0xff) }
-        );
+        assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0) });
+        assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 123) });
+        assert!(unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0xff) });
     }
 }
