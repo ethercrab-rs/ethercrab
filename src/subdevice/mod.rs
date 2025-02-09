@@ -159,24 +159,22 @@ impl SubDevice {
         // Make sure master has access to SubDevice EEPROM
         subdevice_ref.set_eeprom_mode(SiiOwner::Master).await?;
 
-        let identity = subdevice_ref.eeprom().identity().await?;
+        let eeprom = subdevice_ref.eeprom();
 
-        let name = subdevice_ref
-            .eeprom()
-            .device_name()
-            .await?
-            .unwrap_or_else(|| {
-                let mut s = heapless::String::new();
+        let identity = eeprom.identity().await?;
 
-                fmt::unwrap!(write!(
-                    s,
-                    "manu. {:#010x}, device {:#010x}, serial {:#010x}",
-                    identity.vendor_id, identity.product_id, identity.serial
-                )
-                .map_err(|_| ()));
+        let name = eeprom.device_name().await?.unwrap_or_else(|| {
+            let mut s = heapless::String::new();
 
-                s
-            });
+            fmt::unwrap!(write!(
+                s,
+                "manu. {:#010x}, device {:#010x}, serial {:#010x}",
+                identity.vendor_id, identity.product_id, identity.serial
+            )
+            .map_err(|_| ()));
+
+            s
+        });
 
         let flags = subdevice_ref
             .read(RegisterAddress::SupportFlags)

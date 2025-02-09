@@ -108,8 +108,10 @@ where
         group_start_address: u32,
         direction: PdoDirection,
     ) -> Result<PdiOffset, Error> {
-        let sync_managers = self.eeprom().sync_managers().await?;
-        let fmmu_usage = self.eeprom().fmmus().await?;
+        let eeprom = self.eeprom();
+
+        let sync_managers = eeprom.sync_managers().await?;
+        let fmmu_usage = eeprom.fmmus().await?;
 
         let state = self.state().await?;
 
@@ -208,10 +210,12 @@ where
 
     /// Configure SM0 and SM1 for mailbox communication.
     async fn configure_mailbox_sms(&mut self, sync_managers: &[SyncManager]) -> Result<(), Error> {
-        // Read default mailbox configuration from SubDevice information area
-        let mailbox_config = self.eeprom().mailbox_config().await?;
+        let eeprom = self.eeprom();
 
-        let general = self.eeprom().general().await?;
+        // Read default mailbox configuration from SubDevice information area
+        let mailbox_config = eeprom.mailbox_config().await?;
+
+        let general = eeprom.general().await?;
 
         fmt::trace!(
             "SubDevice {:#06x} Mailbox configuration: {:#?}",
@@ -500,16 +504,18 @@ where
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
+        let eeprom = self.eeprom();
+
         let pdos = match direction {
             PdoDirection::MasterRead => {
-                let read_pdos = self.eeprom().maindevice_read_pdos().await?;
+                let read_pdos = eeprom.maindevice_read_pdos().await?;
 
                 fmt::trace!("SubDevice inputs PDOs {:#?}", read_pdos);
 
                 read_pdos
             }
             PdoDirection::MasterWrite => {
-                let write_pdos = self.eeprom().maindevice_write_pdos().await?;
+                let write_pdos = eeprom.maindevice_write_pdos().await?;
 
                 fmt::trace!("SubDevice outputs PDOs {:#?}", write_pdos);
 
@@ -517,7 +523,7 @@ where
             }
         };
 
-        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
+        let fmmu_sm_mappings = eeprom.fmmu_mappings().await?;
 
         let start_offset = *offset;
         // let mut total_bit_len = 0;
