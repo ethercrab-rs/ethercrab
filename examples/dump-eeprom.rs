@@ -1,17 +1,12 @@
 //! Dump the EEPROM of a given sub device to stdout.
-//!
-//! Requires the unstable `__internals` feature to be enabled.
 
-use std::io::Write;
-
-use embedded_io_async::Read;
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    internals::{DeviceEeprom, EepromRange},
     std::{ethercat_now, tx_rx_task},
     MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
+use std::io::Write;
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
 const MAX_SUBDEVICES: usize = 16;
@@ -78,38 +73,29 @@ async fn main() -> Result<(), Error> {
         .expect("Could not find device for given index");
 
     log::info!(
-        "Dumping EEPROM for device index {}: {:#06x} {} {}...",
+        "Dumping EEPROM for device index {}: {:#06x} {} {} {}...",
         index,
         subdevice.configured_address(),
         subdevice.name(),
+        subdevice
+            .description()
+            .await?
+            .map(|d| d.as_str().to_string())
+            .unwrap_or(String::new()),
         subdevice.identity()
     );
 
-    let base_address = 0x1000;
+    let eeprom_len = subdevice
+        .eeprom_size(&maindevice)
+        .await
+        .expect("Could not read EEPROM len");
 
-    let mut len_buf = [0u8; 2];
+    log::info!("--> Device EEPROM is {} bytes long", eeprom_len);
 
-    // ETG2020 page 7: 0x003e is the EEPROM address size register in kilobit minus 1 (u16).
-    EepromRange::new(
-        DeviceEeprom::new(&maindevice, base_address + index),
-        0x003e,
-        2,
-    )
-    .read_exact(&mut len_buf)
-    .await
-    .expect("Could not read EEPROM len");
+    let mut buf = vec![0u8; eeprom_len];
 
-    // Kilobits to bits to bytes, and undoing the offset
-    let len = ((u16::from_le_bytes(len_buf) + 1) * 1024) / 8;
-
-    log::info!("--> Device EEPROM is {} bytes long", len);
-
-    let mut provider =
-        EepromRange::new(DeviceEeprom::new(&maindevice, base_address + index), 0, len);
-
-    let mut buf = vec![0u8; usize::from(len)];
-
-    provider.read_exact(&mut buf).await.expect("Read");
+    // Read entire EEPROM into buffer
+    subdevice.eeprom_read_raw(&maindevice, 0, &mut buf).await?;
 
     std::io::stdout().write_all(&buf[..]).expect("Stdout write");
 
