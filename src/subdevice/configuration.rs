@@ -194,7 +194,7 @@ where
         };
 
         self.write(RegisterAddress::sync_manager(sync_manager_index))
-            .send(self.maindevice, sm_config)
+            .send(self.maindevice, &sm_config)
             .await?;
 
         fmt::debug!(
@@ -481,7 +481,7 @@ where
         };
 
         self.write(RegisterAddress::fmmu(fmmu_index as u8))
-            .send(self.maindevice, fmmu_config)
+            .send(self.maindevice, &fmmu_config)
             .await?;
 
         fmt::debug!(
