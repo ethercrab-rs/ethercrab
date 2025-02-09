@@ -72,7 +72,7 @@ impl PdiOffset {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PdiSegment {
     pub bytes: Range<usize>,
-    pub bit_len: usize,
+    // pub bit_len: usize,
 }
 
 impl PdiSegment {
@@ -87,12 +87,8 @@ impl PdiSegment {
 
 impl core::fmt::Display for PdiSegment {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if self.bit_len > 0 {
-            write!(
-                f,
-                "{:#010x}..{:#010x} ({} bits)",
-                self.bytes.start, self.bytes.end, self.bit_len
-            )
+        if !self.bytes.is_empty() {
+            write!(f, "{:#010x}..{:#010x}", self.bytes.start, self.bytes.end,)
         } else {
             f.write_str("(empty)")
         }

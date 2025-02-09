@@ -309,7 +309,7 @@ where
         //     .await?;
 
         let start_offset = *global_offset;
-        let mut total_bit_len = 0;
+        // let mut total_bit_len = 0;
 
         for (sync_manager_index, sm_type) in self
             .state
@@ -431,11 +431,11 @@ where
                 .await?;
             }
 
-            total_bit_len += sm_bit_len;
+            // total_bit_len += sm_bit_len;
         }
 
         Ok(PdiSegment {
-            bit_len: total_bit_len.into(),
+            // bit_len: total_bit_len.into(),
             bytes: start_offset.up_to(*global_offset),
         })
     }
@@ -520,7 +520,7 @@ where
         let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
 
         let start_offset = *offset;
-        let mut total_bit_len = 0;
+        // let mut total_bit_len = 0;
 
         let (sm_type, fmmu_type) = direction.filter_terms();
 
@@ -537,7 +537,7 @@ where
                 .map(|pdo| pdo.bit_len)
                 .sum();
 
-            total_bit_len += bit_len;
+            // total_bit_len += bit_len;
 
             // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
             // to looking through FMMU usage list and picking out the appropriate kind
@@ -578,7 +578,7 @@ where
         }
 
         Ok(PdiSegment {
-            bit_len: total_bit_len.into(),
+            // bit_len: total_bit_len.into(),
             bytes: start_offset.up_to(*offset),
         })
     }
