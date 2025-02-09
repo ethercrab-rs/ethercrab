@@ -30,7 +30,7 @@ where
     }
 
     /// Start a reader at the given address in words, returning at most `len` bytes.
-    fn start_at(&self, word_addr: u16, len_bytes: u16) -> EepromRange<P> {
+    pub(crate) fn start_at(&self, word_addr: u16, len_bytes: u16) -> EepromRange<P> {
         EepromRange::new(self.provider.clone(), word_addr, len_bytes / 2)
     }
 
@@ -149,6 +149,20 @@ where
         );
 
         self.find_string(general.order_string_idx).await
+    }
+
+    /// Get the EEPROM size in bytes.
+    pub(crate) async fn size(&self) -> Result<usize, Error> {
+        let mut buf = u16::buffer();
+
+        // ETG2010 page 7: 0x003e is the EEPROM address size register in kilobit minus 1 (u16).
+        let mut reader = self.start_at(0x003e, 2);
+
+        reader.read_exact(&mut buf).await?;
+
+        let len = ((u16::from_le_bytes(buf) + 1) * 1024) / 8;
+
+        Ok(usize::from(len))
     }
 
     /// Get the long name of the device.
@@ -1063,5 +1077,24 @@ mod tests {
         // TODO: Current file test harness loses written data when calling `start_at` because it's
         // cloned, so we can't do a proper assertion. This would be nice to fix in the future. At
         // the moment the test in `eeprom::mod::write_station_alias` covers this case.
+    }
+
+    #[tokio::test]
+    async fn get_size_bytes() {
+        crate::test_logger();
+
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/el2828.hex"
+        )));
+
+        assert_eq!(e.size().await, Ok(2048));
+
+        // ---
+
+        let e = SubDeviceEeprom::new(EepromFile::new(include_bytes!(
+            "../../dumps/eeprom/el2889.hex"
+        )));
+
+        assert_eq!(e.size().await, Ok(2048));
     }
 }
