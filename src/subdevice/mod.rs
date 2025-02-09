@@ -315,11 +315,15 @@ impl SubDevice {
 
     /// Write a value to the SubDevice's EEPROM at the given **word** address.
     ///
+    /// <div class="warning">
+    ///
+    /// **Warning:** This method is safe in the Rust sense, but can cause **EEPROM corruption** if
+    /// mishandled. Be **very** careful when writing data to a SubDevice's EEPROM.
+    ///
+    /// </div>
+    ///
     /// **The given start address is in words NOT bytes. To address the EEPROM using a byte address,
     /// divide the given byte address by two.**
-    ///
-    /// **Warning:** This method is safe in the Rust sense, but can cause **corruption** to a
-    /// subdevice's EEPROM. Be **very** careful when writing data to a SubDevice EEPROM.
     pub async fn eeprom_write_dangerously<T>(
         &self,
         maindevice: &MainDevice<'_>,
