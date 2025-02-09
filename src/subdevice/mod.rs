@@ -859,9 +859,13 @@ where
     }
 
     #[cfg(not(feature = "std"))]
-    /// Read all sub-indices of a SDO array object.
+    /// Read all sub-indices of the given SDO.
     ///
-    /// Example:
+    /// This method will return an error if the number of sub-indices in the SDO is greater than 
+    /// `MAX_ENTRIES.
+    ///
+    /// # Examples
+    ///
     /// ```rust,no_run
     /// # use ethercrab::{
     /// #     error::Error, MainDevice, MainDeviceConfig, PduStorage, Timeouts, std::ethercat_now
@@ -896,20 +900,19 @@ where
     where
         T: EtherCrabWireReadSized,
     {
-        let len: u8 = self.sdo_read(index, 0).await?;
+        let len = self.sdo_read::<u8>(index, 0).await?;
 
-        if len as u64 > MAX_ENTRIES as u64 {
+        if usize::from(len) > MAX_ENTRIES {
             return Err(Error::Mailbox(MailboxError::TooLong {
                 address: index,
                 sub_index: len + 1,
             }));
         }
 
-        // witch capacity
         let mut values = heapless::Vec::new();
 
         for i in 1..=len {
-            let value: T = self.sdo_read(index, i).await?;
+            let value = self.sdo_read::<T>(index, i).await?;
             values.push(value).map_err(|_| Error::Internal)?;
         }
 
