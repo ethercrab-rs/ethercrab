@@ -1,4 +1,6 @@
-use super::{frame_header::EthercatFrameHeader, pdu_rx::PduRx, pdu_tx::PduTx};
+use super::{
+    frame_element::FrameState, frame_header::EthercatFrameHeader, pdu_rx::PduRx, pdu_tx::PduTx,
+};
 use crate::ethernet::EthernetFrame;
 use crate::{
     error::{Error, PduError},
@@ -43,6 +45,10 @@ pub struct PduStorage<const N: usize, const DATA: usize> {
     is_split: AtomicBool,
     /// A waker used to wake up the TX task when a new frame is ready to be sent.
     pub(in crate::pdu_loop) tx_waker: AtomicWaker,
+    /// A flag used to signal that the TX/RX loop should exit.
+    ///
+    /// Used by [`MainDevice::release`](crate::MainDevice::release) et al.
+    exit_flag: AtomicBool,
 }
 
 unsafe impl<const N: usize, const DATA: usize> Sync for PduStorage<N, DATA> {}
@@ -118,6 +124,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             pdu_idx: AtomicU8::new(0),
             is_split: AtomicBool::new(false),
             tx_waker: AtomicWaker::new(),
+            exit_flag: AtomicBool::new(false),
         }
     }
 
@@ -156,6 +163,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
             frame_idx: &self.frame_idx,
             pdu_idx: &self.pdu_idx,
             tx_waker: &self.tx_waker,
+            exit_flag: &self.exit_flag,
             _lifetime: PhantomData,
         }
     }
@@ -171,10 +179,25 @@ pub(crate) struct PduStorageRef<'sto> {
     frame_idx: &'sto AtomicU8,
     pub pdu_idx: &'sto AtomicU8,
     pub tx_waker: &'sto AtomicWaker,
+    pub exit_flag: &'sto AtomicBool,
     _lifetime: PhantomData<&'sto ()>,
 }
 
 impl<'sto> PduStorageRef<'sto> {
+    /// Reset all state ready for a fresh MainDevice or other reuse.
+    pub(crate) fn reset(&mut self) {
+        // NOTE: Don't reset waker so this `PduStorageRef` can still wake an existing TX/RX handler
+
+        self.frame_idx.store(0, Ordering::Relaxed);
+        self.pdu_idx.store(0, Ordering::Relaxed);
+
+        for i in 0..self.num_frames {
+            let frame = self.frame_at_index(i);
+
+            unsafe { FrameElement::set_state(frame, FrameState::None) };
+        }
+    }
+
     /// Allocate a PDU frame with the given command and data length.
     pub(in crate::pdu_loop) fn alloc_frame(&self) -> Result<CreatedFrame<'sto>, Error> {
         // Find next frame that is not currently in use.
@@ -331,6 +354,33 @@ mod tests {
         let storage: PduStorage<NUM_FRAMES, DATA> = PduStorage::new();
         let s = storage.as_ref();
 
+        for _ in 0..NUM_FRAMES {
+            assert!(s.alloc_frame().is_ok());
+        }
+
+        assert!(s.alloc_frame().is_err());
+    }
+
+    #[test]
+    fn reset() {
+        crate::test_logger();
+
+        const NUM_FRAMES: usize = 16;
+        const DATA: usize = PduStorage::element_size(128);
+
+        let storage: PduStorage<NUM_FRAMES, DATA> = PduStorage::new();
+        let mut s = storage.as_ref();
+
+        for _ in 0..NUM_FRAMES {
+            assert!(s.alloc_frame().is_ok());
+        }
+
+        // No more frames
+        assert!(s.alloc_frame().is_err());
+
+        s.reset();
+
+        // We should be able to allocate every frame again
         for _ in 0..NUM_FRAMES {
             assert!(s.alloc_frame().is_ok());
         }

@@ -121,6 +121,7 @@ fn cia402_control_word() {
 }
 
 #[test]
+#[allow(unused)]
 fn sized() {
     #[derive(ethercrab_wire::EtherCrabWireRead)]
     #[wire(bytes = 9)]

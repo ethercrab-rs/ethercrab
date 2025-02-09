@@ -9,7 +9,7 @@ use embassy_stm32::{
     bind_interrupts,
     eth::{self, generic_smi::GenericSMI, Ethernet, PacketQueue},
     gpio::{Level, Output, Speed},
-    peripherals::{ETH, PB7},
+    peripherals::ETH,
     time::Hertz,
     Config,
 };
@@ -83,7 +83,7 @@ async fn tx_rx_task(
 }
 
 #[embassy_executor::task]
-async fn blinky(mut led: Output<'static, PB7>) -> ! {
+async fn blinky(mut led: Output<'static>) -> ! {
     loop {
         led.set_high();
         Timer::after(Duration::from_millis(250)).await;
@@ -99,6 +99,7 @@ async fn main(spawner: Spawner) {
 
     {
         use embassy_stm32::rcc::*;
+
         config.rcc.hse = Some(Hse {
             freq: Hertz(8_000_000),
             mode: HseMode::Bypass,
@@ -121,10 +122,10 @@ async fn main(spawner: Spawner) {
 
     defmt::info!("Hello World!");
 
-    let mac_addr = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
-
     let led = Output::new(p.PB7, Level::High, Speed::Low);
     defmt::unwrap!(spawner.spawn(blinky(led)));
+
+    let mac_addr = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
     let (tx, rx, pdu_loop) = defmt::unwrap!(PDU_STORAGE.try_split());
 
@@ -176,7 +177,7 @@ async fn main(spawner: Spawner) {
 
     defmt::info!("Discovered {} SubDevices", group.len());
 
-    let mut group = defmt::unwrap!(group.into_op(&maindevice).await);
+    let group = defmt::unwrap!(group.into_op(&maindevice).await);
 
     for subdevice in group.iter(&maindevice) {
         let io = subdevice.io_raw();
@@ -194,7 +195,7 @@ async fn main(spawner: Spawner) {
         defmt::unwrap!(group.tx_rx(&maindevice).await);
 
         // Increment every output byte for every SubDevice by one
-        for mut subdevice in group.iter(&maindevice) {
+        for subdevice in group.iter(&maindevice) {
             let mut o = subdevice.outputs_raw_mut();
 
             for byte in o.iter_mut() {

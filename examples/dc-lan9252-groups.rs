@@ -4,7 +4,7 @@
 use env_logger::Env;
 use ethercrab::{
     error::Error,
-    std::{ethercat_now, tx_rx_task},
+    std::ethercat_now,
     subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
     DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, SubDeviceGroup, Timeouts,
 };
@@ -48,7 +48,18 @@ fn main() -> Result<(), Error> {
     let mut slow_tick_interval = smol::Timer::interval(SLOW_TICK_INTERVAL);
     let mut fast_tick_interval = smol::Timer::interval(SLOW_TICK_INTERVAL);
 
-    smol::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
+    #[cfg(target_os = "windows")]
+    std::thread::spawn(move || {
+        ethercrab::std::tx_rx_task_blocking(
+            &interface,
+            tx,
+            rx,
+            ethercrab::std::TxRxTaskConfig { spinloop: false },
+        )
+        .expect("TX/RX task")
+    });
+    #[cfg(not(target_os = "windows"))]
+    smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
     #[cfg(target_os = "linux")]
     thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Crossplatform(

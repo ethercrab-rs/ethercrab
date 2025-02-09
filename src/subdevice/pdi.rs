@@ -99,7 +99,7 @@ impl<'group, const MAX_PDI: usize> Deref for SubDevicePdi<'group, MAX_PDI> {
     type Target = SubDevice;
 
     fn deref(&self) -> &Self::Target {
-        &self.subdevice
+        self.subdevice
     }
 }
 

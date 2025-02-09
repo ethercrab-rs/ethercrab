@@ -4,6 +4,7 @@ use core::{fmt, time::Duration};
 
 /// DC sync configuration for a SubDevice.
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DcSync {
     /// DC sync is disabled for this SubDevice.
     #[default]

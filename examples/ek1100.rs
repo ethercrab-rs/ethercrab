@@ -16,9 +16,7 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error,
-    std::{ethercat_now, tx_rx_task},
-    MainDevice, MainDeviceConfig, PduStorage, Timeouts,
+    error::Error, std::ethercat_now, MainDevice, MainDeviceConfig, PduStorage, Timeouts,
 };
 use std::{
     sync::{
@@ -66,7 +64,18 @@ async fn main() -> Result<(), Error> {
         MainDeviceConfig::default(),
     ));
 
-    tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
+    #[cfg(target_os = "windows")]
+    std::thread::spawn(move || {
+        ethercrab::std::tx_rx_task_blocking(
+            &interface,
+            tx,
+            rx,
+            ethercrab::std::TxRxTaskConfig { spinloop: false },
+        )
+        .expect("TX/RX task")
+    });
+    #[cfg(not(target_os = "windows"))]
+    tokio::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
     let group = maindevice
         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)

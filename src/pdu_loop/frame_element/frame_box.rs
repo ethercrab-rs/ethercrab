@@ -61,7 +61,7 @@ impl<'sto> FrameBox<'sto> {
         unsafe {
             addr_of_mut!((*self.frame.as_ptr()).waker).write(AtomicWaker::new());
 
-            (&*addr_of_mut!((*self.frame.as_ptr()).first_pdu))
+            (*addr_of_mut!((*self.frame.as_ptr()).first_pdu))
                 .store(FIRST_PDU_EMPTY, Ordering::Relaxed);
 
             addr_of_mut!((*self.frame.as_ptr()).pdu_payload_len).write(0);

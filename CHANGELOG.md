@@ -6,12 +6,6 @@ An EtherCAT MainDevice written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
-### Deprecated
-
-- [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) **Windows:** `tx_rx_task` is replaced
-  with `tx_rx_task_blocking` which is no longer `async`. It must be spawned into its own thread
-  instead of an async task. `tx_rx_task` will be removed in a future release.
-
 ### Added
 
 - [#234](https://github.com/ethercrab-rs/ethercrab/pull/234) Added `SubDeviceRef::sdo_write_array`
@@ -26,6 +20,8 @@ An EtherCAT MainDevice written in Rust.
 - **(breaking)** [#269](https://github.com/ethercrab-rs/ethercrab/pull/269)
   `SubDeviceGroup::tx_rx_*` methods now read the state (PRE-OP, OP, etc) of each SubDevice in the
   group, along with methods on `TxRxResponse` to test for various state conditions.
+- [#273](https://github.com/ethercrab-rs/ethercrab/pull/273) Added `SubDevice::set_alias_address`
+  and `SubDeviceRef::set_alias_address` to write an alias address to a SubDevice's EEPROM.
 
 ### Removed
 
@@ -34,6 +30,9 @@ An EtherCAT MainDevice written in Rust.
 - **(breaking)** [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) `SubDeviceIterator` is
   removed. The returned iterator's type signature is now
   `impl Iterator<Item = SubDeviceRef<'group, ...>>`
+- **(breaking)** [#270](https://github.com/ethercrab-rs/ethercrab/pull/270) **Windows:**
+  `tx_rx_task` is removed and replaced with `tx_rx_task_blocking` which is no longer `async`. It
+  must be spawned into its own thread instead of an async task.
 
 ### Changed
 
@@ -534,8 +533,8 @@ An EtherCAT MainDevice written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.3...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.3...HEAD
 [0.5.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.2...ethercrab-v0.5.3
 [0.5.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.1...ethercrab-v0.5.2
 [0.5.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...ethercrab-v0.5.1

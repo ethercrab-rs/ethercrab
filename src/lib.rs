@@ -145,6 +145,7 @@
 #![deny(unused_import_braces)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
+#![deny(clippy::missing_safety_doc)]
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/ethercrab-rs/ethercrab/5185a914f49abad8b0f71a1b3b689500077e7c2b/ethercrab-logo-docsrs.svg"
 )]

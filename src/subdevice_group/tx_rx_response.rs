@@ -144,8 +144,8 @@ mod tests {
             extra: (),
         };
 
-        assert_eq!(all_op.is_in_state(SubDeviceState::Op), true);
-        assert_eq!(some_op.is_in_state(SubDeviceState::Op), false);
+        assert!(all_op.is_in_state(SubDeviceState::Op));
+        assert!(!some_op.is_in_state(SubDeviceState::Op));
     }
 
     #[test]
@@ -164,6 +164,6 @@ mod tests {
             extra: (),
         };
 
-        assert_eq!(res.is_in_state(SubDeviceState::SafeOp), false);
+        assert!(!res.is_in_state(SubDeviceState::SafeOp));
     }
 }

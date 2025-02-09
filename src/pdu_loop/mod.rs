@@ -8,7 +8,7 @@ mod pdu_tx;
 pub mod storage;
 
 use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
-use core::time::Duration;
+use core::{sync::atomic::Ordering, time::Duration};
 pub use pdu_rx::PduRx;
 // NOTE: Allowing unused because `ReceiveAction` isn't used when `xdp` is not enabled.
 #[allow(unused)]
@@ -61,6 +61,23 @@ impl<'sto> PduLoop<'sto> {
         assert!(storage.num_frames <= u8::MAX as usize);
 
         Self { storage }
+    }
+
+    /// Reset all internal state so the PDU loop can be reused.
+    ///
+    /// This is useful when calling [`MainDevice::release`](crate::MainDevice::release) or
+    /// [`MainDevice::release_all`](crate::MainDevice::release_all) to reset the PDU loop ready for
+    /// another `MainDevice` to be created.
+    pub fn reset(&mut self) {
+        self.storage.reset();
+    }
+
+    /// Reset all internal state and tell the TX/RX task to stop.
+    pub(crate) fn reset_all(&mut self) {
+        self.storage.exit_flag.store(true, Ordering::Release);
+        self.wake_sender();
+
+        self.storage.reset();
     }
 
     #[cfg(test)]
@@ -215,7 +232,7 @@ mod tests {
             let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 
             let handle = frame
-                .push_pdu(Command::fpwr(0x5678, 0x1234).into(), &data, None)
+                .push_pdu(Command::fpwr(0x5678, 0x1234).into(), data, None)
                 .expect("Push PDU");
 
             let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
@@ -363,7 +380,7 @@ mod tests {
             let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
             let handle = frame
-                .push_pdu(Command::fpwr(0x6789, 0x1234).into(), &data_bytes, None)
+                .push_pdu(Command::fpwr(0x6789, 0x1234).into(), data_bytes, None)
                 .expect("Push PDU");
 
             let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
@@ -438,7 +455,7 @@ mod tests {
         let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
         frame
-            .push_pdu(Command::fpwr(0x6789, 0x1234).into(), &data_bytes, None)
+            .push_pdu(Command::fpwr(0x6789, 0x1234).into(), data_bytes, None)
             .expect("Push PDU");
 
         let frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));

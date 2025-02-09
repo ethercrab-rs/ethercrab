@@ -533,6 +533,62 @@ impl<'sto> MainDevice<'sto> {
 
         frame.await?.first_pdu(handle)
     }
+
+    /// Release the [`PduLoop`] storage **without** resetting it.
+    ///
+    /// To reset the released `PduLoop`, call [`PduLoop::reset`]. This method does not release the
+    /// network TX/RX handles created by e.g.
+    /// [`PduStorage::try_split`](crate::PduStorage::try_split) to allow a new `MainDevice` to be
+    /// created while reusing an existing network interface. To release the TX and RX handles as
+    /// well, call [`release_all`](MainDevice::release_all).
+    ///
+    /// The application should ensure that no EtherCAT data is in flight when this method is called,
+    /// i.e. all frames must have either returned to the MainDevice or timed out. If a frame is
+    /// received after this method has been called, the [`PduRx`](crate::PduRx) instance handling
+    /// that frame will most likely produce an error as the underlying storage for that frame has
+    /// been freed.
+    ///
+    /// # Safety
+    ///
+    /// Any groups configured using the previous `MainDevice` instance **must not** be used again
+    /// with any `MainDevice`s created with the `PduLoop` returned by this method. The group state
+    /// (PDI addresses, offsets, sizes, etc) are only valid with the `MainDevice` the group was
+    /// initialised with.
+    pub unsafe fn release(mut self) -> PduLoop<'sto> {
+        // Clear out any in-use frames.
+        self.pdu_loop.reset();
+
+        self.pdu_loop
+    }
+
+    /// Release the [`PduLoop`] storage and signal the TX/RX handles to release their resources.
+    ///
+    /// This method is useful to close down a TX/RX loop and the network interface associated with
+    /// it.
+    ///
+    /// To reuse the TX/RX loop and only free the `PduLoop` for reuse in another `MainDevice`
+    /// instance, call [`release`](MainDevice::release).
+    ///
+    /// The application should ensure that no EtherCAT data is in flight when this method is called,
+    /// i.e. all frames must have either returned to the MainDevice or timed out. If a frame is
+    /// received after this method has been called, the [`PduRx`](crate::PduRx) instance handling
+    /// that frame will most likely produce an error as the underlying storage for that frame has
+    /// been freed.
+    ///
+    /// # Safety
+    ///
+    /// Any groups configured using the previous `MainDevice` instance **must not** be used again
+    /// with any `MainDevice`s created with the `PduLoop` returned by this method. The group state
+    /// (PDI addresses, offsets, sizes, etc) are only valid with the `MainDevice` the group was
+    /// initialised with.
+    pub unsafe fn release_all(mut self) -> PduLoop<'sto> {
+        self.pdu_loop.reset_all();
+
+        // Wake the TX/RX loop up so it can check for the stop flag
+        self.pdu_loop.wake_sender();
+
+        self.pdu_loop
+    }
 }
 
 fn blank_mem_iter(
