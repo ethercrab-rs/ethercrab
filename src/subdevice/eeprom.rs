@@ -298,7 +298,7 @@ where
             }
 
             pdos.push(pdo).map_err(|_| {
-                fmt::error!("Too many PDOs, max 16");
+                fmt::error!("Too many PDOs, max 64");
 
                 Error::Capacity(Item::Pdo)
             })?;
