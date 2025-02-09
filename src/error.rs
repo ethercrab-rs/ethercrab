@@ -177,6 +177,8 @@ pub enum Item {
     FmmuEx,
     /// A user-defined SubDevice group.
     Group,
+    /// A SDO sub-index.
+    SdoSubIndex,
 }
 
 /// Low-level PDU (Process Data Unit) error.

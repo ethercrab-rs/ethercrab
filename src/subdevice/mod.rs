@@ -15,7 +15,7 @@ use crate::{
     command::Command,
     dl_status::DlStatus,
     eeprom::{device_reader::DeviceEeprom, types::SiiOwner},
-    error::{Error, MailboxError, PduError},
+    error::{Error, Item, MailboxError, PduError},
     fmt,
     mailbox::{MailboxHeader, MailboxType},
     maindevice::MainDevice,
@@ -771,57 +771,9 @@ where
         Ok(())
     }
 
-    #[cfg(feature = "std")]
-    /// Read all sub-indices of a SDO array object.
-    ///
-    /// Example:
-    /// ```rust,no_run
-    /// # use ethercrab::{
-    /// #     error::Error, MainDevice, MainDeviceConfig, PduStorage, Timeouts, std::ethercat_now
-    /// # };
-    /// # static PDU_STORAGE: PduStorage<8, 32> = PduStorage::new();
-    /// # let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
-    /// # let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
-    /// # async {
-    /// # let mut group = maindevice
-    /// #     .init_single_group::<8, 8>(ethercat_now)
-    /// #     .await
-    /// #     .expect("Init");
-    /// let subdevice = group.subdevice(&maindevice, 0).expect("No subdevice!");
-    ///
-    /// // Reading the TxPDO assignment
-    /// // This is equivalent to...
-    /// let values = subdevice.sdo_read_array::<u16>(0x1c13).await?;
-    ///
-    /// // ... this
-    /// // let len: u8 = subdevice.sdo_read(0x1c13, 0).await?;
-    /// // let value1: u16 = subdevice.sdo_read(0x1c13, 1).await?;
-    /// // let value2: u16 = subdevice.sdo_read(0x1c13, 2).await?;
-    /// // let value3: u16 = subdevice.sdo_read(0x1c13, 3).await?;
-    ///
-    /// # Ok::<(), ethercrab::error::Error>(())
-    /// # };
-    /// ```
-    pub async fn sdo_read_array<T>(&self, index: u16) -> Result<Vec<T>, Error>
-    where
-        T: EtherCrabWireReadSized,
-    {
-        let len: u8 = self.sdo_read(index, 0).await?;
-
-        let mut values = Vec::with_capacity(usize::from(len));
-
-        for i in 1..=len {
-            let value: T = self.sdo_read(index, i).await?;
-            values.push(value);
-        }
-
-        Ok(values)
-    }
-
-    #[cfg(not(feature = "std"))]
     /// Read all sub-indices of the given SDO.
     ///
-    /// This method will return an error if the number of sub-indices in the SDO is greater than 
+    /// This method will return an error if the number of sub-indices in the SDO is greater than
     /// `MAX_ENTRIES.
     ///
     /// # Examples
@@ -863,10 +815,7 @@ where
         let len = self.sdo_read::<u8>(index, 0).await?;
 
         if usize::from(len) > MAX_ENTRIES {
-            return Err(Error::Mailbox(MailboxError::TooLong {
-                address: index,
-                sub_index: len + 1,
-            }));
+            return Err(Error::Capacity(Item::SdoSubIndex));
         }
 
         let mut values = heapless::Vec::new();
