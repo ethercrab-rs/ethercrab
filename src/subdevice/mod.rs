@@ -62,9 +62,10 @@ pub struct SubDevice {
     // NOTE: Default length in SOEM is 40 bytes
     pub(crate) name: heapless::String<64>,
 
-    pub(crate) flags: SupportFlags,
-
+    // pub(crate) flags: SupportFlags,
     pub(crate) ports: Ports,
+
+    pub(crate) dc_support: DcSupport,
 
     /// Distributed Clock latch receive time.
     pub(crate) dc_receive_time: u64,
@@ -101,7 +102,7 @@ impl PartialEq for SubDevice {
             && self.config == other.config
             && self.identity == other.identity
             && self.name == other.name
-            && self.flags == other.flags
+            && self.dc_support == other.dc_support
             && self.ports == other.ports
             && self.dc_receive_time == other.dc_receive_time
             && self.index == other.index
@@ -123,7 +124,7 @@ impl Clone for SubDevice {
             config: self.config.clone(),
             identity: self.identity,
             name: self.name.clone(),
-            flags: self.flags.clone(),
+            dc_support: self.dc_support.clone(),
             ports: self.ports,
             dc_receive_time: self.dc_receive_time,
             index: self.index,
@@ -182,6 +183,8 @@ impl SubDevice {
             .receive::<SupportFlags>(maindevice)
             .await?;
 
+        fmt::debug!("--> Support flags {:?}", flags);
+
         let alias_address = subdevice_ref
             .read(RegisterAddress::ConfiguredStationAlias)
             .receive::<u16>(maindevice)
@@ -222,7 +225,7 @@ impl SubDevice {
             dc_receive_time: 0,
             identity,
             name,
-            flags,
+            dc_support: flags.dc_support(),
             ports,
             dc_sync: DcSync::Disabled,
             // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
@@ -296,7 +299,7 @@ impl SubDevice {
 
     /// Distributed Clock (DC) support.
     pub fn dc_support(&self) -> DcSupport {
-        self.flags.dc_support()
+        self.dc_support
     }
 
     pub(crate) fn io_segments(&self) -> &IoRanges {
@@ -425,7 +428,7 @@ where
 
     /// Distributed Clock (DC) support.
     pub fn dc_support(&self) -> DcSupport {
-        self.state.flags.dc_support()
+        self.state.dc_support
     }
 
     pub(crate) fn dc_sync(&self) -> DcSync {

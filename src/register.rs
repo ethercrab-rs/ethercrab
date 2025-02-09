@@ -365,9 +365,11 @@ impl core::fmt::Display for SupportFlags {
 }
 
 /// SubDevice DC support status.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DcSupport {
     /// No support at all.
+    #[default]
     None,
     /// This device can be used as the DC reference, but cannot be configured for `SYNC`/`LATCH`.
     RefOnly,
