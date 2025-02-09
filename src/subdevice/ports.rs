@@ -1,5 +1,5 @@
 use crate::{fmt, SubDevice};
-use core::fmt::Debug;
+use core::{fmt::Debug, num::NonZeroU16};
 
 /// Flags showing which ports are active or not on the SubDevice.
 #[derive(Default, Debug, PartialEq, Eq, Copy, Clone)]
@@ -10,7 +10,7 @@ pub struct Port {
     /// The EtherCAT port number, ordered as 0 -> 3 -> 1 -> 2.
     pub number: u8,
     /// Holds the index of the downstream SubDevice this port is connected to.
-    pub downstream_to: Option<u16>,
+    pub downstream_to: Option<NonZeroU16>,
 }
 
 impl Port {
@@ -117,10 +117,10 @@ impl Ports {
         d1: Option<u16>,
         d2: Option<u16>,
     ) -> Self {
-        self.0[0].downstream_to = d0;
-        self.0[1].downstream_to = d3;
-        self.0[2].downstream_to = d1;
-        self.0[3].downstream_to = d2;
+        self.0[0].downstream_to = d0.map(|idx| NonZeroU16::new(idx).unwrap());
+        self.0[1].downstream_to = d3.map(|idx| NonZeroU16::new(idx).unwrap());
+        self.0[2].downstream_to = d1.map(|idx| NonZeroU16::new(idx).unwrap());
+        self.0[3].downstream_to = d2.map(|idx| NonZeroU16::new(idx).unwrap());
 
         *self
     }
@@ -164,7 +164,10 @@ impl Ports {
     }
 
     /// Link a downstream device to the current device using the next open port from the entry port.
-    pub fn assign_next_downstream_port(&mut self, downstream_subdevice_index: u16) -> Option<u8> {
+    pub fn assign_next_downstream_port(
+        &mut self,
+        downstream_subdevice_index: NonZeroU16,
+    ) -> Option<u8> {
         let entry_port = self.entry_port();
 
         let next_port = self.next_assignable_port(&entry_port)?;
@@ -177,7 +180,7 @@ impl Ports {
     /// Find the port assigned to the given SubDevice.
     pub fn port_assigned_to(&self, subdevice: &SubDevice) -> Option<&Port> {
         self.active_ports()
-            .find(|port| port.downstream_to == Some(subdevice.index))
+            .find(|port| port.downstream_to.map(|idx| idx.get()) == Some(subdevice.index))
     }
 
     pub fn topology(&self) -> Topology {
@@ -349,11 +352,11 @@ pub mod tests {
             }
         );
 
-        let port_number = ports.assign_next_downstream_port(1);
+        let port_number = ports.assign_next_downstream_port(NonZeroU16::new(1).unwrap());
 
         assert_eq!(port_number, Some(3), "assign SubDevice idx 1");
 
-        let port_number = ports.assign_next_downstream_port(2);
+        let port_number = ports.assign_next_downstream_port(NonZeroU16::new(2).unwrap());
 
         assert_eq!(port_number, Some(1), "assign SubDevice idx 2");
 
@@ -371,13 +374,13 @@ pub mod tests {
                     active: true,
                     dc_receive_time: ENTRY_RECEIVE + 100,
                     number: 3,
-                    downstream_to: Some(1),
+                    downstream_to: Some(NonZeroU16::new(1).unwrap()),
                 },
                 Port {
                     active: true,
                     dc_receive_time: ENTRY_RECEIVE + 200,
                     number: 1,
-                    downstream_to: Some(2),
+                    downstream_to: Some(NonZeroU16::new(2).unwrap()),
                 },
                 Port {
                     active: false,

@@ -108,8 +108,10 @@ where
         group_start_address: u32,
         direction: PdoDirection,
     ) -> Result<PdiOffset, Error> {
-        let sync_managers = self.eeprom().sync_managers().await?;
-        let fmmu_usage = self.eeprom().fmmus().await?;
+        let eeprom = self.eeprom();
+
+        let sync_managers = eeprom.sync_managers().await?;
+        let fmmu_usage = eeprom.fmmus().await?;
 
         let state = self.state().await?;
 
@@ -192,7 +194,7 @@ where
         };
 
         self.write(RegisterAddress::sync_manager(sync_manager_index))
-            .send(self.maindevice, sm_config)
+            .send(self.maindevice, &sm_config)
             .await?;
 
         fmt::debug!(
@@ -208,10 +210,12 @@ where
 
     /// Configure SM0 and SM1 for mailbox communication.
     async fn configure_mailbox_sms(&mut self, sync_managers: &[SyncManager]) -> Result<(), Error> {
-        // Read default mailbox configuration from SubDevice information area
-        let mailbox_config = self.eeprom().mailbox_config().await?;
+        let eeprom = self.eeprom();
 
-        let general = self.eeprom().general().await?;
+        // Read default mailbox configuration from SubDevice information area
+        let mailbox_config = eeprom.mailbox_config().await?;
+
+        let general = eeprom.general().await?;
 
         fmt::trace!(
             "SubDevice {:#06x} Mailbox configuration: {:#?}",
@@ -309,7 +313,7 @@ where
         //     .await?;
 
         let start_offset = *global_offset;
-        let mut total_bit_len = 0;
+        // let mut total_bit_len = 0;
 
         for (sync_manager_index, sm_type) in self
             .state
@@ -431,11 +435,11 @@ where
                 .await?;
             }
 
-            total_bit_len += sm_bit_len;
+            // total_bit_len += sm_bit_len;
         }
 
         Ok(PdiSegment {
-            bit_len: total_bit_len.into(),
+            // bit_len: total_bit_len.into(),
             bytes: start_offset.up_to(*global_offset),
         })
     }
@@ -477,7 +481,7 @@ where
         };
 
         self.write(RegisterAddress::fmmu(fmmu_index as u8))
-            .send(self.maindevice, fmmu_config)
+            .send(self.maindevice, &fmmu_config)
             .await?;
 
         fmt::debug!(
@@ -500,16 +504,18 @@ where
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
+        let eeprom = self.eeprom();
+
         let pdos = match direction {
             PdoDirection::MasterRead => {
-                let read_pdos = self.eeprom().maindevice_read_pdos().await?;
+                let read_pdos = eeprom.maindevice_read_pdos().await?;
 
                 fmt::trace!("SubDevice inputs PDOs {:#?}", read_pdos);
 
                 read_pdos
             }
             PdoDirection::MasterWrite => {
-                let write_pdos = self.eeprom().maindevice_write_pdos().await?;
+                let write_pdos = eeprom.maindevice_write_pdos().await?;
 
                 fmt::trace!("SubDevice outputs PDOs {:#?}", write_pdos);
 
@@ -517,10 +523,10 @@ where
             }
         };
 
-        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
+        let fmmu_sm_mappings = eeprom.fmmu_mappings().await?;
 
         let start_offset = *offset;
-        let mut total_bit_len = 0;
+        // let mut total_bit_len = 0;
 
         let (sm_type, fmmu_type) = direction.filter_terms();
 
@@ -537,7 +543,7 @@ where
                 .map(|pdo| pdo.bit_len)
                 .sum();
 
-            total_bit_len += bit_len;
+            // total_bit_len += bit_len;
 
             // Look for FMMU index using FMMU_EX section in EEPROM. If it's empty, default
             // to looking through FMMU usage list and picking out the appropriate kind
@@ -578,7 +584,7 @@ where
         }
 
         Ok(PdiSegment {
-            bit_len: total_bit_len.into(),
+            // bit_len: total_bit_len.into(),
             bytes: start_offset.up_to(*offset),
         })
     }

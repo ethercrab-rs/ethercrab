@@ -4,6 +4,8 @@
 //! [Hardware Data Sheet Section
 //! I](https://download.beckhoff.com/download/document/io/ethercat-development-products/ethercat_esc_datasheet_sec1_technology_2i3.pdf).
 
+use core::num::NonZeroU16;
+
 use crate::{
     command::Command,
     error::Error,
@@ -21,7 +23,7 @@ async fn latch_dc_times(
 ) -> Result<(), Error> {
     let num_subdevices_with_dc: usize = subdevices
         .iter()
-        .filter(|subdevice| subdevice.flags.dc_supported)
+        .filter(|subdevice| subdevice.dc_support().any())
         .count();
 
     // Latch receive times into all ports of all SubDevices.
@@ -33,7 +35,7 @@ async fn latch_dc_times(
     // Read receive times for all SubDevices and store on SubDevice structs
     for subdevice in subdevices
         .iter_mut()
-        .filter(|subdevice| subdevice.flags.dc_supported)
+        .filter(|subdevice| subdevice.dc_support().any())
     {
         let sl = SubDeviceRef::new(maindevice, subdevice.configured_address(), ());
 
@@ -314,10 +316,10 @@ fn assign_parent_relationships(subdevices: &mut [SubDevice]) -> Result<(), Error
         subdevice.parent_index = find_subdevice_parent(parents, subdevice)?;
 
         fmt::debug!(
-            "SubDevice {:#06x} {} {}",
+            "SubDevice {:#06x} {} DC support {:?}",
             subdevice.configured_address(),
             subdevice.name,
-            subdevice.flags
+            subdevice.dc_support()
         );
 
         // If this SubDevice has a parent, find it, then assign the parent's next open port to this
@@ -327,12 +329,13 @@ fn assign_parent_relationships(subdevices: &mut [SubDevice]) -> Result<(), Error
                 fmt::unwrap_opt!(parents.iter_mut().find(|parent| parent.index == parent_idx));
 
             fmt::unwrap_opt!(
-                parent.ports.assign_next_downstream_port(subdevice.index),
+                NonZeroU16::new(subdevice.index)
+                    .and_then(|index| parent.ports.assign_next_downstream_port(index)),
                 "no free ports on parent"
             );
         }
 
-        if subdevice.flags.dc_supported {
+        if subdevice.dc_support().any() {
             configure_subdevice_offsets(subdevice, parents, &mut delay_accum);
         } else {
             fmt::trace!(
@@ -424,7 +427,7 @@ pub(crate) async fn configure_dc<'subdevices>(
 
     let first_dc_subdevice = subdevices
         .iter()
-        .find(|subdevice| subdevice.flags.dc_supported);
+        .find(|subdevice| subdevice.dc_support().any());
 
     if let Some(first_dc_subdevice) = first_dc_subdevice.as_ref() {
         let now_nanos = now();
@@ -480,8 +483,8 @@ pub(crate) async fn run_dc_static_sync(
 mod tests {
     use super::*;
     use crate::{
-        register::SupportFlags,
         subdevice::ports::{tests::make_ports, Port, Ports},
+        DcSupport,
     };
 
     // A SubDevice in the middle of the chain
@@ -506,11 +509,6 @@ mod tests {
             configured_address: 0x0000,
             ports: Ports::default(),
             name: "Default".try_into().unwrap(),
-            flags: SupportFlags::default(),
-            dc_receive_time: 0,
-            index: 0,
-            parent_index: None,
-            propagation_delay: 0,
             ..Default::default()
         };
 
@@ -565,11 +563,6 @@ mod tests {
             configured_address: 0x0000,
             ports: Ports::default(),
             name: "Default".try_into().unwrap(),
-            flags: SupportFlags::default(),
-            dc_receive_time: 0,
-            index: 0,
-            parent_index: None,
-            propagation_delay: 0,
             ..Default::default()
         };
 
@@ -640,11 +633,6 @@ mod tests {
             configured_address: 0x1000,
             ports: Ports::default(),
             name: "Default".try_into().unwrap(),
-            flags: SupportFlags::default(),
-            dc_receive_time: 0,
-            index: 0,
-            parent_index: None,
-            propagation_delay: 0,
             ..Default::default()
         };
 
@@ -699,11 +687,6 @@ mod tests {
             configured_address: 0x1000,
             ports,
             name: "Default".try_into().unwrap(),
-            flags: SupportFlags::default(),
-            dc_receive_time: 0,
-            index: 0,
-            parent_index: None,
-            propagation_delay: 0,
             ..Default::default()
         };
 
@@ -747,10 +730,7 @@ mod tests {
             ports: Ports::default(),
             dc_receive_time: 0,
             index: 0,
-            flags: SupportFlags {
-                dc_supported: true,
-                ..SupportFlags::default()
-            },
+            dc_support: DcSupport::Bits64,
             ..SubDevice::default()
         };
 
@@ -857,10 +837,7 @@ mod tests {
             ports: Ports::default(),
             dc_receive_time: 0,
             index: 0,
-            flags: SupportFlags {
-                dc_supported: true,
-                ..SupportFlags::default()
-            },
+            dc_support: DcSupport::Bits64,
             ..SubDevice::default()
         };
 

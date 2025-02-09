@@ -3,7 +3,9 @@ use crate::{
     al_status_code::AlStatusCode,
     command::Command,
     dc,
+    eeprom::types::SyncManager,
     error::{Error, Item},
+    fmmu::Fmmu,
     fmt,
     pdi::PdiOffset,
     pdu_loop::{PduLoop, ReceivedPdu},
@@ -16,10 +18,10 @@ use crate::{
 };
 use core::{
     cell::UnsafeCell,
-    ops::Range,
+    mem::size_of,
     sync::atomic::{AtomicU16, Ordering},
 };
-use ethercrab_wire::EtherCrabWireWrite;
+use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite};
 use heapless::FnvIndexMap;
 
 /// The main EtherCAT controller.
@@ -63,23 +65,17 @@ impl<'sto> MainDevice<'sto> {
     }
 
     /// Write zeroes to every SubDevice's memory in chunks.
-    async fn blank_memory(&self, start: impl Into<u16>, len: u16) -> Result<(), Error> {
-        let step = self.pdu_loop.max_frame_data();
+    async fn blank_memory<const LEN: usize>(&self, start: impl Into<u16>) -> Result<(), Error> {
+        let start = start.into();
 
-        for chunk in blank_mem_iter(start.into(), len, step) {
-            let chunk_len = chunk.end - chunk.start;
-
-            self.pdu_loop
-                .pdu_broadcast_zeros(
-                    chunk.start,
-                    chunk_len,
-                    self.timeouts.pdu,
-                    self.config.retry_behaviour.retry_count(),
-                )
-                .await?;
-        }
-
-        Ok(())
+        self.pdu_loop
+            .pdu_broadcast_zeros(
+                start,
+                LEN as u16,
+                self.timeouts.pdu,
+                self.config.retry_behaviour.retry_count(),
+            )
+            .await
     }
 
     // FIXME: When adding a powered on SubDevice to the network, something breaks. Maybe need to reset
@@ -94,65 +90,38 @@ impl<'sto> MainDevice<'sto> {
             .await?;
 
         // Clear FMMUs - see ETG1000.4 Table 57
-        // Some devices aren't able to blank the entire region.
+        // Some devices aren't able to blank the entire region so we loop through all offsets.
         for fmmu_idx in 0..16 {
-            self.blank_memory(RegisterAddress::fmmu(fmmu_idx), 0x10)
+            self.blank_memory::<{ Fmmu::PACKED_LEN }>(RegisterAddress::fmmu(fmmu_idx))
                 .await?;
         }
 
         // Clear SMs - see ETG1000.4 Table 59
-        // Some devices aren't able to blank the entire region.
+        // Some devices aren't able to blank the entire region so we loop through all offsets.
         for sm_idx in 0..16 {
-            self.blank_memory(RegisterAddress::sync_manager(sm_idx), 0x8)
+            self.blank_memory::<{ SyncManager::PACKED_LEN }>(RegisterAddress::sync_manager(sm_idx))
                 .await?;
         }
 
         // Set DC control back to EtherCAT
-        self.blank_memory(
-            RegisterAddress::DcCyclicUnitControl,
-            core::mem::size_of::<u8>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSystemTime,
-            core::mem::size_of::<u64>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSystemTimeOffset,
-            core::mem::size_of::<u64>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSystemTimeTransmissionDelay,
-            core::mem::size_of::<u32>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSystemTimeDifference,
-            core::mem::size_of::<u32>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSyncActive,
-            core::mem::size_of::<u8>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSyncStartTime,
-            core::mem::size_of::<u32>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSync0CycleTime,
-            core::mem::size_of::<u32>() as u16,
-        )
-        .await?;
-        self.blank_memory(
-            RegisterAddress::DcSync1CycleTime,
-            core::mem::size_of::<u32>() as u16,
-        )
-        .await?;
+        self.blank_memory::<{ size_of::<u8>() }>(RegisterAddress::DcCyclicUnitControl)
+            .await?;
+        self.blank_memory::<{ size_of::<u64>() }>(RegisterAddress::DcSystemTime)
+            .await?;
+        self.blank_memory::<{ size_of::<u64>() }>(RegisterAddress::DcSystemTimeOffset)
+            .await?;
+        self.blank_memory::<{ size_of::<u32>() }>(RegisterAddress::DcSystemTimeTransmissionDelay)
+            .await?;
+        self.blank_memory::<{ size_of::<u32>() }>(RegisterAddress::DcSystemTimeDifference)
+            .await?;
+        self.blank_memory::<{ size_of::<u8>() }>(RegisterAddress::DcSyncActive)
+            .await?;
+        self.blank_memory::<{ size_of::<u32>() }>(RegisterAddress::DcSyncStartTime)
+            .await?;
+        self.blank_memory::<{ size_of::<u32>() }>(RegisterAddress::DcSync0CycleTime)
+            .await?;
+        self.blank_memory::<{ size_of::<u32>() }>(RegisterAddress::DcSync1CycleTime)
+            .await?;
 
         // ETG1020 Section 22.2.4 defines these initial parameters. The data types are defined in
         // ETG1000.4 Table 60 – Distributed clock local time parameter, helpfully named "Control
@@ -588,66 +557,5 @@ impl<'sto> MainDevice<'sto> {
         self.pdu_loop.wake_sender();
 
         self.pdu_loop
-    }
-}
-
-fn blank_mem_iter(
-    start: impl Into<u16>,
-    mut len: u16,
-    step: usize,
-) -> impl Iterator<Item = Range<u16>> + Clone {
-    let start: u16 = start.into();
-    let mut range = (start..(start + len)).step_by(step.max(1));
-
-    core::iter::from_fn(move || {
-        if len == 0 || step == 0 {
-            return None;
-        }
-
-        range.next().map(|chunk_start| {
-            let chunk_len = (step as u16).min(len);
-
-            len -= chunk_len;
-
-            chunk_start..(chunk_start + chunk_len)
-        })
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn blank_mem_fuzz() {
-        heckcheck::check(|(start, len, step): (u16, u16, u16)| {
-            // For this test, anything that overflows we ignore. This is allowed to panic in prod
-            // IMO.
-            if u32::from(start) + u32::from(len) > u32::from(u16::MAX) {
-                return Ok(());
-            }
-
-            // Ensure we add another iteration for a partial final step
-            let iterations = len.checked_div(step).unwrap_or(0) + (len % step).min(1);
-
-            let step = usize::from(step);
-
-            let end = start + len;
-
-            let it = blank_mem_iter(start, len, step);
-
-            assert_eq!(it.clone().count(), usize::from(iterations));
-            assert_eq!(
-                it.last().map(|l| l.end),
-                if iterations == 0 { None } else { Some(end) },
-                "start {} end {} len {}",
-                start,
-                end,
-                len
-            );
-
-            Ok(())
-        });
     }
 }

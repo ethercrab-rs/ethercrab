@@ -228,11 +228,11 @@ mod tests {
         sd.config.io = IoRanges {
             input: PdiSegment {
                 bytes: 0..2,
-                bit_len: 16,
+                // bit_len: 16,
             },
             output: PdiSegment {
                 bytes: 2..4,
-                bit_len: 16,
+                // bit_len: 16,
             },
         };
 
