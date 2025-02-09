@@ -134,8 +134,8 @@ async fn main() -> Result<(), Error> {
             .expect("Could not recover TX/RX hadnles");
 
         // Handles are ready for reuse
-        assert_eq!(tx.should_exit(), false);
-        assert_eq!(rx.should_exit(), false);
+        assert!(!tx.should_exit());
+        assert!(!rx.should_exit());
     }
 
     Ok(())
@@ -146,13 +146,13 @@ async fn process_loop(maindevice: &MainDevice<'_>) {
         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
         .await
         .expect("Init")
-        .into_op(&maindevice)
+        .into_op(maindevice)
         .await
         .expect("PRE-OP -> OP");
 
     log::info!("Discovered {} SubDevices", group.len());
 
-    for subdevice in group.iter(&maindevice) {
+    for subdevice in group.iter(maindevice) {
         let io = subdevice.io_raw();
 
         log::info!(
@@ -168,10 +168,10 @@ async fn process_loop(maindevice: &MainDevice<'_>) {
     tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     for _ in 0..u8::MAX {
-        group.tx_rx(&maindevice).await.expect("TX/RX");
+        group.tx_rx(maindevice).await.expect("TX/RX");
 
         // Increment every output byte for every SubDevice by one
-        for subdevice in group.iter(&maindevice) {
+        for subdevice in group.iter(maindevice) {
             let mut o = subdevice.outputs_raw_mut();
 
             for byte in o.iter_mut() {
@@ -183,13 +183,13 @@ async fn process_loop(maindevice: &MainDevice<'_>) {
     }
 
     let _ = group
-        .into_safe_op(&maindevice)
+        .into_safe_op(maindevice)
         .await
         .expect("OP -> SAFE-OP")
-        .into_pre_op(&maindevice)
+        .into_pre_op(maindevice)
         .await
         .expect("SAFE-OP -> PRE-OP")
-        .into_init(&maindevice)
+        .into_init(maindevice)
         .await
         .expect("PRE-OP -> INIT");
 }

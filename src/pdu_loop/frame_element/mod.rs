@@ -289,10 +289,7 @@ mod tests {
 
         let frame_ptr = NonNull::from(&frame);
 
-        assert_eq!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr.cast(), 0) },
-            false
-        );
+        assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr.cast(), 0) });
     }
 
     #[test]
@@ -314,10 +311,7 @@ mod tests {
 
         unsafe { FrameElement::<0>::set_first_pdu(frame_ptr.cast(), 0) }
 
-        assert_eq!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr.cast(), 0) },
-            true
-        );
+        assert!(unsafe { FrameElement::<0>::first_pdu_is(frame_ptr.cast(), 0) });
     }
 
     #[test]
@@ -356,30 +350,12 @@ mod tests {
 
         // ---
 
-        assert_eq!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 0) },
-            false
-        );
-        assert_eq!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 123) },
-            true
-        );
-        assert_eq!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 0xff) },
-            false
-        );
+        assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 0) });
+        assert!(unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 123) });
+        assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_0.cast(), 0xff) });
 
-        assert_eq!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0) },
-            false
-        );
-        assert_eq!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 123) },
-            false
-        );
-        assert_eq!(
-            unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0xff) },
-            true
-        );
+        assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0) });
+        assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 123) });
+        assert!(unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0xff) });
     }
 }
