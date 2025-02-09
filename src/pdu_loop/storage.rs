@@ -79,6 +79,12 @@ impl PduStorage<0, 0> {
     }
 }
 
+impl<const N: usize, const DATA: usize> Default for PduStorage<N, DATA> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
     /// Create a new `PduStorage` instance.
     ///

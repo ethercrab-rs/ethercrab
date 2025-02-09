@@ -232,7 +232,7 @@ mod tests {
             let mut frame = pdu_loop.storage.alloc_frame().expect("Frame alloc");
 
             let handle = frame
-                .push_pdu(Command::fpwr(0x5678, 0x1234).into(), &data, None)
+                .push_pdu(Command::fpwr(0x5678, 0x1234).into(), data, None)
                 .expect("Push PDU");
 
             let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
@@ -380,7 +380,7 @@ mod tests {
             let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
             let handle = frame
-                .push_pdu(Command::fpwr(0x6789, 0x1234).into(), &data_bytes, None)
+                .push_pdu(Command::fpwr(0x6789, 0x1234).into(), data_bytes, None)
                 .expect("Push PDU");
 
             let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
@@ -455,7 +455,7 @@ mod tests {
         let mut frame = pdu_loop.storage.alloc_frame().unwrap();
 
         frame
-            .push_pdu(Command::fpwr(0x6789, 0x1234).into(), &data_bytes, None)
+            .push_pdu(Command::fpwr(0x6789, 0x1234).into(), data_bytes, None)
             .expect("Push PDU");
 
         let frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));

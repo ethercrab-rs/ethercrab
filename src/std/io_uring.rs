@@ -198,7 +198,7 @@ pub fn tx_rx_task_io_uring<'sto>(
 
                 pdu_rx
                     .receive_frame(&frame)
-                    .map_err(|e| io::Error::other(e))?;
+                    .map_err(io::Error::other)?;
 
                 fmt::trace!("Received frame in {} ns", received.elapsed().as_nanos());
             }

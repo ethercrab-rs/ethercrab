@@ -368,7 +368,7 @@ where
     /// The new alias address can be used within EtherCrab immediately, but a power cycle is
     /// recommended to properly refresh all state.
     pub async fn set_alias_address(&mut self, new_alias: u16) -> Result<(), Error> {
-        SubDevice::set_alias_address(&mut self.state, &self.maindevice, new_alias).await
+        SubDevice::set_alias_address(&mut self.state, self.maindevice, new_alias).await
     }
 }
 
@@ -389,7 +389,7 @@ where
     /// In the case that a SubDevice does not have a description, this method will return
     /// `Ok(None)`.
     pub async fn description(&self) -> Result<Option<heapless::String<128>>, Error> {
-        SubDevice::description(&self.state, &self.maindevice).await
+        SubDevice::description(&self.state, self.maindevice).await
     }
 
     /// Get additional identifying details for the SubDevice.
@@ -666,10 +666,10 @@ where
                 decoded.extra_data
             );
 
-            return Err(Error::Mailbox(MailboxError::Emergency {
+            Err(Error::Mailbox(MailboxError::Emergency {
                 error_code: decoded.error_code,
                 error_register: decoded.error_register,
-            }));
+            }))
         } else if headers.command == CoeCommand::Abort {
             let code = CoeAbortCode::Incompatible;
 

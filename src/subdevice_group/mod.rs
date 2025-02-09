@@ -1020,7 +1020,7 @@ where
 
                 let mut pdus = received.into_pdu_iter();
 
-                if let Some(_) = dc_handle {
+                if dc_handle.is_some() {
                     let dc_pdu = pdus.next().ok_or(Error::Internal)?;
 
                     time =
@@ -1274,7 +1274,7 @@ where
 
             let mut pdus = received.into_pdu_iter();
 
-            if let Some(_) = dc_handle {
+            if dc_handle.is_some() {
                 let dc_pdu = pdus.next().ok_or(Error::Internal)?;
 
                 time = dc_pdu.and_then(|rx| u64::unpack_from_slice(&rx).map_err(Error::from))?;
@@ -1465,14 +1465,12 @@ mod tests {
 
         let mut frame = pdu_loop.alloc_frame().expect("No frame");
 
-        assert_eq!(
+        assert!(
             frame.can_push_pdu_payload(AlControl::PACKED_LEN),
-            true,
             "should be possible to push one status check PDU"
         );
-        assert_eq!(
-            frame.can_push_pdu_payload(AlControl::PACKED_LEN + 12),
-            false,
+        assert!(
+            !frame.can_push_pdu_payload(AlControl::PACKED_LEN + 12),
             "test requires the frame to fit exactly one status check PDU"
         );
 
@@ -1488,7 +1486,7 @@ mod tests {
         assert_eq!(rest.count(), 0);
         assert_eq!(num_pushed, single_sd.len());
 
-        assert_eq!(frame.can_push_pdu_payload(1), false, "frame should be full");
+        assert!(!frame.can_push_pdu_payload(1), "frame should be full");
     }
 
     #[test]
@@ -1529,9 +1527,8 @@ mod tests {
         assert_eq!(num_pushed, 2, "frame should hold two SD status checks");
         assert_eq!(rest.count(), 1, "frame can only hold two SD status checks");
 
-        assert_eq!(
+        assert!(
             frame.can_push_pdu_payload(SPACE_LEFT),
-            true,
             "frame has {} bytes available",
             SPACE_LEFT
         );
