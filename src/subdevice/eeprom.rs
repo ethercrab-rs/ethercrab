@@ -284,7 +284,6 @@ where
         while let Some(mut pdo) = cat.next().await? {
             fmt::debug!("Discovered PDO:\n{:#?}", pdo);
 
-            // TODO: Return some kind of iterator so we don't have to have a fixed length vec
             for idx in 0..pdo.num_entries {
                 let Some(entry) = cat.next_sub_item::<PdoEntry>().await? else {
                     fmt::error!("Failed to read PDO entry {}", idx);
@@ -481,8 +480,8 @@ mod tests {
         eeprom::{
             file_provider::EepromFile,
             types::{
-                CoeDetails, Flags, MailboxProtocols, PdoFlags, PortStatus, PortStatuses,
-                SyncManagerEnable, SyncManagerType,
+                CoeDetails, Flags, MailboxProtocols, PortStatus, PortStatuses, SyncManagerEnable,
+                SyncManagerType,
             },
         },
         sync_manager_channel::{Control, Direction, OperationMode},
@@ -736,7 +735,7 @@ mod tests {
             "../../dumps/eeprom/el2828.hex"
         )));
 
-        fn pdo(index: u16, name_string_idx: u8, _entry_idx: u16) -> Pdo {
+        fn pdo(_index: u16, _name_string_idx: u8, _entry_idx: u16) -> Pdo {
             // let entry_defaults = PdoEntry {
             //     index: 0x7000,
             //     sub_index: 1,
@@ -747,14 +746,12 @@ mod tests {
             // };
 
             let pdo_defaults = Pdo {
-                index: 0x1600,
-                name_string_idx: 5,
-
+                // index: 0x1600,
+                // name_string_idx: 5,
                 num_entries: 1,
                 sync_manager: 0,
-                dc_sync: 0,
-                flags: PdoFlags::PDO_MANDATORY | PdoFlags::PDO_FIXED_CONTENT,
-
+                // dc_sync: 0,
+                // flags: PdoFlags::PDO_MANDATORY | PdoFlags::PDO_FIXED_CONTENT,
                 bit_len: 1,
                 // entries: heapless::Vec::from_slice(&[PdoEntry {
                 //     index: 0x7000,
@@ -764,9 +761,8 @@ mod tests {
             };
 
             Pdo {
-                index,
-                name_string_idx,
-
+                // index,
+                // name_string_idx,
                 bit_len: 1,
                 // entries: heapless::Vec::from_slice(&[PdoEntry {
                 //     index: entry_idx,

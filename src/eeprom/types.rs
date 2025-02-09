@@ -1,6 +1,6 @@
 //! SubDevice Information Interface (SII).
 
-use crate::{base_data_types::PrimitiveDataType, coe::SdoExpedited, sync_manager_channel};
+use crate::{coe::SdoExpedited, sync_manager_channel};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
@@ -541,23 +541,23 @@ pub enum SyncManagerType {
 impl SdoExpedited for SyncManagerType {}
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
-#[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 8)]
 pub struct Pdo {
-    #[wire(bytes = 2)]
-    pub(crate) index: u16,
-    #[wire(bytes = 1)]
+    // #[wire(bytes = 2)]
+    // pub(crate) index: u16,
+    #[wire(bytes = 1, pre_skip_bytes = 2)]
     pub(crate) num_entries: u8,
-    #[wire(bytes = 1)]
+    #[wire(bytes = 1, post_skip_bytes = 4)]
     pub(crate) sync_manager: u8,
-    #[wire(bytes = 1)]
-    pub(crate) dc_sync: u8,
-    /// Index into EEPROM Strings section for PDO name.
-    #[wire(bytes = 1)]
-    pub(crate) name_string_idx: u8,
-    #[wire(bytes = 2)]
-    pub(crate) flags: PdoFlags,
+    // #[wire(bytes = 1)]
+    // pub(crate) dc_sync: u8,
+    // /// Index into EEPROM Strings section for PDO name.
+    // #[wire(bytes = 1)]
+    // pub(crate) name_string_idx: u8,
+    // #[wire(bytes = 2)]
+    // pub(crate) flags: PdoFlags,
 
     // NOTE: Field is only used to sum up `bit_len`, so we don't need to read or store it.
     // Definition is left here in case we need it later.
@@ -571,20 +571,20 @@ pub struct Pdo {
     pub(crate) bit_len: u16,
 }
 
-impl core::fmt::Debug for Pdo {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Pdo")
-            .field("index", &format_args!("{:#06x}", self.index))
-            .field("num_entries", &self.num_entries)
-            .field("sync_manager", &self.sync_manager)
-            .field("dc_sync", &self.dc_sync)
-            .field("name_string_idx", &self.name_string_idx)
-            .field("flags", &self.flags)
-            // .field("entries", &self.entries)
-            .field("bit_len", &self.bit_len)
-            .finish()
-    }
-}
+// impl core::fmt::Debug for Pdo {
+//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+//         f.debug_struct("Pdo")
+//             // .field("index", &format_args!("{:#06x}", self.index))
+//             .field("num_entries", &self.num_entries)
+//             // .field("sync_manager", &self.sync_manager)
+//             // .field("dc_sync", &self.dc_sync)
+//             // .field("name_string_idx", &self.name_string_idx)
+//             // .field("flags", &self.flags)
+//             // .field("entries", &self.entries)
+//             .field("bit_len", &self.bit_len)
+//             .finish()
+//     }
+// }
 
 // impl Pdo {
 //     /// Compute the total bit length of this PDO by iterating over and summing the bit length of
@@ -597,37 +597,37 @@ impl core::fmt::Debug for Pdo {
 //     }
 // }
 
-#[derive(Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 8)]
 pub struct PdoEntry {
-    #[wire(bytes = 2)]
-    pub(crate) index: u16,
-    #[wire(bytes = 1)]
-    pub(crate) sub_index: u8,
-    #[wire(bytes = 1)]
-    pub(crate) name_string_idx: u8,
-    // See page 103 of ETG2000
-    #[wire(bytes = 1)]
-    pub(crate) data_type: PrimitiveDataType,
-    #[wire(bytes = 1)]
+    // #[wire(bytes = 2)]
+    // pub(crate) index: u16,
+    // #[wire(bytes = 1)]
+    // pub(crate) sub_index: u8,
+    // #[wire(bytes = 1)]
+    // pub(crate) name_string_idx: u8,
+    // // See page 103 of ETG2000
+    // #[wire(bytes = 1)]
+    // pub(crate) data_type: PrimitiveDataType,
+    #[wire(bytes = 1, pre_skip_bytes = 5, post_skip_bytes = 2)]
     pub(crate) data_length_bits: u8,
-    #[wire(bytes = 2)]
-    pub(crate) flags: u16,
+    // #[wire(bytes = 2)]
+    // pub(crate) flags: u16,
 }
 
-impl core::fmt::Debug for PdoEntry {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("PdoEntry")
-            .field("index", &format_args!("{:#06x}", self.index))
-            .field("sub_index", &self.sub_index)
-            .field("name_string_idx", &self.name_string_idx)
-            .field("data_type", &self.data_type)
-            .field("data_length_bits", &self.data_length_bits)
-            .field("flags", &self.flags)
-            .finish()
-    }
-}
+// impl core::fmt::Debug for PdoEntry {
+//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+//         f.debug_struct("PdoEntry")
+//             .field("index", &format_args!("{:#06x}", self.index))
+//             .field("sub_index", &self.sub_index)
+//             .field("name_string_idx", &self.name_string_idx)
+//             .field("data_type", &self.data_type)
+//             .field("data_length_bits", &self.data_length_bits)
+//             .field("flags", &self.flags)
+//             .finish()
+//     }
+// }
 
 bitflags::bitflags! {
     /// Defined in ETG2010 Table 14 offset 0x0006.
