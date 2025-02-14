@@ -44,7 +44,7 @@ impl<'sto> ReceivingFrame<'sto> {
             .map_err(|bad| {
                 fmt::error!(
                     "Failed to set frame {:#04x} state from RxBusy -> RxDone, got {:?}",
-                    self.frame_index(),
+                    self.storage_slot_index(),
                     bad
                 );
 
@@ -64,8 +64,8 @@ impl<'sto> ReceivingFrame<'sto> {
     }
 
     /// Ethernet frame index.
-    fn frame_index(&self) -> u8 {
-        self.inner.frame_index()
+    fn storage_slot_index(&self) -> u8 {
+        self.inner.storage_slot_index()
     }
 }
 
@@ -124,7 +124,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
         rxin.replace_waker(cx.waker());
 
-        let frame_idx = rxin.frame_index();
+        let frame_idx = rxin.storage_slot_index();
 
         // RxDone is set by mark_received when the incoming packet has been parsed and stored
         let swappy = rxin.swap_state(FrameState::RxDone, FrameState::RxProcessing);

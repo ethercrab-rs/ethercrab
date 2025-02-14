@@ -73,8 +73,8 @@ pub enum FrameState {
 #[derive(Debug)]
 #[repr(C)]
 pub struct FrameElement<const N: usize> {
-    /// Ethernet frame index. Has nothing to do with PDU header index field.
-    frame_index: u8,
+    /// Ethernet frame index in storage. Has nothing to do with PDU header index field.
+    storage_slot_index: u8,
     status: AtomicFrameState,
     waker: AtomicWaker,
 
@@ -101,7 +101,7 @@ impl<const N: usize> Default for FrameElement<N> {
         Self {
             status: AtomicFrameState::new(FrameState::None),
             ethernet_frame: [0; N],
-            frame_index: 0,
+            storage_slot_index: 0,
             pdu_payload_len: 0,
             first_pdu: AtomicU16::new(FIRST_PDU_EMPTY),
             waker: AtomicWaker::default(),
@@ -181,7 +181,7 @@ impl<const N: usize> FrameElement<N> {
             PduError::SwapState
         })?;
 
-        (*addr_of_mut!((*this.as_ptr()).frame_index)) = frame_index;
+        (*addr_of_mut!((*this.as_ptr()).storage_slot_index)) = frame_index;
         (*addr_of_mut!((*this.as_ptr()).pdu_payload_len)) = 0;
 
         Ok(this)
@@ -196,7 +196,7 @@ impl<const N: usize> FrameElement<N> {
             .map_err(|actual_state| {
                 fmt::error!(
                     "Failed to claim receiving frame {}: expected state {:?}, but got {:?}",
-                    (*addr_of_mut!((*this.as_ptr()).frame_index)),
+                    (*addr_of_mut!((*this.as_ptr()).storage_slot_index)),
                     FrameState::Sent,
                     actual_state
                 );
@@ -204,8 +204,8 @@ impl<const N: usize> FrameElement<N> {
             .ok()
     }
 
-    unsafe fn frame_index(this: NonNull<FrameElement<0>>) -> u8 {
-        *addr_of!((*this.as_ptr()).frame_index)
+    unsafe fn storage_slot_index(this: NonNull<FrameElement<0>>) -> u8 {
+        *addr_of!((*this.as_ptr()).storage_slot_index)
     }
 
     pub(in crate::pdu_loop) unsafe fn first_pdu_is(
@@ -256,7 +256,7 @@ mod tests {
         const BUF_LEN: usize = 16;
 
         let frame = FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
@@ -279,7 +279,7 @@ mod tests {
         const BUF_LEN: usize = 16;
 
         let frame = FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
@@ -299,7 +299,7 @@ mod tests {
         const BUF_LEN: usize = 16;
 
         let frame = FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
@@ -321,7 +321,7 @@ mod tests {
         const BUF_LEN: usize = 16;
 
         let frame_0 = FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
@@ -336,7 +336,7 @@ mod tests {
         // ---
 
         let frame_1 = FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],

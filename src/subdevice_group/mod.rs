@@ -772,9 +772,9 @@ where
     }
 
     fmt::trace!(
-        "--> Pushed {} status checks into frame {:#04x}",
+        "--> Pushed {} status checks into frame {}",
         num_in_this_frame,
-        frame.index()
+        frame.storage_slot_index()
     );
 
     Ok((subdevices, num_in_this_frame))

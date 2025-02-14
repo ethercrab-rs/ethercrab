@@ -51,7 +51,7 @@ pub fn tx_rx_task_io_uring<'sto>(
         let mut sent = 0;
 
         while let Some(frame) = pdu_tx.next_sendable_frame() {
-            let idx = frame.index();
+            let idx = frame.storage_slot_index();
 
             let tx_b = bufs.vacant_entry();
             let tx_key = tx_b.key();

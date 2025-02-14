@@ -35,7 +35,7 @@ impl<'sto> Debug for FrameBox<'sto> {
             .field("state", unsafe {
                 &(*addr_of!((*self.frame.as_ptr()).status))
             })
-            .field("frame_index", &self.frame_index())
+            .field("frame_index", &self.storage_slot_index())
             .field("data_hex", &format_args!("{:02x?}", data))
             .finish()
     }
@@ -98,8 +98,8 @@ impl<'sto> FrameBox<'sto> {
         }
     }
 
-    pub fn frame_index(&self) -> u8 {
-        unsafe { FrameElement::<0>::frame_index(self.frame) }
+    pub fn storage_slot_index(&self) -> u8 {
+        unsafe { FrameElement::<0>::storage_slot_index(self.frame) }
     }
 
     /// Get EtherCAT frame header buffer.

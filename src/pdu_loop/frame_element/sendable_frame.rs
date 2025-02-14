@@ -69,13 +69,13 @@ impl<'sto> SendableFrame<'sto> {
 
     /// The frame has been sent by the network driver.
     fn mark_sent(&self) {
-        fmt::trace!("Frame index {} is sent", self.inner.frame_index());
+        fmt::trace!("Frame index {} is sent", self.inner.storage_slot_index());
 
         self.inner.set_state(FrameState::Sent);
     }
 
-    pub(crate) fn index(&self) -> u8 {
-        self.inner.frame_index()
+    pub(crate) fn storage_slot_index(&self) -> u8 {
+        self.inner.storage_slot_index()
     }
 
     /// Used on send failure to release the frame sending claim so the frame can attempt to be sent

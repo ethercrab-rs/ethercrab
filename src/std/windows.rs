@@ -91,7 +91,7 @@ pub fn tx_rx_task_blocking<'sto>(
         let mut sent_this_iter = 0usize;
 
         while let Some(frame) = pdu_tx.next_sendable_frame() {
-            let idx = frame.index();
+            let idx = frame.storage_slot_index();
 
             frame
                 .send_blocking(|frame_bytes| {
