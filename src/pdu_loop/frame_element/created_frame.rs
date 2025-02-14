@@ -54,8 +54,12 @@ impl<'sto> CreatedFrame<'sto> {
         })
     }
 
-    pub fn index(&self) -> u8 {
-        self.inner.frame_index()
+    pub fn storage_slot_index(&self) -> u8 {
+        self.inner.storage_slot_index()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pdu_count == 0
     }
 
     /// The frame has been initialised, filled with a data payload (if required), and is now ready
@@ -128,7 +132,7 @@ impl<'sto> CreatedFrame<'sto> {
         fmt::trace!(
             "Write PDU {:#04x} into rest of frame index {} ({}, {} frame bytes + {} payload bytes at {:?})",
             pdu_idx,
-            self.inner.frame_index(),
+            self.inner.storage_slot_index(),
             command,
             sub_slice_len,
             Self::PDU_OVERHEAD_BYTES,
@@ -249,7 +253,7 @@ impl<'sto> CreatedFrame<'sto> {
         fmt::trace!(
             "Write PDU {:#04x} into frame index {} ({}, {} bytes at {:?})",
             pdu_idx,
-            self.inner.frame_index(),
+            self.inner.storage_slot_index(),
             command,
             data_length_usize,
             buf_range
@@ -325,6 +329,14 @@ impl<'sto> CreatedFrame<'sto> {
     }
 }
 
+impl<'sto> Drop for CreatedFrame<'sto> {
+    fn drop(&mut self) {
+        // ONLY free the frame if it's still in created state. If it's been moved into
+        // sending/sent/receiving/etc, we must leave it alone.
+        let _ = self.inner.swap_state(FrameState::Created, FrameState::None);
+    }
+}
+
 // SAFETY: This unsafe impl is required due to `FrameBox` containing a `NonNull`, however this impl
 // is ok because FrameBox also holds the lifetime `'sto` of the backing store, which is where the
 // `NonNull<FrameElement>` comes from.
@@ -375,7 +387,7 @@ mod tests {
         let pdu_idx = AtomicU8::new(0);
 
         let frames = UnsafeCell::new([FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
@@ -414,7 +426,7 @@ mod tests {
         let pdu_idx = AtomicU8::new(0);
 
         let frames = UnsafeCell::new([FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
@@ -444,7 +456,7 @@ mod tests {
         let pdu_idx = AtomicU8::new(0);
 
         let frames = UnsafeCell::new([FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
@@ -496,7 +508,7 @@ mod tests {
         let pdu_idx = AtomicU8::new(0);
 
         let frames = UnsafeCell::new([FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
@@ -555,7 +567,7 @@ mod tests {
         let pdu_idx = AtomicU8::new(0);
 
         let frames = UnsafeCell::new([FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
@@ -622,7 +634,7 @@ mod tests {
         let pdu_idx = AtomicU8::new(0);
 
         let frames = UnsafeCell::new([FrameElement {
-            frame_index: 0xab,
+            storage_slot_index: 0xab,
             status: AtomicFrameState::new(FrameState::None),
             waker: AtomicWaker::default(),
             ethernet_frame: [0u8; BUF_LEN],
