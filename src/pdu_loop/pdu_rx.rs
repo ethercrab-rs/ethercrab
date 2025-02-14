@@ -75,6 +75,12 @@ impl<'sto> PduRx<'sto> {
             e
         })?;
 
+        if frame_header.payload_len == 0 {
+            fmt::trace!("Ignoring empty frame");
+
+            return Ok(ReceiveAction::Ignored);
+        }
+
         // Skip EtherCAT header and get PDU(s) payload
         let i = i
             .get(
