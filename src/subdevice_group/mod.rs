@@ -738,9 +738,9 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
     }
 }
 
-fn push_state_checks<'group, I>(
+fn push_state_checks<'group, 'sto, I>(
     mut subdevices: I,
-    frame: &mut CreatedFrame<'group>,
+    frame: &mut CreatedFrame<'sto>,
 ) -> Result<(I, usize), Error>
 where
     I: Iterator<Item = &'group SubDevice>,
@@ -895,6 +895,10 @@ where
             subdevices = rest;
             total_checks += num_checks_in_this_frame;
 
+            if frame.is_empty() {
+                break;
+            }
+
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
                 maindevice.timeouts.pdu,
@@ -1013,6 +1017,14 @@ where
                 let (rest, num_checks_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
                 subdevices = rest;
                 total_checks += num_checks_in_this_frame;
+
+                if frame.is_empty() {
+                    break Ok(TxRxResponse {
+                        working_counter: lrw_wkc_sum,
+                        subdevice_states,
+                        extra: Some(time),
+                    });
+                }
 
                 let frame = frame.mark_sendable(
                     &maindevice.pdu_loop,
@@ -1271,6 +1283,10 @@ where
             let (rest, num_checks_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
             subdevices = rest;
             total_checks += num_checks_in_this_frame;
+
+            if frame.is_empty() {
+                break;
+            }
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,

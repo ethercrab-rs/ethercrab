@@ -58,6 +58,10 @@ impl<'sto> CreatedFrame<'sto> {
         self.inner.storage_slot_index()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.pdu_count == 0
+    }
+
     /// The frame has been initialised, filled with a data payload (if required), and is now ready
     /// to be sent.
     ///
@@ -322,6 +326,14 @@ impl<'sto> CreatedFrame<'sto> {
             command_code: command.code(),
             alloc_size,
         })
+    }
+}
+
+impl<'sto> Drop for CreatedFrame<'sto> {
+    fn drop(&mut self) {
+        // ONLY free the frame if it's still in created state. If it's been moved into
+        // sending/sent/receiving/etc, we must leave it alone.
+        let _ = self.inner.swap_state(FrameState::Created, FrameState::None);
     }
 }
 

@@ -355,10 +355,17 @@ mod tests {
         let s = storage.as_ref();
 
         for _ in 0..NUM_FRAMES {
-            assert!(s.alloc_frame().is_ok());
+            let f = s.alloc_frame().expect("should have free frames");
+
+            // The `CreatedFrame` Drop impl will automatically release the frames for reuse, so we
+            // need to forget them to prevent that.
+            core::mem::forget(f);
         }
 
-        assert!(s.alloc_frame().is_err());
+        assert!(
+            s.alloc_frame().is_err(),
+            "there should be no frame slots available"
+        );
     }
 
     #[test]
@@ -372,7 +379,9 @@ mod tests {
         let mut s = storage.as_ref();
 
         for _ in 0..NUM_FRAMES {
-            assert!(s.alloc_frame().is_ok());
+            let f = s.alloc_frame().expect("should have frame slots");
+
+            core::mem::forget(f);
         }
 
         // No more frames
@@ -382,7 +391,9 @@ mod tests {
 
         // We should be able to allocate every frame again
         for _ in 0..NUM_FRAMES {
-            assert!(s.alloc_frame().is_ok());
+            let f = s.alloc_frame().expect("should have frame slots");
+
+            core::mem::forget(f);
         }
 
         assert!(s.alloc_frame().is_err());
