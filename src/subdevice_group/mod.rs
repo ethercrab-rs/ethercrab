@@ -882,9 +882,13 @@ where
             let mut frame = maindevice.pdu_loop.alloc_frame()?;
 
             // Start offset in the EtherCAT address space
-            let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
+            let pushed_chunk = if !chunk.is_empty() {
+                let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-            let pushed_chunk = frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?;
+                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
+            } else {
+                None
+            };
 
             // If there's space left, push as many state checks as we can into the frame
             let (rest, num_checks_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
@@ -962,7 +966,6 @@ where
         );
 
         if let Some(dc_ref) = maindevice.dc_ref_address() {
-            // let mut remaining = &*pdi;
             let mut total_bytes_sent = 0;
             let mut time = 0;
             let mut lrw_wkc_sum = 0;
@@ -994,10 +997,13 @@ where
                 let chunk_len = self.pdi_len.saturating_sub(total_bytes_sent);
                 let chunk = pdi_lock.get_mut()[chunk_start..(chunk_start + chunk_len)].as_ref();
 
-                let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
+                let pushed_chunk = if !chunk.is_empty() {
+                    let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-                let pushed_chunk =
-                    frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?;
+                    frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
+                } else {
+                    None
+                };
 
                 if let Some((bytes_in_this_chunk, _)) = pushed_chunk {
                     fmt::trace!("Wrote {} byte chunk", bytes_in_this_chunk);
@@ -1253,9 +1259,13 @@ where
             let chunk_len = self.pdi_len.saturating_sub(total_bytes_sent);
             let chunk = pdi_lock.get_mut()[chunk_start..(chunk_start + chunk_len)].as_ref();
 
-            let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
+            let pushed_chunk = if !chunk.is_empty() {
+                let start_addr = self.inner().pdi_start.start_address + total_bytes_sent as u32;
 
-            let pushed_chunk = frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?;
+                frame.push_pdu_slice_rest(Command::lrw(start_addr).into(), chunk)?
+            } else {
+                None
+            };
 
             // If there's space left, push as many state checks as we can into the frame
             let (rest, num_checks_in_this_frame) = push_state_checks(subdevices, &mut frame)?;
