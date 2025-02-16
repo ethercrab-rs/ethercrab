@@ -5,10 +5,12 @@
 
 use env_logger::Env;
 use ethercrab::{
+    ds402::{OpMode, StatusWord},
     error::Error,
     std::ethercat_now,
     subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
-    DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts,
+    DcSync, EtherCrabWireRead, EtherCrabWireWrite, MainDevice, MainDeviceConfig, PduStorage,
+    RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
@@ -266,6 +268,8 @@ fn main() -> Result<(), Error> {
         signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
             .expect("Register hook");
 
+        let mut sd = group.subdevice(&maindevice, 0)?;
+
         // Main application process data cycle
         loop {
             let now = Instant::now();
@@ -277,6 +281,25 @@ fn main() -> Result<(), Error> {
                 },
                 ..
             } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+
+            let io = sd.io_raw_mut();
+
+            let i = io.inputs();
+
+            let status_word = &i[0..2];
+            let reported_op_mode = &i[2..3];
+
+            let mut o = io.outputs();
+
+            let control_word = &mut o[0..2];
+            let op_mode = &mut o[2..3];
+
+            OpMode::CyclicSynchronousPosition.pack_to_slice(op_mode)?;
+
+            let status_word = StatusWord::unpack_from_slice(status_word)?;
+            let reported_op_mode = OpMode::unpack_from_slice(reported_op_mode)?;
+
+            println!("Op mode {:?}", reported_op_mode);
 
             smol::Timer::at(now + next_cycle_wait).await;
 
