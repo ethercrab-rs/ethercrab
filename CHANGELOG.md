@@ -24,6 +24,9 @@ An EtherCAT MainDevice written in Rust.
   group, along with methods on `TxRxResponse` to test for various state conditions.
 - [#273](https://github.com/ethercrab-rs/ethercrab/pull/273) Added `SubDevice::set_alias_address`
   and `SubDeviceRef::set_alias_address` to write an alias address to a SubDevice's EEPROM.
+- [#278](https://github.com/ethercrab-rs/ethercrab/pull/278) Add
+  `SubDevice::{eeprom_read, eeprom_read_raw, eeprom_size, eeprom_write_dangerously}` methods for
+  working with a SubDevice's EEPROM.
 
 ### Removed
 
@@ -63,6 +66,8 @@ An EtherCAT MainDevice written in Rust.
   now returns `Result<ReceiveAction, Error>` instead of `Result<(), Error>`.
 - **(breaking)** [#269](https://github.com/ethercrab-rs/ethercrab/pull/269)
   `SubDeviceGroup::tx_rx_*` methods now return a `TxRxResponse` struct instead of a tuple.
+- [#278](https://github.com/ethercrab-rs/ethercrab/pull/278) Add `Deref` and `DerefMut` impls for
+  `SubDeviceRef` instead of copy/pasting methods from `SubDevice`.
 
 ### Fixed
 
