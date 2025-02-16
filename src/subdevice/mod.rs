@@ -15,7 +15,7 @@ use crate::{
     command::Command,
     dl_status::DlStatus,
     eeprom::{device_provider::DeviceEeprom, types::SiiOwner},
-    error::{Error, MailboxError, PduError},
+    error::{Error, Item, MailboxError, PduError},
     fmt,
     mailbox::{MailboxHeader, MailboxType},
     maindevice::MainDevice,
@@ -809,6 +809,63 @@ where
         self.sdo_write(index, 0, values.len() as u8).await?;
 
         Ok(())
+    }
+
+    /// Read all sub-indices of the given SDO.
+    ///
+    /// This method will return an error if the number of sub-indices in the SDO is greater than
+    /// `MAX_ENTRIES.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use ethercrab::{
+    /// #     error::Error, MainDevice, MainDeviceConfig, PduStorage, Timeouts, std::ethercat_now
+    /// # };
+    /// # static PDU_STORAGE: PduStorage<8, 32> = PduStorage::new();
+    /// # let (_tx, _rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+    /// # let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
+    /// # async {
+    /// # let mut group = maindevice
+    /// #     .init_single_group::<8, 8>(ethercat_now)
+    /// #     .await
+    /// #     .expect("Init");
+    /// let subdevice = group.subdevice(&maindevice, 0).expect("No subdevice!");
+    ///
+    /// // Reading the TxPDO assignment
+    /// // This is equivalent to...
+    /// let values = subdevice.sdo_read_array::<u16, 3>(0x1c13).await?;
+    ///
+    /// // ... this
+    /// // let len: u8 = subdevice.sdo_read(0x1c13, 0).await?;
+    /// // let value1: u16 = subdevice.sdo_read(0x1c13, 1).await?;
+    /// // let value2: u16 = subdevice.sdo_read(0x1c13, 2).await?;
+    /// // let value3: u16 = subdevice.sdo_read(0x1c13, 3).await?;
+    ///
+    /// # Ok::<(), ethercrab::error::Error>(())
+    /// # };
+    /// ```
+    pub async fn sdo_read_array<T, const MAX_ENTRIES: usize>(
+        &self,
+        index: u16,
+    ) -> Result<heapless::Vec<T, MAX_ENTRIES>, Error>
+    where
+        T: EtherCrabWireReadSized,
+    {
+        let len = self.sdo_read::<u8>(index, 0).await?;
+
+        if usize::from(len) > MAX_ENTRIES {
+            return Err(Error::Capacity(Item::SdoSubIndex));
+        }
+
+        let mut values = heapless::Vec::new();
+
+        for i in 1..=len {
+            let value = self.sdo_read::<T>(index, i).await?;
+            values.push(value).map_err(|_| Error::Internal)?;
+        }
+
+        Ok(values)
     }
 
     pub(crate) async fn sdo_read_expedited<T>(
