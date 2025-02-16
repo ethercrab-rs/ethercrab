@@ -1,3 +1,5 @@
+//! DS402/CiA402 high level interface.
+
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
 
 /// DS402 control word (object 0x6040).
