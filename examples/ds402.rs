@@ -30,7 +30,8 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-const TICK_INTERVAL: Duration = Duration::from_millis(5);
+// This must remain at 1ms to get the drive into OP. The ESI file specifies this value.
+const TICK_INTERVAL: Duration = Duration::from_millis(1);
 
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -93,6 +94,32 @@ fn main() -> Result<(), Error> {
         for mut subdevice in group.iter_mut(&maindevice) {
             if subdevice.name() == "PD4-EB59CD-E-65-1" {
                 log::info!("Found servo");
+
+                subdevice
+                    .sdo_write_array(
+                        0x1600,
+                        [
+                            0x6040_0010u32, // Control word, 16 bits
+                            0x6060_0008,    // Op mode, 8 bits
+                        ],
+                    )
+                    .await?;
+
+                subdevice
+                    .sdo_write_array(
+                        0x1a00,
+                        [
+                            0x6041_0010u32, // Status word, 16 bits
+                            0x6061_0008,    // Op mode reported
+                        ],
+                    )
+                    .await?;
+
+                // Outputs to SubDevice
+                subdevice.sdo_write_array(0x1c12, [0x1600u16]).await?;
+
+                // Inputs back to MainDevice
+                subdevice.sdo_write_array(0x1c13, [0x1a00u16]).await?;
 
                 // Enable SYNC0 DC
                 subdevice.set_dc_sync(DcSync::Sync0);
@@ -184,8 +211,8 @@ fn main() -> Result<(), Error> {
                     start_delay: Duration::from_millis(100),
                     // SYNC0 period should be the same as the process data loop in most cases
                     sync0_period: TICK_INTERVAL,
-                    // Send process data half way through cycle
-                    sync0_shift: TICK_INTERVAL / 2,
+                    // Taken from ESI file
+                    sync0_shift: Duration::from_nanos(250_000),
                 },
             )
             .await?;
