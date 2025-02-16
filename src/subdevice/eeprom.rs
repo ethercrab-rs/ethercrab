@@ -160,7 +160,7 @@ where
 
         reader.read_exact(&mut buf).await?;
 
-        let len = ((u16::from_le_bytes(buf) + 1) * 1024) / 8;
+        let len = (u16::from_le_bytes(buf) + 1) * 128;
 
         Ok(usize::from(len))
     }
