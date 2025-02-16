@@ -163,7 +163,7 @@ mod coe;
 mod command;
 mod dc;
 mod dl_status;
-mod ds402;
+pub mod ds402;
 mod eeprom;
 pub mod error;
 mod ethernet;
@@ -188,11 +188,9 @@ pub mod internals;
 #[cfg(feature = "std")]
 pub mod std;
 
-// TODO: Constrain this
 pub use al_status_code::AlStatusCode;
 pub use coe::SubIndex;
 pub use command::{Command, Reads, WrappedRead, WrappedWrite, Writes};
-pub use ds402::*;
 pub use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
     EtherCrabWireWrite, EtherCrabWireWriteSized,
