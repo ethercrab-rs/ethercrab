@@ -1,4 +1,4 @@
-use ethercrab_wire::EtherCrabWireRead;
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
 
 /// DS402 control word (object 0x6040).
 ///
@@ -78,4 +78,34 @@ pub struct StatusWord {
     manf_2: bool,
     #[wire(bits = 1)]
     manf_3: bool,
+}
+
+/// Operation mode (objects 0x6060, 0x6061, 0x6502).
+#[derive(Debug, Copy, Clone, EtherCrabWireReadWrite)]
+#[wire(bytes = 1)]
+#[repr(i8)]
+pub enum OpMode {
+    /// Profile position mode, "PP".
+    ProfilePosition = 1,
+    /// Velocity mode (frequency converter), "VL".
+    Velocity = 2,
+    /// Profile velocity mode, "PV".
+    ProfileVelocity = 3,
+    /// Torque profile mode, "TQ".
+    ProfileTorque = 4,
+    /// Homing mode, "HM".
+    Homing = 6,
+    /// Interpolated position mode, "IP".
+    InterpolatedPosition = 7,
+    /// Cyclic synchronous position mode, "CSP".
+    CyclicSynchronousPosition = 8,
+    /// Cyclic synchronous velocity mode, "CSV".
+    CyclicSynchronousVelocity = 9,
+    /// Cyclic synchronous torque mode, "CST".
+    CyclicSynchronousTorque = 10,
+    /// Cyclic synchronous torque mode with commutation angle, "CSTCA".
+    CyclicSynchronousTorqueWithCommutation = 11,
+    /// Manufacturer specific mode from `-128..=-1`.
+    #[wire(catch_all)]
+    ManufacturerSpecific(i8),
 }
