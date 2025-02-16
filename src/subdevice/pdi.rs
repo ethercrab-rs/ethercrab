@@ -54,7 +54,9 @@ impl<const N: usize> PdiIoRawWriteGuard<'_, N> {
         &all[self.ranges.input.bytes.clone()]
     }
 
-    pub fn outputs(&mut self) -> &mut [u8] {
+    // SAFETY: We return a mutable slice because a) it's locked and we currently hold the lock and
+    // b) it is assumed to be non-overlapping with the slice returned by `inputs()`.
+    pub fn outputs(&self) -> &mut [u8] {
         let all = unsafe { &mut *self.lock.get() }.as_mut_slice();
 
         &mut all[self.ranges.output.bytes.clone()]
