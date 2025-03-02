@@ -1,6 +1,9 @@
 //! DS402/CiA402 high level interface.
 
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireSized};
+use heapless::FnvIndexMap;
+
+use crate::{fmt, SubDevicePdi, SubDeviceRef};
 
 /// DS402 control word (object 0x6040).
 ///
@@ -40,6 +43,30 @@ pub struct ControlWord {
     manf_4: bool,
     #[wire(bits = 1)]
     manf_5: bool,
+}
+
+impl ControlWord {
+    /// Set the desired state.
+    pub fn set_state(&mut self, state: WriteState) {
+        // Only reset faults if explicitly requested
+        self.fault_reset = false;
+
+        match state {
+            WriteState::ResetFault => self.fault_reset = true,
+            WriteState::SwitchOn => {
+                self.switch_on = true;
+            }
+            WriteState::EnableVoltage => {
+                self.switch_on = true;
+                self.enable_voltage = true;
+            }
+            WriteState::EnableOperation => {
+                self.switch_on = true;
+                self.enable_voltage = true;
+                self.enable_operation = true;
+            }
+        }
+    }
 }
 
 /// DS402 status word (object 0x6041).
@@ -82,6 +109,27 @@ pub struct StatusWord {
     manf_3: bool,
 }
 
+impl StatusWord {
+    /// Read various fields of the status word and return the state machine state.
+    pub fn state(&self) -> ReadState {
+        if self.fault {
+            ReadState::Fault
+        } else if self.quick_stop {
+            ReadState::QuickStop
+        } else if self.operation_enabled {
+            ReadState::OpEnabled
+        } else if self.switched_on {
+            ReadState::SwitchedOn
+        } else if self.ready_to_switch_on {
+            ReadState::ReadyToSwitchOn
+        } else if self.switch_on_disabled {
+            ReadState::SwitchOnDisabled
+        } else {
+            ReadState::NotReadyToSwitchOn
+        }
+    }
+}
+
 /// Operation mode (objects 0x6060, 0x6061, 0x6502).
 #[derive(Debug, Copy, Clone, EtherCrabWireReadWrite)]
 #[wire(bytes = 1)]
@@ -110,6 +158,65 @@ pub enum OpMode {
     /// Manufacturer specific mode from `-128..=-1`.
     #[wire(catch_all)]
     ManufacturerSpecific(i8),
+}
+
+/// Set the DS402 state machine state.
+///
+/// This enum is used to set certain bits in the [`ControlWord`].
+#[derive(Debug, Copy, Clone)]
+pub enum WriteState {
+    /// Reset fault.
+    ResetFault,
+    /// Switch on.
+    SwitchOn,
+    /// Enable voltage.
+    EnableVoltage,
+    /// Enable operation.
+    EnableOperation,
+}
+
+/// DS402 state machine state.
+///
+/// This enum is created from the individual bits in or [`StatusWord`].
+///
+/// ETG6010 5.1 Figure 2: State Machine
+#[derive(Debug, Copy, Clone)]
+pub enum ReadState {
+    /// Not ready to switch on.
+    NotReadyToSwitchOn,
+    /// Switch on disabled.
+    SwitchOnDisabled,
+    /// Ready to switch on.
+    ReadyToSwitchOn,
+    /// Switched on.
+    SwitchedOn,
+    /// Operation enabled.
+    OpEnabled,
+    /// Quick stop active.
+    QuickStop,
+    /// The device is in a fault state.
+    Fault,
+}
+
+/// State machine transition.
+#[derive(Debug, Copy, Clone)]
+pub enum Transition {
+    /// The device is in a steady state.
+    Steady(ReadState),
+    /// The device is transitioning to a new desired state.
+    Transitioning {
+        /// Desired state.
+        desired: WriteState,
+        /// Current state.
+        actual: ReadState,
+    },
+    /// The device has finished transitioning to a new state.
+    Edge {
+        /// Previous state before the transition started.
+        previous: ReadState,
+        /// Current state.
+        current: ReadState,
+    },
 }
 
 /// An object sent from the MainDevice to the SubDevice (RxPdo).
@@ -154,25 +261,73 @@ pub struct PdoMapping<'a, O> {
     pub objects: &'a [O],
 }
 
+/// Wrap a group SubDevice in a higher level DS402 API
+pub struct Ds402<'group, const MAX_PDI: usize, const MAX_OUTPUT_OBJECTS: usize> {
+    outputs: FnvIndexMap<u16, core::ops::Range<usize>, MAX_OUTPUT_OBJECTS>,
+    // TODO: Inputs map
+    subdevice: SubDeviceRef<'group, SubDevicePdi<'group, MAX_PDI>>,
+}
+
+impl<'group, const MAX_PDI: usize, const MAX_OUTPUT_OBJECTS: usize>
+    Ds402<'group, MAX_PDI, MAX_OUTPUT_OBJECTS>
+{
+    /// Set DS402 operation mode (CSV, CSP, etc).
+    // TODO: This will be a mandatory field at some point, so this specifically doesn't need
+    // to return a `Result`.
+    pub fn set_op_mode(&mut self, mode: OpMode) -> Result<(), ()> {
+        match self.outputs.get_mut(&(WriteObject::OpMode as u16)) {
+            Some(v) => {
+                // v = mode;
+                todo!();
+
+                Ok(())
+            }
+            None => Err(()),
+        }
+    }
+
+    /// Get the DS402 status word.
+    pub fn status_word(&self) -> StatusWord {
+        // TODO: Dynamically(?) compute
+        let state_range = 0..StatusWord::PACKED_LEN;
+
+        fmt::unwrap_opt!(self
+            .subdevice
+            .inputs_raw()
+            .get(state_range)
+            .and_then(|bytes| StatusWord::unpack_from_slice(bytes).ok()))
+    }
+
+    /// Get the current DS402 state machine state.
+    pub fn state(&self) -> ReadState {
+        self.status_word().state()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-
-    use heapless::FnvIndexMap;
-
-    use crate::{SubDevicePdi, SubDeviceRef};
-
     use super::*;
+    use heapless::FnvIndexMap;
 
     #[test]
     fn raw() {
+        // SM configuration. Order matters!
+        // TODO: Make some fields mandatory: op mode, op mode status, supported drive modes. This is
+        // required by ETG6010 Table 8: Modes of operation – Object list
         let outputs = &[SyncManagerAssignment {
+            // TODO: Higher level API so we can get the correct read/write SM address from the
+            // subdevice (e.g. `sd.read_sm(0) -> Option<u16>` or something)
             index: 0x1c12,
+            // TODO: Validate that the SM can have this many mappings
             mappings: &[PdoMapping {
                 index: 0x1600,
+                // TODO: Validate that this mapping object can have this many PDOs, e.g. some SD
+                // PDOs can only have 4 assignments
                 objects: &[WriteObject::ControlWord, WriteObject::OpMode],
             }],
         }];
 
+        // PDI offset accumulator
         let mut position = 0;
 
         let it = outputs
@@ -191,37 +346,9 @@ mod tests {
                 ((object >> 16) as u16, range)
             });
 
-        // PDI is locked during this closure. Multiple SDs can update and the TX/RX loop will have
-        // to wait until they're done, so we should always get consistent state I think?
-        // Let's try to make this method &self so thread sharing is easier
-        // TODO: How do we provide the DC system time here? It might be in another thread. Maybe a
-        // reference to an atomic in the main group struct?
-        ds402.update(|| {});
-        // loop {
-        //     group.tx_rx();
-        //     ds402.tick();
-        // }
-
-        struct Ds402<'group, const MAX_PDI: usize, const ON: usize> {
-            outputs: FnvIndexMap<u16, core::ops::Range<usize>, ON>,
-            subdevice: SubDeviceRef<'group, SubDevicePdi<'group, MAX_PDI>>,
-        }
-
-        impl<'group, const MAX_PDI: usize, const ON: usize> Ds402<'group, MAX_PDI, ON> {
-            fn set_op_mode(&mut self, mode: OpMode) -> Result<(), ()> {
-                match self.outputs.get_mut(&(WriteObject::OpMode as u16)) {
-                    Some(v) => {
-                        v = mode;
-
-                        Ok(())
-                    }
-                    None => Err(()),
-                }
-            }
-        }
-
         let sd = Ds402::<32> {
             outputs: FnvIndexMap::from_iter(it),
+            subdevice: todo!(),
         };
 
         for (object, pdi_range) in sd.outputs {
