@@ -191,7 +191,11 @@ mod tests {
                 ((object >> 16) as u16, range)
             });
 
-        // PDI is locked during this closure
+        // PDI is locked during this closure. Multiple SDs can update and the TX/RX loop will have
+        // to wait until they're done, so we should always get consistent state I think?
+        // Let's try to make this method &self so thread sharing is easier
+        // TODO: How do we provide the DC system time here? It might be in another thread. Maybe a
+        // reference to an atomic in the main group struct?
         ds402.update(|| {});
         // loop {
         //     group.tx_rx();
