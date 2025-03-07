@@ -38,7 +38,10 @@ impl Debug for SubDeviceIdentity {
         f.debug_struct("SubDeviceIdentity")
             .field("vendor_id", &format_args!("{:#010x}", self.vendor_id))
             .field("product_id", &format_args!("{:#010x}", self.product_id))
-            .field("revision", &self.revision)
+            .field(
+                "revision",
+                &format_args!("{:#010x} ({})", self.revision, self.revision),
+            )
             .field("serial", &self.serial)
             .finish()
     }
