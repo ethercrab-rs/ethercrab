@@ -188,7 +188,7 @@ where
             control: sync_manager.control,
             status: Status::default(),
             enable: Enable {
-                enable: true,
+                enable: sync_manager.enable.contains(SyncManagerEnable::ENABLE),
                 ..Enable::default()
             },
         };
