@@ -46,8 +46,8 @@ An EtherCAT MainDevice written in Rust.
   introducing deadlocks.
 - [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) Remove `Error::Borrow` as it's no
   longer returned from any EtherCrab method.
-- **(breaking)** [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) Increase MSRV from 1.77
-  to 1.80.
+- **(breaking)** [#287](https://github.com/ethercrab-rs/ethercrab/pull/287) Increase MSRV from 1.77
+  to 1.81.
 - [#231](https://github.com/ethercrab-rs/ethercrab/pull/231) Enable reading of up to 64 PDO entries
   per PDO from EEPROM.
 - [#232](https://github.com/ethercrab-rs/ethercrab/pull/232) Use string index from EEPROM to read
