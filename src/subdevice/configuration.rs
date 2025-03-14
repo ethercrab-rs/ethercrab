@@ -142,7 +142,7 @@ where
             self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
                 .await?
         } else {
-            self.configure_pdos_eeprom(&sync_managers, &fmmu_usage, direction, &mut global_offset)
+            self.configure_pdos_eeprom(&sync_managers, direction, &mut global_offset)
                 .await?
         };
 
@@ -500,7 +500,6 @@ where
     async fn configure_pdos_eeprom(
         &self,
         sync_managers: &[SyncManager],
-        fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
@@ -528,7 +527,7 @@ where
         let start_offset = *offset;
         // let mut total_bit_len = 0;
 
-        let (sm_type, fmmu_type) = direction.filter_terms();
+        let (sm_type, _fmmu_type) = direction.filter_terms();
 
         for (sync_manager_index, sync_manager) in sync_managers
             .iter()
@@ -552,22 +551,14 @@ where
                 .iter()
                 .find(|fmmu| fmmu.sync_manager == sync_manager_index)
                 .map(|fmmu| fmmu.sync_manager)
-                .or_else(|| {
-                    fmt::trace!("Could not find FMMU for PDO SM{}", sync_manager_index);
+                .unwrap_or_else(|| {
+                    fmt::trace!(
+                        "Could not find FMMU for PDO SM{} in EEPROM, using SM index to pick FMMU instead",
+                        sync_manager_index,
+                    );
 
-                    fmmu_usage
-                        .iter()
-                        .position(|usage| *usage == fmmu_type)
-                        .map(|idx| {
-                            fmt::trace!("Using fallback FMMU FMMU{}", idx);
-
-                            idx as u8
-                        })
-                })
-                .ok_or(Error::NotFound {
-                    item: Item::Fmmu,
-                    index: None,
-                })?;
+                    sync_manager_index
+                });
 
             let sm_config = self
                 .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)

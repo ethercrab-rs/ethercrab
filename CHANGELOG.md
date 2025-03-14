@@ -46,8 +46,8 @@ An EtherCAT MainDevice written in Rust.
   introducing deadlocks.
 - [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) Remove `Error::Borrow` as it's no
   longer returned from any EtherCrab method.
-- **(breaking)** [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) Increase MSRV from 1.77
-  to 1.80.
+- **(breaking)** [#287](https://github.com/ethercrab-rs/ethercrab/pull/287) Increase MSRV from 1.77
+  to 1.81.
 - [#231](https://github.com/ethercrab-rs/ethercrab/pull/231) Enable reading of up to 64 PDO entries
   per PDO from EEPROM.
 - [#232](https://github.com/ethercrab-rs/ethercrab/pull/232) Use string index from EEPROM to read
@@ -68,6 +68,9 @@ An EtherCAT MainDevice written in Rust.
   `SubDeviceGroup::tx_rx_*` methods now return a `TxRxResponse` struct instead of a tuple.
 - [#278](https://github.com/ethercrab-rs/ethercrab/pull/278) Add `Deref` and `DerefMut` impls for
   `SubDeviceRef` instead of copy/pasting methods from `SubDevice`.
+- [#287](https://github.com/ethercrab-rs/ethercrab/pull/287) Change SM FMMU mapping fallback
+  behaviour to use the current SM's index instead of looking for the first FMMU of the correct
+  direction.
 
 ### Fixed
 
