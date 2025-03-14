@@ -68,6 +68,9 @@ An EtherCAT MainDevice written in Rust.
   `SubDeviceGroup::tx_rx_*` methods now return a `TxRxResponse` struct instead of a tuple.
 - [#278](https://github.com/ethercrab-rs/ethercrab/pull/278) Add `Deref` and `DerefMut` impls for
   `SubDeviceRef` instead of copy/pasting methods from `SubDevice`.
+- [#287](https://github.com/ethercrab-rs/ethercrab/pull/287) Change SM FMMU mapping fallback
+  behaviour to use the current SM's index instead of looking for the first FMMU of the correct
+  direction.
 
 ### Fixed
 
