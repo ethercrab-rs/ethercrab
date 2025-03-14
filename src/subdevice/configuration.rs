@@ -142,7 +142,7 @@ where
             self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
                 .await?
         } else {
-            self.configure_pdos_eeprom(&sync_managers, &fmmu_usage, direction, &mut global_offset)
+            self.configure_pdos_eeprom(&sync_managers, direction, &mut global_offset)
                 .await?
         };
 
@@ -500,7 +500,6 @@ where
     async fn configure_pdos_eeprom(
         &self,
         sync_managers: &[SyncManager],
-        fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
@@ -528,7 +527,7 @@ where
         let start_offset = *offset;
         // let mut total_bit_len = 0;
 
-        let (sm_type, fmmu_type) = direction.filter_terms();
+        let (sm_type, _fmmu_type) = direction.filter_terms();
 
         for (sync_manager_index, sync_manager) in sync_managers
             .iter()
