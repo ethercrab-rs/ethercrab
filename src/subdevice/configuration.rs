@@ -552,22 +552,14 @@ where
                 .iter()
                 .find(|fmmu| fmmu.sync_manager == sync_manager_index)
                 .map(|fmmu| fmmu.sync_manager)
-                .or_else(|| {
-                    fmt::trace!("Could not find FMMU for PDO SM{}", sync_manager_index);
+                .unwrap_or_else(|| {
+                    fmt::trace!(
+                        "Could not find FMMU for PDO SM{} in EEPROM, using SM index to pick FMMU instead",
+                        sync_manager_index,
+                    );
 
-                    fmmu_usage
-                        .iter()
-                        .position(|usage| *usage == fmmu_type)
-                        .map(|idx| {
-                            fmt::trace!("Using fallback FMMU FMMU{}", idx);
-
-                            idx as u8
-                        })
-                })
-                .ok_or(Error::NotFound {
-                    item: Item::Fmmu,
-                    index: None,
-                })?;
+                    sync_manager_index
+                });
 
             let sm_config = self
                 .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
