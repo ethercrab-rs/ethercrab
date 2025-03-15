@@ -165,6 +165,7 @@ mod dc;
 mod dl_status;
 mod eeprom;
 pub mod error;
+pub mod esi;
 mod ethernet;
 mod fmmu;
 mod generate;
