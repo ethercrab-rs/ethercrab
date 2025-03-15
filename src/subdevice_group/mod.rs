@@ -276,6 +276,30 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         ))
     }
 
+    /// Borrow an individual SubDevice, searched for by configured station address.
+    #[deny(clippy::panic)]
+    pub(crate) fn subdevice_by_configured_address<'maindevice, 'group>(
+        &'group self,
+        maindevice: &'maindevice MainDevice<'maindevice>,
+        configured_address: u16,
+    ) -> Result<SubDeviceRef<'maindevice, &'group SubDevice>, Error> {
+        let subdevice = self
+            .inner()
+            .subdevices
+            .iter()
+            .find(|sd| sd.configured_address() == configured_address)
+            .ok_or(Error::NotFound {
+                item: Item::SubDevice,
+                index: Some(configured_address.into()),
+            })?;
+
+        Ok(SubDeviceRef::new(
+            maindevice,
+            subdevice.configured_address(),
+            subdevice,
+        ))
+    }
+
     /// Transition the group from PRE-OP -> SAFE-OP -> OP.
     ///
     /// To transition individually from PRE-OP to SAFE-OP, then SAFE-OP to OP, see
