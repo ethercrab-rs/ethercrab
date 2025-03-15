@@ -220,45 +220,45 @@ pub enum Transition {
 }
 
 /// An object sent from the MainDevice to the SubDevice (RxPdo).
-#[derive(Debug, Copy, Clone)]
-#[repr(u32)]
-pub enum WriteObject {
+#[derive(Copy, Clone)]
+pub struct WriteObject;
+
+impl WriteObject {
     /// Control word.
-    ControlWord = 0x6040_0010,
+    pub const CONTROL_WORD: u32 = 0x6040_0010;
 
     /// Operation mode.
-    OpMode = 0x6060_0008,
+    pub const OP_MODE: u32 = 0x6060_0008;
 }
 
 /// An object received by the MainDevice from the SubDevice (TxPdo).
-#[derive(Debug, Copy, Clone)]
-#[repr(u32)]
-pub enum ReadObject {
-    /// Status word.
-    StatusWord = 0x6041_0010,
+#[derive(Copy, Clone)]
+pub struct ReadObject;
+
+impl ReadObject {
+    /// Control word.
+    pub const STATUS_WORD: u32 = 0x6041_0010;
 
     /// Operation mode.
-    OpMode = 0x6061_0008,
+    pub const OP_MODE: u32 = 0x6061_0008;
 }
 
 /// SDO config for a SubDevice's read (with [`ReadObject`]) or write (with [`WriteObject`]) PDOs.
-pub struct SyncManagerAssignment<'a, O> {
-    // Sync manager, start from 0x1C10 to 0x1C2F.
-    // TODO: Add an API to get SD read/write sync man by index?
-    /// Sync manager, starting from `0x1c12` for sync manager 0.
-    pub index: u16,
+pub struct SyncManagerAssignment<'a> {
+    /// Sync manager index starting from 0.
+    pub sm: u16,
 
     /// PDO mappings.
-    pub mappings: &'a [PdoMapping<'a, O>],
+    pub mappings: &'a [PdoMapping<'a>],
 }
 
 /// PDO object to be mapped.
-pub struct PdoMapping<'a, O> {
+pub struct PdoMapping<'a> {
     /// PDO index, e.g. `0x1600` or `0x1a00`.
     pub index: u16,
 
     /// PDO objects to map into this PDO.
-    pub objects: &'a [O],
+    pub objects: &'a [u32],
 }
 
 /// Wrap a group SubDevice in a higher level DS402 API
@@ -275,7 +275,7 @@ impl<'group, const MAX_PDI: usize, const MAX_OUTPUT_OBJECTS: usize>
     // TODO: This will be a mandatory field at some point, so this specifically doesn't need
     // to return a `Result`.
     pub fn set_op_mode(&mut self, mode: OpMode) -> Result<(), ()> {
-        match self.outputs.get_mut(&(WriteObject::OpMode as u16)) {
+        match self.outputs.get_mut(&((WriteObject::OP_MODE >> 16) as u16)) {
             Some(v) => {
                 // v = mode;
                 todo!();
@@ -306,6 +306,8 @@ impl<'group, const MAX_PDI: usize, const MAX_OUTPUT_OBJECTS: usize>
 
 #[cfg(test)]
 mod tests {
+    use core::{mem::MaybeUninit, ops::Range};
+
     use super::*;
     use heapless::FnvIndexMap;
 
@@ -317,41 +319,64 @@ mod tests {
         let outputs = &[SyncManagerAssignment {
             // TODO: Higher level API so we can get the correct read/write SM address from the
             // subdevice (e.g. `sd.read_sm(0) -> Option<u16>` or something)
-            index: 0x1c12,
+            // index: 0x1c12,
+            sm: 0,
             // TODO: Validate that the SM can have this many mappings
             mappings: &[PdoMapping {
                 index: 0x1600,
                 // TODO: Validate that this mapping object can have this many PDOs, e.g. some SD
                 // PDOs can only have 4 assignments
-                objects: &[WriteObject::ControlWord, WriteObject::OpMode],
+                objects: &[WriteObject::CONTROL_WORD, WriteObject::OP_MODE],
             }],
         }];
 
         // PDI offset accumulator
         let mut position = 0;
 
-        let it = outputs
-            .iter()
-            .flat_map(|sm| sm.mappings)
-            .flat_map(|mapping| mapping.objects)
-            .map(|mapping| {
-                let object = *mapping as u32;
+        /// Convert SM config into a list of offsets into the SubDevice's PDI.
+        fn config_to_offsets<const N: usize>(
+            config: &[SyncManagerAssignment],
+            position_accumulator: &mut usize,
+        ) -> FnvIndexMap<u16, Range<usize>, N> {
+            let mut map = FnvIndexMap::new();
 
-                let size = (object & 0xffff) as usize;
+            // Turn nice mapping object into linear list of ranges into the SD's PDI
+            config
+                .into_iter()
+                .flat_map(|sm| sm.mappings)
+                .flat_map(|mapping| mapping.objects)
+                .for_each(|mapping| {
+                    let object = *mapping;
 
-                let range = position..(position + size);
+                    let size_bytes = (object & 0xffff) as usize / 8;
 
-                position += size;
+                    let range = *position_accumulator..(*position_accumulator + size_bytes);
 
-                ((object >> 16) as u16, range)
-            });
+                    *position_accumulator += size_bytes;
 
-        let sd = Ds402::<32> {
-            outputs: FnvIndexMap::from_iter(it),
-            subdevice: todo!(),
+                    let key = (object >> 16) as u16;
+
+                    assert_eq!(
+                        map.insert(key, range),
+                        Ok(None),
+                        "multiple mappings of object {:#06x}",
+                        key
+                    );
+                });
+
+            map
+        }
+
+        let outputs = config_to_offsets(outputs, &mut position);
+
+        let mut sd = Ds402::<32, 8> {
+            outputs,
+            // subdevice: SubDeviceRef::new(maindevice, 0x1000, SubDevicePdi::default()),
+            // FIXME: This is HILARIOUSLY unsafe but I really cba to mock up all the right stuff atm
+            subdevice: unsafe { MaybeUninit::zeroed().assume_init() },
         };
 
-        for (object, pdi_range) in sd.outputs {
+        for (object, pdi_range) in sd.outputs.iter() {
             println!(
                 "Object {:#06x}, {} PDI bytes at {:?}",
                 object,

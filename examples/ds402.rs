@@ -5,7 +5,7 @@
 
 use env_logger::Env;
 use ethercrab::{
-    ds402::{OpMode, StatusWord},
+    ds402::{self, Ds402, OpMode, PdoMapping, StatusWord, SyncManagerAssignment},
     error::Error,
     std::ethercat_now,
     subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
@@ -93,35 +93,62 @@ fn main() -> Result<(), Error> {
 
         // The group will be in PRE-OP at this point
 
+        // let mut servo = None;
+
         for mut subdevice in group.iter_mut(&maindevice) {
             if subdevice.name() == "PD4-EB59CD-E-65-1" {
-                log::info!("Found servo");
+                log::info!("Found servo {:?}", subdevice.identity());
 
-                subdevice
-                    .sdo_write_array(
-                        0x1600,
-                        [
-                            0x6040_0010u32, // Control word, 16 bits
-                            0x6060_0008,    // Op mode, 8 bits
+                // subdevice
+                //     .sdo_write_array(
+                //         0x1600,
+                //         [
+                //             0x6040_0010u32, // Control word, 16 bits
+                //             0x6060_0008,    // Op mode, 8 bits
+                //         ],
+                //     )
+                //     .await?;
+
+                // subdevice
+                //     .sdo_write_array(
+                //         0x1a00,
+                //         [
+                //             0x6041_0010u32, // Status word, 16 bits
+                //             0x6061_0008,    // Op mode reported
+                //         ],
+                //     )
+                //     .await?;
+
+                // // Outputs to SubDevice
+                // subdevice.sdo_write_array(0x1c12, [0x1600u16]).await?;
+
+                // // Inputs back to MainDevice
+                // subdevice.sdo_write_array(0x1c13, [0x1a00u16]).await?;
+
+                let outputs_config = [SyncManagerAssignment {
+                    // Outputs, 0x1c12
+                    sm: 2,
+                    mappings: &[PdoMapping {
+                        index: 0x1600,
+                        objects: &[
+                            ds402::WriteObject::CONTROL_WORD,
+                            ds402::WriteObject::OP_MODE,
                         ],
-                    )
-                    .await?;
+                        // TODO: Oversampling config options
+                    }],
+                }];
 
-                subdevice
-                    .sdo_write_array(
-                        0x1a00,
-                        [
-                            0x6041_0010u32, // Status word, 16 bits
-                            0x6061_0008,    // Op mode reported
-                        ],
-                    )
-                    .await?;
+                let inputs_config = [SyncManagerAssignment {
+                    // Inputs, 0x1c13
+                    sm: 3,
+                    mappings: &[PdoMapping {
+                        index: 0x1a00,
+                        objects: &[ds402::ReadObject::STATUS_WORD, ds402::ReadObject::OP_MODE],
+                    }],
+                }];
 
-                // Outputs to SubDevice
-                subdevice.sdo_write_array(0x1c12, [0x1600u16]).await?;
-
-                // Inputs back to MainDevice
-                subdevice.sdo_write_array(0x1c13, [0x1a00u16]).await?;
+                // let (inputs_mapping, outputs_mapping) =
+                subdevice.set_config(&inputs_config, &outputs_config);
 
                 // Enable SYNC0 DC
                 subdevice.set_dc_sync(DcSync::Sync0);
@@ -299,7 +326,7 @@ fn main() -> Result<(), Error> {
             let status_word = StatusWord::unpack_from_slice(status_word)?;
             let reported_op_mode = OpMode::unpack_from_slice(reported_op_mode)?;
 
-            println!("Op mode {:?}", reported_op_mode);
+            // println!("Op mode {:?}", reported_op_mode);
 
             smol::Timer::at(now + next_cycle_wait).await;
 
