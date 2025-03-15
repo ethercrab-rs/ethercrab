@@ -10,6 +10,81 @@ this register.
 
 SOEM calls `0x0990` `ECT_REG_DCSTART0` and also writes a 64 bit value into it. See `ethercatdc.c`,
 `ecx_dcsync0`.
+# Overriding SM and FMMU config
+
+A key problem is wanting to store the SD config on `SubDevice` before it's used, meaning we'd either
+have to put lifetimes or (const) generics everywhere. Seeing as the config is actually used during
+SAFE-OP -> PRE-OP, why not do everything there with a callback:
+
+```rust
+let mut servo_mapping = None;
+
+group.into_pre_op_with_config(|sd: SubDeviceRef<&SubDevice>, index_in_group: usize| {
+    if sd.name() == "EL3702" {
+        let config = /* ... */
+
+        servo_mapping = Some(config.pdi_mapping());
+
+        Ok(Some(config))
+    } else if <SD needs some CoE config> {
+        sd.sdo_write(0x1601, 0, 0x6040_0010).await?;
+
+        // Let EtherCrab configure everything for me, most likely from CoE
+        Ok(None)
+    } else {
+        // Let EtherCrab configure everything for me, most likely from EEPROM
+        Ok(None)
+    }
+});
+
+let servo = servo_mapping.map(|m| Ds402 { pdi_mapping: m }).unwrap();
+```
+
+We should also probably get rid of `into_pre_op_pdi` and just expose the PDI in whatever's returned
+from `into_pre_op` - there's no point in splitting that behaviour. Let's just deprecate
+`into_pre_op_pdi` for now and move all the behaviour into `into_pre_op`.
+
+## Old crap, unfinished thoughts, etc:
+
+Store a reference to some structure that defines SM mappings. This could be handwritten, or could
+come from a parsed ESI file. This structure holds mappings for the PDOs for each SM. EtherCrab
+figures out and computes the FMMU offsets internally, at least for now. Can always add more fields
+to config structs.
+
+This needs to work for oversampling config (i.e. turning `u16` into `[u16; N]` or whatever).
+
+```rust
+#[non_exhaustive]
+pub struct SubDeviceMappingConfig {
+    mappings: &[/* ... */],
+    // Might add other flags here in the future, like "disable CoE write", "force sumn sumn" etc.
+}
+```
+
+```rust
+const fn pdo<T>(index: u16, sub_index: u8) -> u32 {
+    let size_bits = T::packed_len * 8;
+
+    todo!()
+}
+```
+
+### Implementation
+
+> No: I don't want to put a lifetime on the `SubDevice`, so I can't store the slice of SM configs.
+
+Optionally set configuration on SD during init. This config should be used to completely configure
+the SD's SMs and FMMUs automatically within EtherCrab during the next transition. If the SD supports
+CoE, this config object can also be used to write all the CoE registers. Is this actually necessary
+though? No I don't think it is - currently, EtherCrab writes to the CoE stuff then re-reads that
+config when configuring via CoE (i.e. not EEPROM). I think we should then be able to completely
+bypass all this stuff and just write the whole config into the SMs/FMMUs.
+
+Then, once the SD has a PDI, add a method to get a single linear `FnvIndexMap` from PDO object
+(`0x6060`, etc) into the SD's PDI (`Range<usize>`) (not the global address, at least for now).
+
+All this stuff should be made in a way that helps with DS402, but should deal with raw numbers to
+make it generically useful.
 
 # Configuring SDOs in a less error prone way
 
