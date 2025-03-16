@@ -1,6 +1,7 @@
 use super::{SubDevice, SubDeviceRef};
 use crate::{
     coe::{SdoExpedited, SubIndex},
+    ds402::SyncManagerAssignment,
     eeprom::types::{
         CoeDetails, DefaultMailbox, FmmuUsage, MailboxProtocols, SiiGeneral, SiiOwner, SyncManager,
         SyncManagerEnable, SyncManagerType,
@@ -107,6 +108,7 @@ where
         mut global_offset: PdiOffset,
         group_start_address: u32,
         direction: PdoDirection,
+        config: Option<&[SyncManagerAssignment<'_>]>,
     ) -> Result<PdiOffset, Error> {
         let eeprom = self.eeprom();
 
@@ -138,7 +140,10 @@ where
             has_coe
         );
 
-        let range = if has_coe {
+        let range = if let Some(config) = config {
+            self.configure_pdos_config(&sync_managers, direction, &mut global_offset, config)
+                .await?
+        } else if has_coe {
             self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
                 .await?
         } else {
@@ -589,6 +594,46 @@ where
 
         Ok(PdiSegment {
             // bit_len: total_bit_len.into(),
+            bytes: start_offset.up_to(*offset),
+        })
+    }
+
+    /// Configure PDOs from a given config.
+    async fn configure_pdos_config(
+        &self,
+        sync_managers: &[SyncManager],
+        direction: PdoDirection,
+        offset: &mut PdiOffset,
+        config: &[SyncManagerAssignment<'_>],
+    ) -> Result<PdiSegment, Error> {
+        let start_offset = *offset;
+
+        let (sm_type, _fmmu_type) = direction.filter_terms();
+
+        for assignment in config {
+            let sync_manager_index = assignment.sync_manager;
+
+            let sync_manager = &sync_managers[usize::from(sync_manager_index)];
+
+            let fmmu_index = assignment.fmmu;
+
+            let bit_len = assignment.len_bits();
+
+            let sm_config = self
+                .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
+                .await?;
+
+            self.write_fmmu_config(
+                bit_len,
+                usize::from(fmmu_index),
+                offset,
+                sm_type,
+                &sm_config,
+            )
+            .await?;
+        }
+
+        Ok(PdiSegment {
             bytes: start_offset.up_to(*offset),
         })
     }

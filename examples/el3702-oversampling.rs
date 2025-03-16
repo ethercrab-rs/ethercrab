@@ -93,46 +93,6 @@ fn main() -> Result<(), Error> {
 
         // The group will be in PRE-OP at this point
 
-        // let mut servo = None;
-
-        // for mut subdevice in group.iter_mut(&maindevice) {
-        //     if subdevice.name() == "PD4-EB59CD-E-65-1" {
-        //         log::info!("Found servo {:?}", subdevice.identity());
-
-        //         // subdevice
-        //         //     .sdo_write_array(
-        //         //         0x1600,
-        //         //         [
-        //         //             0x6040_0010u32, // Control word, 16 bits
-        //         //             0x6060_0008,    // Op mode, 8 bits
-        //         //         ],
-        //         //     )
-        //         //     .await?;
-
-        //         // subdevice
-        //         //     .sdo_write_array(
-        //         //         0x1a00,
-        //         //         [
-        //         //             0x6041_0010u32, // Status word, 16 bits
-        //         //             0x6061_0008,    // Op mode reported
-        //         //         ],
-        //         //     )
-        //         //     .await?;
-
-        //         // // Outputs to SubDevice
-        //         // subdevice.sdo_write_array(0x1c12, [0x1600u16]).await?;
-
-        //         // // Inputs back to MainDevice
-        //         // subdevice.sdo_write_array(0x1c13, [0x1a00u16]).await?;
-
-        //         // // let (inputs_mapping, outputs_mapping) =
-        //         // subdevice.set_config(&inputs_config, &outputs_config);
-
-        //         // // Enable SYNC0 DC
-        //         // subdevice.set_dc_sync(DcSync::Sync0);
-        //     }
-        // }
-
         log::info!("Group has {} SubDevices", group.len());
 
         let mut averages = Vec::new();
@@ -143,64 +103,56 @@ fn main() -> Result<(), Error> {
 
         log::info!("Moving into PRE-OP with PDI");
 
-        let outputs_config = [SyncManagerAssignment {
-            // Outputs, 0x1c12
-            sync_manager: 2,
-            fmmu: 0,
-            mappings: &[PdoMapping {
-                index: 0x1600,
-                objects: &[
-                    // TODO: Could these become enums again?
-                    ds402::WriteObject::CONTROL_WORD,
-                    ds402::WriteObject::OP_MODE,
-                ],
-                ..PdoMapping::default()
-            }],
-        }];
+        let outputs_config = [];
 
-        let inputs_config = [SyncManagerAssignment {
-            // Inputs, 0x1c13
-            sync_manager: 3,
-            fmmu: 1,
-            mappings: &[PdoMapping {
-                index: 0x1a00,
-                objects: &[ds402::ReadObject::STATUS_WORD, ds402::ReadObject::OP_MODE],
-                ..PdoMapping::default()
-            }],
-        }];
+        let inputs_config = [
+            SyncManagerAssignment {
+                sync_manager: 0,
+                fmmu: 0,
+                mappings: &[
+                    // Ch1 cycle count
+                    PdoMapping {
+                        index: 0x1b00,
+                        objects: &[0x6800_010f],
+                        ..PdoMapping::default()
+                    },
+                    // Ch1 first sample
+                    PdoMapping {
+                        index: 0x1a00,
+                        objects: &[0x6000_010f],
+                        oversampling: Some(2),
+                    },
+                ],
+            },
+            SyncManagerAssignment {
+                sync_manager: 1,
+                fmmu: 1,
+                mappings: &[
+                    // Ch2 cycle count
+                    PdoMapping {
+                        index: 0x1b00,
+                        // Sub index 2, 16 bits
+                        objects: &[0x6800_020f],
+                        ..PdoMapping::default()
+                    },
+                    // Ch2 first sample
+                    PdoMapping {
+                        index: 0x1a80,
+                        objects: &[0x6000_020f],
+                        ..PdoMapping::default()
+                    },
+                ],
+            },
+        ];
 
         let group = group
             .into_pre_op_pdi_with_config(&maindevice, async |mut subdevice, idx| {
-                if subdevice.name() == "PD4-EB59CD-E-65-1" {
-                    log::info!("Found servo {:?}", subdevice.identity());
+                if subdevice.name() == "EL3702" {
+                    log::info!("Found EL3702 {:?}", subdevice.identity());
 
-                    // subdevice
-                    //     .sdo_write_array(
-                    //         0x1600,
-                    //         [
-                    //             0x6040_0010u32, // Control word, 16 bits
-                    //             0x6060_0008,    // Op mode, 8 bits
-                    //         ],
-                    //     )
-                    //     .await?;
-
-                    // subdevice
-                    //     .sdo_write_array(
-                    //         0x1a00,
-                    //         [
-                    //             0x6041_0010u32, // Status word, 16 bits
-                    //             0x6061_0008,    // Op mode reported
-                    //         ],
-                    //     )
-                    //     .await?;
-
-                    // // Outputs to SubDevice
-                    // subdevice.sdo_write_array(0x1c12, [0x1600u16]).await?;
-
-                    // // Inputs back to MainDevice
-                    // subdevice.sdo_write_array(0x1c13, [0x1a00u16]).await?;
-
-                    subdevice.set_dc_sync(DcSync::Sync0);
+                    subdevice.set_dc_sync(DcSync::Sync01 {
+                        sync1_period: Duration::from_millis(1),
+                    });
 
                     Ok(Some((&inputs_config[..], &outputs_config[..])))
                     // Ok(None)
@@ -361,24 +313,40 @@ fn main() -> Result<(), Error> {
                 ..
             } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
 
-            let io = sd.io_raw_mut();
+            for subdevice in group.iter(&maindevice) {
+                if subdevice.name().contains("EL4732") {
+                    let mut o = subdevice.outputs_raw_mut();
+                    let voltage = -12.0_f64;
 
-            let i = io.inputs();
+                    // Convert voltage from -10V to +10V to a signed 16-bit value (-32768 to +32767)
+                    let normalized = voltage / 10.0_f64; // Normalize to -1.0 to +1.0 range
+                    let dac_value = (normalized * 32767.0_f64).round() as i16;
 
-            let status_word = &i[0..2];
-            let reported_op_mode = &i[2..3];
+                    // Extract bytes from the signed value
+                    // For little-endian (low byte first)
+                    o[2] = (dac_value & 0xFF) as u8;
+                    o[3] = ((dac_value >> 8) & 0xFF) as u8;
 
-            let mut o = io.outputs();
+                    // For big-endian (high byte first)
+                    // o[2] = ((dac_value >> 8) & 0xFF) as u8;
+                    // o[3] = (dac_value & 0xFF) as u8;
+                } else if subdevice.name().contains("EL3702") {
+                    let io = subdevice.io_raw();
+                    log::info!("EL3702 complete input data: {:02X?}", io.inputs());
 
-            let control_word = &mut o[0..2];
-            let op_mode = &mut o[2..3];
+                    let ch1_raw = i16::from_le_bytes([io.inputs()[2], io.inputs()[3]]);
+                    let ch2_raw = i16::from_le_bytes([io.inputs()[6], io.inputs()[7]]);
 
-            OpMode::CyclicSynchronousPosition.pack_to_slice(op_mode)?;
+                    // Convert to voltage (+/-10V range)
+                    let ch1_voltage = (ch1_raw as f32 / 32768.0) * 10.0;
+                    let ch2_voltage = (ch2_raw as f32 / 32768.0) * 10.0;
 
-            let status_word = StatusWord::unpack_from_slice(status_word)?;
-            let reported_op_mode = OpMode::unpack_from_slice(reported_op_mode)?;
-
-            // println!("Op mode {:?}", reported_op_mode);
+                    //log::info!(
+                    //    "EL3702 Inputs - CH1: {:+7.3} V (raw: {:+6}), CH2: {:+7.3} V (raw: {:+6})",
+                    //    ch1_voltage, ch1_raw, ch2_voltage, ch2_raw
+                    //);
+                }
+            }
 
             smol::Timer::at(now + next_cycle_wait).await;
 

@@ -244,21 +244,53 @@ impl ReadObject {
 }
 
 /// SDO config for a SubDevice's read (with [`ReadObject`]) or write (with [`WriteObject`]) PDOs.
+#[derive(Debug, Copy, Clone)]
 pub struct SyncManagerAssignment<'a> {
     /// Sync manager index starting from 0.
-    pub sm: u16,
+    pub sync_manager: u8,
+
+    /// Desired FMMU.
+    pub fmmu: u8,
 
     /// PDO mappings.
     pub mappings: &'a [PdoMapping<'a>],
 }
 
+impl<'a> SyncManagerAssignment<'a> {
+    pub(crate) fn len_bits(&self) -> u16 {
+        self.mappings
+            .iter()
+            .map(|mapping| {
+                let mul = mapping.oversampling.unwrap_or(1).max(1);
+
+                let sum: u16 = mapping
+                    .objects
+                    .iter()
+                    .map(|object| {
+                        // ETG1000.6 5.6.7.4.8; lower 8 bits are the object size
+                        let size_bits = (object & 0xff) as u16;
+
+                        size_bits
+                    })
+                    .sum();
+
+                sum * mul
+            })
+            .sum()
+    }
+}
+
 /// PDO object to be mapped.
+#[derive(Debug, Default, Copy, Clone)]
 pub struct PdoMapping<'a> {
     /// PDO index, e.g. `0x1600` or `0x1a00`.
     pub index: u16,
 
     /// PDO objects to map into this PDO.
     pub objects: &'a [u32],
+
+    /// Oversampling ratio. If in doubt, set to `None``.
+    pub oversampling: Option<u16>,
 }
 
 /// Wrap a group SubDevice in a higher level DS402 API
@@ -320,13 +352,17 @@ mod tests {
             // TODO: Higher level API so we can get the correct read/write SM address from the
             // subdevice (e.g. `sd.read_sm(0) -> Option<u16>` or something)
             // index: 0x1c12,
-            sm: 0,
+            sync_manager: 0,
+
+            fmmu: 0,
+
             // TODO: Validate that the SM can have this many mappings
             mappings: &[PdoMapping {
                 index: 0x1600,
                 // TODO: Validate that this mapping object can have this many PDOs, e.g. some SD
                 // PDOs can only have 4 assignments
                 objects: &[WriteObject::CONTROL_WORD, WriteObject::OP_MODE],
+                oversampling: None,
             }],
         }];
 
