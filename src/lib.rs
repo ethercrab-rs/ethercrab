@@ -189,6 +189,7 @@ pub mod std;
 pub use al_status_code::AlStatusCode;
 pub use coe::SubIndex;
 pub use command::{Command, Reads, WrappedRead, WrappedWrite, Writes};
+pub use ds402::PdoMapping;
 pub use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
     EtherCrabWireWrite, EtherCrabWireWriteSized,
