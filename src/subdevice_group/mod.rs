@@ -8,15 +8,12 @@ mod handle;
 mod tx_rx_response;
 
 use crate::{
-    DcSync,
-    MainDevice,
-    RegisterAddress,
-    SubDeviceState,
+    DcSync, MainDevice, RegisterAddress, SubDeviceState,
     al_control::AlControl,
     command::Command,
+    ds402::SyncManagerAssignment,
     error::{DistributedClockError, Error, Item},
     fmt,
-    // lending_lock::LendingLock,
     pdi::PdiOffset,
     pdu_loop::{CreatedFrame, ReceivedPdu},
     subdevice::{
@@ -189,6 +186,108 @@ pub struct SubDeviceGroup<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S =
 impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOp, DC>
 {
+    async fn configure_fmmus2<'fun>(
+        &mut self,
+        maindevice: &MainDevice<'_>,
+        mut configure: impl AsyncFnMut(
+            SubDeviceRef<'_, &mut SubDevice>,
+            usize,
+        ) -> Result<
+            // TODO: Type alias two different typestates for inputs/outputs
+            Option<(
+                &'fun [SyncManagerAssignment<'fun>],
+                &'fun [SyncManagerAssignment<'fun>],
+            )>,
+            Error,
+        >,
+    ) -> Result<(), Error> {
+        let inner = self.inner.get_mut();
+
+        let mut pdi_position = inner.pdi_start;
+
+        let mut configs = heapless::Vec::<_, MAX_SUBDEVICES>::new();
+
+        for (i, subdevice) in inner.subdevices.iter_mut().enumerate() {
+            // SAFETY: `configs` uses `MAX_SUBDEVICES` so should be the same length as or shorter
+            // than `inner.subdevices`.
+            fmt::unwrap!(
+                configs.push(
+                    configure(
+                        SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice),
+                        i,
+                    )
+                    .await?,
+                )
+            );
+        }
+
+        fmt::debug!(
+            "Going to configure group with {} SubDevice(s), starting PDI offset {:#010x}",
+            inner.subdevices.len(),
+            inner.pdi_start.start_address
+        );
+
+        // Configure master read PDI mappings in the first section of the PDI
+        for (subdevice, config) in inner.subdevices.iter_mut().zip(configs.iter()) {
+            let inputs_config = config.map(|c| c.0);
+
+            // We're in PRE-OP at this point
+            pdi_position = SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
+                .configure_fmmus(
+                    pdi_position,
+                    inner.pdi_start.start_address,
+                    PdoDirection::MasterRead,
+                    inputs_config,
+                )
+                .await?;
+        }
+
+        self.read_pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
+
+        fmt::debug!("SubDevice mailboxes configured and init hooks called");
+
+        // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
+        // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
+        // IOIOIO.
+        for (subdevice, config) in inner.subdevices.iter_mut().zip(configs.iter()) {
+            let outputs_config = config.map(|c| c.1);
+
+            let addr = subdevice.configured_address();
+
+            let mut subdevice_config = SubDeviceRef::new(maindevice, addr, subdevice);
+
+            // Still in PRE-OP
+            pdi_position = subdevice_config
+                .configure_fmmus(
+                    pdi_position,
+                    inner.pdi_start.start_address,
+                    PdoDirection::MasterWrite,
+                    outputs_config,
+                )
+                .await?;
+        }
+
+        fmt::debug!("SubDevice FMMUs configured for group. Able to move to SAFE-OP");
+
+        self.pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
+
+        fmt::debug!(
+            "Group PDI length: start {:#010x}, {} total bytes ({} input bytes)",
+            inner.pdi_start.start_address,
+            self.pdi_len,
+            self.read_pdi_len
+        );
+
+        if self.pdi_len > MAX_PDI {
+            return Err(Error::PdiTooLong {
+                max_length: MAX_PDI,
+                desired_length: self.pdi_len,
+            });
+        }
+
+        Ok(())
+    }
+
     /// Configure read/write FMMUs and PDI for this group.
     async fn configure_fmmus(&mut self, maindevice: &MainDevice<'_>) -> Result<(), Error> {
         let inner = self.inner.get_mut();
@@ -209,6 +308,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
                     pdi_position,
                     inner.pdi_start.start_address,
                     PdoDirection::MasterRead,
+                    None,
                 )
                 .await?;
         }
@@ -231,6 +331,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
                     pdi_position,
                     inner.pdi_start.start_address,
                     PdoDirection::MasterWrite,
+                    None,
                 )
                 .await?;
         }
@@ -276,29 +377,29 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         ))
     }
 
-    /// Borrow an individual SubDevice, searched for by configured station address.
-    #[deny(clippy::panic)]
-    pub(crate) fn subdevice_by_configured_address<'maindevice, 'group>(
-        &'group self,
-        maindevice: &'maindevice MainDevice<'maindevice>,
-        configured_address: u16,
-    ) -> Result<SubDeviceRef<'maindevice, &'group SubDevice>, Error> {
-        let subdevice = self
-            .inner()
-            .subdevices
-            .iter()
-            .find(|sd| sd.configured_address() == configured_address)
-            .ok_or(Error::NotFound {
-                item: Item::SubDevice,
-                index: Some(configured_address.into()),
-            })?;
+    // /// Borrow an individual SubDevice, searched for by configured station address.
+    // #[deny(clippy::panic)]
+    // pub(crate) fn subdevice_by_configured_address<'maindevice, 'group>(
+    //     &'group self,
+    //     maindevice: &'maindevice MainDevice<'maindevice>,
+    //     configured_address: u16,
+    // ) -> Result<SubDeviceRef<'maindevice, &'group SubDevice>, Error> {
+    //     let subdevice = self
+    //         .inner()
+    //         .subdevices
+    //         .iter()
+    //         .find(|sd| sd.configured_address() == configured_address)
+    //         .ok_or(Error::NotFound {
+    //             item: Item::SubDevice,
+    //             index: Some(configured_address.into()),
+    //         })?;
 
-        Ok(SubDeviceRef::new(
-            maindevice,
-            subdevice.configured_address(),
-            subdevice,
-        ))
-    }
+    //     Ok(SubDeviceRef::new(
+    //         maindevice,
+    //         subdevice.configured_address(),
+    //         subdevice,
+    //     ))
+    // }
 
     /// Transition the group from PRE-OP -> SAFE-OP -> OP.
     ///
@@ -311,6 +412,39 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         let self_ = self.into_safe_op(maindevice).await?;
 
         self_.into_op(maindevice).await
+    }
+
+    // NOTE: This just goes PRE-OP -> PRE-OP + PDI. What about into op and into safe op?
+    /// TODO: Docs
+    pub async fn into_pre_op_pdi_with_config<'fun>(
+        mut self,
+        maindevice: &MainDevice<'_>,
+        configure: impl AsyncFnMut(
+            SubDeviceRef<'_, &mut SubDevice>,
+            usize,
+        ) -> Result<
+            // TODO: Return a struct with `inputs` and `outputs` fields
+            Option<(
+                &'fun [SyncManagerAssignment<'fun>],
+                &'fun [SyncManagerAssignment<'fun>],
+            )>,
+            Error,
+        >,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, DC>, Error>
+    where
+        DC: 'fun,
+    {
+        self.configure_fmmus2(maindevice, configure).await?;
+
+        Ok(SubDeviceGroup {
+            id: self.id,
+            pdi: self.pdi,
+            read_pdi_len: self.read_pdi_len,
+            pdi_len: self.pdi_len,
+            inner: self.inner,
+            dc_conf: self.dc_conf,
+            _state: PhantomData,
+        })
     }
 
     /// Configure FMMUs, but leave the group in [`PreOp`] state.
