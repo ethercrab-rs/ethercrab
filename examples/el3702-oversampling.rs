@@ -105,23 +105,20 @@ fn main() -> Result<(), Error> {
 
         let outputs_config = [];
 
+        const fn ass(index: u16, subindex: u8) -> u32 {
+            (index as u32) << 16 | (subindex as u32) << 8 | (2 as u32 * 8 & 0xff)
+        }
+
         let inputs_config = [
             SyncManagerAssignment {
                 sync_manager: 0,
                 fmmu: 0,
                 mappings: &[
                     // Ch1 cycle count
-                    PdoMapping {
-                        index: 0x1b00,
-                        objects: &[0x6800_010f],
-                        ..PdoMapping::default()
-                    },
+                    PdoMapping::new(0x1b00, const { &[PdoMapping::object::<u16>(0x6800, 1)] }),
                     // Ch1 first sample
-                    PdoMapping {
-                        index: 0x1a00,
-                        objects: &[0x6000_010f],
-                        oversampling: Some(2),
-                    },
+                    PdoMapping::new(0x1a00, const { &[PdoMapping::object::<i16>(0x6000, 1)] })
+                        .with_oversampling(2),
                 ],
             },
             SyncManagerAssignment {
@@ -129,18 +126,10 @@ fn main() -> Result<(), Error> {
                 fmmu: 1,
                 mappings: &[
                     // Ch2 cycle count
-                    PdoMapping {
-                        index: 0x1b00,
-                        // Sub index 2, 16 bits
-                        objects: &[0x6800_020f],
-                        ..PdoMapping::default()
-                    },
+                    PdoMapping::new(0x1b00, const { &[PdoMapping::object::<u16>(0x6800, 2)] }),
                     // Ch2 first sample
-                    PdoMapping {
-                        index: 0x1a80,
-                        objects: &[0x6000_020f],
-                        ..PdoMapping::default()
-                    },
+                    PdoMapping::new(0x1a00, const { &[PdoMapping::object::<i16>(0x6000, 2)] })
+                        .with_oversampling(2),
                 ],
             },
         ];
@@ -155,7 +144,6 @@ fn main() -> Result<(), Error> {
                     });
 
                     Ok(Some((&inputs_config[..], &outputs_config[..])))
-                    // Ok(None)
                 } else {
                     Ok(None)
                 }
