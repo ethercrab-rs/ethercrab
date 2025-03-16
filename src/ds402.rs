@@ -293,6 +293,47 @@ pub struct PdoMapping<'a> {
     pub oversampling: Option<u16>,
 }
 
+impl<'a> PdoMapping<'a> {
+    /// Create a new PDO assignment with the given index and PDO objects.
+    pub const fn new(index: u16, objects: &'a [u32]) -> Self {
+        Self {
+            index,
+            objects,
+            oversampling: None,
+        }
+    }
+
+    /// Set oversampling configuration for this mapping.
+    ///
+    /// For actual oversampling, values over 1 should be used.
+    pub const fn with_oversampling(self, oversampling: u16) -> Self {
+        Self {
+            oversampling: Some(oversampling),
+            ..self
+        }
+    }
+
+    /// Create an object mapping from an index, subindex and desired type.
+    ///
+    /// # Examples
+    ///
+    /// Map a 16 bit value at object `0x6800:01`.
+    ///
+    /// ```rust
+    /// use ethercrab::PdoMapping;
+    ///
+    /// let raw = PdoMapping::object::<u16>(0x6800, 1);
+    ///
+    /// assert_eq!(raw, 0x6800_010f);
+    /// ```
+    pub const fn object<T>(index: u16, subindex: u8) -> u32
+    where
+        T: EtherCrabWireSized,
+    {
+        (index as u32) << 16 | (subindex as u32) << 8 | (T::PACKED_LEN as u32 * 8 & 0xff)
+    }
+}
+
 /// Wrap a group SubDevice in a higher level DS402 API
 pub struct Ds402<'group, const MAX_PDI: usize, const MAX_OUTPUT_OBJECTS: usize> {
     outputs: FnvIndexMap<u16, core::ops::Range<usize>, MAX_OUTPUT_OBJECTS>,
