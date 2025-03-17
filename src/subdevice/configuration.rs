@@ -630,7 +630,7 @@ where
                         .enumerate()
                         .find(|(_idx, sm)| sm.usage_type == sm_type)?;
 
-                    sync_managers.get(idx).map(|sm| (idx as u8, sm))
+                    Some((idx as u8, sm))
                 })
                 .ok_or_else(|| {
                     fmt::error!(
@@ -669,6 +669,13 @@ where
                         sync_manager_index
                     })
             });
+
+            fmt::debug!(
+                "{:?} assignment SM {}, FMMU {}",
+                sm_type,
+                sync_manager_index,
+                fmmu_index
+            );
 
             let bit_len = assignment.len_bits();
 
