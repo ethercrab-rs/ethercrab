@@ -613,16 +613,17 @@ where
         let (sm_type, _fmmu_type) = direction.filter_terms();
 
         for assignment in config {
-            let sync_manager_index = assignment
+            let (sync_manager_index, sync_manager) = assignment
                 .sync_manager
+                .and_then(|idx| sync_managers.get(usize::from(idx)).map(|sm| (idx, sm)))
                 .or_else(|| {
                     // If SM is not explicitly set, find the first SM of the type we're looking for
-                    let (index, kind) = sync_managers
+                    let (idx, sm) = sync_managers
                         .iter()
                         .enumerate()
                         .find(|(_idx, sm)| sm.usage_type == sm_type)?;
 
-                    Some(index as u8)
+                    sync_managers.get(idx).map(|sm| (idx as u8, sm))
                 })
                 .ok_or_else(|| {
                     fmt::error!(
@@ -634,11 +635,20 @@ where
                     Error::Internal
                 })?;
 
-            let sync_manager = &sync_managers[usize::from(sync_manager_index)];
+            if sync_manager.usage_type != sm_type {
+                fmt::error!(
+                    "Sync manager index {} type is incorrect: {:?}, expected {:?}",
+                    sync_manager_index,
+                    sync_manager.usage_type,
+                    sm_type
+                );
+
+                return Err(Error::Internal);
+            }
 
             let fmmu_index = assignment.fmmu.unwrap_or_else(|| {
                 // If no FMMU was explicitly set, look for FMMU index using FMMU_EX section in
-                // EEPROM. If that fails, fall back to using the sync manager index instead.
+                // EEPROM. If that fails, fall back to using the sync manager index as FMMU index.
                 fmmu_sm_mappings
                     .iter()
                     .find(|fmmu| fmmu.sync_manager == sync_manager_index)
