@@ -532,9 +532,9 @@ pub enum SyncManagerType {
     MailboxWrite = 0x01,
     /// Used for reading from the SubDevice.
     MailboxRead = 0x02,
-    /// Used for process data outputs from master.
+    /// Used for process data outputs from MainDevice to SubDevice.
     ProcessDataWrite = 0x03,
-    /// Used for process data inputs to master.
+    /// Used for process data inputs into MainDevice from SubDevice.
     ProcessDataRead = 0x04,
 }
 
