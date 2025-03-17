@@ -69,12 +69,13 @@ impl<T: ?Sized> MySyncUnsafeCell<T> {
 
 /// TODO: Doc
 #[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
 pub struct MappingConfig<'a> {
     /// Input mappings (SubDevice -> MainDevice).
-    pub(crate) inputs: &'a [SyncManagerAssignment<'a>],
+    pub inputs: &'a [SyncManagerAssignment<'a>],
 
     /// Output mappings (MainDevice -> SubDevice).
-    pub(crate) outputs: &'a [SyncManagerAssignment<'a>],
+    pub outputs: &'a [SyncManagerAssignment<'a>],
 }
 
 impl<'a> MappingConfig<'a> {
