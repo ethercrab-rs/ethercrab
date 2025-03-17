@@ -608,14 +608,50 @@ where
     ) -> Result<PdiSegment, Error> {
         let start_offset = *offset;
 
+        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
+
         let (sm_type, _fmmu_type) = direction.filter_terms();
 
         for assignment in config {
-            let sync_manager_index = assignment.sync_manager;
+            let sync_manager_index = assignment
+                .sync_manager
+                .or_else(|| {
+                    // If SM is not explicitly set, find the first SM of the type we're looking for
+                    let (index, kind) = sync_managers
+                        .iter()
+                        .enumerate()
+                        .find(|(_idx, sm)| sm.usage_type == sm_type)?;
+
+                    Some(index as u8)
+                })
+                .ok_or_else(|| {
+                    fmt::error!(
+                        "Failed to find sync manager {:?} for {:?}",
+                        sm_type,
+                        assignment
+                    );
+
+                    Error::Internal
+                })?;
 
             let sync_manager = &sync_managers[usize::from(sync_manager_index)];
 
-            let fmmu_index = assignment.fmmu;
+            let fmmu_index = assignment.fmmu.unwrap_or_else(|| {
+                // If no FMMU was explicitly set, look for FMMU index using FMMU_EX section in
+                // EEPROM. If that fails, fall back to using the sync manager index instead.
+                fmmu_sm_mappings
+                    .iter()
+                    .find(|fmmu| fmmu.sync_manager == sync_manager_index)
+                    .map(|fmmu| fmmu.sync_manager)
+                    .unwrap_or_else(|| {
+                        fmt::trace!(
+                            "Could not find FMMU for PDO SM{} in EEPROM, using SM index to pick FMMU instead",
+                            sync_manager_index,
+                        );
+
+                        sync_manager_index
+                    })
+            });
 
             let bit_len = assignment.len_bits();
 

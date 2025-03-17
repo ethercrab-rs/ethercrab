@@ -8,7 +8,7 @@ use ethercrab::{
     ds402::{self, Ds402, OpMode, PdoMapping, StatusWord, SyncManagerAssignment},
     error::Error,
     std::ethercat_now,
-    subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
+    subdevice_group::{CycleInfo, DcConfiguration, MappingConfig, TxRxResponse},
     DcSync, EtherCrabWireRead, EtherCrabWireWrite, MainDevice, MainDeviceConfig, PduStorage,
     RegisterAddress, Timeouts,
 };
@@ -103,36 +103,49 @@ fn main() -> Result<(), Error> {
 
         log::info!("Moving into PRE-OP with PDI");
 
-        let outputs_config = [];
-
-        const fn ass(index: u16, subindex: u8) -> u32 {
-            (index as u32) << 16 | (subindex as u32) << 8 | (2 as u32 * 8 & 0xff)
-        }
-
-        let inputs_config = [
-            SyncManagerAssignment {
-                sync_manager: 0,
-                fmmu: 0,
-                mappings: &[
-                    // Ch1 cycle count
-                    PdoMapping::new(0x1b00, const { &[PdoMapping::object::<u16>(0x6800, 1)] }),
-                    // Ch1 first sample
-                    PdoMapping::new(0x1a00, const { &[PdoMapping::object::<i16>(0x6000, 1)] })
-                        .with_oversampling(2),
-                ],
-            },
-            SyncManagerAssignment {
-                sync_manager: 1,
-                fmmu: 1,
-                mappings: &[
-                    // Ch2 cycle count
-                    PdoMapping::new(0x1b00, const { &[PdoMapping::object::<u16>(0x6800, 2)] }),
-                    // Ch2 first sample
-                    PdoMapping::new(0x1a00, const { &[PdoMapping::object::<i16>(0x6000, 2)] })
-                        .with_oversampling(2),
-                ],
-            },
-        ];
+        let el3702_mapping = MappingConfig {
+            inputs: &[
+                SyncManagerAssignment::new(
+                    const {
+                        &[
+                            // Ch1 cycle count
+                            PdoMapping::new(
+                                0x1b00,
+                                const { &[PdoMapping::object::<u16>(0x6800, 1)] },
+                            ),
+                            // Ch1 first sample
+                            PdoMapping::new(
+                                0x1a00,
+                                const { &[PdoMapping::object::<i16>(0x6000, 1)] },
+                            )
+                            .with_oversampling(2),
+                        ]
+                    },
+                )
+                .with_sync_manager(0)
+                .with_fmmu(0),
+                SyncManagerAssignment::new(
+                    const {
+                        &[
+                            // Ch1 cycle count
+                            PdoMapping::new(
+                                0x1b00,
+                                const { &[PdoMapping::object::<u16>(0x6800, 2)] },
+                            ),
+                            // Ch1 first sample
+                            PdoMapping::new(
+                                0x1a00,
+                                const { &[PdoMapping::object::<i16>(0x6000, 2)] },
+                            )
+                            .with_oversampling(2),
+                        ]
+                    },
+                )
+                .with_sync_manager(1)
+                .with_fmmu(1),
+            ][..],
+            outputs: &[],
+        };
 
         let group = group
             .into_pre_op_pdi_with_config(&maindevice, async |mut subdevice, idx| {
@@ -143,7 +156,7 @@ fn main() -> Result<(), Error> {
                         sync1_period: Duration::from_millis(1),
                     });
 
-                    Ok(Some((&inputs_config[..], &outputs_config[..])))
+                    Ok(Some(el3702_mapping))
                 } else {
                     Ok(None)
                 }

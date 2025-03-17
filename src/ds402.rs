@@ -2,6 +2,7 @@
 
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireSized};
 use heapless::FnvIndexMap;
+use libc::sync;
 
 use crate::{fmt, SubDevicePdi, SubDeviceRef};
 
@@ -223,6 +224,7 @@ pub enum Transition {
 #[derive(Copy, Clone)]
 pub struct WriteObject;
 
+// TODO: Can this go back to being an enum?
 impl WriteObject {
     /// Control word.
     pub const CONTROL_WORD: u32 = 0x6040_0010;
@@ -247,16 +249,48 @@ impl ReadObject {
 #[derive(Debug, Copy, Clone)]
 pub struct SyncManagerAssignment<'a> {
     /// Sync manager index starting from 0.
-    pub sync_manager: u8,
+    pub(crate) sync_manager: Option<u8>,
 
     /// Desired FMMU.
-    pub fmmu: u8,
+    pub(crate) fmmu: Option<u8>,
 
     /// PDO mappings.
-    pub mappings: &'a [PdoMapping<'a>],
+    pub(crate) mappings: &'a [PdoMapping<'a>],
 }
 
 impl<'a> SyncManagerAssignment<'a> {
+    /// Create a new SM assignment.
+    ///
+    /// The SubDevice Sync Manager and FMMU will be chosen automatically by EtherCrab, based on the
+    /// SubDevice's EEPROM contents. To override this behaviour, use
+    /// [`with_sync_manager`](SyncManagerAssignment::with_sync_manager) and/or
+    /// [`with_fmmu`](SyncManagerAssignment::with_fmmu).
+    pub fn new(mappings: &'a [PdoMapping<'a>]) -> Self {
+        Self {
+            mappings,
+            sync_manager: None,
+            fmmu: None,
+        }
+    }
+
+    /// Set an explicit sync manager index to use.
+    pub fn with_sync_manager(self, sync_manager: u8) -> Self {
+        Self {
+            sync_manager: Some(sync_manager),
+            ..self
+        }
+    }
+
+    /// Set an explicit FMMU index to use.
+    ///
+    /// This will be the same as the sync manager index most of the time.
+    pub fn with_fmmu(self, fmmu: u8) -> Self {
+        Self {
+            fmmu: Some(fmmu),
+            ..self
+        }
+    }
+
     pub(crate) fn len_bits(&self) -> u16 {
         self.mappings
             .iter()
@@ -393,9 +427,9 @@ mod tests {
             // TODO: Higher level API so we can get the correct read/write SM address from the
             // subdevice (e.g. `sd.read_sm(0) -> Option<u16>` or something)
             // index: 0x1c12,
-            sync_manager: 0,
+            sync_manager: None,
 
-            fmmu: 0,
+            fmmu: None,
 
             // TODO: Validate that the SM can have this many mappings
             mappings: &[PdoMapping {

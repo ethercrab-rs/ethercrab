@@ -67,6 +67,16 @@ impl<T: ?Sized> MySyncUnsafeCell<T> {
     }
 }
 
+/// TODO: Doc
+#[derive(Debug, Copy, Clone)]
+pub struct MappingConfig<'a> {
+    /// Input mappings (SubDevice -> MainDevice).
+    pub inputs: &'a [SyncManagerAssignment<'a>],
+
+    /// Output mappings (MainDevice -> SubDevice).
+    pub outputs: &'a [SyncManagerAssignment<'a>],
+}
+
 /// A typestate for [`SubDeviceGroup`] representing a group that is shut down.
 ///
 /// This corresponds to the EtherCAT states INIT.
@@ -192,14 +202,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         mut configure: impl AsyncFnMut(
             SubDeviceRef<'_, &mut SubDevice>,
             usize,
-        ) -> Result<
-            // TODO: Type alias two different typestates for inputs/outputs
-            Option<(
-                &'fun [SyncManagerAssignment<'fun>],
-                &'fun [SyncManagerAssignment<'fun>],
-            )>,
-            Error,
-        >,
+        ) -> Result<Option<MappingConfig<'fun>>, Error>,
     ) -> Result<(), Error> {
         let inner = self.inner.get_mut();
 
@@ -229,7 +232,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
 
         // Configure master read PDI mappings in the first section of the PDI
         for (subdevice, config) in inner.subdevices.iter_mut().zip(configs.iter()) {
-            let inputs_config = config.map(|c| c.0);
+            let inputs_config = config.map(|c| c.inputs);
 
             // We're in PRE-OP at this point
             pdi_position = SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
@@ -250,7 +253,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
         for (subdevice, config) in inner.subdevices.iter_mut().zip(configs.iter()) {
-            let outputs_config = config.map(|c| c.1);
+            let outputs_config = config.map(|c| c.outputs);
 
             let addr = subdevice.configured_address();
 
@@ -422,14 +425,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         configure: impl AsyncFnMut(
             SubDeviceRef<'_, &mut SubDevice>,
             usize,
-        ) -> Result<
-            // TODO: Return a struct with `inputs` and `outputs` fields
-            Option<(
-                &'fun [SyncManagerAssignment<'fun>],
-                &'fun [SyncManagerAssignment<'fun>],
-            )>,
-            Error,
-        >,
+        ) -> Result<Option<MappingConfig<'fun>>, Error>,
     ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, DC>, Error>
     where
         DC: 'fun,
