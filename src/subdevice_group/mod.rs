@@ -80,7 +80,7 @@ pub struct MappingConfig<'a> {
 
 impl<'a> MappingConfig<'a> {
     /// Create a new PDO mapping config with both inputs and outputs.
-    pub fn new(
+    pub const fn new(
         inputs: &'a [SyncManagerAssignment<'a>],
         outputs: &'a [SyncManagerAssignment<'a>],
     ) -> Self {
@@ -88,7 +88,7 @@ impl<'a> MappingConfig<'a> {
     }
 
     /// Create a new PDO mapping config with only inputs (SubDevice into MainDevice).
-    pub fn inputs(inputs: &'a [SyncManagerAssignment<'a>]) -> Self {
+    pub const fn inputs(inputs: &'a [SyncManagerAssignment<'a>]) -> Self {
         Self {
             inputs,
             outputs: &[],
@@ -96,11 +96,82 @@ impl<'a> MappingConfig<'a> {
     }
 
     /// Create a new PDO mapping config with only outputs (MainDevice out to SubDevice).
-    pub fn outputs(outputs: &'a [SyncManagerAssignment<'a>]) -> Self {
+    pub const fn outputs(outputs: &'a [SyncManagerAssignment<'a>]) -> Self {
         Self {
             inputs: &[],
             outputs,
         }
+    }
+
+    /// Write configuration to SubDevice CoE SDOs.
+    pub async fn configure_sdos(
+        &self,
+        subdevice: &SubDeviceRef<'_, &mut SubDevice>,
+    ) -> Result<(), Error> {
+        fmt::debug!("Write PDO mapping config");
+
+        for assignment in self.inputs.iter() {
+            for mapping in assignment.mappings.iter() {
+                fmt::debug!(
+                    "--> Inputs {:#06x} {:#010x?}",
+                    mapping.index,
+                    mapping.objects
+                );
+
+                subdevice
+                    .sdo_write_array(mapping.index, mapping.objects)
+                    .await?;
+            }
+        }
+
+        for assignment in self.outputs.iter() {
+            for mapping in assignment.mappings.iter() {
+                fmt::debug!(
+                    "--> Outputs {:#06x} {:#010x?}",
+                    mapping.index,
+                    mapping.objects
+                );
+
+                subdevice
+                    .sdo_write_array(mapping.index, mapping.objects)
+                    .await?;
+            }
+        }
+
+        for (idx, assignment) in self.inputs.iter().chain(self.outputs.iter()).enumerate() {
+            // First two SMs will be mailbox in/out if we have CoE support, so we start from 0x1c12
+            // instead of 0x1c10.
+            let fallback = 2 + idx as u16;
+
+            let sm_index = 0x1c10 + assignment.sync_manager.map(u16::from).unwrap_or(fallback);
+
+            fmt::debug!("--> SM assignment {:#06x}", sm_index);
+
+            subdevice.sdo_write(sm_index, 0, 0u8).await?;
+
+            let mut count = 0u8;
+
+            for (sub_index, mapping) in assignment.mappings.iter().enumerate() {
+                // Sub indices start at 8
+                let sub_index = sub_index as u8 + 1;
+
+                fmt::debug!(
+                    "----> Object {:#06x} at sub-index {}",
+                    mapping.index,
+                    sub_index
+                );
+
+                subdevice
+                    .sdo_write(sm_index, sub_index, mapping.index)
+                    .await?;
+
+                count += 1;
+            }
+
+            subdevice.sdo_write(sm_index, 0, count).await?;
+        }
+
+        Ok(())
     }
 }
 

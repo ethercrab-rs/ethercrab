@@ -224,13 +224,12 @@ pub enum Transition {
 #[derive(Copy, Clone)]
 pub struct WriteObject;
 
-// TODO: Can this go back to being an enum?
 impl WriteObject {
     /// Control word.
-    pub const CONTROL_WORD: u32 = 0x6040_0010;
+    pub const CONTROL_WORD: u32 = PdoMapping::object::<ControlWord>(0x6040, 0);
 
     /// Operation mode.
-    pub const OP_MODE: u32 = 0x6060_0008;
+    pub const OP_MODE: u32 = PdoMapping::object::<OpMode>(0x6060, 0);
 }
 
 /// An object received by the MainDevice from the SubDevice (TxPdo).
@@ -239,10 +238,10 @@ pub struct ReadObject;
 
 impl ReadObject {
     /// Control word.
-    pub const STATUS_WORD: u32 = 0x6041_0010;
+    pub const STATUS_WORD: u32 = PdoMapping::object::<StatusWord>(0x6041, 0);
 
     /// Operation mode.
-    pub const OP_MODE: u32 = 0x6061_0008;
+    pub const OP_MODE: u32 = PdoMapping::object::<OpMode>(0x6061, 0);
 }
 
 /// SDO config for a SubDevice's read (with [`ReadObject`]) or write (with [`WriteObject`]) PDOs.
