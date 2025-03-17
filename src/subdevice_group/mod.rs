@@ -71,10 +71,36 @@ impl<T: ?Sized> MySyncUnsafeCell<T> {
 #[derive(Debug, Copy, Clone)]
 pub struct MappingConfig<'a> {
     /// Input mappings (SubDevice -> MainDevice).
-    pub inputs: &'a [SyncManagerAssignment<'a>],
+    pub(crate) inputs: &'a [SyncManagerAssignment<'a>],
 
     /// Output mappings (MainDevice -> SubDevice).
-    pub outputs: &'a [SyncManagerAssignment<'a>],
+    pub(crate) outputs: &'a [SyncManagerAssignment<'a>],
+}
+
+impl<'a> MappingConfig<'a> {
+    /// Create a new PDO mapping config with both inputs and outputs.
+    pub fn new(
+        inputs: &'a [SyncManagerAssignment<'a>],
+        outputs: &'a [SyncManagerAssignment<'a>],
+    ) -> Self {
+        Self { inputs, outputs }
+    }
+
+    /// Create a new PDO mapping config with only inputs (SubDevice into MainDevice).
+    pub fn inputs(inputs: &'a [SyncManagerAssignment<'a>]) -> Self {
+        Self {
+            inputs,
+            outputs: &[],
+        }
+    }
+
+    /// Create a new PDO mapping config with only outputs (MainDevice out to SubDevice).
+    pub fn outputs(outputs: &'a [SyncManagerAssignment<'a>]) -> Self {
+        Self {
+            inputs: &[],
+            outputs,
+        }
+    }
 }
 
 /// A typestate for [`SubDeviceGroup`] representing a group that is shut down.
