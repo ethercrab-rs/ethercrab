@@ -247,15 +247,16 @@ impl ReadObject {
 
 /// SDO config for a SubDevice's read (with [`ReadObject`]) or write (with [`WriteObject`]) PDOs.
 #[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
 pub struct SyncManagerAssignment<'a> {
     /// Sync manager index starting from 0.
-    pub(crate) sync_manager: Option<u8>,
+    pub sync_manager: Option<u8>,
 
     /// Desired FMMU.
-    pub(crate) fmmu: Option<u8>,
+    pub fmmu: Option<u8>,
 
     /// PDO mappings.
-    pub(crate) mappings: &'a [PdoMapping<'a>],
+    pub mappings: &'a [PdoMapping<'a>],
 }
 
 impl<'a> SyncManagerAssignment<'a> {
@@ -316,14 +317,15 @@ impl<'a> SyncManagerAssignment<'a> {
 
 /// PDO object to be mapped.
 #[derive(Debug, Default, Copy, Clone)]
+#[non_exhaustive]
 pub struct PdoMapping<'a> {
     /// PDO index, e.g. `0x1600` or `0x1a00`.
     pub index: u16,
 
-    /// PDO objects to map into this PDO.
+    /// Objects to map into this PDO.
     pub objects: &'a [u32],
 
-    /// Oversampling ratio. If in doubt, set to `None``.
+    /// Oversampling ratio. If in doubt, set to `None`.
     pub oversampling: Option<u16>,
 }
 

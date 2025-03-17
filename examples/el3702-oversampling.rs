@@ -104,46 +104,48 @@ fn main() -> Result<(), Error> {
         log::info!("Moving into PRE-OP with PDI");
 
         let el3702_mapping = MappingConfig::inputs(
-            &[
-                SyncManagerAssignment::new(
-                    const {
-                        &[
-                            // Ch1 cycle count
-                            PdoMapping::new(
-                                0x1b00,
-                                const { &[PdoMapping::object::<u16>(0x6800, 1)] },
-                            ),
-                            // Ch1 first sample
-                            PdoMapping::new(
-                                0x1a00,
-                                const { &[PdoMapping::object::<i16>(0x6000, 1)] },
-                            )
-                            .with_oversampling(2),
-                        ]
-                    },
-                )
-                .with_sync_manager(0)
-                .with_fmmu(0),
-                SyncManagerAssignment::new(
-                    const {
-                        &[
-                            // Ch1 cycle count
-                            PdoMapping::new(
-                                0x1b00,
-                                const { &[PdoMapping::object::<u16>(0x6800, 2)] },
-                            ),
-                            // Ch1 first sample
-                            PdoMapping::new(
-                                0x1a00,
-                                const { &[PdoMapping::object::<i16>(0x6000, 2)] },
-                            )
-                            .with_oversampling(2),
-                        ]
-                    },
-                )
-                .with_sync_manager(1)
-                .with_fmmu(1),
-            ][..],
+            const {
+                &[
+                    SyncManagerAssignment::new(
+                        const {
+                            &[
+                                // Ch1 cycle count
+                                PdoMapping::new(
+                                    0x1b00,
+                                    const { &[PdoMapping::object::<u16>(0x6800, 1)] },
+                                ),
+                                // Ch1 first sample
+                                PdoMapping::new(
+                                    0x1a00,
+                                    const { &[PdoMapping::object::<i16>(0x6000, 1)] },
+                                )
+                                .with_oversampling(2),
+                            ]
+                        },
+                    )
+                    .with_sync_manager(0)
+                    .with_fmmu(0),
+                    SyncManagerAssignment::new(
+                        const {
+                            &[
+                                // Ch1 cycle count
+                                PdoMapping::new(
+                                    0x1b00,
+                                    const { &[PdoMapping::object::<u16>(0x6800, 2)] },
+                                ),
+                                // Ch1 first sample
+                                PdoMapping::new(
+                                    0x1a00,
+                                    const { &[PdoMapping::object::<i16>(0x6000, 2)] },
+                                )
+                                .with_oversampling(2),
+                            ]
+                        },
+                    )
+                    .with_sync_manager(1)
+                    .with_fmmu(1),
+                ]
+            },
         );
 
         let group = group
