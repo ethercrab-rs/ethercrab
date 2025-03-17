@@ -8,7 +8,7 @@ use ethercrab::{
     ds402::{self, Ds402, OpMode, PdoMapping, StatusWord, SyncManagerAssignment},
     error::Error,
     std::ethercat_now,
-    subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
+    subdevice_group::{CycleInfo, DcConfiguration, MappingConfig, TxRxResponse},
     DcSync, EtherCrabWireRead, EtherCrabWireWrite, MainDevice, MainDeviceConfig, PduStorage,
     RegisterAddress, Timeouts,
 };
@@ -143,67 +143,44 @@ fn main() -> Result<(), Error> {
 
         log::info!("Moving into PRE-OP with PDI");
 
-        let outputs_config = [SyncManagerAssignment {
-            // Outputs, 0x1c12
-            sync_manager: 2,
-            fmmu: 0,
-            mappings: &[PdoMapping {
-                index: 0x1600,
-                objects: &[
-                    // TODO: Could these become enums again?
-                    ds402::WriteObject::CONTROL_WORD,
-                    ds402::WriteObject::OP_MODE,
-                ],
-                ..PdoMapping::default()
-            }],
-        }];
-
-        let inputs_config = [SyncManagerAssignment {
-            // Inputs, 0x1c13
-            sync_manager: 3,
-            fmmu: 1,
-            mappings: &[PdoMapping {
-                index: 0x1a00,
-                objects: &[ds402::ReadObject::STATUS_WORD, ds402::ReadObject::OP_MODE],
-                ..PdoMapping::default()
-            }],
-        }];
+        let config = MappingConfig::new(
+            const {
+                &[SyncManagerAssignment::new(
+                    const {
+                        &[PdoMapping::new(
+                            0x1a00,
+                            &[ds402::ReadObject::STATUS_WORD, ds402::ReadObject::OP_MODE],
+                        )]
+                    },
+                )]
+            },
+            const {
+                &[SyncManagerAssignment::new(
+                    const {
+                        &[PdoMapping::new(
+                            0x1600,
+                            &[
+                                ds402::WriteObject::CONTROL_WORD,
+                                ds402::WriteObject::OP_MODE,
+                            ],
+                        )]
+                    },
+                )]
+            },
+        );
 
         let group = group
             .into_pre_op_pdi_with_config(&maindevice, async |mut subdevice, idx| {
                 if subdevice.name() == "PD4-EB59CD-E-65-1" {
                     log::info!("Found servo {:?}", subdevice.identity());
 
-                    // subdevice
-                    //     .sdo_write_array(
-                    //         0x1600,
-                    //         [
-                    //             0x6040_0010u32, // Control word, 16 bits
-                    //             0x6060_0008,    // Op mode, 8 bits
-                    //         ],
-                    //     )
-                    //     .await?;
-
-                    // subdevice
-                    //     .sdo_write_array(
-                    //         0x1a00,
-                    //         [
-                    //             0x6041_0010u32, // Status word, 16 bits
-                    //             0x6061_0008,    // Op mode reported
-                    //         ],
-                    //     )
-                    //     .await?;
-
-                    // // Outputs to SubDevice
-                    // subdevice.sdo_write_array(0x1c12, [0x1600u16]).await?;
-
-                    // // Inputs back to MainDevice
-                    // subdevice.sdo_write_array(0x1c13, [0x1a00u16]).await?;
+                    config.configure_sdos(&subdevice).await?;
 
                     subdevice.set_dc_sync(DcSync::Sync0);
 
-                    Ok(Some((&inputs_config[..], &outputs_config[..])))
-                    // Ok(None)
+                    // Let EtherCrab configure the SubDevice automatically based on the SDOs we
+                    // wrote just above.
+                    Ok(None)
                 } else {
                     Ok(None)
                 }
