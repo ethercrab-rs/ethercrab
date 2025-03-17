@@ -265,7 +265,7 @@ impl<'a> SyncManagerAssignment<'a> {
     /// SubDevice's EEPROM contents. To override this behaviour, use
     /// [`with_sync_manager`](SyncManagerAssignment::with_sync_manager) and/or
     /// [`with_fmmu`](SyncManagerAssignment::with_fmmu).
-    pub fn new(mappings: &'a [PdoMapping<'a>]) -> Self {
+    pub const fn new(mappings: &'a [PdoMapping<'a>]) -> Self {
         Self {
             mappings,
             sync_manager: None,
@@ -274,7 +274,7 @@ impl<'a> SyncManagerAssignment<'a> {
     }
 
     /// Set an explicit sync manager index to use.
-    pub fn with_sync_manager(self, sync_manager: u8) -> Self {
+    pub const fn with_sync_manager(self, sync_manager: u8) -> Self {
         Self {
             sync_manager: Some(sync_manager),
             ..self
@@ -284,7 +284,7 @@ impl<'a> SyncManagerAssignment<'a> {
     /// Set an explicit FMMU index to use.
     ///
     /// This will be the same as the sync manager index most of the time.
-    pub fn with_fmmu(self, fmmu: u8) -> Self {
+    pub const fn with_fmmu(self, fmmu: u8) -> Self {
         Self {
             fmmu: Some(fmmu),
             ..self
