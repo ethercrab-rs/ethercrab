@@ -103,8 +103,8 @@ fn main() -> Result<(), Error> {
 
         log::info!("Moving into PRE-OP with PDI");
 
-        let el3702_mapping = MappingConfig {
-            inputs: &[
+        let el3702_mapping = MappingConfig::inputs(
+            &[
                 SyncManagerAssignment::new(
                     const {
                         &[
@@ -144,8 +144,7 @@ fn main() -> Result<(), Error> {
                 .with_sync_manager(1)
                 .with_fmmu(1),
             ][..],
-            outputs: &[],
-        };
+        );
 
         let group = group
             .into_pre_op_pdi_with_config(&maindevice, async |mut subdevice, idx| {
