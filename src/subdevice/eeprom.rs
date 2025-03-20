@@ -44,7 +44,16 @@ where
         loop {
             let chunk = reader.read_chunk(word_addr).await?;
 
-            word_addr += 2;
+            let Some(incr) = word_addr.checked_add(2) else {
+                fmt::warn!(
+                    "Could not find EEPROM category {:?} or end marker. EEPROM could be empty or corrupt.",
+                    category
+                );
+
+                break Ok(None);
+            };
+
+            word_addr = incr;
 
             let (c1, chunk) = fmt::unwrap_opt!(chunk.split_first_chunk::<2>());
             let (c2, _chunk) = fmt::unwrap_opt!(chunk.split_first_chunk::<2>());
