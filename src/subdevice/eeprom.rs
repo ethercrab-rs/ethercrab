@@ -41,6 +41,8 @@ where
 
         let mut word_addr = SII_FIRST_CATEGORY_START;
 
+        let mut num_empty_categories = 0u8;
+
         loop {
             let chunk = reader.read_chunk(word_addr).await?;
 
@@ -60,6 +62,20 @@ where
 
             let category_type = CategoryType::from(u16::from_le_bytes(*c1));
             let len_words = u16::from_le_bytes(*c2);
+
+            if len_words == 0 {
+                num_empty_categories += 1;
+            }
+
+            // Heuristic: if every category we search for is empty, it's likely that the EEPROM is
+            // blank and we should stop searching for anything.
+            if num_empty_categories >= 32 {
+                fmt::debug!(
+                    "Did not find any non-empty categories. EEPROM could be empty or corrupt."
+                );
+
+                break Ok(None);
+            }
 
             fmt::trace!(
                 "Found category {:?} at {:#06x} bytes, length {:#04x} ({}) words",
