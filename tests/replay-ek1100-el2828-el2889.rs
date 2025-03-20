@@ -83,6 +83,19 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
         .await
         .expect("Fast into OP");
 
+    assert_eq!(
+        slow_outputs.subdevice(&maindevice, 0).unwrap().name(),
+        "EK1100"
+    );
+    assert_eq!(
+        slow_outputs.subdevice(&maindevice, 1).unwrap().name(),
+        "EL2889"
+    );
+    assert_eq!(
+        fast_outputs.subdevice(&maindevice, 0).unwrap().name(),
+        "EL2828"
+    );
+
     let mut slow_cycle_time = tokio::time::interval(Duration::from_millis(10));
     slow_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 

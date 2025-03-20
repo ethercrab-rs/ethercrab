@@ -78,6 +78,8 @@ An EtherCAT MainDevice written in Rust.
   calculating DC cycle offset.
 - [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) Frames received before their future's
   waker is registered will no longer trigger a `NoWaker` error.
+- [#288](https://github.com/ethercrab-rs/ethercrab/pull/288) Prevent overflow and infinite loops
+  when reading empty or nearly-empty SubDevice EEPROMs.
 
 ## [0.5.3] - 2025-01-24
 
