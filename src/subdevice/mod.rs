@@ -15,7 +15,7 @@ use crate::{
     command::Command,
     dl_status::DlStatus,
     eeprom::{device_provider::DeviceEeprom, types::SiiOwner},
-    error::{Error, Item, MailboxError, PduError},
+    error::{Error, IgnoreNoCategory, Item, MailboxError, PduError},
     fmt,
     mailbox::{MailboxHeader, MailboxType},
     maindevice::MainDevice,
@@ -252,7 +252,12 @@ impl SubDevice {
     ) -> Result<Option<heapless::String<128>>, Error> {
         let subdevice_ref = SubDeviceRef::new(maindevice, self.configured_address, ());
 
-        subdevice_ref.eeprom().device_description().await
+        Ok(subdevice_ref
+            .eeprom()
+            .device_description()
+            .await
+            .ignore_no_category()?
+            .flatten())
     }
 
     /// Get the SubDevice's EEPROM size in bytes.

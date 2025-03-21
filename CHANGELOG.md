@@ -80,6 +80,8 @@ An EtherCAT MainDevice written in Rust.
   waker is registered will no longer trigger a `NoWaker` error.
 - [#288](https://github.com/ethercrab-rs/ethercrab/pull/288) Prevent overflow and infinite loops
   when reading empty or nearly-empty SubDevice EEPROMs.
+- [#291](https://github.com/ethercrab-rs/ethercrab/pull/291) Allow initialisation to progress
+  further for devices with empty EEPROMs by falling back to defaults if config data cannot be found.
 
 ## [0.5.3] - 2025-01-24
 
