@@ -6,6 +6,11 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- [#291](https://github.com/ethercrab-rs/ethercrab/pull/291) Allow initialisation to progress
+  further for devices with empty EEPROMs by falling back to defaults if config data cannot be found.
+
 ## [0.5.4] - 2025-03-20
 
 ### Fixed
@@ -465,8 +470,8 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.4...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.4...HEAD
 [0.5.4]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.3...ethercrab-v0.5.4
 [0.5.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.2...ethercrab-v0.5.3
 [0.5.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.1...ethercrab-v0.5.2

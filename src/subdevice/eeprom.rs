@@ -7,7 +7,7 @@ use crate::{
         types::{FmmuEx, FmmuUsage, Pdo, PdoType, SyncManager},
         ChunkReader, EepromDataProvider,
     },
-    error::{EepromError, Error, Item},
+    error::{EepromError, Error, IgnoreNoCategory, Item},
     fmt,
     subdevice::SubDeviceIdentity,
 };
@@ -69,7 +69,7 @@ where
             // Heuristic: if every category we search for is empty, it's likely that the EEPROM is
             // blank and we should stop searching for anything.
             if num_empty_categories >= 32 {
-                fmt::debug!(
+                fmt::trace!(
                     "Did not find any non-empty categories. EEPROM could be empty or corrupt."
                 );
 
@@ -119,7 +119,11 @@ where
         // longer.
         let name_idx = 1;
 
-        self.find_string(name_idx).await
+        Ok(self
+            .find_string(name_idx)
+            .await
+            .ignore_no_category()?
+            .flatten())
     }
 
     pub(crate) async fn mailbox_config(&self) -> Result<DefaultMailbox, Error> {
