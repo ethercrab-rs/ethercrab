@@ -2,10 +2,10 @@ use super::{SubDevice, SubDeviceRef};
 use crate::{
     coe::{SdoExpedited, SubIndex},
     eeprom::types::{
-        CoeDetails, FmmuUsage, MailboxProtocols, SiiOwner, SyncManager, SyncManagerEnable,
-        SyncManagerType,
+        CoeDetails, DefaultMailbox, FmmuUsage, MailboxProtocols, SiiGeneral, SiiOwner, SyncManager,
+        SyncManagerEnable, SyncManagerType,
     },
-    error::{Error, Item},
+    error::{Error, IgnoreNoCategory, Item},
     fmmu::Fmmu,
     fmt,
     pdi::{PdiOffset, PdiSegment},
@@ -213,9 +213,31 @@ where
         let eeprom = self.eeprom();
 
         // Read default mailbox configuration from SubDevice information area
-        let mailbox_config = eeprom.mailbox_config().await?;
+        let mailbox_config = eeprom
+            .mailbox_config()
+            .await
+            .ignore_no_category()?
+            .unwrap_or_else(|| {
+                fmt::debug!(
+                    "{:#06x} has no EEPROM mailbox config, using default",
+                    self.configured_address()
+                );
 
-        let general = eeprom.general().await?;
+                DefaultMailbox::default()
+            });
+
+        let general = eeprom
+            .general()
+            .await
+            .ignore_no_category()?
+            .unwrap_or_else(|| {
+                fmt::debug!(
+                    "{:#06x} has no EEPROM general category, using default",
+                    self.configured_address()
+                );
+
+                SiiGeneral::default()
+            });
 
         fmt::trace!(
             "SubDevice {:#06x} Mailbox configuration: {:#?}",
