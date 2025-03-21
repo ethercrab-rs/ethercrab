@@ -436,3 +436,18 @@ impl From<ethercrab_wire::WireError> for Error {
         Self::Wire(value)
     }
 }
+
+/// Turn [`EepromError::NoCategory`] errors into `None`.
+pub(crate) trait IgnoreNoCategory<T> {
+    fn ignore_no_category(self) -> Result<Option<T>, Error>;
+}
+
+impl<T> IgnoreNoCategory<T> for Result<T, Error> {
+    fn ignore_no_category(self) -> Result<Option<T>, Error> {
+        match self {
+            Ok(result) => Ok(Some(result)),
+            Err(Error::Eeprom(EepromError::NoCategory)) => Ok(None),
+            Err(e) => return Err(e),
+        }
+    }
+}
