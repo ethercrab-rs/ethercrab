@@ -338,7 +338,7 @@ impl EtherCrabWireRead for PortStatuses {
 /// SII "General" category.
 ///
 /// Defined in ETG1000.6 Table 21
-#[derive(Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Default, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
 #[wire(bytes = 18)]
 pub struct SiiGeneral {
     #[wire(bytes = 1)]
@@ -391,7 +391,7 @@ pub enum PortStatus {
 }
 
 bitflags::bitflags! {
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, Default, PartialEq, Eq)]
     pub struct Flags: u8 {
         const ENABLE_SAFE_OP = 0x01;
         const ENABLE_NOT_LRW = 0x02;
@@ -420,7 +420,7 @@ impl EtherCrabWireRead for Flags {
 }
 
 bitflags::bitflags! {
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, Default, PartialEq, Eq)]
     pub struct CoeDetails: u8 {
         /// Bit 0: Enable SDO
         const ENABLE_SDO = 0x01;

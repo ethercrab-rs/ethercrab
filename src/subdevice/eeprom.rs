@@ -8,7 +8,7 @@ use crate::{
         EepromDataProvider, EepromRange, CHECKSUM_POSITION, STATION_ALIAS_CRC,
         STATION_ALIAS_POSITION,
     },
-    error::{EepromError, Error, Item},
+    error::{EepromError, Error, IgnoreNoCategory, Item},
     fmt,
     subdevice::SubDeviceIdentity,
 };
@@ -70,7 +70,7 @@ where
             // Heuristic: if every category we search for is empty, it's likely that the EEPROM is
             // blank and we should stop searching for anything.
             if num_empty_categories >= 32 {
-                fmt::debug!(
+                fmt::trace!(
                     "Did not find any non-empty categories. EEPROM could be empty or corrupt."
                 );
 
@@ -166,14 +166,20 @@ where
     pub(crate) async fn device_name<const N: usize>(
         &self,
     ) -> Result<Option<heapless::String<N>>, Error> {
-        let general = self.general().await?;
+        let Some(general) = self.general().await.ignore_no_category()? else {
+            return Ok(None);
+        };
 
         fmt::trace!(
             "Get device name from string index {}",
             general.order_string_idx
         );
 
-        self.find_string(general.order_string_idx).await
+        Ok(self
+            .find_string(general.order_string_idx)
+            .await
+            .ignore_no_category()?
+            .flatten())
     }
 
     /// Get the EEPROM size in bytes.
