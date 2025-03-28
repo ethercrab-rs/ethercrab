@@ -6,6 +6,11 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- [#294](https://github.com/ethercrab-rs/ethercrab/pull/294) Compute SM type using fallback data
+  when EEPROM record is incomplete.
+
 ## [0.5.5] - 2025-03-21
 
 ### Fixed
@@ -472,8 +477,8 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.5...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.5...HEAD
 [0.5.5]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.4...ethercrab-v0.5.5
 [0.5.4]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.3...ethercrab-v0.5.4
 [0.5.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.2...ethercrab-v0.5.3
