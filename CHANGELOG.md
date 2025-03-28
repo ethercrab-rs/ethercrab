@@ -78,12 +78,27 @@ An EtherCAT MainDevice written in Rust.
   calculating DC cycle offset.
 - [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) Frames received before their future's
   waker is registered will no longer trigger a `NoWaker` error.
-- [#288](https://github.com/ethercrab-rs/ethercrab/pull/288) Prevent overflow and infinite loops
-  when reading empty or nearly-empty SubDevice EEPROMs.
-- [#291](https://github.com/ethercrab-rs/ethercrab/pull/291) Allow initialisation to progress
-  further for devices with empty EEPROMs by falling back to defaults if config data cannot be found.
+
+## [0.5.6] - 2025-03-28
+
+### Fixed
+
 - [#294](https://github.com/ethercrab-rs/ethercrab/pull/294) Compute SM type using fallback data
   when EEPROM record is incomplete.
+
+## [0.5.5] - 2025-03-21
+
+### Fixed
+
+- [#291](https://github.com/ethercrab-rs/ethercrab/pull/291) Allow initialisation to progress
+  further for devices with empty EEPROMs by falling back to defaults if config data cannot be found.
+
+## [0.5.4] - 2025-03-20
+
+### Fixed
+
+- [#288](https://github.com/ethercrab-rs/ethercrab/pull/288) Prevent overflow and infinite loops
+  when reading empty or nearly-empty SubDevice EEPROMs.
 
 ## [0.5.3] - 2025-01-24
 
@@ -550,7 +565,10 @@ An EtherCAT MainDevice written in Rust.
 
 <!-- next-url -->
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.3...HEAD
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.6...HEAD
+[0.5.6]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.5...ethercrab-v0.5.6
+[0.5.5]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.4...ethercrab-v0.5.5
+[0.5.4]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.3...ethercrab-v0.5.4
 [0.5.3]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.2...ethercrab-v0.5.3
 [0.5.2]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.1...ethercrab-v0.5.2
 [0.5.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.0...ethercrab-v0.5.1
