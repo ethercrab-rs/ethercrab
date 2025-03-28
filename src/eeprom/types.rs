@@ -1,6 +1,9 @@
 //! SubDevice Information Interface (SII).
 
-use crate::{coe::SdoExpedited, sync_manager_channel};
+use crate::{
+    coe::SdoExpedited,
+    sync_manager_channel::{self, Direction, OperationMode},
+};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
@@ -466,8 +469,30 @@ pub struct SyncManager {
     pub(crate) control: sync_manager_channel::Control,
     #[wire(bytes = 1)]
     pub(crate) enable: SyncManagerEnable,
+    /// Usage type.
+    ///
+    /// Use the method of the same name instead of directly accessing this field. It is only exposed
+    /// for test purposes.
     #[wire(bytes = 1)]
     pub(crate) usage_type: SyncManagerType,
+}
+
+impl SyncManager {
+    pub(crate) fn usage_type(&self) -> SyncManagerType {
+        if self.usage_type != SyncManagerType::Unknown {
+            self.usage_type
+        } else {
+            // Try to recover type by matching on other fields in the SM
+            match (self.control.operation_mode, self.control.direction) {
+                (OperationMode::Normal, Direction::MasterRead) => SyncManagerType::ProcessDataRead,
+                (OperationMode::Normal, Direction::MasterWrite) => {
+                    SyncManagerType::ProcessDataWrite
+                }
+                (OperationMode::Mailbox, Direction::MasterRead) => SyncManagerType::MailboxRead,
+                (OperationMode::Mailbox, Direction::MasterWrite) => SyncManagerType::MailboxWrite,
+            }
+        }
+    }
 }
 
 impl core::fmt::Debug for SyncManager {
@@ -532,9 +557,9 @@ pub enum SyncManagerType {
     MailboxWrite = 0x01,
     /// Used for reading from the SubDevice.
     MailboxRead = 0x02,
-    /// Used for process data outputs from master.
+    /// Used for process data outputs from MainDevice.
     ProcessDataWrite = 0x03,
-    /// Used for process data inputs to master.
+    /// Used for process data inputs to MainDevice.
     ProcessDataRead = 0x04,
 }
 
@@ -794,6 +819,8 @@ impl core::fmt::Debug for DefaultMailbox {
 
 #[cfg(test)]
 mod tests {
+    use crate::sync_manager_channel::Control;
+
     use super::*;
     use ethercrab_wire::EtherCrabWireWriteSized;
 
@@ -889,6 +916,81 @@ mod tests {
         assert_eq!(
             FmmuEx::unpack_from_slice(&data),
             Ok(FmmuEx { sync_manager: 0xbb })
+        );
+    }
+
+    #[test]
+    fn recover_unknown_sm_types() {
+        assert_eq!(
+            SyncManager {
+                start_addr: 0x1000,
+                length: 0x0080,
+                control: Control {
+                    operation_mode: OperationMode::Mailbox,
+                    direction: Direction::MasterWrite,
+                    ecat_event_enable: true,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::Unknown,
+            }
+            .usage_type(),
+            SyncManagerType::MailboxWrite
+        );
+
+        assert_eq!(
+            SyncManager {
+                start_addr: 0x10c0,
+                length: 0x0080,
+                control: Control {
+                    operation_mode: OperationMode::Mailbox,
+                    direction: Direction::MasterRead,
+                    ecat_event_enable: true,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::Unknown,
+            }
+            .usage_type(),
+            SyncManagerType::MailboxRead
+        );
+
+        assert_eq!(
+            SyncManager {
+                start_addr: 0x1180,
+                length: 0x0006,
+                control: Control {
+                    operation_mode: OperationMode::Normal,
+                    direction: Direction::MasterWrite,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: true,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::Unknown,
+            }
+            .usage_type(),
+            SyncManagerType::ProcessDataWrite
+        );
+
+        assert_eq!(
+            SyncManager {
+                start_addr: 0x1480,
+                length: 0x0006,
+                control: Control {
+                    operation_mode: OperationMode::Normal,
+                    direction: Direction::MasterRead,
+                    ecat_event_enable: false,
+                    dls_user_event_enable: false,
+                    watchdog_enable: false,
+                },
+                enable: SyncManagerEnable::ENABLE,
+                usage_type: SyncManagerType::Unknown,
+            }
+            .usage_type(),
+            SyncManagerType::ProcessDataRead
         );
     }
 }

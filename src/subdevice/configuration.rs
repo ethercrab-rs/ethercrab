@@ -261,7 +261,7 @@ where
             let sync_manager_index = sync_manager_index as u8;
 
             // Mailboxes are configured in INIT state
-            match sync_manager.usage_type {
+            match sync_manager.usage_type() {
                 SyncManagerType::MailboxWrite => {
                     self.write_sm_config(
                         sync_manager_index,
@@ -554,7 +554,7 @@ where
         for (sync_manager_index, sync_manager) in sync_managers
             .iter()
             .enumerate()
-            .filter(|(_idx, sm)| sm.usage_type == sm_type)
+            .filter(|(_idx, sm)| sm.usage_type() == sm_type)
         {
             let sync_manager_index = sync_manager_index as u8;
 
