@@ -24,23 +24,22 @@ targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu"]
 async-io = { version = "2.0.0", optional = true }
 atomic-waker = "1.1.2"
 atomic_enum = "0.3.0"
-bitflags = "2.8.0"
+bitflags = "2.9.0"
 defmt = { version = "0.3.5", optional = true }
 embassy-time = "0.4.0"
 embedded-io-async = { version = "0.6.0", default-features = false }
 futures-lite = { version = "2.0.0", default-features = false }
 heapless = "0.8.0"
-log = { version = "0.4.20", optional = true, default-features = false }
+log = { version = "0.4.27", optional = true, default-features = false }
 sealed = "0.6.0"
 serde = { version = "1.0.190", features = ["derive"], optional = true }
 smlang = "0.8.0"
 ethercrab-wire = { version = "0.2.0", path = "./ethercrab-wire" }
-spin = { version = "0.9.8", default-features = false, features = ["rwlock"] }
+spin = { version = "0.10.0", default-features = false, features = ["rwlock"] }
 crc = { version = "3.2.1", default-features = false }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.35.0", features = ["std"], optional = true }
-async-channel = "2.2.0"
 pcap = "2.2.0"
 
 [target.'cfg(unix)'.dependencies]
@@ -76,13 +75,11 @@ csv = "1.3.0"
 serde = { version = "1.0.190", default-features = false, features = ["derive"] }
 signal-hook = "0.3.17"
 core_affinity = "0.8.1"
-anyhow = "1.0.82"
 spin_sleep = "1.2.1"
 quanta = "0.12.3"
 savefile = { version = "0.18.5", default-features = false }
 savefile-derive = { version = "0.18.5", default-features = false }
 simple_logger = { version = "5.0.0", default-features = false }
-spin = { version = "0.9.8", default-features = false, features = ["rwlock"] }
 
 [features]
 default = ["std"]

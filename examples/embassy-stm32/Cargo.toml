@@ -9,7 +9,7 @@ edition = "2021"
 ethercrab = { path = "../..", default-features = false, features = ["defmt"] }
 
 defmt = "0.3.10"
-defmt-rtt = "0.4.0"
+defmt-rtt = "0.4.2"
 cortex-m = { version = "0.7.6", features = [
     "inline-asm",
     "critical-section-single-core",
