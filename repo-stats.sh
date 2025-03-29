@@ -2,9 +2,9 @@
 
 echo -e "commit,date,loc_total,loc_code,loc_comments,text,bss,dec,bin" > target/sizes.csv
 
-trap 'echo -e  "\nCancelled. Restoring repo."; git checkout --quiet --force master; exit' INT
+trap 'echo -e  "\nCancelled. Restoring repo."; git checkout --quiet --force main; exit' INT
 
-for commit in $(git rev-list master)
+for commit in $(git rev-list main)
 do
     date=$(git show -s --format=%ci $commit)
 
@@ -35,4 +35,4 @@ done
 
 echo "Done"
 
-git checkout master --quiet
+git checkout main --quiet
