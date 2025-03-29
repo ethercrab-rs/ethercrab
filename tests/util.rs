@@ -1,10 +1,10 @@
 //! Utilities to replay Wireshark captures as part of regression/integration tests.
 
 use ethercrab::{
+    PduRx, PduTx, ReceiveAction,
     error::Error,
     internals::{EthernetAddress, EthernetFrame},
     std::tx_rx_task,
-    PduRx, PduTx, ReceiveAction,
 };
 use pcap_file::pcapng::{Block, PcapNgReader};
 use std::{
@@ -38,34 +38,6 @@ pub fn spawn_tx_rx(capture_file_path: &str, tx: PduTx<'static>, rx: PduRx<'stati
         let reader = BufReader::new(file_in2);
 
         tokio::spawn(dummy_tx_rx_task(reader, tx, rx, None, None).expect("Dummy spawn"));
-    };
-}
-
-#[allow(unused)]
-pub fn spawn_tx_rx_for_miri(
-    capture_file_bytes: &'static [u8],
-    tx: PduTx<'static>,
-    rx: PduRx<'static>,
-    cache: Option<&[u8]>,
-    cache_filename: PathBuf,
-) {
-    let interface = std::env::var("INTERFACE");
-
-    // If INTERFACE env var is present, run using real hardware
-    if let Ok(_) = interface {
-        log::error!("This method can only be used in mock mode");
-
-        panic!()
-    }
-    // Otherwise, use mocked TX/RX task
-    else {
-        log::info!("Running dummy TX/RX loop");
-
-        let reader = BufReader::new(capture_file_bytes);
-
-        tokio::spawn(
-            dummy_tx_rx_task(reader, tx, rx, cache, Some(cache_filename)).expect("Dummy spawn"),
-        );
     };
 }
 
