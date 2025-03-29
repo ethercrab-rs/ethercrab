@@ -28,7 +28,10 @@ linux-test *args:
     cargo test {{args}}
 
 miri *args:
-    MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zdeduplicate-diagnostics=yes" cargo +nightly-2024-12-20 miri test --target aarch64-unknown-linux-gnu {{args}}
+    MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-isolation-error=warn -Zdeduplicate-diagnostics=yes" cargo +nightly-2025-03-29 miri test --target aarch64-unknown-linux-gnu {{args}}
+
+miri-nextest *args:
+    MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-isolation-error=warn -Zdeduplicate-diagnostics=yes" cargo +nightly-2025-03-29 miri nextest run --target aarch64-unknown-linux-gnu {{args}}
 
 _generate-readme path:
      cargo readme --project-root "{{path}}" --template README.tpl --output README.md
