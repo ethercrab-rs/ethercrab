@@ -1,4 +1,4 @@
-[![Build Status](https://circleci.com/gh/ethercrab-rs/ethercrab/tree/master.svg?style=shield)](https://circleci.com/gh/ethercrab-rs/ethercrab/tree/master)
+[![Build Status](https://circleci.com/gh/ethercrab-rs/ethercrab/tree/main.svg?style=shield)](https://circleci.com/gh/ethercrab-rs/ethercrab/tree/main)
 [![Crates.io](https://img.shields.io/crates/v/ethercrab-wire-derive.svg)](https://crates.io/crates/ethercrab-wire-derive)
 [![Docs.rs](https://docs.rs/ethercrab-wire-derive/badge.svg)](https://docs.rs/ethercrab-wire-derive)
 
