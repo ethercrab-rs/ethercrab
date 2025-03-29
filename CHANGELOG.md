@@ -1,6 +1,6 @@
 # Changelog
 
-An EtherCAT MainDevice written in Rust.
+A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 <!-- next-header -->
 
