@@ -123,7 +123,8 @@ impl<const N: usize> FrameElement<N> {
     /// header where all the PDUs (header and data) go.
     unsafe fn ethercat_payload_ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
         unsafe {
-            this.byte_add(EthernetFrame::<&[u8]>::header_len())
+            Self::ptr(this)
+                .byte_add(EthernetFrame::<&[u8]>::header_len())
                 .byte_add(EthercatFrameHeader::header_len())
                 .cast()
         }
@@ -361,5 +362,36 @@ mod tests {
         assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0) });
         assert!(!unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 123) });
         assert!(unsafe { FrameElement::<0>::first_pdu_is(frame_ptr_1.cast(), 0xff) });
+    }
+
+    // A sanity check to make sure we get hold of a pointer to the start of the ethernet frame array
+    // and not the start of the struct. This test is added due to a regression caused by refactoring
+    // the `ethercat_payload_ptr` method.
+    #[test]
+    fn payload_offset() {
+        const N: usize = 32;
+        // Minus ethernet header and EtherCAT header
+        const ETHERCAT_PAYLOAD: usize = N - 14 - 2;
+
+        let frame = FrameElement {
+            storage_slot_index: 0xaa,
+            // 5
+            status: AtomicFrameState::new(FrameState::RxBusy),
+            waker: AtomicWaker::default(),
+            // Should be zero but we'll set it to a random value for debugging
+            pdu_payload_len: 0xbb,
+            first_pdu: AtomicU16::new(0xcc),
+            // Fill with a canary value
+            ethernet_frame: [0xabu8; N],
+        };
+
+        let ptr = NonNull::from(&frame);
+
+        let payload = unsafe { FrameElement::<N>::ethercat_payload_ptr(ptr) };
+
+        let raw =
+            unsafe { core::slice::from_raw_parts(payload.as_ptr() as *const u8, ETHERCAT_PAYLOAD) };
+
+        assert_eq!(raw, &[0xabu8; ETHERCAT_PAYLOAD]);
     }
 }
