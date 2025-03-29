@@ -122,14 +122,10 @@ impl<const N: usize> FrameElement<N> {
     /// Get pointer to EtherCAT frame payload. i.e. the buffer after the end of the EtherCAT frame
     /// header where all the PDUs (header and data) go.
     unsafe fn ethercat_payload_ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
-        // MSRV: `feature(non_null_convenience)` when stabilised
         unsafe {
-            NonNull::new_unchecked(
-                Self::ptr(this)
-                    .as_ptr()
-                    .byte_add(EthernetFrame::<&[u8]>::header_len())
-                    .byte_add(EthercatFrameHeader::header_len()), // .byte_add(PduFrame::header_len()),
-            )
+            this.byte_add(EthernetFrame::<&[u8]>::header_len())
+                .byte_add(EthercatFrameHeader::header_len())
+                .cast()
         }
     }
 

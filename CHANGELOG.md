@@ -8,8 +8,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ### Changed
 
-- [#TODO](https://github.com/ethercrab-rs/ethercrab/pull/TODO) **(breaking)** Change MSRV from 1.81
-  to 1.85, migrate to edition 2024.
+- [#298](https://github.com/ethercrab-rs/ethercrab/pull/298) **(breaking)** Change MSRV from 1.81 to
+  1.85, migrate to edition 2024.
 
 ## [0.6.0] - 2025-03-29
 
