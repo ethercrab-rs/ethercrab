@@ -26,7 +26,7 @@ target_steps_std: &target_steps_std
     - run: rustup target add $TARGET || true
     - run: cargo fmt --all -- --check
     - run: just check-readmes
-    - run: cargo test --features '__internals' --target $TARGET --workspace
+    - run: cargo test --target $TARGET --workspace
     - run: cargo bench --workspace --no-run --target $TARGET
     - run: cargo build --target $TARGET --examples --release
     - run: cargo build --target $TARGET --no-default-features
@@ -67,7 +67,7 @@ miri_steps: &miri_steps
     #     done
     - run: |
         MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-isolation-error=warn -Zdeduplicate-diagnostics=yes" \
-        cargo +nightly-2025-03-29 miri test --features '__internals' --target $TARGET
+        cargo +nightly-2025-03-29 miri test --target $TARGET
 
     # - save_cache:
     #     key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
@@ -122,7 +122,7 @@ basic_steps: &basic_steps
         key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     - run: rustup target add $TARGET
-    - run: cargo test --features __internals
+    - run: cargo test
     - run: cargo check --target $TARGET --release --examples
 
     - save_cache:

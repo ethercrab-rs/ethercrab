@@ -1,6 +1,5 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use ethercrab::{Command, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
-use futures_lite::FutureExt;
 use std::{future::poll_fn, pin::pin, task::Poll};
 
 const DATA: [u8; 8] = [0x11u8, 0x22, 0x33, 0x44, 0xaa, 0xbb, 0xcc, 0xdd];
@@ -18,7 +17,7 @@ pub fn push_pdu(c: &mut Criterion) {
             let mut f = pin!(Command::fpwr(0x5678, 0x1234).send_receive_slice(&maindevice, &DATA));
 
             cassette::block_on(poll_fn(|ctx| {
-                let _ = f.poll(ctx);
+                let _ = f.as_mut().poll(ctx);
 
                 Poll::Ready(())
             }));

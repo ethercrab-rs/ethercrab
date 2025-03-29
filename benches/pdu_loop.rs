@@ -1,8 +1,7 @@
 use core::future::poll_fn;
 use core::task::Poll;
-use criterion::{criterion_group, criterion_main, Bencher, Criterion, Throughput};
+use criterion::{Bencher, Criterion, Throughput, criterion_group, criterion_main};
 use ethercrab::{Command, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
-use futures_lite::FutureExt;
 use std::{pin::pin, time::Duration};
 
 const DATA: [u8; 8] = [0x11u8, 0x22, 0x33, 0x44, 0xaa, 0xbb, 0xcc, 0xdd];
@@ -34,7 +33,7 @@ fn do_bench(b: &mut Bencher) {
 
         // Poll future once to register it with sender
         cassette::block_on(poll_fn(|ctx| {
-            let _ = frame_fut.poll(ctx);
+            let _ = frame_fut.as_mut().poll(ctx);
 
             Poll::Ready(())
         }));

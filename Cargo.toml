@@ -80,6 +80,7 @@ quanta = "0.12.3"
 savefile = { version = "0.18.5", default-features = false }
 savefile-derive = { version = "0.18.5", default-features = false }
 simple_logger = { version = "5.0.0", default-features = false }
+smoltcp = { version = "0.12.0", default-features = false, features = ["medium-ethernet", "proto-ipv4", "socket-raw"] }
 
 [features]
 default = ["std"]
@@ -100,8 +101,6 @@ std = [
     "spin/std",
 ]
 serde = ["dep:serde", "bitflags/serde"]
-# Development only - DO NOT USE
-__internals = []
 
 # [[example]]
 # name = "akd"

@@ -13,7 +13,7 @@ linux-test *args:
 
     set -e
 
-    OUT=$(cargo test --features '__internals' --no-run 2>&1 | tee /dev/tty | grep -oE '\(target/.+\)' | sed 's/[)(]//g')
+    OUT=$(cargo test --no-run 2>&1 | tee /dev/tty | grep -oE '\(target/.+\)' | sed 's/[)(]//g')
     # BINS=$(echo $OUT)
 
     mapfile -t BINS < <( echo "$OUT" )
@@ -25,10 +25,10 @@ linux-test *args:
     done
 
     # We've now setcap'd everything so we should be able to run this again without perm issues
-    cargo test --features '__internals' {{args}}
+    cargo test {{args}}
 
 miri *args:
-    MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zdeduplicate-diagnostics=yes" cargo +nightly-2024-12-20 miri test --features '__internals' --target aarch64-unknown-linux-gnu {{args}}
+    MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zdeduplicate-diagnostics=yes" cargo +nightly-2024-12-20 miri test --target aarch64-unknown-linux-gnu {{args}}
 
 _generate-readme path:
      cargo readme --project-root "{{path}}" --template README.tpl --output README.md
@@ -43,12 +43,12 @@ check-readmes: (_check-readme ".") (_check-readme "./ethercrab-wire") (_check-re
 generate-readmes: (_generate-readme ".") (_generate-readme "./ethercrab-wire") (_generate-readme "./ethercrab-wire-derive")
 
 dump-eeprom *args:
-    cargo build --example dump-eeprom --features "std __internals" --release && \
+    cargo build --example dump-eeprom --features "std" --release && \
     sudo setcap cap_net_raw=pe ./target/release/examples/dump-eeprom && \
     ./target/release/examples/dump-eeprom {{args}}
 
 test-replay test_file *args:
-    cargo test --features '__internals' {{ replace(test_file, '-', '_') }}
+    cargo test {{ replace(test_file, '-', '_') }}
 
 capture-replay test_name interface *args:
     #!/usr/bin/env bash
@@ -66,7 +66,7 @@ capture-replay test_name interface *args:
         exit 1
     fi
 
-    cargo build --features '__internals' --tests --release
+    cargo build --tests --release
     sudo echo
     fd . --type executable ./target/debug/deps -x sudo setcap cap_net_raw=pe
     fd . --type executable ./target/release -x sudo setcap cap_net_raw=pe
@@ -79,7 +79,7 @@ capture-replay test_name interface *args:
     test_name=$(echo "${test_file}" | tr '-' '_')
 
     # Set env var to put test in capture mode
-    INTERFACE="{{interface}}" cargo test "${test_name}" --release --features '__internals' -- {{args}}
+    INTERFACE="{{interface}}" cargo test "${test_name}" --release -- {{args}}
 
     # Let tshark finish up
     sleep 1

@@ -1,12 +1,8 @@
 //! Utilities to replay Wireshark captures as part of regression/integration tests.
 
-use ethercrab::{
-    PduRx, PduTx, ReceiveAction,
-    error::Error,
-    internals::{EthernetAddress, EthernetFrame},
-    std::tx_rx_task,
-};
+use ethercrab::{PduRx, PduTx, ReceiveAction, error::Error, std::tx_rx_task};
 use pcap_file::pcapng::{Block, PcapNgReader};
+use smoltcp::wire::EthernetFrame;
 use std::{
     collections::{HashMap, VecDeque},
     fs::File,
@@ -41,8 +37,8 @@ pub fn spawn_tx_rx(capture_file_path: &str, tx: PduTx<'static>, rx: PduRx<'stati
     };
 }
 
-const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
-const REPLY_ADDR: EthernetAddress = EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]);
+const MASTER_ADDR: [u8; 6] = [0x10, 0x10, 0x10, 0x10, 0x10, 0x10];
+const REPLY_ADDR: [u8; 6] = [0x12, 0x10, 0x10, 0x10, 0x10, 0x10];
 
 #[derive(Debug, Clone, savefile_derive::Savefile)]
 struct PreambleHash(pub [u8; 12]);
@@ -244,12 +240,12 @@ pub fn dummy_tx_rx_task(
             log::debug!("Grouped {} blocks", packet_number);
         }
 
-        if src_addr == MASTER_ADDR {
+        if src_addr.as_bytes() == &MASTER_ADDR {
             pdu_sends
                 .entry(preamble)
                 .or_insert(VecDeque::new())
                 .push_back((raw, packet_number));
-        } else if src_addr == REPLY_ADDR {
+        } else if src_addr.as_bytes() == &REPLY_ADDR {
             pdu_responses
                 .entry(preamble)
                 .or_insert(VecDeque::new())

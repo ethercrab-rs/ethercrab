@@ -508,7 +508,7 @@ where
     /// INTERNAL: Read address from EEPROM.
     ///
     /// Useful for testing. Please don't rely on this as a public API item.
-    #[cfg(feature = "__internals")]
+    #[doc(hidden)]
     pub async fn read_alias_address_from_eeprom(
         &self,
         maindevice: &MainDevice<'_>,
