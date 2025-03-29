@@ -7,12 +7,12 @@
 use core::num::NonZeroU16;
 
 use crate::{
+    MainDevice, SubDeviceRef,
     command::Command,
     error::Error,
     fmt,
     register::RegisterAddress,
-    subdevice::{ports::Topology, SubDevice},
-    MainDevice, SubDeviceRef,
+    subdevice::{SubDevice, ports::Topology},
 };
 
 /// Send a broadcast to all SubDevices to latch in DC receive time, then store it on the SubDevice
@@ -483,8 +483,8 @@ pub(crate) async fn run_dc_static_sync(
 mod tests {
     use super::*;
     use crate::{
-        subdevice::ports::{tests::make_ports, Port, Ports},
         DcSupport,
+        subdevice::ports::{Port, Ports, tests::make_ports},
     };
 
     // A SubDevice in the middle of the chain

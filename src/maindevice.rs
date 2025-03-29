@@ -1,4 +1,5 @@
 use crate::{
+    BASE_SUBDEVICE_ADDRESS, MainDeviceConfig, SubDeviceGroup, Timeouts,
     al_control::AlControl,
     al_status_code::AlStatusCode,
     command::Command,
@@ -14,7 +15,6 @@ use crate::{
     subdevice_group::{self, SubDeviceGroupHandle},
     subdevice_state::SubDeviceState,
     timer_factory::IntoTimeout,
-    MainDeviceConfig, SubDeviceGroup, Timeouts, BASE_SUBDEVICE_ADDRESS,
 };
 use core::{
     cell::UnsafeCell,
@@ -229,7 +229,9 @@ impl<'sto> MainDevice<'sto> {
         fmt::debug!("Discovered {} SubDevices", num_subdevices);
 
         if num_subdevices == 0 {
-            fmt::warn!("No SubDevices were discovered. Check NIC device, connections and PDU response timeouts");
+            fmt::warn!(
+                "No SubDevices were discovered. Check NIC device, connections and PDU response timeouts"
+            );
 
             return Ok(groups);
         }
@@ -419,11 +421,7 @@ impl<'sto> MainDevice<'sto> {
     pub(crate) fn dc_ref_address(&self) -> Option<u16> {
         let addr = self.dc_reference_configured_address.load(Ordering::Relaxed);
 
-        if addr > 0 {
-            Some(addr)
-        } else {
-            None
-        }
+        if addr > 0 { Some(addr) } else { None }
     }
 
     /// Wait for all SubDevices on the network to reach a given state.

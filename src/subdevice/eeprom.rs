@@ -1,12 +1,12 @@
 use crate::{
     eeprom::{
+        CHECKSUM_POSITION, EepromDataProvider, EepromRange, STATION_ALIAS_CRC,
+        STATION_ALIAS_POSITION,
         device_provider::SII_FIRST_CATEGORY_START,
         types::{
             CategoryType, DefaultMailbox, FmmuEx, FmmuUsage, Pdo, PdoEntry, PdoType, SiiGeneral,
             SyncManager,
         },
-        EepromDataProvider, EepromRange, CHECKSUM_POSITION, STATION_ALIAS_CRC,
-        STATION_ALIAS_POSITION,
     },
     error::{EepromError, Error, IgnoreNoCategory, Item},
     fmt,

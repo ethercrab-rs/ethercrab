@@ -127,11 +127,11 @@ mod tests {
     use crate::pdu_loop::frame_element::received_frame::ReceivedFrame;
     use crate::pdu_loop::frame_header::EthercatFrameHeader;
     use crate::{
+        Command, PduStorage, Reads,
         error::{Error, PduError},
         fmt,
         pdu_loop::frame_element::created_frame::CreatedFrame,
         timer_factory::IntoTimeout,
-        Command, PduStorage, Reads,
     };
     use cassette::Cassette;
     use core::{future::poll_fn, ops::Deref, pin::pin, task::Poll, time::Duration};

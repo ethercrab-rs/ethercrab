@@ -16,9 +16,9 @@ fn main() {
 fn main() -> Result<(), ethercrab::error::Error> {
     use env_logger::{Env, TimestampPrecision};
     use ethercrab::{
+        MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
         error::Error,
         std::{ethercat_now, tx_rx_task_io_uring},
-        MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
     };
     use futures_lite::StreamExt;
     use std::{
@@ -150,7 +150,9 @@ fn main() -> Result<(), ethercrab::error::Error> {
         el2889.outputs_raw_mut()[1] = 0x80;
 
         loop {
-            slow_outputs.tx_rx(&maindevice_slow).await.expect("TX/RX");
+            let Ok(_) = slow_outputs.tx_rx(&maindevice_slow).await else {
+                break;
+            };
 
             // Increment every output byte for every SubDevice by one
             if tick.elapsed() > slow_duration {

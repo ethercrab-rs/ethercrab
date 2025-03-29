@@ -1,13 +1,13 @@
 use crate::{
+    Command, MainDevice,
     eeprom::{
-        types::{SiiControl, SiiRequest},
         EepromDataProvider,
+        types::{SiiControl, SiiRequest},
     },
     error::{EepromError, Error},
     fmt,
     register::RegisterAddress,
     timer_factory::IntoTimeout,
-    Command, MainDevice,
 };
 
 /// The address of the first proper category, positioned after the fixed fields defined in ETG2010

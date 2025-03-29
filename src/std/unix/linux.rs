@@ -2,8 +2,8 @@
 //! [https://github.com/embassy-rs/embassy](https://github.com/embassy-rs/embassy/blob/master/examples/std/src/tuntap.rs).
 
 use crate::{
-    std::unix::{ifreq, ifreq_for},
     ETHERCAT_ETHERTYPE,
+    std::unix::{ifreq, ifreq_for},
 };
 use async_io::IoSafe;
 use core::ptr::addr_of;

@@ -3,16 +3,16 @@
 
 use env_logger::Env;
 use ethercrab::{
+    DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, SubDeviceGroup, Timeouts,
     error::Error,
     std::ethercat_now,
     subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
-    DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, SubDeviceGroup, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
 };

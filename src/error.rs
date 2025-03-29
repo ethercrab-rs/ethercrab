@@ -1,7 +1,7 @@
 //! EtherCrab error types.
 
 pub use crate::coe::abort_code::CoeAbortCode;
-use crate::{command::Command, fmt, AlStatusCode, SubDeviceState};
+use crate::{AlStatusCode, SubDeviceState, command::Command, fmt};
 use core::num::TryFromIntError;
 
 /// An EtherCrab error.

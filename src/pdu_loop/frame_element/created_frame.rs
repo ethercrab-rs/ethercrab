@@ -1,14 +1,14 @@
 use crate::{
+    Command, PduLoop,
     error::PduError,
     fmt,
     generate::write_packed,
     pdu_loop::{
-        frame_element::{receiving_frame::ReceiveFrameFut, FrameBox, FrameElement, FrameState},
+        frame_element::{FrameBox, FrameElement, FrameState, receiving_frame::ReceiveFrameFut},
         frame_header::EthercatFrameHeader,
         pdu_flags::PduFlags,
         pdu_header::PduHeader,
     },
-    Command, PduLoop,
 };
 use core::{ptr::NonNull, sync::atomic::AtomicU8, time::Duration};
 use ethercrab_wire::{
@@ -183,10 +183,11 @@ impl<'sto> CreatedFrame<'sto> {
             // Flags start at 6th bit of header
             let flags_offset = 6usize;
 
-            let last_flags_buf = fmt::unwrap_opt!(self
-                .inner
-                .pdu_buf_mut()
-                .get_mut((*last_header_location + flags_offset)..));
+            let last_flags_buf = fmt::unwrap_opt!(
+                self.inner
+                    .pdu_buf_mut()
+                    .get_mut((*last_header_location + flags_offset)..)
+            );
 
             let mut last_flags = fmt::unwrap!(PduFlags::unpack_from_slice(last_flags_buf));
 
@@ -303,10 +304,11 @@ impl<'sto> CreatedFrame<'sto> {
             // Flags start at 6th bit of header
             let flags_offset = 6usize;
 
-            let last_flags_buf = fmt::unwrap_opt!(self
-                .inner
-                .pdu_buf_mut()
-                .get_mut((*last_header_location + flags_offset)..));
+            let last_flags_buf = fmt::unwrap_opt!(
+                self.inner
+                    .pdu_buf_mut()
+                    .get_mut((*last_header_location + flags_offset)..)
+            );
 
             let mut last_flags = fmt::unwrap!(PduFlags::unpack_from_slice(last_flags_buf));
 
@@ -365,15 +367,15 @@ pub struct PduResponseHandle {
 mod tests {
     use super::*;
     use crate::{
-        ethernet::EthernetFrame,
-        pdu_loop::frame_element::{AtomicFrameState, FrameElement, FIRST_PDU_EMPTY},
         PduStorage, RegisterAddress,
+        ethernet::EthernetFrame,
+        pdu_loop::frame_element::{AtomicFrameState, FIRST_PDU_EMPTY, FrameElement},
     };
     use atomic_waker::AtomicWaker;
     use core::{
         cell::UnsafeCell,
         ptr::NonNull,
-        sync::atomic::{AtomicU16, AtomicU8},
+        sync::atomic::{AtomicU8, AtomicU16},
     };
 
     #[test]

@@ -215,7 +215,7 @@ impl<'a, 'group, const MAX_PDI: usize> SubDeviceRef<'a, SubDevicePdi<'group, MAX
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{pdi::PdiSegment, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
+    use crate::{MainDevice, MainDeviceConfig, PduStorage, Timeouts, pdi::PdiSegment};
 
     #[test]
     fn get_inputs() {

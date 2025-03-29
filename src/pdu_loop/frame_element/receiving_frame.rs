@@ -1,8 +1,8 @@
 use crate::{
+    PduLoop,
     error::{Error, PduError},
     fmt,
-    pdu_loop::frame_element::{received_frame::ReceivedFrame, FrameBox, FrameElement, FrameState},
-    PduLoop,
+    pdu_loop::frame_element::{FrameBox, FrameElement, FrameState, received_frame::ReceivedFrame},
 };
 use core::{future::Future, ptr::NonNull, sync::atomic::AtomicU8, task::Poll, time::Duration};
 use futures_lite::FutureExt;

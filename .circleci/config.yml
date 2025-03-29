@@ -1,7 +1,7 @@
 target_steps_std: &target_steps_std
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.81
+    - image: cimg/rust:1.85
   steps:
     - checkout
     - restore_cache:
@@ -26,7 +26,7 @@ target_steps_std: &target_steps_std
     - run: rustup target add $TARGET || true
     - run: cargo fmt --all -- --check
     - run: just check-readmes
-    - run: cargo test --features '__internals' --target $TARGET --workspace
+    - run: cargo test --target $TARGET --workspace
     - run: cargo bench --workspace --no-run --target $TARGET
     - run: cargo build --target $TARGET --examples --release
     - run: cargo build --target $TARGET --no-default-features
@@ -42,7 +42,7 @@ target_steps_std: &target_steps_std
 miri_steps: &miri_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.81
+    - image: cimg/rust:1.85
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
@@ -51,7 +51,7 @@ miri_steps: &miri_steps
     #     key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
-    - run: rustup toolchain add nightly-2025-01-15 --target $TARGET --component miri,rust-src
+    - run: rustup toolchain add nightly-2025-03-29 --target $TARGET --component miri,rust-src
     # - run: |
     #     binaries=( "cargo-nextest" )
 
@@ -67,7 +67,7 @@ miri_steps: &miri_steps
     #     done
     - run: |
         MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-isolation-error=warn -Zdeduplicate-diagnostics=yes" \
-        cargo +nightly-2025-01-15 miri test --features '__internals' --target $TARGET
+        cargo +nightly-2025-03-29 miri test --target $TARGET
 
     # - save_cache:
     #     key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
@@ -77,7 +77,7 @@ miri_steps: &miri_steps
 target_steps_no_std: &target_steps_no_std
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.81
+    - image: cimg/rust:1.85
   steps:
     - checkout
     - restore_cache:
@@ -95,7 +95,7 @@ target_steps_no_std: &target_steps_no_std
 target_steps_embassy: &target_steps_embassy
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.81
+    - image: cimg/rust:1.85
   steps:
     - checkout
     - restore_cache:
@@ -115,14 +115,14 @@ basic_steps: &basic_steps
   resource_class: large
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.81
+    - image: cimg/rust:1.85
   steps:
     - checkout
     - restore_cache:
         key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
     - run: rustup target add $TARGET
-    - run: cargo test --features __internals
+    - run: cargo test
     - run: cargo check --target $TARGET --release --examples
 
     - save_cache:
@@ -157,7 +157,7 @@ jobs:
     resource_class: large
     docker:
       # NOTE: Exact version is overridden in `rust-toolchain.toml`
-      - image: cimg/rust:1.81
+      - image: cimg/rust:1.85
     steps:
       - checkout
       - restore_cache:

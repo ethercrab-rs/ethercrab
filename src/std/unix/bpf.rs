@@ -4,7 +4,7 @@
 //! handling multiple frames. Thank you, SmolTCP maintainers!
 
 use crate::{
-    ethernet::{EthernetAddress, ETHERNET_HEADER_LEN},
+    ethernet::{ETHERNET_HEADER_LEN, EthernetAddress},
     fmt,
     std::unix::{ifreq, ifreq_for},
 };

@@ -1,4 +1,4 @@
-use crate::{error::Error, pdu_loop::ReceivedPdu, MainDevice};
+use crate::{MainDevice, error::Error, pdu_loop::ReceivedPdu};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 /// Read commands that send no data.
