@@ -9,7 +9,7 @@ use crate::{
 };
 use atomic_waker::AtomicWaker;
 use core::{
-    ptr::{addr_of, addr_of_mut, NonNull},
+    ptr::{NonNull, addr_of, addr_of_mut},
     sync::atomic::{AtomicU16, Ordering},
 };
 use frame_box::FrameBox;
@@ -115,26 +115,29 @@ impl<const N: usize> FrameElement<N> {
     unsafe fn ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
         let buf_ptr: *mut [u8; N] = unsafe { addr_of_mut!((*this.as_ptr()).ethernet_frame) };
         let buf_ptr: *mut u8 = buf_ptr.cast();
-        NonNull::new_unchecked(buf_ptr)
+
+        unsafe { NonNull::new_unchecked(buf_ptr) }
     }
 
     /// Get pointer to EtherCAT frame payload. i.e. the buffer after the end of the EtherCAT frame
     /// header where all the PDUs (header and data) go.
     unsafe fn ethercat_payload_ptr(this: NonNull<FrameElement<N>>) -> NonNull<u8> {
         // MSRV: `feature(non_null_convenience)` when stabilised
-        NonNull::new_unchecked(
-            Self::ptr(this)
-                .as_ptr()
-                .byte_add(EthernetFrame::<&[u8]>::header_len())
-                .byte_add(EthercatFrameHeader::header_len()), // .byte_add(PduFrame::header_len()),
-        )
+        unsafe {
+            NonNull::new_unchecked(
+                Self::ptr(this)
+                    .as_ptr()
+                    .byte_add(EthernetFrame::<&[u8]>::header_len())
+                    .byte_add(EthercatFrameHeader::header_len()), // .byte_add(PduFrame::header_len()),
+            )
+        }
     }
 
     /// Set the frame's state without checking its current state.
     pub(in crate::pdu_loop) unsafe fn set_state(this: NonNull<FrameElement<N>>, state: FrameState) {
         let fptr = this.as_ptr();
 
-        (*addr_of_mut!((*fptr).status)).store(state, Ordering::Release);
+        unsafe { (*addr_of_mut!((*fptr).status)).store(state, Ordering::Release) };
     }
 
     /// Atomically swap the frame state from `from` to `to`.
@@ -148,12 +151,14 @@ impl<const N: usize> FrameElement<N> {
     ) -> Result<NonNull<FrameElement<N>>, FrameState> {
         let fptr = this.as_ptr();
 
-        (*addr_of_mut!((*fptr).status)).compare_exchange(
-            from,
-            to,
-            Ordering::AcqRel,
-            Ordering::Relaxed,
-        )?;
+        unsafe {
+            (*addr_of_mut!((*fptr).status)).compare_exchange(
+                from,
+                to,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            )
+        }?;
 
         Ok(this)
     }
@@ -170,33 +175,36 @@ impl<const N: usize> FrameElement<N> {
         // It is imperative that we check the existing state when claiming a frame as created. It
         // matters slightly less for all other state transitions because once we have a created
         // frame nothing else is able to take it unless it is put back into the `None` state.
-        let this = Self::swap_state(this, FrameState::None, FrameState::Created).map_err(|e| {
-            fmt::trace!(
-                "Failed to claim frame {}: status is {:?}, expected {:?}",
-                frame_index,
-                e,
-                FrameState::None
-            );
+        let this = unsafe { Self::swap_state(this, FrameState::None, FrameState::Created) }
+            .map_err(|e| {
+                fmt::trace!(
+                    "Failed to claim frame {}: status is {:?}, expected {:?}",
+                    frame_index,
+                    e,
+                    FrameState::None
+                );
 
-            PduError::SwapState
-        })?;
+                PduError::SwapState
+            })?;
 
-        (*addr_of_mut!((*this.as_ptr()).storage_slot_index)) = frame_index;
-        (*addr_of_mut!((*this.as_ptr()).pdu_payload_len)) = 0;
+        unsafe {
+            (*addr_of_mut!((*this.as_ptr()).storage_slot_index)) = frame_index;
+            (*addr_of_mut!((*this.as_ptr()).pdu_payload_len)) = 0;
+        }
 
         Ok(this)
     }
 
     unsafe fn claim_sending(this: NonNull<FrameElement<N>>) -> Option<NonNull<FrameElement<N>>> {
-        Self::swap_state(this, FrameState::Sendable, FrameState::Sending).ok()
+        unsafe { Self::swap_state(this, FrameState::Sendable, FrameState::Sending) }.ok()
     }
 
     unsafe fn claim_receiving(this: NonNull<FrameElement<N>>) -> Option<NonNull<FrameElement<N>>> {
-        Self::swap_state(this, FrameState::Sent, FrameState::RxBusy)
+        unsafe { Self::swap_state(this, FrameState::Sent, FrameState::RxBusy) }
             .map_err(|actual_state| {
                 fmt::error!(
                     "Failed to claim receiving frame {}: expected state {:?}, but got {:?}",
-                    (*addr_of_mut!((*this.as_ptr()).storage_slot_index)),
+                    unsafe { *addr_of_mut!((*this.as_ptr()).storage_slot_index) },
                     FrameState::Sent,
                     actual_state
                 );
@@ -205,14 +213,14 @@ impl<const N: usize> FrameElement<N> {
     }
 
     unsafe fn storage_slot_index(this: NonNull<FrameElement<0>>) -> u8 {
-        *addr_of!((*this.as_ptr()).storage_slot_index)
+        unsafe { *addr_of!((*this.as_ptr()).storage_slot_index) }
     }
 
     pub(in crate::pdu_loop) unsafe fn first_pdu_is(
         this: NonNull<FrameElement<0>>,
         search: u8,
     ) -> bool {
-        let raw = (*addr_of!((*this.as_ptr()).first_pdu)).load(Ordering::Acquire);
+        let raw = unsafe { (*addr_of!((*this.as_ptr()).first_pdu)).load(Ordering::Acquire) };
 
         // Unused sentinel value occupies upper byte, so this equality will never hold for empty
         // frames
@@ -221,7 +229,7 @@ impl<const N: usize> FrameElement<N> {
 
     /// If no PDUs are present in the frame, set the first PDU index to the given value.
     unsafe fn set_first_pdu(this: NonNull<FrameElement<0>>, value: u8) {
-        let first_pdu = &mut *addr_of_mut!((*this.as_ptr()).first_pdu);
+        let first_pdu = unsafe { &mut *addr_of_mut!((*this.as_ptr()).first_pdu) };
 
         // Only set first PDU index if the frame is empty, as denoted by the `FIRST_PDU_EMPTY`
         // sentinel. Failures are ignored as we want a noop when the first PDU value was already
@@ -236,7 +244,7 @@ impl<const N: usize> FrameElement<N> {
 
     /// Clear first PDU.
     unsafe fn clear_first_pdu(this: NonNull<FrameElement<0>>) {
-        let first_pdu = &*addr_of!((*this.as_ptr()).first_pdu);
+        let first_pdu = unsafe { &*addr_of!((*this.as_ptr()).first_pdu) };
 
         first_pdu.store(FIRST_PDU_EMPTY, Ordering::Release);
     }
@@ -245,7 +253,7 @@ impl<const N: usize> FrameElement<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pdu_loop::frame_element::{AtomicFrameState, FrameElement, FIRST_PDU_EMPTY};
+    use crate::pdu_loop::frame_element::{AtomicFrameState, FIRST_PDU_EMPTY, FrameElement};
     use atomic_waker::AtomicWaker;
     use core::{ptr::NonNull, sync::atomic::AtomicU16};
 
