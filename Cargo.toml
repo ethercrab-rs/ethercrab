@@ -11,7 +11,7 @@ description = "An EtherCAT master in pure Rust that is no_std compatible"
 keywords = ["ethercat", "beckhoff", "automation", "fieldbus", "robotics"]
 exclude = ["dumps", "doc", "NOTES.md", "SPECNOTES.md"]
 resolver = "2"
-rust-version = "1.79"
+rust-version = "1.81"
 
 [workspace]
 members = ["ethercrab-wire", "ethercrab-wire-derive"]
