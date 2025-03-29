@@ -46,28 +46,21 @@ miri_steps: &miri_steps
   steps:
     - checkout
     - run: sudo apt update && sudo apt install -y libpcap-dev
-    # MIRI really hates cached stuff for some reason
+    # MIRI really hates cached `heapless` for some reason
     # - restore_cache:
     #     key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
-    # Arbitrary nightly version - just the latest at time of writing. This can be changed freely.
-    - run: rustup toolchain add nightly-2025-03-29 --target $TARGET --component miri,rust-src
-    # - run: |
-    #     binaries=( "cargo-nextest" )
+    # Arbitrary nightly version - just the latest at time of writing. This should match that in the
+    # Justfile
+    - run:
+        rustup toolchain add nightly-2025-03-29 --target aarch64-unknown-linux-gnu --component
+        miri,rust-src
+    - run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ~/.local/bin
+    - run:
+        curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to
+        ~/.local/bin
 
-    #     for binary in "${binaries[@]}"
-    #     do
-    #       echo "Checking for $binary"
-    #       if ! type "$binary" > /dev/null; then
-    #         echo "--> $binary is not installed. Installing..."
-    #         cargo install "$binary" --target x86_64-unknown-linux-gnu --locked
-    #       else
-    #         echo "--> $binary already installed"
-    #       fi
-    #     done
-    - run: |
-        MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-isolation-error=warn -Zdeduplicate-diagnostics=yes" \
-        cargo +nightly-2025-03-29 miri test --target $TARGET
+    - run: just miri-nextest
 
     # - save_cache:
     #     key: v15-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
@@ -147,8 +140,6 @@ jobs:
 
   miri:
     resource_class: large
-    environment:
-      - TARGET: "aarch64-unknown-linux-gnu"
     <<: *miri_steps
 
   windows-cross:
