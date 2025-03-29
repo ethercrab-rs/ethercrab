@@ -769,16 +769,16 @@ impl defmt::Format for MailboxProtocols {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 10)]
 pub struct DefaultMailbox {
-    /// Master to SubDevice receive mailbox address offset.
+    /// MainDevice to SubDevice receive mailbox address offset.
     #[wire(bytes = 2)]
     pub subdevice_receive_offset: u16,
-    /// Master to SubDevice receive mailbox size.
+    /// MainDevice to SubDevice receive mailbox size.
     #[wire(bytes = 2)]
     pub subdevice_receive_size: u16,
-    /// SubDevice to master send mailbox address offset.
+    /// SubDevice to MainDevice send mailbox address offset.
     #[wire(bytes = 2)]
     pub subdevice_send_offset: u16,
-    /// SubDevice to master send mailbox size.
+    /// SubDevice to MainDevice send mailbox size.
     #[wire(bytes = 2)]
     pub subdevice_send_size: u16,
     /// Mailbox protocols supported by the SubDevice.

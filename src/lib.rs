@@ -203,7 +203,7 @@ pub use timer_factory::Timeouts;
 
 const LEN_MASK: u16 = 0b0000_0111_1111_1111;
 const ETHERCAT_ETHERTYPE: u16 = 0x88a4;
-const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
+const MAINDEVICE_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
 
 /// Starting address for discovered subdevices.
 const BASE_SUBDEVICE_ADDRESS: u16 = 0x1000;
