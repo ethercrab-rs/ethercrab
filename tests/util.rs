@@ -37,7 +37,7 @@ pub fn spawn_tx_rx(capture_file_path: &str, tx: PduTx<'static>, rx: PduRx<'stati
     };
 }
 
-const MASTER_ADDR: [u8; 6] = [0x10, 0x10, 0x10, 0x10, 0x10, 0x10];
+const MAINDEVICE_ADDR: [u8; 6] = [0x10, 0x10, 0x10, 0x10, 0x10, 0x10];
 const REPLY_ADDR: [u8; 6] = [0x12, 0x10, 0x10, 0x10, 0x10, 0x10];
 
 #[derive(Debug, Clone, savefile_derive::Savefile)]
@@ -240,7 +240,7 @@ pub fn dummy_tx_rx_task(
             log::debug!("Grouped {} blocks", packet_number);
         }
 
-        if src_addr.as_bytes() == &MASTER_ADDR {
+        if src_addr.as_bytes() == &MAINDEVICE_ADDR {
             pdu_sends
                 .entry(preamble)
                 .or_insert(VecDeque::new())

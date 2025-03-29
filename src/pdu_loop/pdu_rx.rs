@@ -1,7 +1,7 @@
 use super::storage::PduStorageRef;
 use crate::ethernet::{EthernetAddress, EthernetFrame};
 use crate::{
-    ETHERCAT_ETHERTYPE, MASTER_ADDR,
+    ETHERCAT_ETHERTYPE, MAINDEVICE_ADDR,
     error::{Error, PduError},
     fmt,
     pdu_loop::frame_header::EthercatFrameHeader,
@@ -32,7 +32,7 @@ impl<'sto> PduRx<'sto> {
     pub(in crate::pdu_loop) fn new(storage: PduStorageRef<'sto>) -> Self {
         Self {
             storage,
-            source_mac: MASTER_ADDR,
+            source_mac: MAINDEVICE_ADDR,
         }
     }
 

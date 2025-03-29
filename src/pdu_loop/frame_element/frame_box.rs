@@ -1,5 +1,5 @@
 use crate::{
-    ETHERCAT_ETHERTYPE, MASTER_ADDR,
+    ETHERCAT_ETHERTYPE, MAINDEVICE_ADDR,
     ethernet::{EthernetAddress, EthernetFrame},
     pdu_loop::{
         frame_element::{FrameElement, FrameState},
@@ -69,7 +69,7 @@ impl<'sto> FrameBox<'sto> {
 
         let mut ethernet_frame = self.ethernet_frame_mut();
 
-        ethernet_frame.set_src_addr(MASTER_ADDR);
+        ethernet_frame.set_src_addr(MAINDEVICE_ADDR);
         ethernet_frame.set_dst_addr(EthernetAddress::BROADCAST);
         ethernet_frame.set_ethertype(ETHERCAT_ETHERTYPE);
         ethernet_frame.payload_mut().fill(0);
