@@ -8,8 +8,8 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::ethercat_now, MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup,
-    Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts, error::Error,
+    std::ethercat_now,
 };
 use std::{
     sync::Arc,
@@ -125,7 +125,9 @@ async fn main() -> Result<(), Error> {
         el2889.outputs_raw_mut()[1] = 0x80;
 
         loop {
-            slow_outputs.tx_rx(&maindevice_slow).await.expect("TX/RX");
+            let Ok(_) = slow_outputs.tx_rx(&maindevice_slow).await else {
+                break;
+            };
 
             // Increment every output byte for every SubDevice by one
             if tick.elapsed() > slow_duration {
@@ -156,7 +158,9 @@ async fn main() -> Result<(), Error> {
         fast_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         loop {
-            fast_outputs.tx_rx(&maindevice).await.expect("TX/RX");
+            let Ok(_) = fast_outputs.tx_rx(&maindevice).await else {
+                break;
+            };
 
             // Increment every output byte for every SubDevice by one
             for subdevice in fast_outputs.iter(&maindevice) {

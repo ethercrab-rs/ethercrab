@@ -1,4 +1,4 @@
-use crate::{fmt, SubDevice};
+use crate::{SubDevice, fmt};
 use core::{fmt::Debug, num::NonZeroU16};
 
 /// Flags showing which ports are active or not on the SubDevice.
@@ -135,10 +135,11 @@ impl Ports {
 
     /// The port of the SubDevice that first sees EtherCAT traffic.
     pub fn entry_port(&self) -> Port {
-        fmt::unwrap_opt!(self
-            .active_ports()
-            .min_by_key(|port| port.dc_receive_time)
-            .copied())
+        fmt::unwrap_opt!(
+            self.active_ports()
+                .min_by_key(|port| port.dc_receive_time)
+                .copied()
+        )
     }
 
     /// Get the last open port.

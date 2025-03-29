@@ -1,16 +1,16 @@
 use crate::{
+    ETHERCAT_ETHERTYPE, MASTER_ADDR,
     ethernet::{EthernetAddress, EthernetFrame},
     pdu_loop::{
         frame_element::{FrameElement, FrameState},
         frame_header::EthercatFrameHeader,
     },
-    ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use atomic_waker::AtomicWaker;
 use core::{
     fmt::Debug,
     marker::PhantomData,
-    ptr::{addr_of, addr_of_mut, NonNull},
+    ptr::{NonNull, addr_of, addr_of_mut},
     sync::atomic::{AtomicU8, Ordering},
     task::Waker,
 };

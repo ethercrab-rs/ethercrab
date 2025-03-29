@@ -1,12 +1,8 @@
 //! Utilities to replay Wireshark captures as part of regression/integration tests.
 
-use ethercrab::{
-    error::Error,
-    internals::{EthernetAddress, EthernetFrame},
-    std::tx_rx_task,
-    PduRx, PduTx, ReceiveAction,
-};
+use ethercrab::{PduRx, PduTx, ReceiveAction, error::Error, std::tx_rx_task};
 use pcap_file::pcapng::{Block, PcapNgReader};
+use smoltcp::wire::EthernetFrame;
 use std::{
     collections::{HashMap, VecDeque},
     fs::File,
@@ -41,36 +37,8 @@ pub fn spawn_tx_rx(capture_file_path: &str, tx: PduTx<'static>, rx: PduRx<'stati
     };
 }
 
-#[allow(unused)]
-pub fn spawn_tx_rx_for_miri(
-    capture_file_bytes: &'static [u8],
-    tx: PduTx<'static>,
-    rx: PduRx<'static>,
-    cache: Option<&[u8]>,
-    cache_filename: PathBuf,
-) {
-    let interface = std::env::var("INTERFACE");
-
-    // If INTERFACE env var is present, run using real hardware
-    if let Ok(_) = interface {
-        log::error!("This method can only be used in mock mode");
-
-        panic!()
-    }
-    // Otherwise, use mocked TX/RX task
-    else {
-        log::info!("Running dummy TX/RX loop");
-
-        let reader = BufReader::new(capture_file_bytes);
-
-        tokio::spawn(
-            dummy_tx_rx_task(reader, tx, rx, cache, Some(cache_filename)).expect("Dummy spawn"),
-        );
-    };
-}
-
-const MASTER_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10, 0x10, 0x10]);
-const REPLY_ADDR: EthernetAddress = EthernetAddress([0x12, 0x10, 0x10, 0x10, 0x10, 0x10]);
+const MASTER_ADDR: [u8; 6] = [0x10, 0x10, 0x10, 0x10, 0x10, 0x10];
+const REPLY_ADDR: [u8; 6] = [0x12, 0x10, 0x10, 0x10, 0x10, 0x10];
 
 #[derive(Debug, Clone, savefile_derive::Savefile)]
 struct PreambleHash(pub [u8; 12]);
@@ -272,12 +240,12 @@ pub fn dummy_tx_rx_task(
             log::debug!("Grouped {} blocks", packet_number);
         }
 
-        if src_addr == MASTER_ADDR {
+        if src_addr.as_bytes() == &MASTER_ADDR {
             pdu_sends
                 .entry(preamble)
                 .or_insert(VecDeque::new())
                 .push_back((raw, packet_number));
-        } else if src_addr == REPLY_ADDR {
+        } else if src_addr.as_bytes() == &REPLY_ADDR {
             pdu_responses
                 .entry(preamble)
                 .or_insert(VecDeque::new())

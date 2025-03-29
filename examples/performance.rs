@@ -13,9 +13,9 @@ fn main() {
 async fn main() -> Result<(), ethercrab::error::Error> {
     use env_logger::Env;
     use ethercrab::{
+        MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
         error::Error,
         std::{ethercat_now, tx_rx_task},
-        MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
     };
     use smol::LocalExecutor;
     use std::{
@@ -142,7 +142,9 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         el2889.outputs_raw_mut()[1] = 0x80;
 
         loop {
-            slow_outputs.tx_rx(&maindevice_slow).await.expect("TX/RX");
+            let Ok(_) = slow_outputs.tx_rx(&maindevice_slow).await else {
+                break;
+            };
 
             // Increment every output byte for every SubDevice by one
             if tick.elapsed() > slow_duration {
@@ -173,7 +175,9 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         fast_cycle_time.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         loop {
-            fast_outputs.tx_rx(&maindevice).await.expect("TX/RX");
+            let Ok(_) = fast_outputs.tx_rx(&maindevice).await else {
+                break;
+            };
 
             // Increment every output byte for every SubDevice by one
             for subdevice in fast_outputs.iter(&maindevice) {

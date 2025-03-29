@@ -8,14 +8,14 @@
 async fn main() -> Result<(), ethercrab::error::Error> {
     use env_logger::Env;
     use ethercrab::{
-        std::{ethercat_now, tx_rx_task_blocking, TxRxTaskConfig},
         MainDevice, MainDeviceConfig, PduStorage, Timeouts,
+        std::{TxRxTaskConfig, ethercat_now, tx_rx_task_blocking},
     };
     use spin_sleep::{SpinSleeper, SpinStrategy};
     use std::{
         sync::{
-            atomic::{AtomicBool, Ordering},
             Arc,
+            atomic::{AtomicBool, Ordering},
         },
         time::Duration,
     };

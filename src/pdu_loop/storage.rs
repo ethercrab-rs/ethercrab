@@ -3,15 +3,15 @@ use super::{
 };
 use crate::ethernet::EthernetFrame;
 use crate::{
+    PduLoop,
     error::{Error, PduError},
     fmt,
     pdu_loop::{
         frame_element::{
-            created_frame::CreatedFrame, receiving_frame::ReceivingFrame, FrameElement,
+            FrameElement, created_frame::CreatedFrame, receiving_frame::ReceivingFrame,
         },
         pdu_flags::PduFlags,
     },
-    PduLoop,
 };
 use atomic_waker::AtomicWaker;
 use core::{
@@ -303,7 +303,7 @@ unsafe impl<'sto> Sync for PduStorageRef<'sto> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{pdu_loop::pdu_header::PduHeader, Command};
+    use crate::{Command, pdu_loop::pdu_header::PduHeader};
     use core::time::Duration;
 
     #[test]

@@ -8,7 +8,7 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::ethercat_now, MainDevice, MainDeviceConfig, PduStorage, Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, Timeouts, error::Error, std::ethercat_now,
 };
 use std::time::Duration;
 use tokio::time::MissedTickBehavior;
@@ -84,7 +84,9 @@ async fn main() -> Result<(), Error> {
         .expect("Failed to stop TX/RX task")
         .expect("TX/RX task error");
 
-    log::info!("PduLoop, PduTx and PduRx were released, starting new TX/RX task and making new MainDevice...");
+    log::info!(
+        "PduLoop, PduTx and PduRx were released, starting new TX/RX task and making new MainDevice..."
+    );
 
     // Now spawn a new TX/RX task. You could use a different network interface here, for example.
     let tx_rx_handle =

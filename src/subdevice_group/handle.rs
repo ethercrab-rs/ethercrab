@@ -1,5 +1,5 @@
 use crate::{
-    error::Error, fmt, pdi::PdiOffset, GroupId, MainDevice, SubDevice, SubDeviceGroup, SubDeviceRef,
+    GroupId, MainDevice, SubDevice, SubDeviceGroup, SubDeviceRef, error::Error, fmt, pdi::PdiOffset,
 };
 
 /// A trait implemented only by [`SubDeviceGroup`] so multiple groups with different const params
@@ -28,9 +28,7 @@ where
     }
 
     unsafe fn push(&self, subdevice: SubDevice) -> Result<(), Error> {
-        (*self.inner.get())
-            .subdevices
-            .push(subdevice)
+        unsafe { (*self.inner.get()).subdevices.push(subdevice) }
             .map_err(|_| Error::Capacity(crate::error::Item::SubDevice))
     }
 

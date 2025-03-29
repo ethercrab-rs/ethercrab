@@ -79,7 +79,7 @@ mod tests {
     use super::*;
     use core::hash::{Hash, Hasher};
     use ethercrab_wire::EtherCrabWireRead;
-    use std::collections::{hash_map::DefaultHasher, HashMap};
+    use std::collections::{HashMap, hash_map::DefaultHasher};
 
     // These shouldn't be derived for general use, just for testing
     impl Eq for PduHeader {}

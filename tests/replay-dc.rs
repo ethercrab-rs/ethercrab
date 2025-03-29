@@ -10,9 +10,9 @@ mod util;
 
 use env_logger::Env;
 use ethercrab::{
+    DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts, TxRxResponse,
     error::Error,
     subdevice_group::{CycleInfo, DcConfiguration},
-    DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts, TxRxResponse,
 };
 use std::{path::PathBuf, time::Duration};
 

@@ -8,6 +8,10 @@ mod handle;
 mod tx_rx_response;
 
 use crate::{
+    DcSync,
+    MainDevice,
+    RegisterAddress,
+    SubDeviceState,
     al_control::AlControl,
     command::Command,
     error::{DistributedClockError, Error, Item},
@@ -16,13 +20,9 @@ use crate::{
     pdi::PdiOffset,
     pdu_loop::{CreatedFrame, ReceivedPdu},
     subdevice::{
-        configuration::PdoDirection, pdi::SubDevicePdi, IoRanges, SubDevice, SubDeviceRef,
+        IoRanges, SubDevice, SubDeviceRef, configuration::PdoDirection, pdi::SubDevicePdi,
     },
     timer_factory::IntoTimeout,
-    DcSync,
-    MainDevice,
-    RegisterAddress,
-    SubDeviceState,
 };
 use core::{cell::UnsafeCell, marker::PhantomData, sync::atomic::AtomicUsize, time::Duration};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
@@ -810,7 +810,8 @@ where
             subdevice.configured_address(),
             input_range,
             output_range,
-            self.pdi_len, MAX_PDI
+            self.pdi_len,
+            MAX_PDI
         );
 
         Ok(SubDeviceRef::new(
@@ -1362,9 +1363,9 @@ where
 mod tests {
     use super::*;
     use crate::{
+        MainDeviceConfig, PduStorage, Timeouts,
         ethernet::{EthernetAddress, EthernetFrame},
         pdu_loop::ReceivedFrame,
-        MainDeviceConfig, PduStorage, Timeouts,
     };
     use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
     use std::{sync::Arc, thread};

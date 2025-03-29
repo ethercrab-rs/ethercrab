@@ -31,15 +31,12 @@ pub const STATION_ALIAS_CRC: crc::Crc<u8> = crc::Crc::<u8>::new(&ECAT_CRC_ALGORI
 /// A data source for EEPROM reads.
 pub trait EepromDataProvider: Clone {
     /// Read a chunk of either 4 or 8 bytes from the backing store.
-    #[cfg_attr(feature = "__internals", allow(async_fn_in_trait))]
     async fn read_chunk(&mut self, start_word: u16) -> Result<impl Deref<Target = [u8]>, Error>;
 
     /// Write two bytes into the SubDevice EEPROM at the given address
-    #[cfg_attr(feature = "__internals", allow(async_fn_in_trait))]
     async fn write_word(&mut self, start_word: u16, data: [u8; 2]) -> Result<(), Error>;
 
     /// Attempt to clear any errors in the EEPROM source.
-    #[cfg_attr(feature = "__internals", allow(async_fn_in_trait))]
     async fn clear_errors(&self) -> Result<(), Error>;
 }
 

@@ -16,9 +16,9 @@ fn main() {
 fn main() -> Result<(), ethercrab::error::Error> {
     use env_logger::{Env, TimestampPrecision};
     use ethercrab::{
+        MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
         error::Error,
         std::{ethercat_now, tx_rx_task_io_uring},
-        MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
     };
     use std::{
         sync::Arc,

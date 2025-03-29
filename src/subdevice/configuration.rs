@@ -12,7 +12,7 @@ use crate::{
     register::RegisterAddress,
     subdevice::types::{Mailbox, MailboxConfig},
     subdevice_state::SubDeviceState,
-    sync_manager_channel::{Enable, Status, SyncManagerChannel, SM_BASE_ADDRESS, SM_TYPE_ADDRESS},
+    sync_manager_channel::{Enable, SM_BASE_ADDRESS, SM_TYPE_ADDRESS, Status, SyncManagerChannel},
 };
 use core::ops::DerefMut;
 
