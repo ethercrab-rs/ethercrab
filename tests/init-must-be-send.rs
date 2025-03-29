@@ -1,7 +1,7 @@
 //! A weird looking test, but it just makes sure the EtherCrab init routines are `Send`.
 
 use core::future::Future;
-use ethercrab::{std::ethercat_now, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
+use ethercrab::{MainDevice, MainDeviceConfig, PduStorage, Timeouts, std::ethercat_now};
 use std::{sync::Arc, time::Duration};
 
 #[test]

@@ -14,7 +14,7 @@ use std::{
 };
 
 #[cfg(target_os = "windows")]
-pub use self::windows::{ethercat_now, tx_rx_task_blocking, TxRxTaskConfig};
+pub use self::windows::{TxRxTaskConfig, ethercat_now, tx_rx_task_blocking};
 #[cfg(unix)]
 pub use unix::{ethercat_now, tx_rx_task};
 // io_uring is Linux-only

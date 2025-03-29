@@ -11,7 +11,7 @@ impl From<GroupId> for usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::{subdevice_group::PreOp, SubDeviceGroup};
+    use crate::{SubDeviceGroup, subdevice_group::PreOp};
 
     #[test]
     fn group_unique_id_defaults() {

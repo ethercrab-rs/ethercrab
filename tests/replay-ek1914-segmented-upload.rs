@@ -5,7 +5,7 @@
 mod util;
 
 use env_logger::Env;
-use ethercrab::{error::Error, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
+use ethercrab::{MainDevice, MainDeviceConfig, PduStorage, Timeouts, error::Error};
 use std::path::PathBuf;
 
 const MAX_SUBDEVICES: usize = 16;

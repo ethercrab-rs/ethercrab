@@ -5,23 +5,23 @@
 
 use env_logger::Env;
 use ethercrab::{
+    DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts,
     error::Error,
     std::ethercat_now,
     subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
-    DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
     fs::File,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     thread,
     time::{Duration, Instant},
 };
-use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
+use ta::indicators::ExponentialMovingAverage;
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
 const MAX_SUBDEVICES: usize = 16;
@@ -148,13 +148,17 @@ fn main() -> Result<(), Error> {
                 let cycle_time = subdevice.sdo_read::<u32>(0x1c32, 2).await?;
                 let min_cycle_time = subdevice.sdo_read::<u32>(0x1c32, 5).await?;
                 let supported_sync_modes = subdevice.sdo_read::<SupportedModes>(0x1c32, 4).await?;
-                log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+                log::info!(
+                    "--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}"
+                );
 
                 let sync_type = subdevice.sdo_read::<u16>(0x1c33, 1).await?;
                 let cycle_time = subdevice.sdo_read::<u32>(0x1c33, 2).await?;
                 let min_cycle_time = subdevice.sdo_read::<u32>(0x1c33, 5).await?;
                 let supported_sync_modes = subdevice.sdo_read::<SupportedModes>(0x1c33, 4).await?;
-                log::info!("--> Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}");
+                log::info!(
+                    "--> Inputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), supported modes {supported_sync_modes:?}"
+                );
             }
 
             // Configure SYNC0 AND SYNC1 for EL4102
@@ -198,7 +202,9 @@ fn main() -> Result<(), Error> {
                 // NOTE: For EL4102, SupportedModes.sync1 is false, but the ESI file specifies it,
                 // and the 4102 won't go into OP without setting up SYNC1 with the correct offset.
                 // Brilliant.
-                log::info!("--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), shift {shift_time} ns, supported modes {supported_sync_modes:?}");
+                log::info!(
+                    "--> Outputs sync mode {sync_type}, cycle time {cycle_time} ns (min {min_cycle_time} ns), shift {shift_time} ns, supported modes {supported_sync_modes:?}"
+                );
 
                 subdevice.set_dc_sync(DcSync::Sync01 {
                     // EL4102 ESI specifies SYNC1 with an offset of 100k ns

@@ -1,13 +1,13 @@
 //! Items to use when not in `no_std` environments.
 
 use crate::{
+    ReceiveAction,
     error::Error,
     fmt,
     pdu_loop::{PduRx, PduTx},
     std::ParkSignal,
-    ReceiveAction,
 };
-use pnet_datalink::{self, channel, Channel, DataLinkReceiver, DataLinkSender};
+use pnet_datalink::{self, Channel, DataLinkReceiver, DataLinkSender, channel};
 use std::io;
 use std::{sync::Arc, task::Waker, time::SystemTime};
 

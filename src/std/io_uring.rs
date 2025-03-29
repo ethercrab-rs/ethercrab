@@ -1,7 +1,7 @@
-use crate::{error::Error, fmt, std::unix::RawSocketDesc, std::ParkSignal, PduRx, PduTx};
+use crate::{PduRx, PduTx, error::Error, fmt, std::ParkSignal, std::unix::RawSocketDesc};
 use core::{mem::MaybeUninit, task::Waker};
-use io_uring::{opcode, IoUring};
-use smallvec::{smallvec, SmallVec};
+use io_uring::{IoUring, opcode};
+use smallvec::{SmallVec, smallvec};
 use std::{io, os::fd::AsRawFd, sync::Arc, time::Instant};
 
 /// Use the upper bit of a u64 to mark whether a frame is a write (`1`) or a read (`0`).

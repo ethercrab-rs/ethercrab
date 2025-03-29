@@ -2,7 +2,7 @@ use crate::{
     error::{Error, PduError},
     fmt,
     pdu_loop::{
-        frame_element::{created_frame::PduResponseHandle, FrameBox, FrameState},
+        frame_element::{FrameBox, FrameState, created_frame::PduResponseHandle},
         pdu_header::PduHeader,
     },
 };
@@ -153,9 +153,10 @@ impl<'sto> Drop for ReceivedFrame<'sto> {
     fn drop(&mut self) {
         // Invariant: the frame can only be in `RxProcessing` at this point, so if this swap fails
         // there's either a logic bug, or we should panic anyway because the hardware failed.
-        fmt::unwrap!(self
-            .inner
-            .swap_state(FrameState::RxProcessing, FrameState::None));
+        fmt::unwrap!(
+            self.inner
+                .swap_state(FrameState::RxProcessing, FrameState::None)
+        );
 
         // Set frame empty sentinel so we don't get false-positive matches when receiving frames
         self.inner.clear_first_pdu();

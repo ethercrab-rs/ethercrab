@@ -16,12 +16,12 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::ethercat_now, MainDevice, MainDeviceConfig, PduStorage, Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, Timeouts, error::Error, std::ethercat_now,
 };
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };

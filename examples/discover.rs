@@ -1,7 +1,7 @@
 //! Discover devices connected to the network.
 
 use env_logger::Env;
-use ethercrab::{std::ethercat_now, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
+use ethercrab::{MainDevice, MainDeviceConfig, PduStorage, Timeouts, std::ethercat_now};
 use std::{str::FromStr, sync::Arc};
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.

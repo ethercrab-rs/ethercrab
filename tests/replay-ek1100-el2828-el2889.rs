@@ -10,8 +10,8 @@ mod util;
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, subdevice_group, MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup,
-    Timeouts,
+    MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts, error::Error,
+    subdevice_group,
 };
 use std::{path::PathBuf, time::Duration};
 use tokio::time::MissedTickBehavior;

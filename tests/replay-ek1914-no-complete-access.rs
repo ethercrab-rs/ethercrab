@@ -6,7 +6,7 @@
 
 mod util;
 
-use ethercrab::{error::Error, MainDevice, MainDeviceConfig, PduStorage, RetryBehaviour, Timeouts};
+use ethercrab::{MainDevice, MainDeviceConfig, PduStorage, RetryBehaviour, Timeouts, error::Error};
 use std::{path::PathBuf, time::Duration};
 
 const MAX_SUBDEVICES: usize = 16;

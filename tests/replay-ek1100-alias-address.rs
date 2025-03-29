@@ -7,7 +7,7 @@
 mod util;
 
 use env_logger::Env;
-use ethercrab::{error::Error, MainDevice, MainDeviceConfig, PduStorage, Timeouts};
+use ethercrab::{MainDevice, MainDeviceConfig, PduStorage, Timeouts, error::Error};
 use std::{path::PathBuf, time::Duration};
 use tokio::time::sleep;
 

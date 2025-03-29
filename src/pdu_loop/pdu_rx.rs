@@ -1,10 +1,10 @@
 use super::storage::PduStorageRef;
 use crate::ethernet::{EthernetAddress, EthernetFrame};
 use crate::{
+    ETHERCAT_ETHERTYPE, MASTER_ADDR,
     error::{Error, PduError},
     fmt,
     pdu_loop::frame_header::EthercatFrameHeader,
-    ETHERCAT_ETHERTYPE, MASTER_ADDR,
 };
 use core::sync::atomic::Ordering;
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
