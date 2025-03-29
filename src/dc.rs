@@ -29,7 +29,7 @@ async fn latch_dc_times(
     // Latch receive times into all ports of all SubDevices.
     Command::bwr(RegisterAddress::DcTimePort0.into())
         .with_wkc(num_subdevices_with_dc as u16)
-        .send_receive(maindevice, 0u32)
+        .send(maindevice, 0u32)
         .await?;
 
     // Read receive times for all SubDevices and store on SubDevice structs

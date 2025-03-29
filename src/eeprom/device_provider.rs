@@ -60,7 +60,7 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
         start_word: u16,
     ) -> Result<impl core::ops::Deref<Target = [u8]>, Error> {
         Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
-            .send_receive(self.maindevice, SiiRequest::read(start_word))
+            .send(self.maindevice, SiiRequest::read(start_word))
             .await?;
 
         let status = self.wait_while_busy().await?;
@@ -93,7 +93,7 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
             // Send control and address registers. A rising edge on the write flag will store whatever
             // is in `SiiAddress` into the EEPROM at the given address.
             Command::fpwr(self.configured_address, RegisterAddress::SiiControl.into())
-                .send_receive(self.maindevice, SiiRequest::write(start_word))
+                .send(self.maindevice, SiiRequest::write(start_word))
                 .await?;
 
             // Wait for error or not busy
