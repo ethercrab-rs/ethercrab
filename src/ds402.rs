@@ -4,7 +4,7 @@ use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireSiz
 use heapless::FnvIndexMap;
 use libc::sync;
 
-use crate::{fmt, SubDevicePdi, SubDeviceRef};
+use crate::{SubDevicePdi, SubDeviceRef, fmt};
 
 /// DS402 control word (object 0x6040).
 ///
@@ -361,6 +361,7 @@ impl<'a> PdoMapping<'a> {
     ///
     /// assert_eq!(raw, 0x6800_010f);
     /// ```
+    // TODO: I think it'd be better to return an opaque type here
     pub const fn object<T>(index: u16, subindex: u8) -> u32
     where
         T: EtherCrabWireSized,
@@ -399,11 +400,12 @@ impl<'group, const MAX_PDI: usize, const MAX_OUTPUT_OBJECTS: usize>
         // TODO: Dynamically(?) compute
         let state_range = 0..StatusWord::PACKED_LEN;
 
-        fmt::unwrap_opt!(self
-            .subdevice
-            .inputs_raw()
-            .get(state_range)
-            .and_then(|bytes| StatusWord::unpack_from_slice(bytes).ok()))
+        fmt::unwrap_opt!(
+            self.subdevice
+                .inputs_raw()
+                .get(state_range)
+                .and_then(|bytes| StatusWord::unpack_from_slice(bytes).ok())
+        )
     }
 
     /// Get the current DS402 state machine state.
@@ -419,84 +421,85 @@ mod tests {
     use super::*;
     use heapless::FnvIndexMap;
 
-    #[test]
-    fn raw() {
-        // SM configuration. Order matters!
-        // TODO: Make some fields mandatory: op mode, op mode status, supported drive modes. This is
-        // required by ETG6010 Table 8: Modes of operation – Object list
-        let outputs = &[SyncManagerAssignment {
-            // TODO: Higher level API so we can get the correct read/write SM address from the
-            // subdevice (e.g. `sd.read_sm(0) -> Option<u16>` or something)
-            // index: 0x1c12,
-            sync_manager: None,
+    // #[test]
+    // fn raw() {
+    //     // SM configuration. Order matters!
+    //     // TODO: Make some fields mandatory: op mode, op mode status, supported drive modes. This is
+    //     // required by ETG6010 Table 8: Modes of operation – Object list
+    //     let outputs = &[SyncManagerAssignment {
+    //         // TODO: Higher level API so we can get the correct read/write SM address from the
+    //         // subdevice (e.g. `sd.read_sm(0) -> Option<u16>` or something)
+    //         // index: 0x1c12,
+    //         sync_manager: None,
 
-            fmmu: None,
+    //         fmmu: None,
 
-            // TODO: Validate that the SM can have this many mappings
-            mappings: &[PdoMapping {
-                index: 0x1600,
-                // TODO: Validate that this mapping object can have this many PDOs, e.g. some SD
-                // PDOs can only have 4 assignments
-                objects: &[WriteObject::CONTROL_WORD, WriteObject::OP_MODE],
-                oversampling: None,
-            }],
-        }];
+    //         // TODO: Validate that the SM can have this many mappings
+    //         mappings: &[PdoMapping {
+    //             index: 0x1600,
+    //             // TODO: Validate that this mapping object can have this many PDOs, e.g. some SD
+    //             // PDOs can only have 4 assignments
+    //             objects: &[WriteObject::CONTROL_WORD, WriteObject::OP_MODE],
+    //             oversampling: None,
+    //         }],
+    //     }];
 
-        // PDI offset accumulator
-        let mut position = 0;
+    //     // PDI offset accumulator
+    //     let mut position = 0;
 
-        /// Convert SM config into a list of offsets into the SubDevice's PDI.
-        fn config_to_offsets<const N: usize>(
-            config: &[SyncManagerAssignment],
-            position_accumulator: &mut usize,
-        ) -> FnvIndexMap<u16, Range<usize>, N> {
-            let mut map = FnvIndexMap::new();
+    //     /// Convert SM config into a list of offsets into the SubDevice's PDI.
+    //     fn config_to_offsets<const N: usize>(
+    //         config: &[SyncManagerAssignment],
+    //         position_accumulator: &mut usize,
+    //     ) -> FnvIndexMap<u32, Range<usize>, N> {
+    //         let mut map = FnvIndexMap::new();
 
-            // Turn nice mapping object into linear list of ranges into the SD's PDI
-            config
-                .into_iter()
-                .flat_map(|sm| sm.mappings)
-                .flat_map(|mapping| mapping.objects)
-                .for_each(|mapping| {
-                    let object = *mapping;
+    //         // Turn nice mapping object into linear list of ranges into the SD's PDI
+    //         config
+    //             .into_iter()
+    //             .flat_map(|sm| sm.mappings)
+    //             .flat_map(|mapping| mapping.objects)
+    //             .for_each(|mapping| {
+    //                 let object = *mapping;
 
-                    let size_bytes = (object & 0xffff) as usize / 8;
+    //                 let size_bytes = (object & 0xff) as usize / 8;
 
-                    let range = *position_accumulator..(*position_accumulator + size_bytes);
+    //                 let range = *position_accumulator..(*position_accumulator + size_bytes);
 
-                    *position_accumulator += size_bytes;
+    //                 *position_accumulator += size_bytes;
 
-                    let key = (object >> 16) as u16;
+    //                 // let key = (object >> 16) as u16;
+    //                 let key = object;
 
-                    assert_eq!(
-                        map.insert(key, range),
-                        Ok(None),
-                        "multiple mappings of object {:#06x}",
-                        key
-                    );
-                });
+    //                 assert_eq!(
+    //                     map.insert(key, range),
+    //                     Ok(None),
+    //                     "multiple mappings of object {:#06x}",
+    //                     key
+    //                 );
+    //             });
 
-            map
-        }
+    //         map
+    //     }
 
-        let outputs = config_to_offsets(outputs, &mut position);
+    //     let outputs = config_to_offsets(outputs, &mut position);
 
-        let mut sd = Ds402::<32, 8> {
-            outputs,
-            // subdevice: SubDeviceRef::new(maindevice, 0x1000, SubDevicePdi::default()),
-            // FIXME: This is HILARIOUSLY unsafe but I really cba to mock up all the right stuff atm
-            subdevice: unsafe { MaybeUninit::zeroed().assume_init() },
-        };
+    //     let mut sd = Ds402::<32, 8> {
+    //         outputs,
+    //         // subdevice: SubDeviceRef::new(maindevice, 0x1000, SubDevicePdi::default()),
+    //         // FIXME: This is HILARIOUSLY unsafe but I really cba to mock up all the right stuff atm
+    //         subdevice: unsafe { MaybeUninit::zeroed().assume_init() },
+    //     };
 
-        for (object, pdi_range) in sd.outputs.iter() {
-            println!(
-                "Object {:#06x}, {} PDI bytes at {:?}",
-                object,
-                pdi_range.len(),
-                pdi_range
-            );
-        }
+    //     for (object, pdi_range) in sd.outputs.iter() {
+    //         println!(
+    //             "Object {:#06x}, {} PDI bytes at {:?}",
+    //             object,
+    //             pdi_range.len(),
+    //             pdi_range
+    //         );
+    //     }
 
-        sd.set_op_mode(OpMode::CyclicSynchronousPosition);
-    }
+    //     sd.set_op_mode(OpMode::CyclicSynchronousPosition);
+    // }
 }

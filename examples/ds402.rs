@@ -5,24 +5,26 @@
 
 use env_logger::Env;
 use ethercrab::{
+    DcSync, EtherCrabWireRead, EtherCrabWireWrite, MainDevice, MainDeviceConfig, PduStorage,
+    RegisterAddress, Timeouts,
     ds402::{self, Ds402, OpMode, PdoMapping, StatusWord, SyncManagerAssignment},
     error::Error,
     std::ethercat_now,
-    subdevice_group::{CycleInfo, DcConfiguration, MappingConfig, TxRxResponse},
-    DcSync, EtherCrabWireRead, EtherCrabWireWrite, MainDevice, MainDeviceConfig, PduStorage,
-    RegisterAddress, Timeouts,
+    subdevice_group::{
+        CycleInfo, DcConfiguration, MappingConfig, PdiMappingBikeshedName, TxRxResponse,
+    },
 };
 use futures_lite::StreamExt;
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     thread,
     time::{Duration, Instant},
 };
-use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
+use ta::indicators::ExponentialMovingAverage;
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
 const MAX_SUBDEVICES: usize = 16;
@@ -143,6 +145,32 @@ fn main() -> Result<(), Error> {
 
         log::info!("Moving into PRE-OP with PDI");
 
+        // Let's tackle the FMMU/SM config override thing later. Gonna focus on PDI mapping for now.
+        // enum SmUsage {
+        //     // Direct values from ESI file.
+        //     MBoxOut,
+        //     MBoxIn,
+        //     Outputs,
+        //     Inputs,
+        // }
+
+        // struct SmConfig {
+        //     usage: SmUsage,
+        //     size: Range<usize>,
+        //     start_addr: u16,
+        //     // TODO: A nice way of mapping `ControlByte`. Could I just ignore it and map based on SmUsage?
+        //     // NOTE: Ignoring enable flag and just assuming always enabled
+        // }
+
+        // // A subset of the information in an ESI file
+        // struct SubDeviceConfig<'a> {
+        //     sync_managers: &'a [SmUsage],
+        //     fmmus: &'a [FmmuConfig],
+        //     io: MappingConfig<'a>,
+        //     // TODO: Some way of assigning a default SM/FMMU for a `SyncManagerAssignment` of I or O
+        //     // based on what the spec says should be the default.
+        // }
+
         let config = MappingConfig::new(
             const {
                 &[SyncManagerAssignment::new(
@@ -169,198 +197,74 @@ fn main() -> Result<(), Error> {
             },
         );
 
+        let mut servo_mapping = None;
+
         let group = group
             .into_pre_op_pdi_with_config(&maindevice, async |mut subdevice, idx| {
                 if subdevice.name() == "PD4-EB59CD-E-65-1" {
                     log::info!("Found servo {:?}", subdevice.identity());
 
+                    // This is required as the drive won't go into SAFE-OP without the SDOs
+                    // configured.
                     config.configure_sdos(&subdevice).await?;
 
                     subdevice.set_dc_sync(DcSync::Sync0);
 
+                    // Copy config and assign it to the subdevice by configured address. The rest of
+                    // the subdevice isn't used here as it doesn't have a configured PDI yet
+                    servo_mapping = Some(config.pdi_mapping(&subdevice));
+
                     // Let EtherCrab configure the SubDevice automatically based on the SDOs we
-                    // wrote just above.
-                    Ok(None)
+                    // wrote just above. The SM and FMMU config is read from a well-formed EEPROM.
+                    // TODO: Need a way to tell EtherCrab to completely ignore the EEPROM for
+                    // SM/FMMU assignment.
+                    // TODO: Add a flag or something to tell EtherCrab to write SDO config or not.
+                    // This data isn't defined in the ESI files AFAICS so maybe some heuristic like
+                    // "has mailbox SM"?
+                    Ok(Some(config))
                 } else {
                     Ok(None)
                 }
             })
             .await?;
 
-        for sd in group.iter(&maindevice) {
-            log::info!(
-                "--> {:#06x} PDI {} input bytes, {} output bytes",
-                sd.configured_address(),
-                sd.inputs_raw().len(),
-                sd.outputs_raw().len()
-            );
-        }
+        // Now that we have a PDI and the SD has its configured offsets, we can wrap it in the PDI
+        // mapping
+        // Max 16 I and O mappings
+        let servo: PdiMappingBikeshedName<16, 16> = servo_mapping.expect("No servo");
 
-        log::info!("Done. PDI available. Waiting for SubDevices to align");
+        let servo = servo
+            .with_subdevice(&maindevice, &group)
+            .expect("Didn't find SD in group");
 
-        let mut now = Instant::now();
-        let start = Instant::now();
+        {
+            loop {
+                // group.tx_rx().await;
 
-        // Repeatedly send group PDI and sync frame to align all SubDevice clocks. We use an
-        // exponential moving average of each SubDevice's deviation from the EtherCAT System Time
-        // (the time in the DC reference SubDevice) and take the maximum deviation. When that is
-        // below 100us (arbitraily chosen value for this demo), we call the sync good enough and
-        // exit the loop.
-        loop {
-            group
-                .tx_rx_sync_system_time(&maindevice)
-                .await
-                .expect("TX/RX");
+                // We can still use the normal `SubDevice` stuff due to `Deref` magic
+                dbg!(servo.configured_address());
 
-            if now.elapsed() >= Duration::from_millis(25) {
-                now = Instant::now();
+                // TODO: How do we populate the return type for `input`? Right now we just have to
+                // assume the user will give the code the correct type. Maybe we just leave this
+                // as-is and rely on a derive in the future to figure it out from the ESI? What
+                // about &dyn traits in the config?
 
-                let mut max_deviation = 0;
+                // Supports tuples. If any one of the fields can't be found, an error is returned
+                let status: StatusWord = servo
+                    .input(ds402::ReadObject::STATUS_WORD)
+                    .expect("No mapping");
+                // // Or without the error and just a panic:
+                // let status =
+                //     servo.input_unchecked::<impl EtherCrabWireRead>(ds402::ReadObject::STATUS_WORD);
+                // // False if we try to set an object that wasn't mapped
+                // let exists =
+                //     servo.set_output(ds402::WriteObject::CONTROL_WORD, ControlWord::whatever());
 
-                for (s1, ema) in group.iter(&maindevice).zip(averages.iter_mut()) {
-                    let diff = match s1
-                        .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
-                        .await
-                    {
-                        Ok(value) =>
-                        // The returned value is NOT in two's compliment, rather the upper bit specifies
-                        // whether the number in the remaining bits is odd or even, so we convert the
-                        // value to `i32` using that logic here.
-                        {
-                            let flag = 0b1u32 << 31;
-
-                            if value >= flag {
-                                // Strip off negative flag bit and negate value as normal
-                                -((value & !flag) as i32)
-                            } else {
-                                value as i32
-                            }
-                        }
-                        Err(Error::WorkingCounter { .. }) => 0,
-                        Err(e) => return Err(e),
-                    };
-
-                    let ema_next = ema.next(diff as f64);
-
-                    max_deviation = max_deviation.max(ema_next.abs() as u32);
-                }
-
-                log::debug!("--> Max deviation {} ns", max_deviation);
-
-                // Less than 100us max deviation
-                if max_deviation < 100_000 {
-                    log::info!("Clocks settled after {} ms", start.elapsed().as_millis());
-
-                    break;
-                }
-            }
-
-            tick_interval.next().await;
-        }
-
-        log::info!("Alignment done");
-
-        // SubDevice clocks are aligned. We can turn DC on now.
-        let group = group
-            .configure_dc_sync(
-                &maindevice,
-                DcConfiguration {
-                    // Start SYNC0 100ms in the future
-                    start_delay: Duration::from_millis(100),
-                    // SYNC0 period should be the same as the process data loop in most cases
-                    sync0_period: TICK_INTERVAL,
-                    // Taken from ESI file
-                    sync0_shift: Duration::from_nanos(250_000),
-                },
-            )
-            .await?;
-
-        let group = group
-            .into_safe_op(&maindevice)
-            .await
-            .expect("PRE-OP -> SAFE-OP");
-
-        log::info!("SAFE-OP");
-
-        // Request OP state without waiting for all SubDevices to reach it. Allows the immediate
-        // start of the process data cycle, which is required when DC sync is used, otherwise
-        // SubDevices never reach OP, most often timing out with a SyncManagerWatchdog error.
-        let group = group
-            .request_into_op(&maindevice)
-            .await
-            .expect("SAFE-OP -> OP");
-
-        log::info!("OP requested");
-
-        let op_request = Instant::now();
-
-        // Send PDI and check group state until all SubDevices enter OP state. At this point, we can
-        // exit this loop and enter the main process data loop that does not have the state check
-        // overhead present here.
-        loop {
-            let now = Instant::now();
-
-            let response @ TxRxResponse {
-                working_counter: _wkc,
-                extra: CycleInfo {
-                    next_cycle_wait, ..
-                },
-                ..
-            } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
-
-            if response.all_op() {
-                break;
-            }
-
-            smol::Timer::at(now + next_cycle_wait).await;
-        }
-
-        log::info!(
-            "All SubDevices entered OP in {} us",
-            op_request.elapsed().as_micros()
-        );
-
-        let term = Arc::new(AtomicBool::new(false));
-        signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
-            .expect("Register hook");
-
-        let mut sd = group.subdevice(&maindevice, 0)?;
-
-        // Main application process data cycle
-        loop {
-            let now = Instant::now();
-
-            let TxRxResponse {
-                working_counter: _wkc,
-                extra: CycleInfo {
-                    next_cycle_wait, ..
-                },
-                ..
-            } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
-
-            let io = sd.io_raw_mut();
-
-            let i = io.inputs();
-
-            let status_word = &i[0..2];
-            let reported_op_mode = &i[2..3];
-
-            let mut o = io.outputs();
-
-            let control_word = &mut o[0..2];
-            let op_mode = &mut o[2..3];
-
-            OpMode::CyclicSynchronousPosition.pack_to_slice(op_mode)?;
-
-            let status_word = StatusWord::unpack_from_slice(status_word)?;
-            let reported_op_mode = OpMode::unpack_from_slice(reported_op_mode)?;
-
-            // println!("Op mode {:?}", reported_op_mode);
-
-            smol::Timer::at(now + next_cycle_wait).await;
-
-            if term.load(Ordering::Relaxed) {
-                log::info!("Exiting...");
+                // // Just read value we're gonna send to the outputs
+                // let control = servo
+                //     .output::<impl EtherCrabWireRead>(ds402::WriteObject::CONTROL_WORD)
+                //     .expect("No mapping");
+                // // TODO: `unchecked` variant
 
                 break;
             }
@@ -370,6 +274,9 @@ fn main() -> Result<(), Error> {
             .into_safe_op(&maindevice)
             .await
             .expect("OP -> SAFE-OP");
+
+        // This shouldn't be possible because we moved the group!
+        // dbg!(servo.configured_address());
 
         log::info!("OP -> SAFE-OP");
 
@@ -385,5 +292,204 @@ fn main() -> Result<(), Error> {
         log::info!("PRE-OP -> INIT, shutdown complete");
 
         Ok(())
+
+        // for sd in group.iter(&maindevice) {
+        //     log::info!(
+        //         "--> {:#06x} PDI {} input bytes, {} output bytes",
+        //         sd.configured_address(),
+        //         sd.inputs_raw().len(),
+        //         sd.outputs_raw().len()
+        //     );
+        // }
+
+        // log::info!("Done. PDI available. Waiting for SubDevices to align");
+
+        // let mut now = Instant::now();
+        // let start = Instant::now();
+
+        // // Repeatedly send group PDI and sync frame to align all SubDevice clocks. We use an
+        // // exponential moving average of each SubDevice's deviation from the EtherCAT System Time
+        // // (the time in the DC reference SubDevice) and take the maximum deviation. When that is
+        // // below 100us (arbitraily chosen value for this demo), we call the sync good enough and
+        // // exit the loop.
+        // loop {
+        //     group
+        //         .tx_rx_sync_system_time(&maindevice)
+        //         .await
+        //         .expect("TX/RX");
+
+        //     if now.elapsed() >= Duration::from_millis(25) {
+        //         now = Instant::now();
+
+        //         let mut max_deviation = 0;
+
+        //         for (s1, ema) in group.iter(&maindevice).zip(averages.iter_mut()) {
+        //             let diff = match s1
+        //                 .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+        //                 .await
+        //             {
+        //                 Ok(value) =>
+        //                 // The returned value is NOT in two's compliment, rather the upper bit specifies
+        //                 // whether the number in the remaining bits is odd or even, so we convert the
+        //                 // value to `i32` using that logic here.
+        //                 {
+        //                     let flag = 0b1u32 << 31;
+
+        //                     if value >= flag {
+        //                         // Strip off negative flag bit and negate value as normal
+        //                         -((value & !flag) as i32)
+        //                     } else {
+        //                         value as i32
+        //                     }
+        //                 }
+        //                 Err(Error::WorkingCounter { .. }) => 0,
+        //                 Err(e) => return Err(e),
+        //             };
+
+        //             let ema_next = ema.next(diff as f64);
+
+        //             max_deviation = max_deviation.max(ema_next.abs() as u32);
+        //         }
+
+        //         log::debug!("--> Max deviation {} ns", max_deviation);
+
+        //         // Less than 100us max deviation
+        //         if max_deviation < 100_000 {
+        //             log::info!("Clocks settled after {} ms", start.elapsed().as_millis());
+
+        //             break;
+        //         }
+        //     }
+
+        //     tick_interval.next().await;
+        // }
+
+        // log::info!("Alignment done");
+
+        // // SubDevice clocks are aligned. We can turn DC on now.
+        // let group = group
+        //     .configure_dc_sync(
+        //         &maindevice,
+        //         DcConfiguration {
+        //             // Start SYNC0 100ms in the future
+        //             start_delay: Duration::from_millis(100),
+        //             // SYNC0 period should be the same as the process data loop in most cases
+        //             sync0_period: TICK_INTERVAL,
+        //             // Taken from ESI file
+        //             sync0_shift: Duration::from_nanos(250_000),
+        //         },
+        //     )
+        //     .await?;
+
+        // let group = group
+        //     .into_safe_op(&maindevice)
+        //     .await
+        //     .expect("PRE-OP -> SAFE-OP");
+
+        // log::info!("SAFE-OP");
+
+        // // Request OP state without waiting for all SubDevices to reach it. Allows the immediate
+        // // start of the process data cycle, which is required when DC sync is used, otherwise
+        // // SubDevices never reach OP, most often timing out with a SyncManagerWatchdog error.
+        // let group = group
+        //     .request_into_op(&maindevice)
+        //     .await
+        //     .expect("SAFE-OP -> OP");
+
+        // log::info!("OP requested");
+
+        // let op_request = Instant::now();
+
+        // // Send PDI and check group state until all SubDevices enter OP state. At this point, we can
+        // // exit this loop and enter the main process data loop that does not have the state check
+        // // overhead present here.
+        // loop {
+        //     let now = Instant::now();
+
+        //     let response @ TxRxResponse {
+        //         working_counter: _wkc,
+        //         extra: CycleInfo {
+        //             next_cycle_wait, ..
+        //         },
+        //         ..
+        //     } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+
+        //     if response.all_op() {
+        //         break;
+        //     }
+
+        //     smol::Timer::at(now + next_cycle_wait).await;
+        // }
+
+        // log::info!(
+        //     "All SubDevices entered OP in {} us",
+        //     op_request.elapsed().as_micros()
+        // );
+
+        // let term = Arc::new(AtomicBool::new(false));
+        // signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
+        //     .expect("Register hook");
+
+        // let mut sd = group.subdevice(&maindevice, 0)?;
+
+        // // Main application process data cycle
+        // loop {
+        //     let now = Instant::now();
+
+        //     let TxRxResponse {
+        //         working_counter: _wkc,
+        //         extra: CycleInfo {
+        //             next_cycle_wait, ..
+        //         },
+        //         ..
+        //     } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+
+        //     let io = sd.io_raw_mut();
+
+        //     let i = io.inputs();
+
+        //     let status_word = &i[0..2];
+        //     let reported_op_mode = &i[2..3];
+
+        //     let mut o = io.outputs();
+
+        //     let control_word = &mut o[0..2];
+        //     let op_mode = &mut o[2..3];
+
+        //     OpMode::CyclicSynchronousPosition.pack_to_slice(op_mode)?;
+
+        //     let status_word = StatusWord::unpack_from_slice(status_word)?;
+        //     let reported_op_mode = OpMode::unpack_from_slice(reported_op_mode)?;
+
+        //     // println!("Op mode {:?}", reported_op_mode);
+
+        //     smol::Timer::at(now + next_cycle_wait).await;
+
+        //     if term.load(Ordering::Relaxed) {
+        //         log::info!("Exiting...");
+
+        //         break;
+        //     }
+        // }
+
+        // let group = group
+        //     .into_safe_op(&maindevice)
+        //     .await
+        //     .expect("OP -> SAFE-OP");
+
+        // log::info!("OP -> SAFE-OP");
+
+        // let group = group
+        //     .into_pre_op(&maindevice)
+        //     .await
+        //     .expect("SAFE-OP -> PRE-OP");
+
+        // log::info!("SAFE-OP -> PRE-OP");
+
+        // let _group = group.into_init(&maindevice).await.expect("PRE-OP -> INIT");
+
+        // log::info!("PRE-OP -> INIT, shutdown complete");
+
+        // Ok(())
     })
 }
