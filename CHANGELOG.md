@@ -6,6 +6,8 @@ An EtherCAT master written in Rust.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.5.7] - 2025-03-31
+
 ### Fixed
 
 - [#300](https://github.com/ethercrab-rs/ethercrab/pull/300) Backport
@@ -486,8 +488,9 @@ An EtherCAT master written in Rust.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.7...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.6...HEAD
+[0.5.7]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.6...ethercrab-v0.5.7
 [0.5.6]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.5...ethercrab-v0.5.6
 [0.5.5]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.4...ethercrab-v0.5.5
 [0.5.4]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.3...ethercrab-v0.5.4
