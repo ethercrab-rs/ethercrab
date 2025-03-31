@@ -21,8 +21,15 @@ use crate::{
     },
     timer_factory::IntoTimeout,
 };
-use core::{cell::UnsafeCell, marker::PhantomData, sync::atomic::AtomicUsize, time::Duration};
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
+use core::{
+    cell::UnsafeCell,
+    marker::PhantomData,
+    ops::{Deref, Range},
+    sync::atomic::AtomicUsize,
+    time::Duration,
+};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized, WireError};
+use heapless::FnvIndexMap;
 
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
@@ -64,6 +71,88 @@ impl<T: ?Sized> MySyncUnsafeCell<T> {
     #[inline]
     pub fn get_mut(&mut self) -> &mut T {
         self.0.get_mut()
+    }
+}
+
+// TODO: Un-pub
+/// TODO: Docs
+pub struct PdiMappingBikeshedName<const I: usize, const O: usize, S = ()> {
+    /// TODO: Docs.
+    configured_address: u16,
+    /// TODO: Docs.
+    inputs: FnvIndexMap<u32, Range<usize>, I>,
+    /// TODO: Docs.
+    outputs: FnvIndexMap<u32, Range<usize>, O>,
+
+    state: S,
+}
+
+impl<const I: usize, const O: usize, S> PdiMappingBikeshedName<I, O, S> {
+    /// TODO: Docs
+    /// TODO: Way better name
+    pub fn with_subdevice<
+        'maindevice,
+        'group,
+        const MAX_SUBDEVICES: usize,
+        const MAX_PDI: usize,
+        DC,
+    >(
+        self,
+        maindevice: &'maindevice MainDevice<'maindevice>,
+        group: &'group SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, impl HasPdi, DC>,
+    ) -> Result<
+        PdiMappingBikeshedName<I, O, SubDeviceRef<'maindevice, SubDevicePdi<'group, MAX_PDI>>>,
+        Error,
+    > {
+        let subdevice =
+            group.subdevice_by_configured_address(maindevice, self.configured_address)?;
+
+        Ok(PdiMappingBikeshedName {
+            configured_address: self.configured_address,
+            inputs: self.inputs,
+            outputs: self.outputs,
+            state: subdevice,
+        })
+    }
+}
+
+impl<const I: usize, const O: usize, S> Deref for PdiMappingBikeshedName<I, O, S> {
+    type Target = S;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+impl<'maindevice, 'group, const I: usize, const O: usize, const MAX_PDI: usize>
+    PdiMappingBikeshedName<I, O, SubDeviceRef<'maindevice, SubDevicePdi<'group, MAX_PDI>>>
+{
+    // TODO: Don't take a `u32` but an actual Object type
+    /// TODO: Doc
+    pub fn input<T>(&self, object: u32) -> Result<T, Error>
+    where
+        T: EtherCrabWireReadSized,
+    {
+        let size_bytes = (object & 0xff) as usize / 8;
+
+        if size_bytes != T::PACKED_LEN {
+            // TODO: This should probably be an Error::Mapping(IncorrectSize)
+            return Err(Error::Internal);
+        }
+
+        let range = self.inputs.get(&object).ok_or_else(|| {
+            // TODO: Return idk, Error::Mapping(NotFound)
+            Error::Internal
+        })?;
+
+        let inputs = self.state.inputs_raw();
+
+        let bytes = inputs.get(range.clone()).ok_or_else(|| {
+            // TODO: Error::Mapping(OutOfRange) or something
+            Error::Internal
+        })?;
+
+        Ok(T::unpack_from_slice(bytes)?)
     }
 }
 
@@ -172,6 +261,59 @@ impl<'a> MappingConfig<'a> {
         }
 
         Ok(())
+    }
+
+    /// TODO: Doc
+    pub fn pdi_mapping<const I: usize, const O: usize>(
+        &self,
+        subdevice: &impl Deref<Target = SubDevice>,
+    ) -> PdiMappingBikeshedName<I, O> {
+        let mut inputs = FnvIndexMap::<_, _, I>::new();
+        let mut outputs = FnvIndexMap::<_, _, O>::new();
+
+        fn push_mapping<const N: usize>(
+            inputs: &mut FnvIndexMap<u32, Range<usize>, N>,
+            position_accumulator: usize,
+            object: &u32,
+        ) -> usize {
+            let object = *object;
+
+            let size_bytes = (object & 0xffff) as usize / 8;
+
+            let range = position_accumulator..(position_accumulator + size_bytes);
+
+            assert_eq!(
+                inputs.insert(object, range),
+                Ok(None),
+                "multiple mappings of object {:#06x}",
+                object
+            );
+
+            position_accumulator + size_bytes
+        }
+
+        self.inputs
+            .iter()
+            .flat_map(|sm| sm.mappings)
+            .flat_map(|mapping| mapping.objects)
+            .fold(0usize, |position_accumulator, object| {
+                push_mapping(&mut inputs, position_accumulator, object)
+            });
+
+        self.outputs
+            .iter()
+            .flat_map(|sm| sm.mappings)
+            .flat_map(|mapping| mapping.objects)
+            .fold(0usize, |position_accumulator, object| {
+                push_mapping(&mut outputs, position_accumulator, object)
+            });
+
+        PdiMappingBikeshedName {
+            configured_address: subdevice.configured_address(),
+            inputs,
+            outputs,
+            state: (),
+        }
     }
 }
 
@@ -1054,6 +1196,45 @@ where
             item: Item::SubDevice,
             index: Some(index),
         })?;
+
+        let io_ranges = subdevice.io_segments().clone();
+
+        let IoRanges {
+            input: input_range,
+            output: output_range,
+        } = &io_ranges;
+
+        fmt::trace!(
+            "Get SubDevice {:#06x} IO ranges I: {}, O: {} (group PDI {} byte subset of {} byte max)",
+            subdevice.configured_address(),
+            input_range,
+            output_range,
+            self.pdi_len,
+            MAX_PDI
+        );
+
+        Ok(SubDeviceRef::new(
+            maindevice,
+            subdevice.configured_address(),
+            SubDevicePdi::new(subdevice, &self.pdi),
+        ))
+    }
+
+    /// Borrow an individual SubDevice, found by configured address.
+    pub fn subdevice_by_configured_address<'maindevice, 'group>(
+        &'group self,
+        maindevice: &'maindevice MainDevice<'maindevice>,
+        configured_address: u16,
+    ) -> Result<SubDeviceRef<'maindevice, SubDevicePdi<'group, MAX_PDI>>, Error> {
+        let subdevice = self
+            .inner()
+            .subdevices
+            .iter()
+            .find(|sd| sd.configured_address() == configured_address)
+            .ok_or(Error::NotFound {
+                item: Item::SubDevice,
+                index: Some(usize::from(configured_address)),
+            })?;
 
         let io_ranges = subdevice.io_segments().clone();
 
