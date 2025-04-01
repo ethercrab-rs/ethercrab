@@ -1,0 +1,4 @@
+[toolchain]
+channel = "nightly"
+components = ["llvm-tools"]
+targets = ["thumbv7em-none-eabi"]
