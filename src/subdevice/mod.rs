@@ -679,8 +679,6 @@ where
     {
         let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
 
-        let counter = request.counter();
-
         // Send data to SubDevice IN mailbox
         self.write(write_mailbox.address)
             .with_len(write_mailbox.len)
@@ -713,14 +711,6 @@ where
         let headers = HeadersRaw::unpack_from_slice(&response)?;
 
         assert_ne!(headers.header.service, CoeService::Emergency);
-
-        if headers.header.counter != counter {
-            fmt::warn!(
-                "Invalid count received: {} (expected {})",
-                headers.header.counter,
-                counter
-            );
-        }
 
         if headers.header.service == CoeService::Emergency {
             #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
