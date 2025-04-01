@@ -85,17 +85,10 @@ impl Display for SdoSegmented {
 pub trait CoeServiceRequest:
     ethercrab_wire::EtherCrabWireReadWrite + ethercrab_wire::EtherCrabWireWriteSized
 {
-    /// Get the auto increment counter value for this request.
-    fn counter(&self) -> u8;
-
     fn validate_response(&self, received_index: u16, received_subindex: u8) -> bool;
 }
 
 impl CoeServiceRequest for SdoExpeditedDownload {
-    fn counter(&self) -> u8 {
-        self.headers.header.counter
-    }
-
     fn validate_response(&self, received_index: u16, received_subindex: u8) -> bool {
         received_index == self.headers.sdo_header.index
             && received_subindex == self.headers.sdo_header.sub_index
@@ -103,20 +96,12 @@ impl CoeServiceRequest for SdoExpeditedDownload {
 }
 
 impl CoeServiceRequest for SdoNormal {
-    fn counter(&self) -> u8 {
-        self.header.counter
-    }
-
     fn validate_response(&self, received_index: u16, received_subindex: u8) -> bool {
         received_index == self.sdo_header.index && received_subindex == self.sdo_header.sub_index
     }
 }
 
 impl CoeServiceRequest for SdoSegmented {
-    fn counter(&self) -> u8 {
-        self.header.counter
-    }
-
     // No values to check against, so always valid
     fn validate_response(&self, _received_index: u16, _received_subindex: u8) -> bool {
         true
