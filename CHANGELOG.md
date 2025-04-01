@@ -10,7 +10,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 - [#298](https://github.com/ethercrab-rs/ethercrab/pull/298) **(breaking)** Change MSRV from 1.81 to
   1.85, migrate to edition 2024.
-
+- [#301](https://github.com/ethercrab-rs/ethercrab/pull/301) No longer warn when mailbox counter is
+  not what was sent by the MainDevice.
 
 ## [0.6.0] - 2025-03-29
 
