@@ -190,48 +190,48 @@ fn find_subdevice_parent(
     }
 }
 
+fn debug_print_ports(subdevice: &SubDevice) {
+    let time_p0 = subdevice.ports.0[0].dc_receive_time;
+    let time_p3 = subdevice.ports.0[1].dc_receive_time;
+    let time_p1 = subdevice.ports.0[2].dc_receive_time;
+    let time_p2 = subdevice.ports.0[3].dc_receive_time;
+    // Deltas between port receive times
+    let d03 = time_p3.saturating_sub(time_p0);
+    let d31 = time_p1.saturating_sub(time_p3);
+    let d12 = time_p2.saturating_sub(time_p1);
+    // let loop_propagation_time = subdevice.ports.total_propagation_time();
+    // let child_delay = subdevice.ports.fork_child_delay();
+    fmt::debug!(
+        "--> Topology {:?}, {}",
+        subdevice.ports.topology(),
+        subdevice.ports
+    );
+    fmt::debug!(
+        "--> Receive times {} ns ({} ns) {} ({} ns) {} ({} ns) {} (total {})",
+        time_p0,
+        if subdevice.ports.0[1].active { d03 } else { 0 },
+        // d03,
+        time_p3,
+        if subdevice.ports.0[2].active { d31 } else { 0 },
+        // d31,
+        time_p1,
+        if subdevice.ports.0[3].active { d12 } else { 0 },
+        // d12,
+        time_p2,
+        subdevice.ports.total_propagation_time().unwrap_or(0)
+    );
+}
+
 /// Calculate and assign a SubDevice's propagation delay, i.e. the time it takes for a packet to
 /// reach it when sent from the master.
+#[deny(clippy::arithmetic_side_effects)]
 fn configure_subdevice_offsets(
     subdevice: &mut SubDevice,
     parents: &[SubDevice],
     delay_accum: &mut u32,
 ) {
     // Just for debug
-    {
-        let time_p0 = subdevice.ports.0[0].dc_receive_time;
-        let time_p3 = subdevice.ports.0[1].dc_receive_time;
-        let time_p1 = subdevice.ports.0[2].dc_receive_time;
-        let time_p2 = subdevice.ports.0[3].dc_receive_time;
-
-        // Deltas between port receive times
-        let d03 = time_p3.saturating_sub(time_p0);
-        let d31 = time_p1.saturating_sub(time_p3);
-        let d12 = time_p2.saturating_sub(time_p1);
-
-        // let loop_propagation_time = subdevice.ports.total_propagation_time();
-        // let child_delay = subdevice.ports.fork_child_delay();
-
-        fmt::debug!(
-            "--> Topology {:?}, {}",
-            subdevice.ports.topology(),
-            subdevice.ports
-        );
-        fmt::debug!(
-            "--> Receive times {} ns ({} ns) {} ({} ns) {} ({} ns) {} (total {})",
-            time_p0,
-            if subdevice.ports.0[1].active { d03 } else { 0 },
-            // d03,
-            time_p3,
-            if subdevice.ports.0[2].active { d31 } else { 0 },
-            // d31,
-            time_p1,
-            if subdevice.ports.0[3].active { d12 } else { 0 },
-            // d12,
-            time_p2,
-            subdevice.ports.total_propagation_time().unwrap_or(0)
-        );
-    }
+    debug_print_ports(subdevice);
 
     let parent = subdevice
         .parent_index
@@ -259,23 +259,25 @@ fn configure_subdevice_offsets(
         let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
         let this_prop_time = subdevice.ports.total_propagation_time().unwrap_or(0);
 
+        let parent_delta = parent_prop_time.saturating_sub(this_prop_time);
+
         fmt::debug!(
             "--> Parent propagation time {}, my prop. time {} delta {}",
             parent_prop_time,
             this_prop_time,
-            parent_prop_time - this_prop_time
+            parent_delta
         );
 
         let propagation_delay = match parent.ports.topology() {
-            Topology::Passthrough => (parent_prop_time - this_prop_time) / 2,
+            Topology::Passthrough => parent_delta / 2,
             Topology::Fork => {
                 if subdevice.is_child_of(parent) {
                     let children_loop_time =
                         parent.ports.propagation_time_to(parent_port).unwrap_or(0);
 
-                    (children_loop_time - this_prop_time) / 2
+                    children_loop_time.saturating_sub(this_prop_time) / 2
                 } else {
-                    (parent_prop_time - this_prop_time) / 2
+                    parent_delta / 2
                 }
             }
             Topology::Cross => {
@@ -283,9 +285,9 @@ fn configure_subdevice_offsets(
                     let children_loop_time =
                         parent.ports.intermediate_propagation_time_to(parent_port);
 
-                    (children_loop_time - this_prop_time) / 2
+                    children_loop_time.saturating_sub(this_prop_time) / 2
                 } else {
-                    parent_prop_time - *delay_accum
+                    parent_prop_time.saturating_sub(*delay_accum)
                 }
             }
             // A parent of any device cannot have a `LineEnd` topology as it will always have at
@@ -937,5 +939,69 @@ mod tests {
         assign_parent_relationships(&mut subdevices).expect("assign");
 
         pretty_assertions::assert_eq!(subdevices, expected);
+    }
+
+    #[test]
+    fn issue_302() {
+        crate::test_logger();
+
+        let defaults = SubDevice {
+            configured_address: 0x999,
+            name: "CHANGEME".try_into().unwrap(),
+            ports: Ports::default(),
+            dc_receive_time: 0,
+            index: 0,
+            dc_support: DcSupport::Bits64,
+            ..SubDevice::default()
+        };
+
+        let mut subdevices = [
+            SubDevice {
+                index: 0,
+                configured_address: 0x1000,
+                name: "EK1100".try_into().unwrap(),
+                ports: ports(
+                    // Topology Passthrough, ports [ open closed open closed ]
+                    // Receive times 2684027691 ns (0 ns) 1819436374 (864592197 ns) 2684028571 (0 ns) 0 (total 880)
+                    true, 2684027691, false, 1819436374, true, 2684028571, false, 0,
+                ),
+                ..defaults.clone()
+            },
+            SubDevice {
+                index: 1,
+                configured_address: 0x1001,
+                name: "EL2002".try_into().unwrap(),
+                ports: ports(
+                    // Topology Passthrough, ports [ open closed open closed ]
+                    // Receive times 2680777793 ns (0 ns) 1819436374 (861342019 ns) 2680778393 (0 ns) 0 (total 600)
+                    true, 2680777793, false, 1819436374, true, 2680778393, false, 0,
+                ),
+                ..defaults.clone()
+            },
+            SubDevice {
+                index: 2,
+                configured_address: 0x1002,
+                name: "EL3001".try_into().unwrap(),
+                ports: ports(
+                    // Topology Passthrough, ports [ open closed open closed ]
+                    // Receive times 2675710949 ns (0 ns) 1819436374 (856274885 ns) 2675711259 (0 ns) 0 (total 310)
+                    true, 2675710949, false, 1819436374, true, 2675711259, false, 0,
+                ),
+                ..defaults.clone()
+            },
+            SubDevice {
+                index: 3,
+                configured_address: 0x1003,
+                name: "EL7041-0052".try_into().unwrap(),
+                ports: ports(
+                    // Topology Passthrough, ports [ open closed open closed ]
+                    // Receive times 2351926151 ns (0 ns) 1819436374 (0 ns) 1717989224 (0 ns) 0 (total 633936927)
+                    true, 2351926151, false, 1819436374, true, 1717989224, false, 0,
+                ),
+                ..defaults.clone()
+            },
+        ];
+
+        assert_eq!(assign_parent_relationships(&mut subdevices), Ok(()));
     }
 }
