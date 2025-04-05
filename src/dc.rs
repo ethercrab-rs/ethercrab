@@ -963,13 +963,8 @@ mod tests {
                 ports: ports(
                     // Topology Passthrough, ports [ open closed open closed ]
                     // Receive times 2684027691 ns (0 ns) 1819436374 (864592197 ns) 2684028571 (0 ns) 0 (total 880)
-                    true, 2684027691, false, 1819436374, true, 2684028571, false,
-                    0,
-                    // Original copypasta:
-                    // true, 3493061450, false, 1819436374, true, 3493064460, false, 0,
+                    true, 2684027691, false, 1819436374, true, 2684028571, false, 0,
                 ),
-                // dc_receive_time: 3493061450,
-                dc_receive_time: 0,
                 ..defaults.clone()
             },
             SubDevice {
@@ -979,13 +974,8 @@ mod tests {
                 ports: ports(
                     // Topology Passthrough, ports [ open closed open closed ]
                     // Receive times 2680777793 ns (0 ns) 1819436374 (861342019 ns) 2680778393 (0 ns) 0 (total 600)
-                    true, 2680777793, false, 1819436374, true, 2680778393, false,
-                    0,
-                    // Original copypasta:
-                    // true, 3493293220, true, 3493294570, true, 3493295650, true, 3493295940,
+                    true, 2680777793, false, 1819436374, true, 2680778393, false, 0,
                 ),
-                // dc_receive_time: 3493293220,
-                dc_receive_time: 0,
                 ..defaults.clone()
             },
             SubDevice {
@@ -995,13 +985,8 @@ mod tests {
                 ports: ports(
                     // Topology Passthrough, ports [ open closed open closed ]
                     // Receive times 2675710949 ns (0 ns) 1819436374 (856274885 ns) 2675711259 (0 ns) 0 (total 310)
-                    true, 2675710949, false, 1819436374, true, 2675711259, false,
-                    0,
-                    // Original copypasta:
-                    // true, 3485337450, false, 1819436374, true, 3485337760, false, 0,
+                    true, 2675710949, false, 1819436374, true, 2675711259, false, 0,
                 ),
-                // dc_receive_time: 0,
-                dc_receive_time: 0,
                 ..defaults.clone()
             },
             SubDevice {
@@ -1011,13 +996,8 @@ mod tests {
                 ports: ports(
                     // Topology Passthrough, ports [ open closed open closed ]
                     // Receive times 2351926151 ns (0 ns) 1819436374 (0 ns) 1717989224 (0 ns) 0 (total 633936927)
-                    true, 2351926151, false, 1819436374, true, 1717989224, false,
-                    0,
-                    // Original copypasta:
-                    // true, 3488375400, false, 1819436374, false, 1717989224, false, 0,
+                    true, 2351926151, false, 1819436374, true, 1717989224, false, 0,
                 ),
-                // dc_receive_time: 0,
-                dc_receive_time: 0,
                 ..defaults.clone()
             },
         ];
