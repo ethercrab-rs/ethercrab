@@ -62,7 +62,7 @@ pub struct SubDeviceGroupRef<'a> {
     inner: GroupInnerRef<'a>,
 }
 
-impl<'a> SubDeviceGroupRef<'a> {
+impl SubDeviceGroupRef<'_> {
     /// Initialise all SubDevices in the group and place them in PRE-OP.
     // Clippy: shush
     #[allow(clippy::wrong_self_convention)]

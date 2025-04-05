@@ -48,7 +48,7 @@ impl EtherCrabWireRead for EthercatFrameHeader {
 impl EtherCrabWireWrite for EthercatFrameHeader {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         // Protocol in last 4 bits
-        let raw = self.payload_len | (self.protocol as u16) << 12;
+        let raw = self.payload_len | ((self.protocol as u16) << 12);
 
         raw.pack_to_slice_unchecked(buf)
     }

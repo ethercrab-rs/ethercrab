@@ -101,7 +101,7 @@ impl WrappedWrite {
     }
 
     /// Send a value, returning the response returned from the network.
-    pub async fn send_receive<'data, 'maindevice, T>(
+    pub async fn send_receive<'maindevice, T>(
         self,
         maindevice: &'maindevice MainDevice<'maindevice>,
         value: impl EtherCrabWireWrite,

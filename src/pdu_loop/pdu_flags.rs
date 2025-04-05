@@ -42,8 +42,8 @@ impl PduFlags {
 impl ethercrab_wire::EtherCrabWireWrite for PduFlags {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let raw = self.length & LEN_MASK
-            | (self.circulated as u16) << 14
-            | (self.more_follows as u16) << 15;
+            | ((self.circulated as u16) << 14)
+            | ((self.more_follows as u16) << 15);
 
         let buf = &mut buf[0..self.packed_len()];
 

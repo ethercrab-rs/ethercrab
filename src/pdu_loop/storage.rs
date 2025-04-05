@@ -297,8 +297,8 @@ impl<'sto> PduStorageRef<'sto> {
     }
 }
 
-unsafe impl<'sto> Send for PduStorageRef<'sto> {}
-unsafe impl<'sto> Sync for PduStorageRef<'sto> {}
+unsafe impl Send for PduStorageRef<'_> {}
+unsafe impl Sync for PduStorageRef<'_> {}
 
 #[cfg(test)]
 mod tests {

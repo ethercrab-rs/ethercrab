@@ -1,7 +1,8 @@
 /// Fieldbus Memory Management Unit (FMMU).
 ///
-/// Used to map segments of the Process Data Image (PDI) to various parts of the SubDevice memory space.
-
+/// Used to map segments of the Process Data Image (PDI) to various parts of the SubDevice memory
+/// space.
+///
 /// ETG1000.4 Table 56 – Fieldbus memory management unit (FMMU) entity.
 #[derive(Default, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]

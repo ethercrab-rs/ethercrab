@@ -62,7 +62,7 @@ async fn replay_issue_255() -> Result<(), Error> {
 
         let mut o = el2889.outputs_raw_mut();
 
-        black_box(do_stuff(black_box(&mut o)));
+        do_stuff(black_box(&mut o));
 
         cycle_time.tick().await;
     }

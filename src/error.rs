@@ -460,7 +460,7 @@ impl<T> IgnoreNoCategory<T> for Result<T, Error> {
         match self {
             Ok(result) => Ok(Some(result)),
             Err(Error::Eeprom(EepromError::NoCategory)) => Ok(None),
-            Err(e) => return Err(e),
+            Err(e) => Err(e),
         }
     }
 }
