@@ -484,12 +484,16 @@ impl SyncManager {
         } else {
             // Try to recover type by matching on other fields in the SM
             match (self.control.operation_mode, self.control.direction) {
-                (OperationMode::Normal, Direction::MasterRead) => SyncManagerType::ProcessDataRead,
-                (OperationMode::Normal, Direction::MasterWrite) => {
+                (OperationMode::ProcessData, Direction::MainDeviceRead) => {
+                    SyncManagerType::ProcessDataRead
+                }
+                (OperationMode::ProcessData, Direction::MainDeviceWrite) => {
                     SyncManagerType::ProcessDataWrite
                 }
-                (OperationMode::Mailbox, Direction::MasterRead) => SyncManagerType::MailboxRead,
-                (OperationMode::Mailbox, Direction::MasterWrite) => SyncManagerType::MailboxWrite,
+                (OperationMode::Mailbox, Direction::MainDeviceRead) => SyncManagerType::MailboxRead,
+                (OperationMode::Mailbox, Direction::MainDeviceWrite) => {
+                    SyncManagerType::MailboxWrite
+                }
             }
         }
     }
@@ -927,7 +931,7 @@ mod tests {
                 length: 0x0080,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
-                    direction: Direction::MasterWrite,
+                    direction: Direction::MainDeviceWrite,
                     ecat_event_enable: true,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
@@ -945,7 +949,7 @@ mod tests {
                 length: 0x0080,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
-                    direction: Direction::MasterRead,
+                    direction: Direction::MainDeviceRead,
                     ecat_event_enable: true,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
@@ -962,8 +966,8 @@ mod tests {
                 start_addr: 0x1180,
                 length: 0x0006,
                 control: Control {
-                    operation_mode: OperationMode::Normal,
-                    direction: Direction::MasterWrite,
+                    operation_mode: OperationMode::ProcessData,
+                    direction: Direction::MainDeviceWrite,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
@@ -980,8 +984,8 @@ mod tests {
                 start_addr: 0x1480,
                 length: 0x0006,
                 control: Control {
-                    operation_mode: OperationMode::Normal,
-                    direction: Direction::MasterRead,
+                    operation_mode: OperationMode::ProcessData,
+                    direction: Direction::MainDeviceRead,
                     ecat_event_enable: false,
                     dls_user_event_enable: false,
                     watchdog_enable: false,

@@ -249,6 +249,9 @@ where
         Ok(SubDeviceIdentity::unpack_from_slice(&buf)?)
     }
 
+    /// Load sync managers from EEPROM.
+    ///
+    /// If no sync manager category could be found, the returned list will be empty.
     pub(crate) async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
         let mut sync_managers = heapless::Vec::<_, 8>::new();
 
@@ -450,6 +453,9 @@ where
         }
     }
 
+    /// Get an iterator-like object over all items in a category.
+    ///
+    /// If the category cannot be found, this method will return success with an empty iterator.
     pub(crate) async fn items<T>(
         &self,
         category: CategoryType,
@@ -560,7 +566,7 @@ mod tests {
                 length: 0x0400,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
-                    direction: Direction::MasterWrite,
+                    direction: Direction::MainDeviceWrite,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
@@ -573,7 +579,7 @@ mod tests {
                 length: 0x0400,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
-                    direction: Direction::MasterRead,
+                    direction: Direction::MainDeviceRead,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
@@ -585,8 +591,8 @@ mod tests {
                 start_addr: 0x1100,
                 length: 0x0000,
                 control: Control {
-                    operation_mode: OperationMode::Normal,
-                    direction: Direction::MasterWrite,
+                    operation_mode: OperationMode::ProcessData,
+                    direction: Direction::MainDeviceWrite,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
@@ -598,8 +604,8 @@ mod tests {
                 start_addr: 0x1140,
                 length: 0x0000,
                 control: Control {
-                    operation_mode: OperationMode::Normal,
-                    direction: Direction::MasterRead,
+                    operation_mode: OperationMode::ProcessData,
+                    direction: Direction::MainDeviceRead,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
