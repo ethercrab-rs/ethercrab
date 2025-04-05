@@ -293,7 +293,7 @@ fn configure_subdevice_offsets(
             Topology::LineEnd => 0,
         };
 
-        *delay_accum += propagation_delay;
+        *delay_accum = delay_accum.saturating_add(propagation_delay);
 
         fmt::debug!(
             "--> Propagation delay {} (delta {}) ns",
@@ -306,6 +306,7 @@ fn configure_subdevice_offsets(
 }
 
 /// Assign parent/child relationships and compute propagation delays for all SubDevices.
+#[deny(clippy::arithmetic_side_effects)]
 fn assign_parent_relationships(subdevices: &mut [SubDevice]) -> Result<(), Error> {
     let mut delay_accum = 0;
 

@@ -151,14 +151,12 @@ where
                 self.state.config.io.input = PdiSegment {
                     bytes: (range.bytes.start - group_start_address as usize)
                         ..(range.bytes.end - group_start_address as usize),
-                    ..range
                 };
             }
             PdoDirection::MasterWrite => {
                 self.state.config.io.output = PdiSegment {
                     bytes: (range.bytes.start - group_start_address as usize)
                         ..(range.bytes.end - group_start_address as usize),
-                    ..range
                 };
             }
         };
