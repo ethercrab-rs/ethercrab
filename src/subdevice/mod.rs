@@ -542,7 +542,7 @@ where
             .mailbox
             .write
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))
-            .inspect_err(|e| {
+            .inspect_err(|_| {
                 fmt::error!("No write (SubDevice IN) mailbox found but one is required");
             })?;
         let read_mailbox = self
@@ -551,7 +551,7 @@ where
             .mailbox
             .read
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))
-            .inspect_err(|e| {
+            .inspect_err(|_| {
                 fmt::error!("No read (SubDevice OUT) mailbox found but one is required");
             })?;
 
