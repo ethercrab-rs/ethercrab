@@ -27,7 +27,7 @@ pub struct FrameBox<'sto> {
     _lifetime: PhantomData<&'sto mut FrameElement<0>>,
 }
 
-impl<'sto> Debug for FrameBox<'sto> {
+impl Debug for FrameBox<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let data = self.pdu_buf();
 

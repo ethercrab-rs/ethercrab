@@ -17,7 +17,7 @@ use crate::{
 use core::ops::DerefMut;
 
 /// Configuation from EEPROM methods.
-impl<'a, S> SubDeviceRef<'a, S>
+impl<S> SubDeviceRef<'_, S>
 where
     S: DerefMut<Target = SubDevice>,
 {
@@ -151,14 +151,12 @@ where
                 self.state.config.io.input = PdiSegment {
                     bytes: (range.bytes.start - group_start_address as usize)
                         ..(range.bytes.end - group_start_address as usize),
-                    ..range
                 };
             }
             PdoDirection::MasterWrite => {
                 self.state.config.io.output = PdiSegment {
                     bytes: (range.bytes.start - group_start_address as usize)
                         ..(range.bytes.end - group_start_address as usize),
-                    ..range
                 };
             }
         };

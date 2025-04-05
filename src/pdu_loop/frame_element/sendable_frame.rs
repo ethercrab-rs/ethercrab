@@ -52,7 +52,7 @@ pub struct SendableFrame<'sto> {
     pub(in crate::pdu_loop) inner: FrameBox<'sto>,
 }
 
-unsafe impl<'sto> Send for SendableFrame<'sto> {}
+unsafe impl Send for SendableFrame<'_> {}
 
 impl<'sto> SendableFrame<'sto> {
     pub(crate) fn claim_sending(

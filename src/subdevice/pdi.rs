@@ -11,7 +11,7 @@ pub struct PdiReadGuard<'a, const N: usize> {
     _lt: PhantomData<&'a ()>,
 }
 
-impl<'a, const N: usize> Deref for PdiReadGuard<'a, N> {
+impl<const N: usize> Deref for PdiReadGuard<'_, N> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -27,7 +27,7 @@ pub struct PdiIoRawReadGuard<'a, const N: usize> {
     _lt: PhantomData<&'a ()>,
 }
 
-impl<'a, const N: usize> PdiIoRawReadGuard<'a, N> {
+impl<const N: usize> PdiIoRawReadGuard<'_, N> {
     pub fn inputs(&self) -> &[u8] {
         let all = unsafe { &*self.lock.get() }.as_slice();
 
@@ -47,7 +47,7 @@ pub struct PdiIoRawWriteGuard<'a, const N: usize> {
     _lt: PhantomData<&'a ()>,
 }
 
-impl<'a, const N: usize> PdiIoRawWriteGuard<'a, N> {
+impl<const N: usize> PdiIoRawWriteGuard<'_, N> {
     pub fn inputs(&self) -> &[u8] {
         let all = unsafe { &*self.lock.get() }.as_slice();
 
@@ -67,7 +67,7 @@ pub struct PdiWriteGuard<'a, const N: usize> {
     _lt: PhantomData<&'a ()>,
 }
 
-impl<'a, const N: usize> Deref for PdiWriteGuard<'a, N> {
+impl<const N: usize> Deref for PdiWriteGuard<'_, N> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -77,7 +77,7 @@ impl<'a, const N: usize> Deref for PdiWriteGuard<'a, N> {
     }
 }
 
-impl<'a, const N: usize> DerefMut for PdiWriteGuard<'a, N> {
+impl<const N: usize> DerefMut for PdiWriteGuard<'_, N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.lock.get_mut()[self.range.clone()]
     }
@@ -92,10 +92,10 @@ pub struct SubDevicePdi<'group, const MAX_PDI: usize> {
     pdi: &'group spin::rwlock::RwLock<MySyncUnsafeCell<[u8; MAX_PDI]>, crate::SpinStrategy>,
 }
 
-unsafe impl<'group, const MAX_PDI: usize> Send for SubDevicePdi<'group, MAX_PDI> {}
-unsafe impl<'group, const MAX_PDI: usize> Sync for SubDevicePdi<'group, MAX_PDI> {}
+unsafe impl<const MAX_PDI: usize> Send for SubDevicePdi<'_, MAX_PDI> {}
+unsafe impl<const MAX_PDI: usize> Sync for SubDevicePdi<'_, MAX_PDI> {}
 
-impl<'group, const MAX_PDI: usize> Deref for SubDevicePdi<'group, MAX_PDI> {
+impl<const MAX_PDI: usize> Deref for SubDevicePdi<'_, MAX_PDI> {
     type Target = SubDevice;
 
     fn deref(&self) -> &Self::Target {
@@ -113,7 +113,7 @@ impl<'group, const MAX_PDI: usize> SubDevicePdi<'group, MAX_PDI> {
 }
 
 /// Methods used when a SubDevice is part of a group and part of the PDI has been mapped to it.
-impl<'a, 'group, const MAX_PDI: usize> SubDeviceRef<'a, SubDevicePdi<'group, MAX_PDI>> {
+impl<const MAX_PDI: usize> SubDeviceRef<'_, SubDevicePdi<'_, MAX_PDI>> {
     /// Get a reference to the raw inputs and outputs for this SubDevice in the Process Data Image
     /// (PDI). The inputs are read-only, while the outputs can be mutated.
     ///
