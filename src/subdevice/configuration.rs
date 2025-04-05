@@ -12,6 +12,7 @@ use crate::{
     pdi::{PdiOffset, PdiSegment},
     register::RegisterAddress,
     subdevice::types::{Mailbox, MailboxConfig},
+    subdevice_group::MappingConfig,
     subdevice_state::SubDeviceState,
     sync_manager_channel::{Enable, SM_BASE_ADDRESS, SM_TYPE_ADDRESS, Status, SyncManagerChannel},
 };
@@ -108,7 +109,7 @@ where
         mut global_offset: PdiOffset,
         group_start_address: u32,
         direction: PdoDirection,
-        config: Option<&[SyncManagerAssignment<'_>]>,
+        config: &Option<MappingConfig<'_>>,
     ) -> Result<PdiOffset, Error> {
         let eeprom = self.eeprom();
 
@@ -141,9 +142,11 @@ where
         );
 
         let range = if let Some(config) = config {
-            self.configure_pdos_config(&sync_managers, direction, &mut global_offset, config)
+            todo!();
+            self.configure_pdos_config(direction, &mut global_offset, config)
                 .await?
-        } else if has_coe {
+        // } else if has_coe {
+        } else if false {
             self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
                 .await?
         } else {
@@ -152,13 +155,13 @@ where
         };
 
         match direction {
-            PdoDirection::MasterRead => {
+            PdoDirection::MainDeviceRead => {
                 self.state.config.io.input = PdiSegment {
                     bytes: (range.bytes.start - group_start_address as usize)
                         ..(range.bytes.end - group_start_address as usize),
                 };
             }
-            PdoDirection::MasterWrite => {
+            PdoDirection::MainDeviceWrite => {
                 self.state.config.io.output = PdiSegment {
                     bytes: (range.bytes.start - group_start_address as usize)
                         ..(range.bytes.end - group_start_address as usize),
@@ -524,14 +527,14 @@ where
         let eeprom = self.eeprom();
 
         let pdos = match direction {
-            PdoDirection::MasterRead => {
+            PdoDirection::MainDeviceRead => {
                 let read_pdos = eeprom.maindevice_read_pdos().await?;
 
                 fmt::trace!("SubDevice inputs PDOs {:#?}", read_pdos);
 
                 read_pdos
             }
-            PdoDirection::MasterWrite => {
+            PdoDirection::MainDeviceWrite => {
                 let write_pdos = eeprom.maindevice_write_pdos().await?;
 
                 fmt::trace!("SubDevice outputs PDOs {:#?}", write_pdos);
@@ -582,6 +585,13 @@ where
                 .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
                 .await?;
 
+            fmt::debug!(
+                "{:?} assignment SM {}, FMMU {}",
+                sm_type,
+                sync_manager_index,
+                fmmu_index
+            );
+
             self.write_fmmu_config(
                 bit_len,
                 usize::from(fmmu_index),
@@ -601,90 +611,32 @@ where
     /// Configure PDOs from a given config.
     async fn configure_pdos_config(
         &self,
-        sync_managers: &[SyncManager],
         direction: PdoDirection,
         offset: &mut PdiOffset,
-        config: &[SyncManagerAssignment<'_>],
+        config: &MappingConfig<'_>,
     ) -> Result<PdiSegment, Error> {
+        let eeprom = self.eeprom();
+
+        let sync_managers = if !config.sync_managers.is_empty() {
+            fmt::unwrap!(heapless::Vec::from_slice(config.sync_managers))
+        } else {
+            // Fall back to trying to read sync managers from EEPROM if none were specified in the
+            // config.
+            let eeprom_sms = eeprom.sync_managers().await?;
+
+            // eeprom_sms
+            // todo!()
+            heapless::Vec::<_, 8>::new()
+        };
+
+        let objects = match direction {
+            PdoDirection::MainDeviceRead => config.inputs,
+            PdoDirection::MainDeviceWrite => config.outputs,
+        };
+
         let start_offset = *offset;
 
-        let fmmu_sm_mappings = self.eeprom().fmmu_mappings().await?;
-
-        let (sm_type, _fmmu_type) = direction.filter_terms();
-
-        for assignment in config {
-            let (sync_manager_index, sync_manager) = assignment
-                .sync_manager
-                .and_then(|idx| sync_managers.get(usize::from(idx)).map(|sm| (idx, sm)))
-                .or_else(|| {
-                    // If SM is not explicitly set, find the first SM of the type we're looking for
-                    let (idx, sm) = sync_managers
-                        .iter()
-                        .enumerate()
-                        .find(|(_idx, sm)| sm.usage_type == sm_type)?;
-
-                    Some((idx as u8, sm))
-                })
-                .ok_or_else(|| {
-                    fmt::error!(
-                        "Failed to find sync manager {:?} for {:?}",
-                        sm_type,
-                        assignment
-                    );
-
-                    Error::Internal
-                })?;
-
-            if sync_manager.usage_type != sm_type {
-                fmt::error!(
-                    "Sync manager index {} type is incorrect: {:?}, expected {:?}",
-                    sync_manager_index,
-                    sync_manager.usage_type,
-                    sm_type
-                );
-
-                return Err(Error::Internal);
-            }
-
-            let fmmu_index = assignment.fmmu.unwrap_or_else(|| {
-                // If no FMMU was explicitly set, look for FMMU index using FMMU_EX section in
-                // EEPROM. If that fails, fall back to using the sync manager index as FMMU index.
-                fmmu_sm_mappings
-                    .iter()
-                    .find(|fmmu| fmmu.sync_manager == sync_manager_index)
-                    .map(|fmmu| fmmu.sync_manager)
-                    .unwrap_or_else(|| {
-                        fmt::trace!(
-                            "Could not find FMMU for PDO SM{} in EEPROM, using SM index to pick FMMU instead",
-                            sync_manager_index,
-                        );
-
-                        sync_manager_index
-                    })
-            });
-
-            fmt::debug!(
-                "{:?} assignment SM {}, FMMU {}",
-                sm_type,
-                sync_manager_index,
-                fmmu_index
-            );
-
-            let bit_len = assignment.len_bits();
-
-            let sm_config = self
-                .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
-                .await?;
-
-            self.write_fmmu_config(
-                bit_len,
-                usize::from(fmmu_index),
-                offset,
-                sm_type,
-                &sm_config,
-            )
-            .await?;
-        }
+        todo!();
 
         Ok(PdiSegment {
             bytes: start_offset.up_to(*offset),
@@ -694,15 +646,17 @@ where
 
 #[derive(Copy, Clone)]
 pub enum PdoDirection {
-    MasterRead,
-    MasterWrite,
+    MainDeviceRead,
+    MainDeviceWrite,
 }
 
 impl PdoDirection {
     fn filter_terms(self) -> (SyncManagerType, FmmuUsage) {
         match self {
-            PdoDirection::MasterRead => (SyncManagerType::ProcessDataRead, FmmuUsage::Inputs),
-            PdoDirection::MasterWrite => (SyncManagerType::ProcessDataWrite, FmmuUsage::Outputs),
+            PdoDirection::MainDeviceRead => (SyncManagerType::ProcessDataRead, FmmuUsage::Inputs),
+            PdoDirection::MainDeviceWrite => {
+                (SyncManagerType::ProcessDataWrite, FmmuUsage::Outputs)
+            }
         }
     }
 }

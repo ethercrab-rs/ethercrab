@@ -59,18 +59,26 @@ impl core::fmt::Display for SyncManagerChannel {
     }
 }
 
+/// Sync Manager config/control byte.
+///
+/// ETG 1000.4 Table 58 Sync Manager Channel, relative offset 0x0004.
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 1)]
 pub struct Control {
+    /// Operation mode.
     #[wire(bits = 2)]
     pub operation_mode: OperationMode,
+    /// Direction (MainDevice -> SubDevice or SubDevice -> MainDevice)
     #[wire(bits = 2)]
     pub direction: Direction,
+    /// EtherCAT event enable. Leave `false` if unsure.
     #[wire(bits = 1)]
     pub ecat_event_enable: bool,
+    /// DLS-user event enable. Leave `false` if unsure.
     #[wire(bits = 1)]
     pub dls_user_event_enable: bool,
+    /// Sync manager watchdog enable. Leave `false` if unsure.
     #[wire(bits = 1, post_skip = 1)]
     pub watchdog_enable: bool,
     // reserved1: bool
@@ -130,7 +138,7 @@ pub struct Enable {
 #[repr(u8)]
 pub enum OperationMode {
     #[default]
-    Normal = 0x00,
+    ProcessData = 0x00,
     Mailbox = 0x02,
 }
 
@@ -139,9 +147,11 @@ pub enum OperationMode {
 #[wire(bits = 2)]
 #[repr(u8)]
 pub enum Direction {
+    /// Inputs to the MainDevice read from the SubDevice.
     #[default]
-    MasterRead = 0x00,
-    MasterWrite = 0x01,
+    MainDeviceRead = 0x00,
+    /// Outputs sent from the MainDevice to be output by the SubDevice.
+    MainDeviceWrite = 0x01,
 }
 
 /// Buffer state.
@@ -184,7 +194,7 @@ mod tests {
                 length_bytes: 0x0100,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
-                    direction: Direction::MasterRead,
+                    direction: Direction::MainDeviceRead,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
@@ -241,7 +251,7 @@ mod tests {
             parsed,
             Control {
                 operation_mode: OperationMode::Mailbox,
-                direction: Direction::MasterWrite,
+                direction: Direction::MainDeviceWrite,
                 ecat_event_enable: false,
                 dls_user_event_enable: true,
                 watchdog_enable: false,
@@ -323,7 +333,7 @@ mod tests {
                 length_bytes: 0x0080,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
-                    direction: Direction::MasterWrite,
+                    direction: Direction::MainDeviceWrite,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,

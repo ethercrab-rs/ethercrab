@@ -249,10 +249,9 @@ impl ReadObject {
 #[non_exhaustive]
 pub struct SyncManagerAssignment<'a> {
     /// Sync manager index starting from 0.
+    ///
+    /// If this is set to `None`, the sync manager will be chosen automatically by EtherCrab.
     pub sync_manager: Option<u8>,
-
-    /// Desired FMMU.
-    pub fmmu: Option<u8>,
 
     /// PDO mappings.
     pub mappings: &'a [PdoMapping<'a>],
@@ -269,7 +268,6 @@ impl<'a> SyncManagerAssignment<'a> {
         Self {
             mappings,
             sync_manager: None,
-            fmmu: None,
         }
     }
 
@@ -277,16 +275,6 @@ impl<'a> SyncManagerAssignment<'a> {
     pub const fn with_sync_manager(self, sync_manager: u8) -> Self {
         Self {
             sync_manager: Some(sync_manager),
-            ..self
-        }
-    }
-
-    /// Set an explicit FMMU index to use.
-    ///
-    /// This will be the same as the sync manager index most of the time.
-    pub const fn with_fmmu(self, fmmu: u8) -> Self {
-        Self {
-            fmmu: Some(fmmu),
             ..self
         }
     }

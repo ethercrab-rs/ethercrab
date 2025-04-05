@@ -10,6 +10,45 @@ this register.
 
 SOEM calls `0x0990` `ECT_REG_DCSTART0` and also writes a 64 bit value into it. See `ethercatdc.c`,
 `ecx_dcsync0`.
+# 2025-04-05 SM and FMMU config
+
+If SM AND FMMU config is not given, use defaults:
+
+```
+NOTE The Sync Manager channels shall be used in the following way:
+Sync Manager channel 0: mailbox write
+Sync Manager channel 1: mailbox read
+Sync Manager channel 2: process data write
+(may be used for process data read if no process data write supported)
+Sync Manager channel 3: process data read
+
+If mailbox is not supported, it shall be used in the following way:
+Sync Manager channel 0: process data write
+(may be used for process data read if no process data write supported)
+Sync Manager channel 1: process data read
+```
+
+The `SyncManager` section is mandatory in EEPROM unless the SD doesn't have any PD, then it's
+optional but the SD might still have mailbox.
+
+Mailbox SMs don't have FMMUs! Man I wrote that code a long time ago... look at
+`configure_mailbox_sms`. SM only. The ESI FMMU type `MBoxState` is literally that, nothing to do
+with actual MBox comms. It looks like if no SMs are in the EEPROM the current code won't bother
+configuring mailboxes. Should probably fix that to default to SM 0/1 for both SMs due to it being
+optional in the spec, but that's a separate issue.
+
+Make the SM/FMMU fields from the config struct optional and compute them based on MBox yes/no and
+inputs/outputs. For config-in-Rust users I imagine they'll leave them as `None` most of the time,
+but this field allows ESI support later. The ESI file scopes the chosen SM to `TxPdo`/`RxPdo`, so
+that's where the field in Rust should be defined.
+
+This makes the current arch kinda weird. We have a bunch of `SyncManagerAssignment`s which we're
+relying on the index for, but this doesn't map to ESI files that nicely. Could always just process
+the ESI file though...
+
+ESI file `TxPdo`/`RxPdo` do not specify an FMMU, only a (default) sync manager - they can be
+reassigned by the user.
+
 # Overriding SM and FMMU config
 
 A key problem is wanting to store the SD config on `SubDevice` before it's used, meaning we'd either

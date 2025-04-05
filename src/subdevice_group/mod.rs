@@ -19,6 +19,7 @@ use crate::{
     subdevice::{
         IoRanges, SubDevice, SubDeviceRef, configuration::PdoDirection, pdi::SubDevicePdi,
     },
+    sync_manager_channel::{Control, Direction, OperationMode},
     timer_factory::IntoTimeout,
 };
 use core::{
@@ -156,6 +157,87 @@ impl<'maindevice, 'group, const I: usize, const O: usize, const MAX_PDI: usize>
     }
 }
 
+/// Sync Manager configuration.
+#[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
+pub struct SyncManagerConfig {
+    /// Start address.
+    ///
+    /// This is mandatory in ESI files.
+    pub start_addr: u16,
+
+    /// Sync Manager default size. This MUST be set for mailbox sync managers.
+    ///
+    /// It will be computed and overwritten by EtherCrab for process data inputs/outputs based on
+    /// the mapping lengths.
+    pub size: u16,
+
+    /// Configuration for this Sync Manager.
+    ///
+    /// This will be parsed from the `ControlByte` property in the ESI file.
+    pub control: Control,
+
+    /// Whether to enable this sync manager or not.
+    pub enabled: bool,
+}
+
+impl SyncManagerConfig {
+    /// Create a mailbox sync manager config with given size, start address and direction.
+    pub fn mailbox(start_addr: u16, size: u16, direction: Direction) -> Self {
+        SyncManagerConfig {
+            start_addr,
+            size,
+            enabled: true,
+            control: Control {
+                operation_mode: OperationMode::Mailbox,
+                direction,
+                ..Control::default()
+            },
+        }
+    }
+
+    /// Create a mailbox sync manager config with given size, start address and direction.
+    pub fn process_data(start_addr: u16, direction: Direction) -> Self {
+        SyncManagerConfig {
+            start_addr,
+            // Computed later when we do all the PDO mappings.
+            size: 0,
+            enabled: true,
+            control: Control {
+                operation_mode: OperationMode::ProcessData,
+                direction,
+                ..Control::default()
+            },
+        }
+    }
+}
+
+/// FMMU configuration.
+#[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
+pub struct Fmmu {
+    /// FMMU kind.
+    pub kind: FmmuKind,
+
+    /// Sync manager index to assign to this FMMU. Leave as `None` if unsure.
+    pub sync_manager_index: Option<u8>,
+}
+
+/// FMMU kind.
+#[derive(Debug, Copy, Clone)]
+pub enum FmmuKind {
+    /// Process data outputs from MainDevice.
+    Outputs,
+    /// Process data inputs into MainDevice.
+    Inputs,
+    /// Mailbox state.
+    MBoxState,
+    /// Dynamic inputs.
+    DynamicInputs,
+    /// Dynamic outputs.
+    DynamicOutputs,
+}
+
 /// TODO: Doc
 #[derive(Debug, Copy, Clone)]
 #[non_exhaustive]
@@ -165,6 +247,18 @@ pub struct MappingConfig<'a> {
 
     /// Output mappings (MainDevice -> SubDevice).
     pub outputs: &'a [SyncManagerAssignment<'a>],
+
+    /// FMMU configuration.
+    ///
+    /// When writing configuration manually, this field can be left empty (`&[]`) to let EtherCrab
+    /// compute sync manage assignments automatically.
+    pub fmmus: &'a [Fmmu],
+
+    /// Sync manager config.
+    ///
+    /// When writing configuration manually, this field can be left empty (`&[]`) to let EtherCrab
+    /// compute sync manage assignments automatically.
+    pub sync_managers: &'a [SyncManagerConfig],
 }
 
 impl<'a> MappingConfig<'a> {
@@ -173,7 +267,12 @@ impl<'a> MappingConfig<'a> {
         inputs: &'a [SyncManagerAssignment<'a>],
         outputs: &'a [SyncManagerAssignment<'a>],
     ) -> Self {
-        Self { inputs, outputs }
+        Self {
+            inputs,
+            outputs,
+            fmmus: &[],
+            sync_managers: &[],
+        }
     }
 
     /// Create a new PDO mapping config with only inputs (SubDevice into MainDevice).
@@ -181,6 +280,8 @@ impl<'a> MappingConfig<'a> {
         Self {
             inputs,
             outputs: &[],
+            fmmus: &[],
+            sync_managers: &[],
         }
     }
 
@@ -189,6 +290,8 @@ impl<'a> MappingConfig<'a> {
         Self {
             inputs: &[],
             outputs,
+            fmmus: &[],
+            sync_managers: &[],
         }
     }
 
@@ -472,15 +575,13 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
 
         // Configure master read PDI mappings in the first section of the PDI
         for (subdevice, config) in inner.subdevices.iter_mut().zip(configs.iter()) {
-            let inputs_config = config.map(|c| c.inputs);
-
             // We're in PRE-OP at this point
             pdi_position = SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
-                    PdoDirection::MasterRead,
-                    inputs_config,
+                    PdoDirection::MainDeviceRead,
+                    config,
                 )
                 .await?;
         }
@@ -493,8 +594,6 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
         // IOIOIO.
         for (subdevice, config) in inner.subdevices.iter_mut().zip(configs.iter()) {
-            let outputs_config = config.map(|c| c.outputs);
-
             let addr = subdevice.configured_address();
 
             let mut subdevice_config = SubDeviceRef::new(maindevice, addr, subdevice);
@@ -504,8 +603,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
-                    PdoDirection::MasterWrite,
-                    outputs_config,
+                    PdoDirection::MainDeviceWrite,
+                    config,
                 )
                 .await?;
         }
@@ -550,8 +649,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
-                    PdoDirection::MasterRead,
-                    None,
+                    PdoDirection::MainDeviceRead,
+                    &None,
                 )
                 .await?;
         }
@@ -573,8 +672,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
-                    PdoDirection::MasterWrite,
-                    None,
+                    PdoDirection::MainDeviceWrite,
+                    &None,
                 )
                 .await?;
         }
