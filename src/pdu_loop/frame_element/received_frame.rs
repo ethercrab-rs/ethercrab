@@ -149,7 +149,7 @@ impl<'sto> ReceivedFrame<'sto> {
     }
 }
 
-impl<'sto> Drop for ReceivedFrame<'sto> {
+impl Drop for ReceivedFrame<'_> {
     fn drop(&mut self) {
         // Invariant: the frame can only be in `RxProcessing` at this point, so if this swap fails
         // there's either a logic bug, or we should panic anyway because the hardware failed.
@@ -236,7 +236,7 @@ pub struct ReceivedPdu<'sto> {
     _storage: PhantomData<&'sto ()>,
 }
 
-impl<'sto> ReceivedPdu<'sto> {
+impl ReceivedPdu<'_> {
     pub fn len(&self) -> usize {
         self.len
     }
@@ -268,9 +268,9 @@ impl<'sto> ReceivedPdu<'sto> {
 
 // SAFETY: This is ok because we respect the lifetime of the underlying data by carrying the 'sto
 // lifetime.
-unsafe impl<'sto> Send for ReceivedPdu<'sto> {}
+unsafe impl Send for ReceivedPdu<'_> {}
 
-impl<'sto> Deref for ReceivedPdu<'sto> {
+impl Deref for ReceivedPdu<'_> {
     type Target = [u8];
 
     // Temporally shorter borrow: This ref is the lifetime of SimpleReceivedPdu, not 'sto. This is

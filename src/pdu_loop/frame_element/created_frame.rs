@@ -331,7 +331,7 @@ impl<'sto> CreatedFrame<'sto> {
     }
 }
 
-impl<'sto> Drop for CreatedFrame<'sto> {
+impl Drop for CreatedFrame<'_> {
     fn drop(&mut self) {
         // ONLY free the frame if it's still in created state. If it's been moved into
         // sending/sent/receiving/etc, we must leave it alone.
@@ -346,7 +346,7 @@ impl<'sto> Drop for CreatedFrame<'sto> {
 // For example, if the backing storage is is `'static`, we can send things between threads. If it's
 // not, the associated lifetime will prevent the framebox from being used in anything that requires
 // a 'static bound.
-unsafe impl<'sto> Send for CreatedFrame<'sto> {}
+unsafe impl Send for CreatedFrame<'_> {}
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]

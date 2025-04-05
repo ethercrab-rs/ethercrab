@@ -125,7 +125,7 @@ impl Clone for SubDevice {
             config: self.config.clone(),
             identity: self.identity,
             name: self.name.clone(),
-            dc_support: self.dc_support.clone(),
+            dc_support: self.dc_support,
             ports: self.ports,
             dc_receive_time: self.dc_receive_time,
             index: self.index,
@@ -346,9 +346,9 @@ impl SubDevice {
             .eeprom()
             .start_at(start_word, T::PACKED_LEN as u16);
 
-        let res = writer.write_all(value.pack().as_ref()).await?;
+        writer.write_all(value.pack().as_ref()).await?;
 
-        Ok(res)
+        Ok(())
     }
 
     /// Get additional identifying details for the SubDevice.
@@ -439,7 +439,7 @@ pub struct SubDeviceRef<'maindevice, S> {
     state: S,
 }
 
-impl<'maindevice> Clone for SubDeviceRef<'maindevice, ()> {
+impl Clone for SubDeviceRef<'_, ()> {
     fn clone(&self) -> Self {
         Self {
             maindevice: self.maindevice,
@@ -449,7 +449,7 @@ impl<'maindevice> Clone for SubDeviceRef<'maindevice, ()> {
     }
 }
 
-impl<'maindevice, S> DerefMut for SubDeviceRef<'maindevice, S>
+impl<S> DerefMut for SubDeviceRef<'_, S>
 where
     S: DerefMut<Target = SubDevice>,
 {
@@ -458,7 +458,7 @@ where
     }
 }
 
-impl<'maindevice, S> SubDeviceRef<'maindevice, S>
+impl<S> SubDeviceRef<'_, S>
 where
     S: DerefMut<Target = SubDevice>,
 {
@@ -479,7 +479,7 @@ where
     }
 }
 
-impl<'maindevice, S> Deref for SubDeviceRef<'maindevice, S>
+impl<S> Deref for SubDeviceRef<'_, S>
 where
     S: Deref<Target = SubDevice>,
 {
@@ -542,9 +542,8 @@ where
             .mailbox
             .write
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))
-            .map_err(|e| {
+            .inspect_err(|e| {
                 fmt::error!("No write (SubDevice IN) mailbox found but one is required");
-                e
             })?;
         let read_mailbox = self
             .state
@@ -552,9 +551,8 @@ where
             .mailbox
             .read
             .ok_or(Error::Mailbox(MailboxError::NoMailbox))
-            .map_err(|e| {
+            .inspect_err(|e| {
                 fmt::error!("No read (SubDevice OUT) mailbox found but one is required");
-                e
             })?;
 
         let mailbox_read_sm_status =
@@ -613,14 +611,12 @@ where
         }
         .timeout(self.maindevice.timeouts.mailbox_echo)
         .await
-        .map_err(|e| {
+        .inspect_err(|&e| {
             fmt::error!(
                 "Mailbox IN ready error for SubDevice {:#06x}: {}",
                 self.configured_address,
                 e
             );
-
-            e
         })?;
 
         Ok((read_mailbox, write_mailbox))
@@ -647,14 +643,12 @@ where
         }
         .timeout(self.maindevice.timeouts.mailbox_echo)
         .await
-        .map_err(|e| {
+        .inspect_err(|&e| {
             fmt::error!(
                 "Response mailbox IN error for SubDevice {:#06x}: {}",
                 self.configured_address,
                 e
             );
-
-            e
         })?;
 
         // Read acknowledgement from SubDevice OUT mailbox

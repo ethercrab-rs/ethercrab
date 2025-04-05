@@ -54,7 +54,7 @@ impl<'subdevice> DeviceEeprom<'subdevice> {
     }
 }
 
-impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
+impl EepromDataProvider for DeviceEeprom<'_> {
     async fn read_chunk(
         &mut self,
         start_word: u16,
@@ -68,13 +68,11 @@ impl<'subdevice> EepromDataProvider for DeviceEeprom<'subdevice> {
         Command::fprd(self.configured_address, RegisterAddress::SiiData.into())
             .receive_slice(self.maindevice, status.read_size.chunk_len())
             .await
-            .map(|data| {
+            .inspect(|data| {
                 #[cfg(not(feature = "defmt"))]
                 fmt::trace!("Read addr {:#06x}: {:02x?}", start_word, &data[..]);
                 #[cfg(feature = "defmt")]
                 fmt::trace!("Read addr {:#06x}: {=[u8]}", start_word, &data[..]);
-
-                data
             })
     }
 

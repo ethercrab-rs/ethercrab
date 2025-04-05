@@ -138,7 +138,7 @@ impl Future for DummyTxRxFut<'_> {
             // A representative reasonably good RTT for a Linux machine
             std::thread::sleep(Duration::from_micros(50));
 
-            while let Err(_) = self.rx.receive_frame(expected.as_ref()) {}
+            while self.rx.receive_frame(expected.as_ref()).is_err() {}
         }
 
         Poll::Pending
@@ -205,7 +205,7 @@ pub fn dummy_tx_rx_task(
         };
     }
 
-    println!("");
+    println!();
 
     log::debug!("Finished reading PCAP file");
 
@@ -262,8 +262,8 @@ pub fn dummy_tx_rx_task(
 
     let task = if let Some(cache_path) = cache_filename {
         let cache = Cache {
-            pdu_sends: pdu_sends,
-            pdu_responses: pdu_responses,
+            pdu_sends,
+            pdu_responses,
         };
 
         savefile::save_file(cache_path, 0, &cache).expect("Save cache");

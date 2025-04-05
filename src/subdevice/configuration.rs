@@ -17,7 +17,7 @@ use crate::{
 use core::ops::DerefMut;
 
 /// Configuation from EEPROM methods.
-impl<'a, S> SubDeviceRef<'a, S>
+impl<S> SubDeviceRef<'_, S>
 where
     S: DerefMut<Target = SubDevice>,
 {

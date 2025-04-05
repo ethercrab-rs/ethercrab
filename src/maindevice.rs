@@ -46,7 +46,7 @@ pub struct MainDevice<'sto> {
     pub(crate) config: MainDeviceConfig,
 }
 
-unsafe impl<'sto> Sync for MainDevice<'sto> {}
+unsafe impl Sync for MainDevice<'_> {}
 
 impl<'sto> MainDevice<'sto> {
     /// Create a new EtherCrab MainDevice.

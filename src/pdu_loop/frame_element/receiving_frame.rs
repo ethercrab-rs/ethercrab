@@ -107,7 +107,7 @@ impl<'sto> ReceiveFrameFut<'sto> {
 // For example, if the backing storage is is `'static`, we can send things between threads. If it's
 // not, the associated lifetime will prevent the framebox from being used in anything that requires
 // a 'static bound.
-unsafe impl<'sto> Send for ReceiveFrameFut<'sto> {}
+unsafe impl Send for ReceiveFrameFut<'_> {}
 
 impl<'sto> Future for ReceiveFrameFut<'sto> {
     type Output = Result<ReceivedFrame<'sto>, Error>;
@@ -195,7 +195,7 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
 
 // If this impl is removed, timed out frames will never be reclaimed, clogging up the PDU loop and
 // crashing the program.
-impl<'sto> Drop for ReceiveFrameFut<'sto> {
+impl Drop for ReceiveFrameFut<'_> {
     fn drop(&mut self) {
         // Frame option is taken when future completes successfully, so this drop logic will only
         // fire if the future is dropped before it completes.

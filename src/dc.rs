@@ -49,14 +49,12 @@ async fn latch_dc_times(
             .read(RegisterAddress::DcTimePort0)
             .receive::<[u32; 4]>(maindevice)
             .await
-            .map_err(|e| {
+            .inspect_err(|&e| {
                 fmt::error!(
                     "Failed to read DC times for SubDevice {:#06x}: {}",
                     subdevice.configured_address(),
                     e
                 );
-
-                e
             })?;
 
         subdevice.dc_receive_time = dc_receive_time;

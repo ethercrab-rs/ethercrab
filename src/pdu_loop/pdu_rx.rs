@@ -69,10 +69,8 @@ impl<'sto> PduRx<'sto> {
 
         let i = raw_packet.payload();
 
-        let frame_header = EthercatFrameHeader::unpack_from_slice(i).map_err(|e| {
+        let frame_header = EthercatFrameHeader::unpack_from_slice(i).inspect_err(|&e| {
             fmt::error!("Failed to parse frame header: {}", e);
-
-            e
         })?;
 
         if frame_header.payload_len == 0 {
