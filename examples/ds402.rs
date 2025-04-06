@@ -229,13 +229,15 @@ fn main() -> Result<(), Error> {
             .await?;
 
         // Now that we have a PDI and the SD has its configured offsets, we can wrap it in the PDI
-        // mapping
-        // Max 16 I and O mappings
-        let servo: PdiMappingBikeshedName<16, 16> = servo_mapping.expect("No servo");
+        // mapping. This mapping is now bound to the subdevice we configured in
+        // `into_pre_op_pdi_with_config`. Max 16 I and O mappings
+        let servo_mapping: PdiMappingBikeshedName<16, 16> = servo_mapping.expect("No servo");
 
-        let servo = servo
+        let servo = servo_mapping
             .with_subdevice(&maindevice, &group)
             .expect("Didn't find SD in group");
+
+        let servo = Ds402::new(servo).expect("Could not create DS402");
 
         {
             loop {
