@@ -80,13 +80,13 @@ impl<T: ?Sized> MySyncUnsafeCell<T> {
 /// TODO: Docs
 pub struct PdiMappingBikeshedName<const I: usize, const O: usize, S = ()> {
     /// TODO: Docs.
-    configured_address: u16,
+    pub(crate) configured_address: u16,
     /// TODO: Docs.
-    inputs: FnvIndexMap<u32, Range<usize>, I>,
+    pub(crate) inputs: FnvIndexMap<u32, Range<usize>, I>,
     /// TODO: Docs.
-    outputs: FnvIndexMap<u32, Range<usize>, O>,
+    pub(crate) outputs: FnvIndexMap<u32, Range<usize>, O>,
 
-    state: S,
+    pub(crate) state: S,
 }
 
 impl<const I: usize, const O: usize, S> PdiMappingBikeshedName<I, O, S> {

@@ -1,10 +1,17 @@
 //! DS402/CiA402 high level interface.
 
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireSized};
+use core::ops::Range;
+
+use ethercrab_wire::{
+    EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireSized, EtherCrabWireWrite,
+};
 use heapless::FnvIndexMap;
+use io_uring::opcode::Read;
 use libc::sync;
 
-use crate::{SubDevicePdi, SubDeviceRef, fmt};
+use crate::{
+    SubDevicePdi, SubDeviceRef, error::Error, fmt, subdevice_group::PdiMappingBikeshedName,
+};
 
 /// DS402 control word (object 0x6040).
 ///
@@ -361,39 +368,126 @@ impl<'a> PdoMapping<'a> {
 }
 
 /// Wrap a group SubDevice in a higher level DS402 API
-pub struct Ds402<'group, const MAX_PDI: usize, const MAX_OUTPUT_OBJECTS: usize> {
-    outputs: FnvIndexMap<u16, core::ops::Range<usize>, MAX_OUTPUT_OBJECTS>,
-    // TODO: Inputs map
-    subdevice: SubDeviceRef<'group, SubDevicePdi<'group, MAX_PDI>>,
+pub struct Ds402<
+    'group,
+    const MAX_PDI: usize,
+    const MAX_INPUT_OBJECTS: usize,
+    const MAX_OUTPUT_OBJECTS: usize,
+> {
+    // inputs: FnvIndexMap<u16, core::ops::Range<usize>, MAX_INPUT_OBJECTS>,
+    // outputs: FnvIndexMap<u16, core::ops::Range<usize>, MAX_OUTPUT_OBJECTS>,
+    subdevice: PdiMappingBikeshedName<
+        MAX_INPUT_OBJECTS,
+        MAX_OUTPUT_OBJECTS,
+        SubDeviceRef<'group, SubDevicePdi<'group, MAX_PDI>>,
+    >,
+    control_word: Range<usize>,
+    status_word: Range<usize>,
+    op_mode: Range<usize>,
+    op_mode_display: Range<usize>,
 }
 
-impl<'group, const MAX_PDI: usize, const MAX_OUTPUT_OBJECTS: usize>
-    Ds402<'group, MAX_PDI, MAX_OUTPUT_OBJECTS>
+impl<'group, const MAX_PDI: usize, const MAX_INPUT_OBJECTS: usize, const MAX_OUTPUT_OBJECTS: usize>
+    Ds402<'group, MAX_PDI, MAX_INPUT_OBJECTS, MAX_OUTPUT_OBJECTS>
 {
-    /// Set DS402 operation mode (CSV, CSP, etc).
-    // TODO: This will be a mandatory field at some point, so this specifically doesn't need
-    // to return a `Result`.
-    pub fn set_op_mode(&mut self, mode: OpMode) -> Result<(), ()> {
-        match self.outputs.get_mut(&((WriteObject::OP_MODE >> 16) as u16)) {
-            Some(v) => {
-                // v = mode;
-                todo!();
+    /// Create a new DS402 instance with the given SubDevice.
+    pub fn new(
+        subdevice: PdiMappingBikeshedName<
+            MAX_INPUT_OBJECTS,
+            MAX_OUTPUT_OBJECTS,
+            SubDeviceRef<'group, SubDevicePdi<'group, MAX_PDI>>,
+        >,
+    ) -> Result<Self, Error> {
+        // Mandatory fields referenced from ETG6010 Table 85: Object Dictionary. The checks here are
+        // not a complete list of mandatory fields, just the ones we really want. E.g. we may want
+        // to add error register 0x1001 later.
+        for required in [ReadObject::STATUS_WORD, ReadObject::OP_MODE] {
+            if !subdevice.inputs.contains_key(&required) {
+                fmt::error!("Required read object {:#010x} not found", required);
 
-                Ok(())
+                // TODO: Ds402Error::RequiredField or whatever
+                return Err(Error::Internal);
             }
-            None => Err(()),
         }
+        for required in [WriteObject::CONTROL_WORD, WriteObject::OP_MODE] {
+            if !subdevice.inputs.contains_key(&required) {
+                fmt::error!("Required write object {:#010x} not found", required);
+
+                // TODO: Ds402Error::RequiredField or whatever
+                return Err(Error::Internal);
+            }
+        }
+
+        let control_word = subdevice
+            .outputs
+            .get(&WriteObject::CONTROL_WORD)
+            .ok_or_else(|| {
+                fmt::error!(
+                    "A mapping for DS402 Control Word ({:#010x}) must be provided",
+                    WriteObject::CONTROL_WORD
+                );
+
+                Error::Internal
+            })?
+            .clone();
+        let op_mode = subdevice
+            .outputs
+            .get(&WriteObject::OP_MODE)
+            .ok_or_else(|| {
+                fmt::error!(
+                    "A mapping for DS402 Op Mode ({:#010x}) must be provided",
+                    WriteObject::OP_MODE
+                );
+
+                Error::Internal
+            })?
+            .clone();
+
+        let status_word = subdevice
+            .outputs
+            .get(&ReadObject::STATUS_WORD)
+            .ok_or_else(|| {
+                fmt::error!(
+                    "A mapping for DS402 Status Word ({:#010x}) must be provided",
+                    ReadObject::STATUS_WORD
+                );
+
+                Error::Internal
+            })?
+            .clone();
+        let op_mode_display = subdevice
+            .outputs
+            .get(&ReadObject::OP_MODE)
+            .ok_or_else(|| {
+                fmt::error!(
+                    "A mapping for DS402 Op Mode Display ({:#010x}) must be provided",
+                    ReadObject::OP_MODE
+                );
+
+                Error::Internal
+            })?
+            .clone();
+
+        Ok(Self {
+            subdevice,
+            control_word,
+            op_mode,
+            status_word,
+            op_mode_display,
+        })
+    }
+
+    /// Set DS402 operation mode (CSV, CSP, etc).
+    pub fn set_op_mode(&mut self, mode: OpMode) {
+        mode.pack_to_slice_unchecked(&mut self.subdevice.outputs_raw_mut()[self.op_mode.clone()]);
     }
 
     /// Get the DS402 status word.
     pub fn status_word(&self) -> StatusWord {
-        // TODO: Dynamically(?) compute
-        let state_range = 0..StatusWord::PACKED_LEN;
-
         fmt::unwrap_opt!(
             self.subdevice
                 .inputs_raw()
-                .get(state_range)
+                .get(self.status_word.clone())
                 .and_then(|bytes| StatusWord::unpack_from_slice(bytes).ok())
         )
     }
