@@ -12,6 +12,7 @@ use crate::{
     al_control::AlControl,
     command::Command,
     ds402::SyncManagerAssignment,
+    eeprom::types::{SyncManager, SyncManagerEnable},
     error::{DistributedClockError, Error, Item},
     fmt,
     pdi::PdiOffset,
@@ -19,7 +20,7 @@ use crate::{
     subdevice::{
         IoRanges, SubDevice, SubDeviceRef, configuration::PdoDirection, pdi::SubDevicePdi,
     },
-    sync_manager_channel::{Control, Direction, OperationMode},
+    sync_manager_channel::{Control, Direction, Enable, OperationMode},
     timer_factory::IntoTimeout,
 };
 use core::{
@@ -210,17 +211,31 @@ impl SyncManagerConfig {
             },
         }
     }
+
+    // TODO: Bikeshed: The `SyncManager` should probably not be an EEPROM-related type and just made generic.
+    pub(crate) fn bikeshed_into_eeprom_type(&self) -> crate::eeprom::types::SyncManager {
+        SyncManager {
+            start_addr: self.start_addr,
+            length_bytes: self.size,
+            control: self.control,
+            enable: if self.enabled {
+                SyncManagerEnable::ENABLE
+            } else {
+                SyncManagerEnable::empty()
+            },
+        }
+    }
 }
 
 /// FMMU configuration.
 #[derive(Debug, Copy, Clone)]
 #[non_exhaustive]
-pub struct Fmmu {
+pub struct FmmuConfig {
     /// FMMU kind.
     pub kind: FmmuKind,
 
     /// Sync manager index to assign to this FMMU. Leave as `None` if unsure.
-    pub sync_manager_index: Option<u8>,
+    pub sync_manager: Option<u8>,
 }
 
 /// FMMU kind.
@@ -251,13 +266,13 @@ pub struct MappingConfig<'a> {
     /// FMMU configuration.
     ///
     /// When writing configuration manually, this field can be left empty (`&[]`) to let EtherCrab
-    /// compute sync manage assignments automatically.
-    pub fmmus: &'a [Fmmu],
+    /// compute FMMU assignments automatically.
+    pub fmmus: &'a [FmmuConfig],
 
     /// Sync manager config.
     ///
     /// When writing configuration manually, this field can be left empty (`&[]`) to let EtherCrab
-    /// compute sync manage assignments automatically.
+    /// compute Sync Manager assignments automatically.
     pub sync_managers: &'a [SyncManagerConfig],
 }
 

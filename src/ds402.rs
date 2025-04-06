@@ -279,26 +279,28 @@ impl<'a> SyncManagerAssignment<'a> {
         }
     }
 
-    pub(crate) fn len_bits(&self) -> u16 {
-        self.mappings
-            .iter()
-            .map(|mapping| {
-                let mul = mapping.oversampling.unwrap_or(1).max(1);
+    pub(crate) fn object_sizes(&self) -> impl Iterator<Item = u16> {
+        self.mappings.iter().map(|mapping| {
+            let mul = mapping.oversampling.unwrap_or(1).max(1);
 
-                let sum: u16 = mapping
-                    .objects
-                    .iter()
-                    .map(|object| {
-                        // ETG1000.6 5.6.7.4.8; lower 8 bits are the object size
-                        let size_bits = (object & 0xff) as u16;
+            let sum: u16 = mapping
+                .objects
+                .iter()
+                .map(|object| {
+                    // ETG1000.6 5.6.7.4.8; lower 8 bits are the object size
+                    let size_bits = (object & 0xff) as u16;
 
-                        size_bits
-                    })
-                    .sum();
+                    // Round up to nearest byte
+                    (size_bits + 7) / 8
+                })
+                .sum();
 
-                sum * mul
-            })
-            .sum()
+            sum * mul
+        })
+    }
+
+    pub(crate) fn len_bytes(&self) -> u16 {
+        self.object_sizes().sum()
     }
 }
 
