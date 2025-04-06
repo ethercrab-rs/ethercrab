@@ -464,37 +464,31 @@ pub struct SyncManager {
     #[wire(bytes = 2)]
     pub(crate) start_addr: u16,
     #[wire(bytes = 2)]
-    pub(crate) length: u16,
+    pub(crate) length_bytes: u16,
     #[wire(bytes = 1, post_skip_bytes = 1)]
     pub(crate) control: sync_manager_channel::Control,
-    #[wire(bytes = 1)]
+    #[wire(bytes = 1, post_skip_bytes = 1)]
     pub(crate) enable: SyncManagerEnable,
-    /// Usage type.
-    ///
-    /// Use the method of the same name instead of directly accessing this field. It is only exposed
-    /// for test purposes.
-    #[wire(bytes = 1)]
-    pub(crate) usage_type: SyncManagerType,
+    // /// Usage type.
+    // ///
+    // /// Use the method of the same name instead of directly accessing this field. It is only exposed
+    // /// for test purposes.
+    // #[wire(bytes = 1)]
+    // pub(crate) usage_type: SyncManagerType,
 }
 
 impl SyncManager {
     pub(crate) fn usage_type(&self) -> SyncManagerType {
-        if self.usage_type != SyncManagerType::Unknown {
-            self.usage_type
-        } else {
-            // Try to recover type by matching on other fields in the SM
-            match (self.control.operation_mode, self.control.direction) {
-                (OperationMode::ProcessData, Direction::MainDeviceRead) => {
-                    SyncManagerType::ProcessDataRead
-                }
-                (OperationMode::ProcessData, Direction::MainDeviceWrite) => {
-                    SyncManagerType::ProcessDataWrite
-                }
-                (OperationMode::Mailbox, Direction::MainDeviceRead) => SyncManagerType::MailboxRead,
-                (OperationMode::Mailbox, Direction::MainDeviceWrite) => {
-                    SyncManagerType::MailboxWrite
-                }
+        // Try to recover type by matching on other fields in the SM
+        match (self.control.operation_mode, self.control.direction) {
+            (OperationMode::ProcessData, Direction::MainDeviceRead) => {
+                SyncManagerType::ProcessDataRead
             }
+            (OperationMode::ProcessData, Direction::MainDeviceWrite) => {
+                SyncManagerType::ProcessDataWrite
+            }
+            (OperationMode::Mailbox, Direction::MainDeviceRead) => SyncManagerType::MailboxRead,
+            (OperationMode::Mailbox, Direction::MainDeviceWrite) => SyncManagerType::MailboxWrite,
         }
     }
 }
@@ -503,10 +497,9 @@ impl core::fmt::Debug for SyncManager {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SyncManager")
             .field("start_addr", &format_args!("{:#06x}", self.start_addr))
-            .field("length", &format_args!("{:#06x}", self.length))
+            .field("length", &format_args!("{:#06x} bytes", self.length_bytes))
             .field("control", &self.control)
             .field("enable", &self.enable)
-            .field("usage_type", &self.usage_type)
             .finish()
     }
 }
@@ -928,7 +921,7 @@ mod tests {
         assert_eq!(
             SyncManager {
                 start_addr: 0x1000,
-                length: 0x0080,
+                length_bytes: 0x0080,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
                     direction: Direction::MainDeviceWrite,
@@ -937,7 +930,6 @@ mod tests {
                     watchdog_enable: false,
                 },
                 enable: SyncManagerEnable::ENABLE,
-                usage_type: SyncManagerType::Unknown,
             }
             .usage_type(),
             SyncManagerType::MailboxWrite
@@ -946,7 +938,7 @@ mod tests {
         assert_eq!(
             SyncManager {
                 start_addr: 0x10c0,
-                length: 0x0080,
+                length_bytes: 0x0080,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
                     direction: Direction::MainDeviceRead,
@@ -955,7 +947,6 @@ mod tests {
                     watchdog_enable: false,
                 },
                 enable: SyncManagerEnable::ENABLE,
-                usage_type: SyncManagerType::Unknown,
             }
             .usage_type(),
             SyncManagerType::MailboxRead
@@ -964,7 +955,7 @@ mod tests {
         assert_eq!(
             SyncManager {
                 start_addr: 0x1180,
-                length: 0x0006,
+                length_bytes: 0x0006,
                 control: Control {
                     operation_mode: OperationMode::ProcessData,
                     direction: Direction::MainDeviceWrite,
@@ -973,7 +964,6 @@ mod tests {
                     watchdog_enable: false,
                 },
                 enable: SyncManagerEnable::ENABLE,
-                usage_type: SyncManagerType::Unknown,
             }
             .usage_type(),
             SyncManagerType::ProcessDataWrite
@@ -982,7 +972,7 @@ mod tests {
         assert_eq!(
             SyncManager {
                 start_addr: 0x1480,
-                length: 0x0006,
+                length_bytes: 0x0006,
                 control: Control {
                     operation_mode: OperationMode::ProcessData,
                     direction: Direction::MainDeviceRead,
@@ -991,7 +981,6 @@ mod tests {
                     watchdog_enable: false,
                 },
                 enable: SyncManagerEnable::ENABLE,
-                usage_type: SyncManagerType::Unknown,
             }
             .usage_type(),
             SyncManagerType::ProcessDataRead

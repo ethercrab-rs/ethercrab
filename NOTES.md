@@ -49,6 +49,8 @@ the ESI file though...
 ESI file `TxPdo`/`RxPdo` do not specify an FMMU, only a (default) sync manager - they can be
 reassigned by the user.
 
+ESI FMMU records can specify their associated sync manager.
+
 # Overriding SM and FMMU config
 
 A key problem is wanting to store the SD config on `SubDevice` before it's used, meaning we'd either
