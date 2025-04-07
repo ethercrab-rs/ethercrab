@@ -115,6 +115,7 @@ async fn main() -> Result<(), Error> {
 fn address_list(addresses: heapless::Vec<u16, 0x1_0000>) -> heapless::String<0x8_0000> {
     let mut out = heapless::String::<0x8_0000>::new();
     if addresses.is_empty() {
+        out.push_str("[]").unwrap();
         return out;
     }
     out.push('[').expect("longer buffer");

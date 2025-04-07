@@ -89,14 +89,24 @@ pub struct GetObjectDescriptionListRequest {
     pub mailbox: MailboxHeader,
     #[wire(bytes = 4)]
     pub sdo_info_header: SdoInfoHeader,
-    #[wire(bytes = 1, post_skip = 8)]
-    list_type: ObjectDescriptionListQueryInner,
+    #[wire(bytes = 2)]
+    pub list_type: ObjectDescriptionListQueryInner,
+}
+
+/// Defined in ETG.1000.6 §5.6.3.3.2
+#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 12)]
+pub struct GetObjectDescriptionListResponse {
+    #[wire(bytes = 8)]
+    pub mailbox: MailboxHeader,
+    #[wire(bytes = 4)]
+    pub sdo_info_header: SdoInfoHeader,
 }
 
 /// [`ObjectDescriptionListType`], but with `ObjectQuantities`.
 #[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[repr(u8)]
-enum ObjectDescriptionListQueryInner {
+pub enum ObjectDescriptionListQueryInner {
     /// Get number of objects in the 5 different lists
     ObjectQuantities = 0x00,
     /// All objects of the object dictionary
@@ -133,6 +143,26 @@ pub enum ObjectDescriptionListQuery {
     StoredForDeviceReplacement = 0x04,
     /// Objects which can be used as startup parameter
     StartupParameters = 0x05,
+}
+
+impl From<ObjectDescriptionListQuery> for ObjectDescriptionListQueryInner {
+    fn from(user: ObjectDescriptionListQuery) -> Self {
+        match user {
+            ObjectDescriptionListQuery::All => ObjectDescriptionListQueryInner::All,
+            ObjectDescriptionListQuery::RxPdoMappable => {
+                ObjectDescriptionListQueryInner::RxPdoMappable
+            }
+            ObjectDescriptionListQuery::TxPdoMappable => {
+                ObjectDescriptionListQueryInner::TxPdoMappable
+            }
+            ObjectDescriptionListQuery::StoredForDeviceReplacement => {
+                ObjectDescriptionListQueryInner::StoredForDeviceReplacement
+            }
+            ObjectDescriptionListQuery::StartupParameters => {
+                ObjectDescriptionListQueryInner::StartupParameters
+            }
+        }
+    }
 }
 
 /// How many CoE objects on a subdevice are of each [`ObjectDescriptionListType`].
@@ -285,9 +315,7 @@ pub fn get_object_description_list(
             incomplete: false,
             fragments_left: 0,
         },
-        // unwrap is fine since UserObjectDescriptionListType is a
-        // subset of ObjectDescriptionListType
-        list_type: (list_type as u8).try_into().unwrap(),
+        list_type: list_type.into(),
     }
 }
 
@@ -517,8 +545,8 @@ mod tests {
             0x1a, 0x1e, 0x1a, 0x1f, 0x1a, 0x20, 0x1a, 0x21, 0x1a, 0x22, 0x1a, 0x23, 0x1a, 0x24,
             0x1a, 0x25, 0x1a, 0x26, 0x1a, 0x30, 0x1a, 0x31, 0x1a,
         ];
-        let parsed = GetObjectDescriptionListRequest::unpack_from_slice(&raw);
-        let expected = GetObjectDescriptionListRequest {
+        let parsed = GetObjectDescriptionListResponse::unpack_from_slice(&raw);
+        let expected = GetObjectDescriptionListResponse {
             mailbox: MailboxHeader {
                 length: 122,
                 priority: Priority::Lowest,
@@ -531,13 +559,17 @@ mod tests {
                 incomplete: true,
                 fragments_left: 1,
             },
-            list_type: ObjectDescriptionListQueryInner::All,
         };
         pretty_assertions::assert_eq!(parsed, Ok(expected));
-        let mut buf = [0u8; GetObjectDescriptionListRequest::PACKED_LEN];
+        let list_type = <ObjectDescriptionListQueryInner>::unpack_from_slice(
+            &raw[GetObjectDescriptionListResponse::PACKED_LEN
+                ..GetObjectDescriptionListResponse::PACKED_LEN + 2],
+        );
+        pretty_assertions::assert_eq!(list_type, Ok(ObjectDescriptionListQueryInner::All));
+        let mut buf = [0u8; GetObjectDescriptionListResponse::PACKED_LEN];
         pretty_assertions::assert_eq!(
             expected.pack_to_slice(&mut buf),
-            Ok(&raw[..GetObjectDescriptionListRequest::PACKED_LEN])
+            Ok(&raw[..GetObjectDescriptionListResponse::PACKED_LEN])
         );
         // length is actually 57
         let expected: [u16; (RAW_LEN - GetObjectDescriptionListRequest::PACKED_LEN) / 2] = [
