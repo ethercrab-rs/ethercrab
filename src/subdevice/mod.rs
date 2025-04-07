@@ -811,8 +811,9 @@ where
             .send(self.maindevice, &request.pack().as_ref())
             .await?;
 
-        const COE_HEADER_SIZE: usize = 8;
+        const COE_HEADER_AND_LIST_TYPE_SIZE: usize = 8;
 
+        let mut consumed_list_type = false;
         // The biggest SDO Info request is listing all the available objects,
         // which is u16::MAX * 2 = 0x1fffe bytes big (ETG.1000.6 §5.6.3.3,
         // CiA 301 §7.4.1).
@@ -820,16 +821,20 @@ where
         loop {
             let mut response = self.coe_response(&read_mailbox).await?;
             let headers =
-                <coe::services::GetObjectDescriptionListRequest>::unpack_from_slice(&response)?;
+                <coe::services::GetObjectDescriptionListResponse>::unpack_from_slice(&response)?;
             if headers.sdo_info_header.op_code
                 == coe::SdoInfoOpCode::GetObjectDescriptionListResponse
             {
-                let length = headers.mailbox.length as usize - COE_HEADER_SIZE;
+                let length = headers.mailbox.length as usize - COE_HEADER_AND_LIST_TYPE_SIZE;
                 fmt::trace!(
                     "CoE Info, {} fragments left",
                     headers.sdo_info_header.fragments_left
                 );
-                response.trim_front(coe::services::GetObjectDescriptionListRequest::PACKED_LEN);
+                response.trim_front(coe::services::GetObjectDescriptionListResponse::PACKED_LEN);
+                if !consumed_list_type {
+                    response.trim_front(2); // skip over the list type
+                    consumed_list_type = true;
+                }
                 buf.extend_from_slice(&response[..length])
                     .map_err(|_| Error::Internal)?;
                 if !headers.sdo_info_header.incomplete {
