@@ -199,6 +199,7 @@ impl Ports {
     }
 
     /// The time in nanoseconds for a packet to completely traverse all active ports of a SubDevice.
+    #[deny(clippy::arithmetic_side_effects)]
     pub fn total_propagation_time(&self) -> Option<u32> {
         let times = self
             .0
@@ -208,11 +209,12 @@ impl Ports {
         times
             .clone()
             .max()
-            .and_then(|max| times.min().map(|min| max - min))
+            .and_then(|max| times.min().map(|min| max.saturating_sub(min)))
             .filter(|t| *t > 0)
     }
 
     /// Propagation time between active ports in this SubDevice.
+    #[deny(clippy::arithmetic_side_effects)]
     pub fn intermediate_propagation_time_to(&self, port: &Port) -> u32 {
         // If a pair of ports is open, they have a propagation delta between them, and we can sum
         // these deltas up to get the child delays of this SubDevice (fork or cross have children)
@@ -238,6 +240,7 @@ impl Ports {
     }
 
     /// Get the propagation time taken from entry to this SubDevice up to the given port.
+    #[deny(clippy::arithmetic_side_effects)]
     pub fn propagation_time_to(&self, this_port: &Port) -> Option<u32> {
         let entry_port = self.entry_port();
 
@@ -250,7 +253,7 @@ impl Ports {
         times
             .clone()
             .max()
-            .and_then(|max| times.min().map(|min| max - min))
+            .and_then(|max| times.min().map(|min| max.saturating_sub(min)))
             .filter(|t| *t > 0)
     }
 }
