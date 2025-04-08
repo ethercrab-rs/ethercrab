@@ -37,15 +37,16 @@ async fn latch_dc_times(
         .iter_mut()
         .filter(|subdevice| subdevice.dc_support().any())
     {
-        let sl = SubDeviceRef::new(maindevice, subdevice.configured_address(), ());
+        let mut subdevice =
+            SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice);
 
-        let dc_receive_time = sl
+        let dc_receive_time = subdevice
             .read(RegisterAddress::DcReceiveTime)
             .ignore_wkc()
             .receive::<u64>(maindevice)
             .await?;
 
-        let [time_p0, time_p1, time_p2, time_p3] = sl
+        let [time_p0, time_p1, time_p2, time_p3] = subdevice
             .read(RegisterAddress::DcTimePort0)
             .receive::<[u32; 4]>(maindevice)
             .await
