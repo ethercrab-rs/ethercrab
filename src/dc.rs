@@ -37,15 +37,16 @@ async fn latch_dc_times(
         .iter_mut()
         .filter(|subdevice| subdevice.dc_support().any())
     {
-        let sl = SubDeviceRef::new(maindevice, subdevice.configured_address(), ());
+        let mut subdevice =
+            SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice);
 
-        let dc_receive_time = sl
+        let dc_receive_time = subdevice
             .read(RegisterAddress::DcReceiveTime)
             .ignore_wkc()
             .receive::<u64>(maindevice)
             .await?;
 
-        let [time_p0, time_p1, time_p2, time_p3] = sl
+        let [time_p0, time_p1, time_p2, time_p3] = subdevice
             .read(RegisterAddress::DcTimePort0)
             .receive::<[u32; 4]>(maindevice)
             .await
@@ -221,7 +222,7 @@ fn debug_print_ports(subdevice: &SubDevice) {
 }
 
 /// Calculate and assign a SubDevice's propagation delay, i.e. the time it takes for a packet to
-/// reach it when sent from the master.
+/// reach it when sent from the MainDevice.
 #[deny(clippy::arithmetic_side_effects)]
 fn configure_subdevice_offsets(
     subdevice: &mut SubDevice,
@@ -235,74 +236,76 @@ fn configure_subdevice_offsets(
         .parent_index
         .and_then(|parent_index| parents.iter().find(|parent| parent.index == parent_index));
 
-    if let Some(parent) = parent {
-        let parent_port = fmt::unwrap_opt!(
-            parent.ports.port_assigned_to(subdevice),
-            "Parent assigned port"
-        );
+    let Some(parent) = parent else {
+        return;
+    };
 
-        // The port the master is connected to on this SubDevice. Must always be entry port.
-        let this_port = subdevice.ports.entry_port();
+    let parent_port = fmt::unwrap_opt!(
+        parent.ports.port_assigned_to(subdevice),
+        "Parent assigned port"
+    );
 
-        fmt::debug!(
-            "--> Parent ({:?}) {} port {} assigned to {} port {} (SubDevice is child of parent: {:?})",
-            parent.ports.topology(),
-            parent.name(),
-            parent_port.number,
-            subdevice.name(),
-            this_port.number,
-            subdevice.is_child_of(parent)
-        );
+    // The port the MainDevice is connected to on this SubDevice. Must always be entry port.
+    let this_port = subdevice.ports.entry_port();
 
-        let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
-        let this_prop_time = subdevice.ports.total_propagation_time().unwrap_or(0);
+    fmt::debug!(
+        "--> Parent ({:?}) {} port {} assigned to {} port {} (SubDevice is child of parent: {:?})",
+        parent.ports.topology(),
+        parent.name(),
+        parent_port.number,
+        subdevice.name(),
+        this_port.number,
+        subdevice.is_child_of(parent)
+    );
 
-        let parent_delta = parent_prop_time.saturating_sub(this_prop_time);
+    let parent_prop_time = parent.ports.total_propagation_time().unwrap_or(0);
+    let this_prop_time = subdevice.ports.total_propagation_time().unwrap_or(0);
 
-        fmt::debug!(
-            "--> Parent propagation time {}, my prop. time {} delta {}",
-            parent_prop_time,
-            this_prop_time,
-            parent_delta
-        );
+    let parent_delta = parent_prop_time.saturating_sub(this_prop_time);
 
-        let propagation_delay = match parent.ports.topology() {
-            Topology::Passthrough => parent_delta / 2,
-            Topology::Fork => {
-                if subdevice.is_child_of(parent) {
-                    let children_loop_time =
-                        parent.ports.propagation_time_to(parent_port).unwrap_or(0);
+    fmt::debug!(
+        "--> Parent propagation time {}, my prop. time {} delta {}",
+        parent_prop_time,
+        this_prop_time,
+        parent_delta
+    );
 
-                    children_loop_time.saturating_sub(this_prop_time) / 2
-                } else {
-                    parent_delta / 2
-                }
+    // Divide by two here as the propagation times are for a loop, i.e. out _and back again_. We
+    // only want one side of the loop.
+    let propagation_delay = match parent.ports.topology() {
+        Topology::Passthrough => parent_delta / 2,
+        Topology::Fork => {
+            if subdevice.is_child_of(parent) {
+                let children_loop_time = parent.ports.propagation_time_to(parent_port).unwrap_or(0);
+
+                children_loop_time.saturating_sub(this_prop_time) / 2
+            } else {
+                parent_delta / 2
             }
-            Topology::Cross => {
-                if subdevice.is_child_of(parent) {
-                    let children_loop_time =
-                        parent.ports.intermediate_propagation_time_to(parent_port);
+        }
+        Topology::Cross => {
+            if subdevice.is_child_of(parent) {
+                let children_loop_time = parent.ports.intermediate_propagation_time_to(parent_port);
 
-                    children_loop_time.saturating_sub(this_prop_time) / 2
-                } else {
-                    parent_prop_time.saturating_sub(*delay_accum)
-                }
+                children_loop_time.saturating_sub(this_prop_time) / 2
+            } else {
+                parent_prop_time.saturating_sub(*delay_accum)
             }
-            // A parent of any device cannot have a `LineEnd` topology as it will always have at
-            // least 2 ports open (1 for comms to master, 1 to current SubDevice)
-            Topology::LineEnd => 0,
-        };
+        }
+        // A parent of any device cannot have a `LineEnd` topology as it will always have at
+        // least 2 ports open (1 for comms to master, 1 to current SubDevice)
+        Topology::LineEnd => 0,
+    };
 
-        *delay_accum = delay_accum.saturating_add(propagation_delay);
+    *delay_accum = delay_accum.saturating_add(propagation_delay);
 
-        fmt::debug!(
-            "--> Propagation delay {} (delta {}) ns",
-            delay_accum,
-            propagation_delay,
-        );
+    fmt::debug!(
+        "--> Propagation delay {} (delta {}) ns",
+        delay_accum,
+        propagation_delay,
+    );
 
-        subdevice.propagation_delay = *delay_accum;
-    }
+    subdevice.propagation_delay = *delay_accum;
 }
 
 /// Assign parent/child relationships and compute propagation delays for all SubDevices.
@@ -324,7 +327,8 @@ fn assign_parent_relationships(subdevices: &mut [SubDevice]) -> Result<(), Error
         );
 
         // If this SubDevice has a parent, find it, then assign the parent's next open port to this
-        // SubDevice, estabilishing the relationship between them by index.
+        // SubDevice, establishing the relationship between them by setting the SubDevice index on
+        // the parent port.
         if let Some(parent_idx) = subdevice.parent_index {
             let parent =
                 fmt::unwrap_opt!(parents.iter_mut().find(|parent| parent.index == parent_idx));
@@ -451,8 +455,17 @@ pub(crate) async fn configure_dc<'subdevices>(
     Ok(first_dc_subdevice)
 }
 
-/// Send `iterations` FRMW frames to synchronise the network with the reference clock in the
-/// designated DC SubDevice.
+/// Static drift compensation: send `iterations` FRMW frames to synchronise the network with the
+/// reference clock in the designated DC SubDevice.
+///
+/// This will distributed the System Clock to all SubDevices and allow them to set an initial offset
+/// and drift compensation against the reference clock. This does not account for drift over time,
+/// but that is handled later by sending FRMW frames in the process data cycle.
+///
+/// The spec recommends sending ~15000 frames, but this number can be higher or lower depending on
+/// whether the application is optimised for startup time or initial synchronisation accuracy. The
+/// clocks will align more accurately during OP as long as more FRMW frames are sent, so exact
+/// alignment at this stage isn't critical.
 pub(crate) async fn run_dc_static_sync(
     maindevice: &MainDevice<'_>,
     dc_reference_subdevice: &SubDevice,
@@ -464,8 +477,6 @@ pub(crate) async fn run_dc_static_sync(
         dc_reference_subdevice.name
     );
 
-    // Static drift compensation - distribute reference clock through network until SubDevice clocks
-    // settle
     for _ in 0..iterations {
         Command::frmw(
             dc_reference_subdevice.configured_address(),
