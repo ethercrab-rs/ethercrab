@@ -241,32 +241,22 @@ fn main() -> Result<(), Error> {
 
         {
             loop {
-                // group.tx_rx().await;
+                // We can call OG methods on the DS402 device using `.inner()`
+                // TODO: Decide if we want to do more deref chaining from `Ds402` ->
+                // `PdiMappingBikeshedName` -> `SubDeviceRef` -> `SubDevice` (lol)
+                dbg!(servo.inner().configured_address());
 
-                // We can still use the normal `SubDevice` stuff due to `Deref` magic
-                dbg!(servo.configured_address());
-
-                // TODO: How do we populate the return type for `input`? Right now we just have to
-                // assume the user will give the code the correct type. Maybe we just leave this
-                // as-is and rely on a derive in the future to figure it out from the ESI? What
-                // about &dyn traits in the config?
-
-                // Supports tuples. If any one of the fields can't be found, an error is returned
+                // We can drop down to reading/writing specific IO fields using `inner()`
+                // TODO: inner_mut()
                 let status: StatusWord = servo
+                    .inner()
                     .input(ds402::ReadObject::STATUS_WORD)
                     .expect("No mapping");
-                // // Or without the error and just a panic:
-                // let status =
-                //     servo.input_unchecked::<impl EtherCrabWireRead>(ds402::ReadObject::STATUS_WORD);
-                // // False if we try to set an object that wasn't mapped
-                // let exists =
-                //     servo.set_output(ds402::WriteObject::CONTROL_WORD, ControlWord::whatever());
 
-                // // Just read value we're gonna send to the outputs
-                // let control = servo
-                //     .output::<impl EtherCrabWireRead>(ds402::WriteObject::CONTROL_WORD)
-                //     .expect("No mapping");
-                // // TODO: `unchecked` variant
+                // OR the preferred way: use higher level methods on the DS402 object. This doesn't
+                // panic because we made sure the status word mapping was present earlier. It may
+                // panic if the PDI isn't configured correctly though (too short, wrong range, etc).
+                let status: StatusWord = servo.status_word();
 
                 break;
             }

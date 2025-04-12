@@ -496,6 +496,17 @@ impl<'group, const MAX_PDI: usize, const MAX_INPUT_OBJECTS: usize, const MAX_OUT
     pub fn state(&self) -> ReadState {
         self.status_word().state()
     }
+
+    /// Get a reference to the underlying SubDevice with PDI.
+    pub fn inner(
+        &self,
+    ) -> &PdiMappingBikeshedName<
+        MAX_INPUT_OBJECTS,
+        MAX_OUTPUT_OBJECTS,
+        SubDeviceRef<'group, SubDevicePdi<'group, MAX_PDI>>,
+    > {
+        &self.subdevice
+    }
 }
 
 #[cfg(test)]
