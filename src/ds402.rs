@@ -188,7 +188,7 @@ pub enum WriteState {
 /// This enum is created from the individual bits in or [`StatusWord`].
 ///
 /// ETG6010 5.1 Figure 2: State Machine
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ReadState {
     /// Not ready to switch on.
     NotReadyToSwitchOn,
@@ -211,13 +211,13 @@ pub enum ReadState {
 pub enum Transition {
     /// The device is in a steady state.
     Steady(ReadState),
-    /// The device is transitioning to a new desired state.
-    Transitioning {
-        /// Desired state.
-        desired: WriteState,
-        /// Current state.
-        actual: ReadState,
-    },
+    // /// The device is transitioning to a new desired state.
+    // Transitioning {
+    //     /// Desired state.
+    //     desired: WriteState,
+    //     /// Current state.
+    //     actual: ReadState,
+    // },
     /// The device has finished transitioning to a new state.
     Edge {
         /// Previous state before the transition started.
@@ -367,6 +367,15 @@ impl<'a> PdoMapping<'a> {
     }
 }
 
+/// TODO: Doc
+#[derive(Debug, Copy, Clone)]
+pub enum BikeshedHighLevelState {
+    /// TODO: Doc
+    Off,
+    /// TODO: Doc
+    On,
+}
+
 /// Wrap a group SubDevice in a higher level DS402 API
 pub struct Ds402<
     'group,
@@ -385,6 +394,8 @@ pub struct Ds402<
     status_word: Range<usize>,
     op_mode: Range<usize>,
     op_mode_display: Range<usize>,
+    desired_state: Option<BikeshedHighLevelState>,
+    prev_state: ReadState,
 }
 
 impl<'group, const MAX_PDI: usize, const MAX_INPUT_OBJECTS: usize, const MAX_OUTPUT_OBJECTS: usize>
@@ -474,7 +485,40 @@ impl<'group, const MAX_PDI: usize, const MAX_INPUT_OBJECTS: usize, const MAX_OUT
             op_mode,
             status_word,
             op_mode_display,
+            desired_state: None,
+            prev_state: ReadState::NotReadyToSwitchOn,
         })
+    }
+
+    /// TODO: Doc
+    pub fn bikeshed_set_high_level_state(&mut self, desired: BikeshedHighLevelState) {
+        self.desired_state = Some(desired)
+    }
+
+    /// TODO: Doc
+    pub fn bikeshed_tick(&mut self) -> Transition {
+        // Special case for fault: the desired state is cleared and the end application must
+        // explicitly clear faults and set new desired state.
+        let new_state = if self.state() == ReadState::Fault {
+            self.desired_state = None;
+
+            ReadState::Fault
+        } else {
+            todo!();
+        };
+
+        let result = if new_state != self.prev_state {
+            Transition::Edge {
+                previous: self.prev_state,
+                current: new_state,
+            }
+        } else {
+            Transition::Steady(new_state)
+        };
+
+        self.prev_state = new_state;
+
+        result
     }
 
     /// Set DS402 operation mode (CSV, CSP, etc).

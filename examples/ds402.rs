@@ -259,6 +259,13 @@ fn main() -> Result<(), Error> {
                 let status: StatusWord = servo.status_word();
 
                 break;
+
+                // TODO: DS402 state machine API
+                // - Start with steady/transitioning/edge/whatever enum checks
+                // - How can we make this async and get the correct cycle's data? Will it always be
+                //   the current one? Yes, as long as DS402 isn't spawned in a task parallel to
+                //   TX/RX. The best way would be to have TX/RX and DS402 SM updates in one task,
+                //   then logic in another
             }
         }
 
