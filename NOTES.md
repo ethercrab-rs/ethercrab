@@ -10,6 +10,33 @@ this register.
 
 SOEM calls `0x0990` `ECT_REG_DCSTART0` and also writes a 64 bit value into it. See `ethercatdc.c`,
 `ecx_dcsync0`.
+# 2025-04-30 PTP and synchronising DC from MainDevice
+
+Using PTP to sync a non-EtherCAT device like a Basler camera to the EtherCAT network. There needs to
+be one reference clock, and seeing as Basler cameras have PTP support, we can use that to sync ECAT
+time to the camera.
+
+Some details [here]
+(https://events.static.linuxfound.org/sites/events/files/slides/lcjp14_ichikawa_0.pdf) and [here]
+(https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/7/html/system_administrators_guide/ch-Configuring_PTP_Using_ptp4l#sec-Starting_ptp4l).
+
+Basler PTP: <https://github.com/basler/pypylon/issues/751>
+
+```bash
+sudo apt install linuxptp
+
+# Get some logs for an interface
+sudo ptp4l -i enp115s0 -m
+```
+
+My PC already has `/dev/ptp0` but I'm not sure it's doing anything by default as the RedHat docs state:
+
+> When PTP time synchronization is working correctly, new messages with offsets and frequency
+> adjustments are printed periodically to the ptp4l and phc2sys outputs if hardware time stamping
+> is used.
+
+And I don't see new messages.
+
 # 2025-04-05 SM and FMMU config
 
 If SM AND FMMU config is not given, use defaults:
