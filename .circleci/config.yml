@@ -1,16 +1,30 @@
 target_steps_linux: &target_steps_linux
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
-    - image: cimg/rust:1.85
+    # - image: cimg/rust:1.85
+    - image: cimg/base:24.04
   steps:
     - checkout
     - restore_cache:
         key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
 
+    # cimg/rust at time of writing STILL uses Ubuntu 22.04 which doesn't have `libxdp-dev`, so I'm
+    # manually building the Rust image on top of `cimg/base`. Command is from here:
+    # https://github.com/CircleCI-Public/cimg-rust/blob/0401fb8e667e051f00d605987d66c799f4b62fc1/1.87/Dockerfile
+    - run: |
+        echo "${PATH}"
+
+        [[ $(uname -m) == "x86_64" ]] && ARCH="x86_64" || ARCH="aarch64" && \
+          curl -O https://static.rust-lang.org/rustup/dist/${ARCH}-unknown-linux-gnu/rustup-init && \
+          chmod +x rustup-init && \
+          ./rustup-init -y
+
+          echo 'export PATH=/home/circleci/.cargo/bin:"$PATH"' >> "$BASH_ENV"
+
     # For docs gen
     - run: rustup target add x86_64-unknown-linux-gnu || true
     # For XDP
-    - run: sudo apt update && sudo apt install -qq llvm-dev libxdp-dev
+    - run: sudo apt update && sudo apt install -qq clang llvm-dev libxdp-dev
     - run: |
         binaries=( "cargo-deadlinks" "cargo-readme" "just" )
 
