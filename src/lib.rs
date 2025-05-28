@@ -8,6 +8,7 @@
 //! - `log` - enable logging with the [`log`](https://docs.rs/log) crate. This is enabled by default
 //!   when the `std` feature is enabled.
 //! - `serde` - enable `serde` impls for some public items.
+//! - `xdp` - enable support for XDP on some (currently only Linux) systems.
 //!
 //! For `no_std` targets, it is recommended to add this crate with
 //!

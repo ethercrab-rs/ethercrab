@@ -6,6 +6,8 @@ mod io_uring;
 mod unix;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(all(target_os = "linux", feature = "xdp"))]
+mod xdp;
 
 use std::{
     sync::Arc,
@@ -20,6 +22,8 @@ pub use unix::{ethercat_now, tx_rx_task};
 // io_uring is Linux-only
 #[cfg(target_os = "linux")]
 pub use io_uring::tx_rx_task_io_uring;
+#[cfg(all(target_os = "linux", feature = "xdp"))]
+pub use xdp::tx_rx_task_xdp;
 
 struct ParkSignal {
     current_thread: Thread,
