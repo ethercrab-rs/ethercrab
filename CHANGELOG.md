@@ -6,6 +6,11 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- [#310](https://github.com/ethercrab-rs/ethercrab/pull/310) Add support for XDP on Linux systems
+  using the `xdp` feature.
+
 ### Changed
 
 - [#298](https://github.com/ethercrab-rs/ethercrab/pull/298) **(breaking)** Change MSRV from 1.81 to
