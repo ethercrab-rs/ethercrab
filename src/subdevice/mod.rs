@@ -1142,6 +1142,20 @@ impl<'maindevice, S> SubDeviceRef<'maindevice, S> {
         self.read(register.into()).receive(self.maindevice).await
     }
 
+    /// Read a register and ignore the response's working counter.
+    ///
+    /// Note that while this method is marked safe, raw alterations to SubDevice config or behaviour can
+    /// break higher level interactions with EtherCrab.
+    pub async fn register_read_ignore_wkc<T>(&self, register: impl Into<u16>) -> Result<T, Error>
+    where
+        T: EtherCrabWireReadSized,
+    {
+        self.read(register.into())
+            .ignore_wkc()
+            .receive(self.maindevice)
+            .await
+    }
+
     /// Write a register.
     ///
     /// Note that while this method is marked safe, raw alterations to SubDevice config or behaviour can
