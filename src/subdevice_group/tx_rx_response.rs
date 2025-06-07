@@ -108,6 +108,13 @@ impl<const N: usize, T> TxRxResponse<N, T> {
             .filter(|s| *s == SubDeviceState::Op)
             .is_some()
     }
+
+    /// A helper method to ease EtherCrab version upgrades.
+    pub fn all_safe_op(&self) -> bool {
+        self.group_in_single_state()
+            .filter(|s| *s == SubDeviceState::SafeOp)
+            .is_some()
+    }
 }
 
 #[cfg(test)]
