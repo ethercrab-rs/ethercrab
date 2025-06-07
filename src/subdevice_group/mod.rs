@@ -424,6 +424,27 @@ where
             _state: PhantomData::<PreOp>,
         };
 
+        let reference_device = self_
+            .iter(maindevice)
+            .find(|x| x.configured_address() == reference)
+            .expect("Could not find reference device");
+
+        let reference_time: u64 = reference_device
+            .read(RegisterAddress::DcSystemTime)
+            .ignore_wkc()
+            .receive(maindevice)
+            .await?;
+
+        fmt::debug!("--> Reference time {} ns", reference_time);
+
+        let sync0_period = sync0_period.as_nanos() as u64;
+        let first_pulse_delay = start_delay.as_nanos() as u64;
+
+        // Round first pulse time to a whole number of cycles
+        let start_time = (reference_time + first_pulse_delay) / sync0_period * sync0_period;
+
+        fmt::debug!("--> Computed DC sync start time: {}", start_time);
+
         // Only configure DC for those devices that want and support it
         let dc_devices = self_.iter(maindevice).filter(|subdevice| {
             subdevice.dc_support().any() && !matches!(subdevice.dc_sync(), DcSync::Disabled)
@@ -449,23 +470,6 @@ where
                 .write(RegisterAddress::DcCyclicUnitControl)
                 .send(maindevice, 0u8)
                 .await?;
-
-            let device_time: u64 = subdevice
-                .read(RegisterAddress::DcSystemTime)
-                .ignore_wkc()
-                .receive(maindevice)
-                .await?;
-
-            fmt::debug!("--> Device time {} ns", device_time);
-
-            let sync0_period = sync0_period.as_nanos() as u64;
-
-            let first_pulse_delay = start_delay.as_nanos() as u64;
-
-            // Round first pulse time to a whole number of cycles
-            let start_time = (device_time + first_pulse_delay) / sync0_period * sync0_period;
-
-            fmt::debug!("--> Computed DC sync start time: {}", start_time);
 
             subdevice
                 .write(RegisterAddress::DcSyncStartTime)
@@ -502,7 +506,7 @@ where
             pdi_len: self_.pdi_len,
             inner: self_.inner,
             dc_conf: HasDc {
-                sync0_period: sync0_period.as_nanos() as u64,
+                sync0_period,
                 sync0_shift: sync0_shift.as_nanos() as u64,
                 reference,
             },
