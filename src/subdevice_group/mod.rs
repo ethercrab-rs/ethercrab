@@ -552,6 +552,35 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         self_.request_into_op(maindevice).await
     }
 
+    /// Like [`into_safe_op`](SubDeviceGroup::into_safe_op), however does not wait for all SubDevices to enter
+    /// SAFE-OP state.
+    ///
+    /// This allows the application process data loop to be started, so as to e.g. not time out
+    /// watchdogs, or provide valid data to prevent DC sync errors.
+    ///
+    /// The group's state can be checked by testing the result of a `tx_rx_*` call using methods on
+    /// the [`TxRxResponse`] struct.
+    pub async fn request_into_safe_op(
+        mut self,
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
+        for subdevice in self.inner.get_mut().subdevices.iter_mut() {
+            SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
+                .request_subdevice_state_nowait(SubDeviceState::SafeOp)
+                .await?;
+        }
+
+        Ok(SubDeviceGroup {
+            id: self.id,
+            pdi: self.pdi,
+            read_pdi_len: self.read_pdi_len,
+            pdi_len: self.pdi_len,
+            inner: self.inner,
+            dc_conf: self.dc_conf,
+            _state: PhantomData,
+        })
+    }
+
     /// Transition all SubDevices in the group from PRE-OP to INIT.
     pub async fn into_init(
         self,
