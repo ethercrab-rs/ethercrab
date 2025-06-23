@@ -1299,3 +1299,106 @@ Note
 # Ultimate Linux networking guide
 
 <https://ntk148v.github.io/posts/linux-network-performance-ultimate-guide>
+
+# Realtime performance tuning
+
+TODO: Flesh this section out into either a blog post or a doc file in the EtherCrab repo.
+
+## Linux system tuning
+
+- Install the PREEMPT_RT kernel
+- Run `sudo ethtool -C eth0 tx-usecs 0 rx-usecs 0` (or
+  `sudo ethtool -C eth0 rx-usecs 0 tx-frames 1 rx-frames 1` for rPi 4)
+
+  This isn't set on every boot, but can be with e.g. on Debian:
+
+  ```
+  allow-hotplug eth0
+  iface eth0 inet manual
+      # Pi 4
+      post-up /sbin/ethtool -C eth0 rx-usecs 0 tx-frames 1 rx-frames 1
+
+      # Pi 5, most other NICs
+      post-up /sbin/ethtool -C eth0 tx-usecs 0 rx-usecs 0
+  ```
+
+- Allow higher priority threads
+
+  Check max priority with `ulimit -Hr` and `ulimit -Sr`. It can be bumped up by adding the following
+  to `/etc/security/limits.conf`:
+
+  ```
+  <user you're going to run as> soft rtprio 99
+  <user you're going to run as> hard rtprio 99
+  ```
+
+- Use `tuned-adm` to set a profile like `sudo tuned-adm profile realtime`
+  - Use something like `htop` to make sure the CPU is always running at max frequency - changing
+    power states can cause issues.
+
+## Rust code changes
+
+- Do not use `tokio`. Use `smol` instead as it has much better jitter and latency behaviour.
+- Isolate CPU cores using the boot param, e.g. `isolcpus=2,3` then in the Rust code pin the main app
+  task to one core, and the TX/RX thread to another using the `core_affinity` crate:
+
+  ```rust
+  core_affinity::set_for_current(CoreId { id: 2 })
+      .then_some(())
+      .expect("Set main task core");
+  ```
+
+  Check it worked with `cat /sys/devices/system/cpu/isolated`.
+
+- Set both task and TX/RX thread priorities and affinities as in the
+  [`performance.rs`](https://github.com/ethercrab-rs/ethercrab/blob/main/examples/performance.rs)
+  example, e.g. for the TX/RX thread:
+
+  ```rust
+  thread_priority::ThreadBuilder::default()
+      .name("tx-rx-task")
+      // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
+      // Check limits with `ulimit -Hr` or `ulimit -Sr`
+      .priority(ThreadPriority::Crossplatform(
+          ThreadPriorityValue::try_from(99u8).unwrap(),
+      ))
+      // NOTE: Requires a realtime kernel
+      .policy(ThreadSchedulePolicy::Realtime(
+          RealtimeThreadSchedulePolicy::Fifo,
+      ))
+      .spawn(move |_| {
+          core_affinity::set_for_current(core_affinity::CoreId { id: 0 })
+              .then_some(())
+              .expect("Set TX/RX thread core");
+
+          let ex = LocalExecutor::new();
+
+          futures_lite::future::block_on(
+              ex.run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")),
+          )
+          .expect("TX/RX task exited");
+      })
+      .unwrap();
+  ```
+
+  Note that this also uses a thread-local async executor.
+
+- Use `mlockall` e.g. like
+  [this](https://github.com/andergisomon/Gipop/blob/65205bd3877eb5bb8268a3b7a46cf8ebad2220a3/plc/src/main.rs#L13-L23):
+
+  ```rust
+      let res = unsafe {
+          mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE)
+      };
+      match res {
+          0 => {
+              log::info!("mlockall() returned 0");
+          }
+          _ => {
+              log::error!("mlockall() failed, returned {}", res);
+          }
+      }
+  ```
+
+  [This](https://shuhaowu.com/blog/2022/04-linux-rt-appdev-part4.html) article is quite a good
+  discussion of the effects of `mlockall`. It's for C++ but the same ideas apply.
