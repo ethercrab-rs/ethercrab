@@ -1400,5 +1400,8 @@ TODO: Flesh this section out into either a blog post or a doc file in the EtherC
       }
   ```
 
+  Some usage warnings
+  [here](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux_for_real_time/7/html/reference_guide/using_mlock_to_avoid_page_io).
+
   [This](https://shuhaowu.com/blog/2022/04-linux-rt-appdev-part4.html) article is quite a good
   discussion of the effects of `mlockall`. It's for C++ but the same ideas apply.
