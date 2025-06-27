@@ -6,11 +6,12 @@ pub mod ports;
 mod types;
 
 use crate::{
+    WrappedRead, WrappedWrite,
     al_control::AlControl,
     al_status_code::AlStatusCode,
     coe::{
-        self, abort_code::CoeAbortCode, services::CoeServiceRequest, CoeCommand, CoeService,
-        SdoExpedited, SubIndex,
+        self, CoeCommand, CoeService, SdoExpedited, SubIndex, abort_code::CoeAbortCode,
+        services::CoeServiceRequest,
     },
     command::Command,
     dl_status::DlStatus,
@@ -24,7 +25,6 @@ use crate::{
     subdevice::{ports::Ports, types::SubDeviceConfig},
     subdevice_state::SubDeviceState,
     timer_factory::IntoTimeout,
-    WrappedRead, WrappedWrite,
 };
 use core::{
     any::type_name,
@@ -168,12 +168,14 @@ impl SubDevice {
         let name = eeprom.device_name().await?.unwrap_or_else(|| {
             let mut s = heapless::String::new();
 
-            fmt::unwrap!(write!(
-                s,
-                "manu. {:#010x}, device {:#010x}, serial {:#010x}",
-                identity.vendor_id, identity.product_id, identity.serial
-            )
-            .map_err(|_| ()));
+            fmt::unwrap!(
+                write!(
+                    s,
+                    "manu. {:#010x}, device {:#010x}, serial {:#010x}",
+                    identity.vendor_id, identity.product_id, identity.serial
+                )
+                .map_err(|_| ())
+            );
 
             s
         });
@@ -529,13 +531,7 @@ where
         fmt::unwrap!(self.state.mailbox_counter.fetch_update(
             Ordering::Release,
             Ordering::Acquire,
-            |n| {
-                if n >= 7 {
-                    Some(1)
-                } else {
-                    Some(n + 1)
-                }
-            }
+            |n| { if n >= 7 { Some(1) } else { Some(n + 1) } }
         ))
     }
 
@@ -787,11 +783,10 @@ where
 
     /// Handle submitting to mailboxes for the SDO Information service.
     ///
-    /// If the subdevice doesn't have the necessary mailboxes, this will
-    /// return `Ok(None)`.
+    /// If the subdevice doesn't have the necessary mailboxes, this will return `Ok(None)`.
     ///
-    /// Per ETG.1000.5 §6.1.4.1.3.4, this means sending one request and
-    /// then awaiting many responses.
+    /// Per ETG.1000.5 §6.1.4.1.3.4, this means sending one request and then awaiting many
+    /// responses.
     // TODO: make this generic w.r.t. SDO Info header type.
     async fn send_sdo_info_service(
         &self,
@@ -1164,7 +1159,7 @@ where
             .map(Some)
     }
 
-    /// Count how many objects match each [`coe::ObjectDescriptionListType`].
+    /// Count how many objects match each [`coe::ObjectDescriptionListQuery`].
     pub async fn sdo_info_object_quantities(
         &self,
     ) -> Result<Option<ObjectDescriptionListQueryCounts>, Error> {
