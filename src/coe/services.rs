@@ -166,17 +166,24 @@ impl From<ObjectDescriptionListQuery> for ObjectDescriptionListQueryInner {
 }
 
 /// How many CoE objects on a subdevice are of each [`ObjectDescriptionListQuery`].
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[wire(bytes = 10)]
 pub struct ObjectDescriptionListQueryCounts {
     /// How many are of type [`ObjectDescriptionListQuery::All`].
+    #[wire(bytes = 2)]
     pub all: u16,
     /// How many are of type [`ObjectDescriptionListQuery::RxPdoMappable`].
+    #[wire(bytes = 2)]
     pub rx_pdo_mappable: u16,
     /// How many are of type [`ObjectDescriptionListQuery::TxPdoMappable`].
+    #[wire(bytes = 2)]
     pub tx_pdo_mappable: u16,
     /// How many are of type [`ObjectDescriptionListQuery::StoredForDeviceReplacement`].
+    #[wire(bytes = 2)]
     pub stored_for_device_replacement: u16,
     /// How many are of type [`ObjectDescriptionListQuery::StartupParameters`].
+    #[wire(bytes = 2)]
     pub startup_parameters: u16,
 }
 

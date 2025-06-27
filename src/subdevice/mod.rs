@@ -1168,23 +1168,17 @@ where
             return Ok(None);
         };
 
-        let counts = <[u16; 5]>::unpack_from_slice(&response_payload).map_err(|_| {
-            fmt::error!(
-                "SDO Info Get OD List (type Object Quantities) data {:?} (len {})",
-                response_payload,
-                response_payload.len()
-            );
+        coe::ObjectDescriptionListQueryCounts::unpack_from_slice(&response_payload)
+            .map_err(|_| {
+                fmt::error!(
+                    "SDO Info Get OD List (type Object Quantities) data {:?} (len {})",
+                    response_payload,
+                    response_payload.len()
+                );
 
-            Error::Pdu(PduError::Decode)
-        })?;
-
-        Ok(Some(coe::ObjectDescriptionListQueryCounts {
-            all: counts[0],
-            rx_pdo_mappable: counts[1],
-            tx_pdo_mappable: counts[2],
-            stored_for_device_replacement: counts[3],
-            startup_parameters: counts[4],
-        }))
+                Error::Pdu(PduError::Decode)
+            })
+            .map(Some)
     }
 }
 
