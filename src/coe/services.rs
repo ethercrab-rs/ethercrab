@@ -103,21 +103,21 @@ pub struct GetObjectDescriptionListResponse {
     pub sdo_info_header: SdoInfoHeader,
 }
 
-/// [`ObjectDescriptionListType`], but with `ObjectQuantities`.
+/// [`ObjectDescriptionListQuery`], but with `ObjectQuantities`.
 #[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[repr(u8)]
 pub enum ObjectDescriptionListQueryInner {
-    /// Get number of objects in the 5 different lists
+    /// Get number of objects in the 5 different lists.
     ObjectQuantities = 0x00,
-    /// All objects of the object dictionary
+    /// All objects of the object dictionary.
     All = 0x01,
-    /// Objects which are mappable in an RxPDO
+    /// Objects which are mappable in an RxPDO.
     RxPdoMappable = 0x02,
-    /// Objects which are mappable in a TxPDO
+    /// Objects which are mappable in a TxPDO.
     TxPdoMappable = 0x03,
-    /// Objects which have to be stored for a device replacement
+    /// Objects which have to be stored for a device replacement.
     StoredForDeviceReplacement = 0x04,
-    /// Objects which can be used as startup parameter
+    /// Objects which can be used as startup parameter.
     StartupParameters = 0x05,
 }
 
@@ -133,15 +133,15 @@ pub enum ObjectDescriptionListQueryInner {
 #[repr(u8)]
 pub enum ObjectDescriptionListQuery {
     // ObjectQuantities is invoked through a different API
-    /// All objects of the object dictionary
+    /// All objects of the object dictionary.
     All = 0x01,
-    /// Objects which are mappable in an RxPDO
+    /// Objects which are mappable in an RxPDO.
     RxPdoMappable = 0x02,
-    /// Objects which are mappable in a TxPDO
+    /// Objects which are mappable in a TxPDO.
     TxPdoMappable = 0x03,
-    /// Objects which have to be stored for a device replacement
+    /// Objects which have to be stored for a device replacement.
     StoredForDeviceReplacement = 0x04,
-    /// Objects which can be used as startup parameter
+    /// Objects which can be used as startup parameter.
     StartupParameters = 0x05,
 }
 
@@ -165,18 +165,18 @@ impl From<ObjectDescriptionListQuery> for ObjectDescriptionListQueryInner {
     }
 }
 
-/// How many CoE objects on a subdevice are of each [`ObjectDescriptionListType`].
+/// How many CoE objects on a subdevice are of each [`ObjectDescriptionListQuery`].
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct ObjectDescriptionListQueryCounts {
-    /// How many are of type [`ObjectDescriptionListType::All`].
+    /// How many are of type [`ObjectDescriptionListQuery::All`].
     pub all: u16,
-    /// How many are of type [`ObjectDescriptionListType::RxPdoMappable`].
+    /// How many are of type [`ObjectDescriptionListQuery::RxPdoMappable`].
     pub rx_pdo_mappable: u16,
-    /// How many are of type [`ObjectDescriptionListType::TxPdoMappable`].
+    /// How many are of type [`ObjectDescriptionListQuery::TxPdoMappable`].
     pub tx_pdo_mappable: u16,
-    /// How many are of type [`ObjectDescriptionListType::StoredForDeviceReplacement`].
+    /// How many are of type [`ObjectDescriptionListQuery::StoredForDeviceReplacement`].
     pub stored_for_device_replacement: u16,
-    /// How many are of type [`ObjectDescriptionListType::StartupParameters`].
+    /// How many are of type [`ObjectDescriptionListQuery::StartupParameters`].
     pub startup_parameters: u16,
 }
 

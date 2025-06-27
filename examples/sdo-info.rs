@@ -18,8 +18,8 @@
 
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::ethercat_now, MainDevice, MainDeviceConfig, ObjectDescriptionListQuery,
-    ObjectDescriptionListQueryCounts, PduStorage, Timeouts,
+    MainDevice, MainDeviceConfig, ObjectDescriptionListQuery, ObjectDescriptionListQueryCounts,
+    PduStorage, Timeouts, error::Error, std::ethercat_now,
 };
 use std::{sync::Arc, time::Duration};
 
