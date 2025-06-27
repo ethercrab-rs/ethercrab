@@ -742,7 +742,9 @@ where
                 error_register: decoded.error_register,
             }))
         } else if headers.command == CoeCommand::Abort {
-            let code = CoeAbortCode::Incompatible;
+            // ETG 1000.6 §5.6.2.7.1 Table 40
+            response.trim_front(HeadersRaw::PACKED_LEN);
+            let code = CoeAbortCode::unpack_from_slice(&response)?;
 
             fmt::error!(
                 "Mailbox error for SubDevice {:#06x} (supports complete access: {}): {}",
