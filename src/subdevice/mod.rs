@@ -790,7 +790,7 @@ where
     // TODO: make this generic w.r.t. SDO Info header type.
     async fn send_sdo_info_service(
         &self,
-        request: coe::services::GetObjectDescriptionListRequest,
+        request: coe::services::ObjectDescriptionListRequest,
     ) -> Result<Option<heapless::Vec<u8, { u16::MAX as usize * 2 }>>, Error> {
         let (read_mailbox, write_mailbox) = match self.coe_mailboxes().await {
             Ok((read, write)) => Ok((read, write)),
@@ -816,7 +816,7 @@ where
         loop {
             let mut response = self.coe_response(&read_mailbox).await?;
             let headers =
-                <coe::services::GetObjectDescriptionListResponse>::unpack_from_slice(&response)?;
+                <coe::services::ObjectDescriptionListResponse>::unpack_from_slice(&response)?;
             if headers.sdo_info_header.op_code
                 == coe::SdoInfoOpCode::GetObjectDescriptionListResponse
             {
@@ -825,7 +825,7 @@ where
                     "CoE Info, {} fragments left",
                     headers.sdo_info_header.fragments_left
                 );
-                response.trim_front(coe::services::GetObjectDescriptionListResponse::PACKED_LEN);
+                response.trim_front(coe::services::ObjectDescriptionListResponse::PACKED_LEN);
                 if !consumed_list_type {
                     response.trim_front(2); // skip over the list type
                     consumed_list_type = true;

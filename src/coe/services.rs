@@ -84,7 +84,7 @@ impl Display for SdoSegmented {
 /// Defined in ETG.1000.6 §5.6.3.3.1
 #[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 14)]
-pub struct GetObjectDescriptionListRequest {
+pub struct ObjectDescriptionListRequest {
     #[wire(bytes = 8)]
     pub mailbox: MailboxHeader,
     #[wire(bytes = 4)]
@@ -96,7 +96,7 @@ pub struct GetObjectDescriptionListRequest {
 /// Defined in ETG.1000.6 §5.6.3.3.2
 #[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 12)]
-pub struct GetObjectDescriptionListResponse {
+pub struct ObjectDescriptionListResponse {
     #[wire(bytes = 8)]
     pub mailbox: MailboxHeader,
     #[wire(bytes = 4)]
@@ -300,8 +300,8 @@ pub fn upload(counter: u8, index: u16, access: SubIndex) -> SdoNormal {
 pub fn get_object_description_list(
     counter: u8,
     list_type: ObjectDescriptionListQuery,
-) -> GetObjectDescriptionListRequest {
-    GetObjectDescriptionListRequest {
+) -> ObjectDescriptionListRequest {
+    ObjectDescriptionListRequest {
         mailbox: MailboxHeader {
             length: 0x08,
             // address: 0x0000,
@@ -319,8 +319,8 @@ pub fn get_object_description_list(
     }
 }
 
-pub fn get_object_quantities(counter: u8) -> GetObjectDescriptionListRequest {
-    GetObjectDescriptionListRequest {
+pub fn get_object_quantities(counter: u8) -> ObjectDescriptionListRequest {
+    ObjectDescriptionListRequest {
         mailbox: MailboxHeader {
             length: 0x08,
             // address: 0x0000,
@@ -509,8 +509,8 @@ mod tests {
         let raw: [u8; 14] = [
             0x8, 0x0, 0x0, 0x0, 0x0, 0x73, 0x0, 0x80, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0,
         ];
-        let parsed = GetObjectDescriptionListRequest::unpack_from_slice(&raw);
-        let expected = GetObjectDescriptionListRequest {
+        let parsed = ObjectDescriptionListRequest::unpack_from_slice(&raw);
+        let expected = ObjectDescriptionListRequest {
             mailbox: MailboxHeader {
                 length: 8,
                 priority: Priority::Lowest,
@@ -526,10 +526,10 @@ mod tests {
             list_type: ObjectDescriptionListQueryInner::All,
         };
         pretty_assertions::assert_eq!(parsed, Ok(expected));
-        let mut buf = [0u8; GetObjectDescriptionListRequest::PACKED_LEN];
+        let mut buf = [0u8; ObjectDescriptionListRequest::PACKED_LEN];
         pretty_assertions::assert_eq!(
             expected.pack_to_slice(&mut buf),
-            Ok(&raw[..GetObjectDescriptionListRequest::PACKED_LEN])
+            Ok(&raw[..ObjectDescriptionListRequest::PACKED_LEN])
         );
 
         // from Wireshark
@@ -545,8 +545,8 @@ mod tests {
             0x1a, 0x1e, 0x1a, 0x1f, 0x1a, 0x20, 0x1a, 0x21, 0x1a, 0x22, 0x1a, 0x23, 0x1a, 0x24,
             0x1a, 0x25, 0x1a, 0x26, 0x1a, 0x30, 0x1a, 0x31, 0x1a,
         ];
-        let parsed = GetObjectDescriptionListResponse::unpack_from_slice(&raw);
-        let expected = GetObjectDescriptionListResponse {
+        let parsed = ObjectDescriptionListResponse::unpack_from_slice(&raw);
+        let expected = ObjectDescriptionListResponse {
             mailbox: MailboxHeader {
                 length: 122,
                 priority: Priority::Lowest,
@@ -562,17 +562,17 @@ mod tests {
         };
         pretty_assertions::assert_eq!(parsed, Ok(expected));
         let list_type = <ObjectDescriptionListQueryInner>::unpack_from_slice(
-            &raw[GetObjectDescriptionListResponse::PACKED_LEN
-                ..GetObjectDescriptionListResponse::PACKED_LEN + 2],
+            &raw[ObjectDescriptionListResponse::PACKED_LEN
+                ..ObjectDescriptionListResponse::PACKED_LEN + 2],
         );
         pretty_assertions::assert_eq!(list_type, Ok(ObjectDescriptionListQueryInner::All));
-        let mut buf = [0u8; GetObjectDescriptionListResponse::PACKED_LEN];
+        let mut buf = [0u8; ObjectDescriptionListResponse::PACKED_LEN];
         pretty_assertions::assert_eq!(
             expected.pack_to_slice(&mut buf),
-            Ok(&raw[..GetObjectDescriptionListResponse::PACKED_LEN])
+            Ok(&raw[..ObjectDescriptionListResponse::PACKED_LEN])
         );
         // length is actually 57
-        let expected: [u16; (RAW_LEN - GetObjectDescriptionListRequest::PACKED_LEN) / 2] = [
+        let expected: [u16; (RAW_LEN - ObjectDescriptionListRequest::PACKED_LEN) / 2] = [
             0x1000, 0x1008, 0x1009, 0x100a, 0x1018, 0x1601, 0x1602, 0x1603, 0x1621, 0x1622, 0x1623,
             0x1624, 0x1625, 0x1626, 0x1630, 0x1631, 0x1a00, 0x1a01, 0x1a02, 0x1a03, 0x1a04, 0x1a05,
             0x1a06, 0x1a07, 0x1a08, 0x1a09, 0x1a0a, 0x1a0b, 0x1a0c, 0x1a0d, 0x1a0e, 0x1a0f, 0x1a10,
@@ -580,7 +580,7 @@ mod tests {
             0x1a1c, 0x1a1d, 0x1a1e, 0x1a1f, 0x1a20, 0x1a21, 0x1a22, 0x1a23, 0x1a24, 0x1a25, 0x1a26,
             0x1a30, 0x1a31,
         ];
-        let parsed = <_>::unpack_from_slice(&raw[GetObjectDescriptionListRequest::PACKED_LEN..]);
+        let parsed = <_>::unpack_from_slice(&raw[ObjectDescriptionListRequest::PACKED_LEN..]);
         pretty_assertions::assert_eq!(parsed, Ok(expected));
     }
 
