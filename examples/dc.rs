@@ -8,7 +8,9 @@ use ethercrab::{
     DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts,
     error::Error,
     std::ethercat_now,
-    subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
+    subdevice_group::{
+        CycleInfo, DcConfiguration, HasDc, PreOpPdi, SafeOp, SubDeviceGroup, TxRxResponse,
+    },
 };
 use futures_lite::StreamExt;
 use std::{
@@ -339,12 +341,48 @@ fn main() -> Result<(), Error> {
             )
             .await?;
 
-        let group = group
-            .into_safe_op(&maindevice)
-            .await
-            .expect("PRE-OP -> SAFE-OP");
+        // State machine to handle transition to SafeOp with process data
+        enum GroupState {
+            PreOp(SubDeviceGroup<MAX_SUBDEVICES, PDI_LEN, PreOpPdi, HasDc>),
+            SafeOp(SubDeviceGroup<MAX_SUBDEVICES, PDI_LEN, SafeOp, HasDc>),
+        }
 
-        log::info!("SAFE-OP");
+        let mut group_container = Some(GroupState::PreOp(group));
+        let mut tick = 0;
+
+        let group = loop {
+            let now = Instant::now();
+
+            match group_container.take().unwrap() {
+                GroupState::PreOp(group) => {
+                    let res = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+
+                    if tick > 300 {
+                        let group = group.request_into_safe_op(&maindevice).await?;
+                        group_container = Some(GroupState::SafeOp(group));
+                        log::info!("Requested SAFE-OP");
+                    } else {
+                        group_container = Some(GroupState::PreOp(group));
+                    }
+
+                    smol::Timer::at(now + res.extra.next_cycle_wait).await;
+                }
+                GroupState::SafeOp(group) => {
+                    let res = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+
+                    if res.all_safe_op() {
+                        log::info!("SAFE-OP");
+                        break group;
+                    } else {
+                        group_container = Some(GroupState::SafeOp(group));
+                    }
+
+                    smol::Timer::at(now + res.extra.next_cycle_wait).await;
+                }
+            }
+
+            tick += 1;
+        };
 
         #[derive(serde::Serialize)]
         struct ProcessStat {

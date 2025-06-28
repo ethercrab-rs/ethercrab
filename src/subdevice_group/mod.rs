@@ -276,6 +276,31 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         ))
     }
 
+    /// Mutably borrow an individual SubDevice.
+    #[deny(clippy::panic)]
+    #[doc(alias = "slave")]
+    pub fn subdevice_mut<'maindevice, 'group>(
+        &'group mut self,
+        maindevice: &'maindevice MainDevice<'maindevice>,
+        index: usize,
+    ) -> Result<SubDeviceRef<'maindevice, &'group mut SubDevice>, Error> {
+        let subdevice = self
+            .inner
+            .get_mut()
+            .subdevices
+            .get_mut(index)
+            .ok_or(Error::NotFound {
+                item: Item::SubDevice,
+                index: Some(index),
+            })?;
+
+        Ok(SubDeviceRef::new(
+            maindevice,
+            subdevice.configured_address(),
+            subdevice,
+        ))
+    }
+
     /// Transition the group from PRE-OP -> SAFE-OP -> OP.
     ///
     /// To transition individually from PRE-OP to SAFE-OP, then SAFE-OP to OP, see
@@ -399,6 +424,27 @@ where
             _state: PhantomData::<PreOp>,
         };
 
+        let reference_device = self_
+            .iter(maindevice)
+            .find(|x| x.configured_address() == reference)
+            .expect("Could not find reference device");
+
+        let reference_time: u64 = reference_device
+            .read(RegisterAddress::DcSystemTime)
+            .ignore_wkc()
+            .receive(maindevice)
+            .await?;
+
+        fmt::debug!("--> Reference time {} ns", reference_time);
+
+        let sync0_period = sync0_period.as_nanos() as u64;
+        let first_pulse_delay = start_delay.as_nanos() as u64;
+
+        // Round first pulse time to a whole number of cycles
+        let start_time = (reference_time + first_pulse_delay) / sync0_period * sync0_period;
+
+        fmt::debug!("--> Computed DC sync start time: {}", start_time);
+
         // Only configure DC for those devices that want and support it
         let dc_devices = self_.iter(maindevice).filter(|subdevice| {
             subdevice.dc_support().any() && !matches!(subdevice.dc_sync(), DcSync::Disabled)
@@ -424,23 +470,6 @@ where
                 .write(RegisterAddress::DcCyclicUnitControl)
                 .send(maindevice, 0u8)
                 .await?;
-
-            let device_time: u64 = subdevice
-                .read(RegisterAddress::DcSystemTime)
-                .ignore_wkc()
-                .receive(maindevice)
-                .await?;
-
-            fmt::debug!("--> Device time {} ns", device_time);
-
-            let sync0_period = sync0_period.as_nanos() as u64;
-
-            let first_pulse_delay = start_delay.as_nanos() as u64;
-
-            // Round first pulse time to a whole number of cycles
-            let start_time = (device_time + first_pulse_delay) / sync0_period * sync0_period;
-
-            fmt::debug!("--> Computed DC sync start time: {}", start_time);
 
             subdevice
                 .write(RegisterAddress::DcSyncStartTime)
@@ -477,7 +506,7 @@ where
             pdi_len: self_.pdi_len,
             inner: self_.inner,
             dc_conf: HasDc {
-                sync0_period: sync0_period.as_nanos() as u64,
+                sync0_period,
                 sync0_shift: sync0_shift.as_nanos() as u64,
                 reference,
             },
@@ -525,6 +554,35 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         let self_ = self.into_safe_op(maindevice).await?;
 
         self_.request_into_op(maindevice).await
+    }
+
+    /// Like [`into_safe_op`](SubDeviceGroup::into_safe_op), however does not wait for all SubDevices to enter
+    /// SAFE-OP state.
+    ///
+    /// This allows the application process data loop to be started, so as to e.g. not time out
+    /// watchdogs, or provide valid data to prevent DC sync errors.
+    ///
+    /// The group's state can be checked by testing the result of a `tx_rx_*` call using methods on
+    /// the [`TxRxResponse`] struct.
+    pub async fn request_into_safe_op(
+        mut self,
+        maindevice: &MainDevice<'_>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
+        for subdevice in self.inner.get_mut().subdevices.iter_mut() {
+            SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
+                .request_subdevice_state_nowait(SubDeviceState::SafeOp)
+                .await?;
+        }
+
+        Ok(SubDeviceGroup {
+            id: self.id,
+            pdi: self.pdi,
+            read_pdi_len: self.read_pdi_len,
+            pdi_len: self.pdi_len,
+            inner: self.inner,
+            dc_conf: self.dc_conf,
+            _state: PhantomData,
+        })
     }
 
     /// Transition all SubDevices in the group from PRE-OP to INIT.
