@@ -335,25 +335,18 @@ where
         let start_offset = *global_offset;
         // let mut total_bit_len = 0;
 
-        for (sync_manager_index, sm_type) in self
+        for (sync_manager_index, (sm_type, sync_manager)) in self
             .state
             .config
             .mailbox
             .coe_sync_manager_types
             .iter()
+            .zip(sync_managers.iter())
             .enumerate()
         {
             let sync_manager_index = sync_manager_index as u8;
 
             let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
-
-            let sync_manager =
-                sync_managers
-                    .get(usize::from(sync_manager_index))
-                    .ok_or(Error::NotFound {
-                        item: Item::SyncManager,
-                        index: Some(usize::from(sync_manager_index)),
-                    })?;
 
             if *sm_type != desired_sm_type {
                 continue;
