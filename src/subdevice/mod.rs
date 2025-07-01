@@ -1203,7 +1203,7 @@ impl<'maindevice, S> SubDeviceRef<'maindevice, S> {
 
         if response.error {
             let error = self
-                .read(RegisterAddress::AlStatus)
+                .read(RegisterAddress::AlStatusCode)
                 .receive::<AlStatusCode>(self.maindevice)
                 .await?;
 
