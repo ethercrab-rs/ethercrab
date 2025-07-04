@@ -2,10 +2,7 @@ use crate::{
     eeprom::types::{MailboxProtocols, SyncManagerType},
     pdi::PdiSegment,
 };
-use core::{
-    fmt::{self, Debug},
-    ops::Range,
-};
+use core::fmt::{self, Debug};
 
 /// SubDevice identity information (vendor ID, product ID, etc).
 #[derive(Default, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
