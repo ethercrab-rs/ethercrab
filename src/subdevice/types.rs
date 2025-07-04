@@ -2,7 +2,10 @@ use crate::{
     eeprom::types::{MailboxProtocols, SyncManagerType},
     pdi::PdiSegment,
 };
-use core::fmt::{self, Debug};
+use core::{
+    fmt::{self, Debug},
+    ops::Range,
+};
 
 /// SubDevice identity information (vendor ID, product ID, etc).
 #[derive(Default, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
@@ -75,4 +78,15 @@ pub struct Mailbox {
 pub struct IoRanges {
     pub input: PdiSegment,
     pub output: PdiSegment,
+    pub tx_pdos: PdoMappings,
+    pub rx_pdos: PdoMappings,
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct PdoMapping {
+    pub index: u16,
+    pub sub_index: u8,
+    pub bit_len: u8,
+    pub bit_offset: u16,
+}
+pub type PdoMappings = heapless::Vec<PdoMapping, 64>;

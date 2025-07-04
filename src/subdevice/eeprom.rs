@@ -339,6 +339,13 @@ where
                 fmt::debug!("--> PDO entry:\n{:#?}", entry);
 
                 pdo.bit_len += u16::from(entry.data_length_bits);
+                pdo.entries.push(entry).map_err(|_| {
+                    fmt::error!(
+                        "Too many PDO entries for PDO, max {}",
+                        pdo.entries.capacity()
+                    );
+                    Error::Capacity(Item::PdoEntry)
+                })?;
             }
 
             pdos.push(pdo).map_err(|_| {
@@ -522,6 +529,7 @@ mod tests {
 
     use super::*;
     use crate::{
+        base_data_types::PrimitiveDataType,
         eeprom::{
             file_provider::EepromFile,
             types::{
@@ -780,15 +788,15 @@ mod tests {
             "../../dumps/eeprom/el2828.hex"
         )));
 
-        fn pdo(_index: u16, _name_string_idx: u8, _entry_idx: u16) -> Pdo {
-            // let entry_defaults = PdoEntry {
-            //     index: 0x7000,
-            //     sub_index: 1,
-            //     name_string_idx: 6,
-            //     data_type: PrimitiveDataType::Bool,
-            //     data_length_bits: 1,
-            //     flags: 0,
-            // };
+        fn pdo(_index: u16, _name_string_idx: u8, entry_idx: u16) -> Pdo {
+            let entry_defaults = PdoEntry {
+                index: 0x7000,
+                sub_index: 1,
+                name_string_idx: 6,
+                data_type: PrimitiveDataType::Bool,
+                data_length_bits: 1,
+                flags: 0,
+            };
 
             let pdo_defaults = Pdo {
                 // index: 0x1600,
@@ -798,11 +806,11 @@ mod tests {
                 // dc_sync: 0,
                 // flags: PdoFlags::PDO_MANDATORY | PdoFlags::PDO_FIXED_CONTENT,
                 bit_len: 1,
-                // entries: heapless::Vec::from_slice(&[PdoEntry {
-                //     index: 0x7000,
-                //     ..entry_defaults
-                // }])
-                // .unwrap(),
+                entries: heapless::Vec::from_slice(&[PdoEntry {
+                    index: entry_idx,
+                    ..entry_defaults
+                }])
+                .unwrap(),
             };
 
             Pdo {
