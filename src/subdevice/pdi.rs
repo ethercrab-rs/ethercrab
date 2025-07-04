@@ -1,3 +1,5 @@
+use heapless::FnvIndexMap;
+
 use super::{IoRanges, SubDevice, SubDeviceRef};
 use crate::subdevice_group::MySyncUnsafeCell;
 use core::{
@@ -58,6 +60,45 @@ impl<const N: usize> PdiIoRawWriteGuard<'_, N> {
         let all = unsafe { &mut *self.lock.get() }.as_mut_slice();
 
         &mut all[self.ranges.output.bytes.clone()]
+    }
+
+    pub fn tx_pdos(&self) -> FnvIndexMap<(u16, u8), &[u8], 64> {
+        let inputs = self.inputs();
+
+        self.ranges
+            .tx_pdos
+            .iter()
+            .map(|pdo| {
+                let len = pdo.bit_len.div_ceil(8) as usize;
+                let offset = pdo.bit_offset.div_ceil(8) as usize;
+                (
+                    (pdo.index, pdo.sub_index),
+                    inputs[offset..offset + len].as_ref(),
+                )
+            })
+            .collect()
+    }
+
+    pub fn rx_pdos(&mut self) -> FnvIndexMap<(u16, u8), &mut [u8], 64> {
+        let outputs = self.outputs();
+        let outputs_len = outputs.len();
+        let outputs = outputs.as_mut_ptr(); // release self borrow
+
+        self.ranges
+            .rx_pdos
+            .iter()
+            .map(|pdo| {
+                let len = pdo.bit_len.div_ceil(8) as usize;
+                let offset = pdo.bit_offset.div_ceil(8) as usize;
+                if offset + len <= outputs_len {
+                    ((pdo.index, pdo.sub_index), unsafe {
+                        core::slice::from_raw_parts_mut(outputs.add(offset), len)
+                    })
+                } else {
+                    unreachable!()
+                }
+            })
+            .collect()
     }
 }
 
