@@ -234,6 +234,8 @@ mod tests {
                 bytes: 2..4,
                 // bit_len: 16,
             },
+            rx_pdos: Default::default(),
+            tx_pdos: Default::default(),
         };
 
         const LEN: usize = 64;

@@ -1,4 +1,4 @@
-use super::{SubDevice, SubDeviceRef};
+use super::{SubDevice, SubDeviceRef, types::PdoMappings};
 use crate::{
     coe::{SdoExpedited, SubIndex},
     eeprom::types::{
@@ -10,7 +10,7 @@ use crate::{
     fmt,
     pdi::{PdiOffset, PdiSegment},
     register::RegisterAddress,
-    subdevice::types::{Mailbox, MailboxConfig},
+    subdevice::types::{Mailbox, MailboxConfig, PdoMapping},
     subdevice_state::SubDeviceState,
     sync_manager_channel::{Enable, SM_BASE_ADDRESS, SM_TYPE_ADDRESS, Status, SyncManagerChannel},
 };
@@ -138,7 +138,7 @@ where
             has_coe
         );
 
-        let range = if has_coe {
+        let (range, pdos) = if has_coe {
             self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
                 .await?
         } else {
@@ -152,12 +152,14 @@ where
                     bytes: (range.bytes.start - group_start_address as usize)
                         ..(range.bytes.end - group_start_address as usize),
                 };
+                self.state.config.io.tx_pdos = pdos;
             }
             PdoDirection::MasterWrite => {
                 self.state.config.io.output = PdiSegment {
                     bytes: (range.bytes.start - group_start_address as usize)
                         ..(range.bytes.end - group_start_address as usize),
                 };
+                self.state.config.io.rx_pdos = pdos;
             }
         };
 
@@ -316,7 +318,7 @@ where
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         global_offset: &mut PdiOffset,
-    ) -> Result<PdiSegment, Error> {
+    ) -> Result<(PdiSegment, PdoMappings), Error> {
         if !self.state.config.mailbox.has_coe {
             fmt::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
         }
@@ -334,6 +336,7 @@ where
 
         let start_offset = *global_offset;
         // let mut total_bit_len = 0;
+        let mut pdo_mappings = PdoMappings::new();
 
         for (sync_manager_index, (sm_type, sync_manager)) in self
             .state
@@ -415,6 +418,21 @@ where
                         mapping_bit_len,
                     );
 
+                    pdo_mappings
+                        .push(PdoMapping {
+                            index,
+                            sub_index,
+                            bit_len: mapping_bit_len,
+                            bit_offset: sm_bit_len,
+                        })
+                        .map_err(|_| {
+                            fmt::error!(
+                                "Too many PDO entries for PDO, max {}",
+                                pdo_mappings.capacity()
+                            );
+                            Error::Capacity(Item::PdoEntry)
+                        })?;
+
                     sm_bit_len += u16::from(mapping_bit_len);
                 }
             }
@@ -451,10 +469,13 @@ where
             // total_bit_len += sm_bit_len;
         }
 
-        Ok(PdiSegment {
-            // bit_len: total_bit_len.into(),
-            bytes: start_offset.up_to(*global_offset),
-        })
+        Ok((
+            PdiSegment {
+                // bit_len: total_bit_len.into(),
+                bytes: start_offset.up_to(*global_offset),
+            },
+            pdo_mappings,
+        ))
     }
 
     async fn write_fmmu_config(
@@ -515,7 +536,7 @@ where
         sync_managers: &[SyncManager],
         direction: PdoDirection,
         offset: &mut PdiOffset,
-    ) -> Result<PdiSegment, Error> {
+    ) -> Result<(PdiSegment, PdoMappings), Error> {
         let eeprom = self.eeprom();
 
         let pdos = match direction {
@@ -539,6 +560,7 @@ where
 
         let start_offset = *offset;
         // let mut total_bit_len = 0;
+        let mut pdo_mappings = PdoMappings::new();
 
         let (sm_type, _fmmu_type) = direction.filter_terms();
 
@@ -549,11 +571,28 @@ where
         {
             let sync_manager_index = sync_manager_index as u8;
 
-            let bit_len = pdos
+            let mut bit_len = 0u16;
+            for pdo_entry in pdos
                 .iter()
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
-                .map(|pdo| pdo.bit_len)
-                .sum();
+                .flat_map(|pdo| pdo.entries.iter())
+            {
+                pdo_mappings
+                    .push(PdoMapping {
+                        index: pdo_entry.index,
+                        sub_index: pdo_entry.sub_index,
+                        bit_len: pdo_entry.data_length_bits,
+                        bit_offset: bit_len,
+                    })
+                    .map_err(|_| {
+                        fmt::error!(
+                            "Too many PDO entries for PDO, max {}",
+                            pdo_mappings.capacity()
+                        );
+                        Error::Capacity(Item::PdoEntry)
+                    })?;
+                bit_len += u16::from(pdo_entry.data_length_bits);
+            }
 
             // total_bit_len += bit_len;
 
@@ -587,10 +626,13 @@ where
             .await?;
         }
 
-        Ok(PdiSegment {
-            // bit_len: total_bit_len.into(),
-            bytes: start_offset.up_to(*offset),
-        })
+        Ok((
+            PdiSegment {
+                // bit_len: total_bit_len.into(),
+                bytes: start_offset.up_to(*offset),
+            },
+            pdo_mappings,
+        ))
     }
 }
 
