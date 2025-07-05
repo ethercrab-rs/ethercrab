@@ -1,4 +1,4 @@
-use super::{SubDevice, SubDeviceRef, types::PdoMappings};
+use super::{SubDevice, SubDeviceRef};
 use crate::{
     coe::{SdoExpedited, SubIndex},
     eeprom::types::{
@@ -8,9 +8,9 @@ use crate::{
     error::{Error, IgnoreNoCategory, Item},
     fmmu::Fmmu,
     fmt,
-    pdi::{PdiOffset, PdiSegment},
+    pdi::{PdiOffset, PdiSegment, PdoMapping},
     register::RegisterAddress,
-    subdevice::types::{Mailbox, MailboxConfig, PdoMapping},
+    subdevice::types::{Mailbox, MailboxConfig},
     subdevice_state::SubDeviceState,
     sync_manager_channel::{Enable, SM_BASE_ADDRESS, SM_TYPE_ADDRESS, Status, SyncManagerChannel},
 };
@@ -318,7 +318,7 @@ where
         fmmu_usage: &[FmmuUsage],
         direction: PdoDirection,
         global_offset: &mut PdiOffset,
-    ) -> Result<(PdiSegment, PdoMappings), Error> {
+    ) -> Result<(PdiSegment, PdoMapping), Error> {
         if !self.state.config.mailbox.has_coe {
             fmt::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
         }
@@ -336,7 +336,7 @@ where
 
         let start_offset = *global_offset;
         // let mut total_bit_len = 0;
-        let mut pdo_mappings = PdoMappings::new();
+        let mut pdo_mappings = PdoMapping::new();
 
         for (sync_manager_index, (sm_type, sync_manager)) in self
             .state
@@ -418,13 +418,10 @@ where
                         mapping_bit_len,
                     );
 
+                    let start_bytes = sm_bit_len.div_ceil(8) as usize;
+                    let end_bytes = start_bytes + mapping_bit_len.div_ceil(8) as usize;
                     pdo_mappings
-                        .push(PdoMapping {
-                            index,
-                            sub_index,
-                            bit_len: mapping_bit_len,
-                            bit_offset: sm_bit_len,
-                        })
+                        .insert((index, sub_index), start_bytes..end_bytes)
                         .map_err(|_| {
                             fmt::error!(
                                 "Too many PDO entries for PDO, max {}",
@@ -536,7 +533,7 @@ where
         sync_managers: &[SyncManager],
         direction: PdoDirection,
         offset: &mut PdiOffset,
-    ) -> Result<(PdiSegment, PdoMappings), Error> {
+    ) -> Result<(PdiSegment, PdoMapping), Error> {
         let eeprom = self.eeprom();
 
         let pdos = match direction {
@@ -560,7 +557,7 @@ where
 
         let start_offset = *offset;
         // let mut total_bit_len = 0;
-        let mut pdo_mappings = PdoMappings::new();
+        let mut pdo_mappings = PdoMapping::new();
 
         let (sm_type, _fmmu_type) = direction.filter_terms();
 
@@ -577,13 +574,13 @@ where
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
                 .flat_map(|pdo| pdo.entries.iter())
             {
+                let start_bytes = bit_len.div_ceil(8) as usize;
+                let end_bytes = start_bytes + pdo_entry.data_length_bits.div_ceil(8) as usize;
                 pdo_mappings
-                    .push(PdoMapping {
-                        index: pdo_entry.index,
-                        sub_index: pdo_entry.sub_index,
-                        bit_len: pdo_entry.data_length_bits,
-                        bit_offset: bit_len,
-                    })
+                    .insert(
+                        (pdo_entry.index, pdo_entry.sub_index),
+                        start_bytes..end_bytes,
+                    )
                     .map_err(|_| {
                         fmt::error!(
                             "Too many PDO entries for PDO, max {}",
