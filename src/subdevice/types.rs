@@ -1,6 +1,6 @@
 use crate::{
     eeprom::types::{MailboxProtocols, SyncManagerType},
-    pdi::PdiSegment,
+    pdi::{PdiSegment, PdoMapping},
 };
 use core::fmt::{self, Debug};
 
@@ -75,15 +75,6 @@ pub struct Mailbox {
 pub struct IoRanges {
     pub input: PdiSegment,
     pub output: PdiSegment,
-    pub tx_pdos: PdoMappings,
-    pub rx_pdos: PdoMappings,
+    pub tx_pdos: PdoMapping,
+    pub rx_pdos: PdoMapping,
 }
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct PdoMapping {
-    pub index: u16,
-    pub sub_index: u8,
-    pub bit_len: u8,
-    pub bit_offset: u16,
-}
-pub type PdoMappings = heapless::Vec<PdoMapping, 64>;
