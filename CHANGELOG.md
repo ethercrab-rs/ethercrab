@@ -6,10 +6,17 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- [#315](https://github.com/ethercrab-rs/ethercrab/pull/315) (@ClarkZaitun) Read SubDevice status
+  code from correct register when state transition fails.
+- [#313](https://github.com/ethercrab-rs/ethercrab/pull/313) (@fpdotmonkey) Read actual CoE abort
+  code instead of returning `CoeAbortCode::Incompatible` on SDO transfer failures.
+
 ### Added
 
 - [#310](https://github.com/ethercrab-rs/ethercrab/pull/310) Add support for XDP on Linux systems
-  using the `xdp` feature.z
+  using the `xdp` feature.
 
 ### Changed
 
