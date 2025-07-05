@@ -42,6 +42,7 @@ pub use self::pdi::SubDevicePdi;
 pub use self::types::IoRanges;
 pub use self::types::SubDeviceIdentity;
 use self::{eeprom::SubDeviceEeprom, types::Mailbox};
+pub use coe::{ObjectDescriptionListQuery, ObjectDescriptionListQueryCounts};
 pub use dc::DcSync;
 
 /// SubDevice device metadata. See [`SubDeviceRef`] for richer behaviour.
@@ -541,19 +542,13 @@ where
             .config
             .mailbox
             .write
-            .ok_or(Error::Mailbox(MailboxError::NoMailbox))
-            .inspect_err(|_| {
-                fmt::error!("No write (SubDevice IN) mailbox found but one is required");
-            })?;
+            .ok_or(Error::Mailbox(MailboxError::NoReadMailbox))?;
         let read_mailbox = self
             .state
             .config
             .mailbox
             .read
-            .ok_or(Error::Mailbox(MailboxError::NoMailbox))
-            .inspect_err(|_| {
-                fmt::error!("No read (SubDevice OUT) mailbox found but one is required");
-            })?;
+            .ok_or(Error::Mailbox(MailboxError::NoWriteMailbox))?;
 
         let mailbox_read_sm_status =
             RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
@@ -671,7 +666,9 @@ where
     where
         R: CoeServiceRequest + Debug,
     {
-        let (read_mailbox, write_mailbox) = self.coe_mailboxes().await?;
+        let (read_mailbox, write_mailbox) = self.coe_mailboxes().await.inspect_err(|err| {
+            fmt::error!("{} {} {}", self.configured_address(), self.name(), err)
+        })?;
 
         // Send data to SubDevice IN mailbox
         self.write(write_mailbox.address)
@@ -782,6 +779,65 @@ where
 
             Ok((headers, response))
         }
+    }
+
+    /// Handle submitting to mailboxes for the SDO Information service.
+    ///
+    /// If the subdevice doesn't have the necessary mailboxes, this will return `Ok(None)`.
+    ///
+    /// Per ETG.1000.5 §6.1.4.1.3.4, this means sending one request and then awaiting many
+    /// responses.
+    // TODO: make this generic w.r.t. SDO Info header type.
+    async fn send_sdo_info_service(
+        &self,
+        request: coe::services::ObjectDescriptionListRequest,
+    ) -> Result<Option<heapless::Vec<u8, { u16::MAX as usize * 2 }>>, Error> {
+        let (read_mailbox, write_mailbox) = match self.coe_mailboxes().await {
+            Ok((read, write)) => Ok((read, write)),
+            Err(Error::Mailbox(MailboxError::NoReadMailbox | MailboxError::NoWriteMailbox)) => {
+                return Ok(None);
+            }
+            Err(err) => Err(err),
+        }?;
+
+        // Send data to SubDevice IN mailbox
+        self.write(write_mailbox.address)
+            .with_len(write_mailbox.len)
+            .send(self.maindevice, &request.pack().as_ref())
+            .await?;
+
+        const COE_HEADER_AND_LIST_TYPE_SIZE: usize = 8;
+
+        let mut consumed_list_type = false;
+        // The biggest SDO Info request is listing all the available objects,
+        // which is u16::MAX * 2 = 0x1fffe bytes big (ETG.1000.6 §5.6.3.3,
+        // CiA 301 §7.4.1).
+        let mut buf = heapless::Vec::<u8, 0x1fffe>::new();
+        loop {
+            let mut response = self.coe_response(&read_mailbox).await?;
+            let headers =
+                <coe::services::ObjectDescriptionListResponse>::unpack_from_slice(&response)?;
+            if headers.sdo_info_header.op_code
+                == coe::SdoInfoOpCode::GetObjectDescriptionListResponse
+            {
+                let length = headers.mailbox.length as usize - COE_HEADER_AND_LIST_TYPE_SIZE;
+                fmt::trace!(
+                    "CoE Info, {} fragments left",
+                    headers.sdo_info_header.fragments_left
+                );
+                response.trim_front(coe::services::ObjectDescriptionListResponse::PACKED_LEN);
+                if !consumed_list_type {
+                    response.trim_front(2); // skip over the list type
+                    consumed_list_type = true;
+                }
+                buf.extend_from_slice(&response[..length])
+                    .map_err(|_| Error::Internal)?;
+                if !headers.sdo_info_header.incomplete {
+                    break;
+                }
+            }
+        }
+        Ok(Some(buf))
     }
 
     /// Write a value to the given SDO index (address) and sub-index.
@@ -1074,6 +1130,55 @@ where
 
             Error::Pdu(PduError::Decode)
         })
+    }
+
+    /// List out all of the CoE objects' addresses of kind `list_type`.
+    ///
+    /// For devices without CoE mailboxes, this will return `Ok(None)`.
+    pub async fn sdo_info_object_description_list(
+        &self,
+        list_type: ObjectDescriptionListQuery,
+    ) -> Result<Option<heapless::Vec<u16, /* # of u16s */ { u16::MAX as usize + 1 }>>, Error> {
+        let request = coe::services::get_object_description_list(self.mailbox_counter(), list_type);
+        let Some(response_payload) = self.send_sdo_info_service(request).await? else {
+            return Ok(None);
+        };
+
+        // The standard recommends to sort this, but I don't think that should be imposed onto the user
+        <heapless::Vec<u16, 0x1_0000>>::unpack_from_slice(&response_payload)
+            .map_err(|_| {
+                fmt::error!(
+                    "SDO Info Get OD List (type {}) data {:?} (len {})",
+                    list_type,
+                    response_payload,
+                    response_payload.len()
+                );
+
+                Error::Pdu(PduError::Decode)
+            })
+            .map(Some)
+    }
+
+    /// Count how many objects match each [`coe::ObjectDescriptionListQuery`].
+    pub async fn sdo_info_object_quantities(
+        &self,
+    ) -> Result<Option<ObjectDescriptionListQueryCounts>, Error> {
+        let request = coe::services::get_object_quantities(self.mailbox_counter());
+        let Some(response_payload) = self.send_sdo_info_service(request).await? else {
+            return Ok(None);
+        };
+
+        coe::ObjectDescriptionListQueryCounts::unpack_from_slice(&response_payload)
+            .map_err(|_| {
+                fmt::error!(
+                    "SDO Info Get OD List (type Object Quantities) data {:?} (len {})",
+                    response_payload,
+                    response_payload.len()
+                );
+
+                Error::Pdu(PduError::Decode)
+            })
+            .map(Some)
     }
 }
 

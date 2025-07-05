@@ -263,8 +263,12 @@ pub enum MailboxError {
         /// The subindex used in the operation.
         sub_index: u8,
     },
-    /// A SubDeviceve has no mailbox but requires one for a given action.
-    NoMailbox,
+    /// A SubDevice has no write (SubDevice IN) mailbox, but requires one
+    /// for a given action.
+    NoReadMailbox,
+    /// A SubDevice has no read (SubDevice OUT) mailbox, but requires one
+    /// for a given action.
+    NoWriteMailbox,
     /// The response to a mailbox action is invalid.
     SdoResponseInvalid {
         /// The address used in the operation.
@@ -298,7 +302,10 @@ impl core::fmt::Display for MailboxError {
                 "{:#06x}:{} returned data is too long",
                 address, sub_index
             ),
-            MailboxError::NoMailbox => f.write_str("device has no mailbox"),
+            MailboxError::NoReadMailbox => f.write_str("device has no read (subdevice in) mailbox"),
+            MailboxError::NoWriteMailbox => {
+                f.write_str("device has no write (subdevice out) mailbox")
+            }
             MailboxError::SdoResponseInvalid { address, sub_index } => write!(
                 f,
                 "{:#06x}:{} invalid response from device",
