@@ -3,6 +3,8 @@ use ethercrab_wire::EtherCrabWireReadSized;
 pub mod abort_code;
 pub mod services;
 
+pub use services::{ObjectDescriptionListQuery, ObjectDescriptionListQueryCounts};
+
 /// Defined in ETG1000.6 Table 29 – CoE elements
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
@@ -76,6 +78,31 @@ pub struct SegmentSdoHeader {
 
     #[wire(bits = 3)]
     command: CoeCommand,
+}
+
+/// Defined in ETG.1000.6 5.6.3.2
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 4)]
+pub struct SdoInfoHeader {
+    #[wire(bits = 7)]
+    pub op_code: SdoInfoOpCode,
+    #[wire(bits = 1)]
+    pub incomplete: bool,
+    #[wire(pre_skip = 8, bytes = 2)]
+    pub fragments_left: u16,
+}
+
+/// Defined in ETG.1000.6 5.6.3.2
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[repr(u8)]
+pub enum SdoInfoOpCode {
+    GetObjectDescriptionListRequest = 0x01,
+    GetObjectDescriptionListResponse = 0x02,
+    GetObjectDescriptionRequest = 0x03,
+    GetObjectDescriptionResponse = 0x04,
+    GetEntryDescriptionRequest = 0x05,
+    GetEntryDescriptionResponse = 0x06,
+    SdoInfoErrorRequest = 0x07,
 }
 
 /// Subindex access.
