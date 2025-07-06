@@ -16,7 +16,7 @@ use ethercrab::{
 };
 use std::{path::PathBuf, time::Duration};
 
-const MAX_SUBDEVICES: usize = 16;
+const MAX_SUBDEVICES: usize = 8;
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 const MAX_FRAMES: usize = 128;
 const PDI_LEN: usize = 64;

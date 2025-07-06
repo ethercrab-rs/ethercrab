@@ -104,7 +104,7 @@ impl core::fmt::Display for PdiSegment {
 // }
 
 /// Type alias for a mapping of PDOs to their ranges in the PDI (relative to the start of SM FMMU)
-pub type PdoMapping = heapless::FnvIndexMap<(u16, u8), Range<usize>, 32>;
+pub type PdoMapping = heapless::LinearMap<(u16, u8), (u16, u8), 64>;
 
 #[cfg(test)]
 mod tests {
