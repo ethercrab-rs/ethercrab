@@ -418,10 +418,11 @@ where
                         mapping_bit_len,
                     );
 
-                    let start_bytes = sm_bit_len.div_ceil(8) as usize;
-                    let end_bytes = start_bytes + mapping_bit_len.div_ceil(8) as usize;
                     pdo_mappings
-                        .insert((index, sub_index), start_bytes..end_bytes)
+                        .insert(
+                            (index, sub_index),
+                            (sm_bit_len.div_ceil(8), mapping_bit_len.div_ceil(8)),
+                        )
                         .map_err(|_| {
                             fmt::error!(
                                 "Too many PDO entries for PDO, max {}",
@@ -574,12 +575,10 @@ where
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
                 .flat_map(|pdo| pdo.entries.iter())
             {
-                let start_bytes = bit_len.div_ceil(8) as usize;
-                let end_bytes = start_bytes + pdo_entry.data_length_bits.div_ceil(8) as usize;
                 pdo_mappings
                     .insert(
                         (pdo_entry.index, pdo_entry.sub_index),
-                        start_bytes..end_bytes,
+                        (bit_len.div_ceil(8), pdo_entry.data_length_bits.div_ceil(8)),
                     )
                     .map_err(|_| {
                         fmt::error!(
