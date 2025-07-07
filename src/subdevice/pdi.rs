@@ -5,6 +5,7 @@ use crate::{
     subdevice_group::MySyncUnsafeCell,
 };
 use core::ops::{Deref, DerefMut, Range};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite};
 
 /// Provides a read-only reference to a slice in the PDI
 pub struct PdiReadGuard<'a, const N: usize> {
@@ -30,6 +31,13 @@ impl<const N: usize> PdiReadGuard<'_, N> {
             index: Some(index as usize),
         })?;
         Ok(&self[range.0 as usize..range.0 as usize + range.1 as usize])
+    }
+
+    pub fn pdo_read<T>(&self, index: u16, sub_index: u8) -> Result<T, Error>
+    where
+        T: EtherCrabWireRead,
+    {
+        Ok(T::unpack_from_slice(self.pdo_raw(index, sub_index)?)?)
     }
 }
 
@@ -63,6 +71,21 @@ impl<const N: usize> PdiWriteGuard<'_, N> {
             index: Some(index as usize),
         })?;
         Ok(&mut self[range.0 as usize..range.0 as usize + range.1 as usize])
+    }
+
+    pub fn pdo_read<T>(&mut self, index: u16, sub_index: u8) -> Result<T, Error>
+    where
+        T: EtherCrabWireRead,
+    {
+        Ok(T::unpack_from_slice(self.pdo_raw(index, sub_index)?)?)
+    }
+
+    pub fn pdo_write<T>(&mut self, index: u16, sub_index: u8, value: T) -> Result<(), Error>
+    where
+        T: EtherCrabWireWrite,
+    {
+        value.pack_to_slice(self.pdo_raw(index, sub_index)?)?;
+        Ok(())
     }
 }
 
