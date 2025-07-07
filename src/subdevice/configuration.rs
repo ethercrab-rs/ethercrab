@@ -336,7 +336,7 @@ where
 
         let start_offset = *global_offset;
         // let mut total_bit_len = 0;
-        let mut pdo_mappings = PdoMapping::new();
+        let mut pdo_mappings = PdoMapping::default();
 
         for (sync_manager_index, (sm_type, sync_manager)) in self
             .state
@@ -418,18 +418,20 @@ where
                         mapping_bit_len,
                     );
 
-                    pdo_mappings
-                        .insert(
-                            (index, sub_index),
-                            (sm_bit_len.div_ceil(8), mapping_bit_len.div_ceil(8)),
-                        )
-                        .map_err(|_| {
-                            fmt::error!(
-                                "Too many PDO entries for PDO, max {}",
-                                pdo_mappings.capacity()
-                            );
-                            Error::Capacity(Item::PdoEntry)
-                        })?;
+                    #[allow(unused_variables)]
+                    let err = pdo_mappings.insert(
+                        (index, sub_index),
+                        (sm_bit_len.div_ceil(8), mapping_bit_len.div_ceil(8)),
+                    );
+
+                    #[cfg(not(feature = "alloc"))]
+                    err.map_err(|_| {
+                        fmt::error!(
+                            "Too many PDO entries for PDO, max {}",
+                            pdo_mappings.capacity()
+                        );
+                        Error::Capacity(Item::PdoEntry)
+                    })?;
 
                     sm_bit_len += u16::from(mapping_bit_len);
                 }
@@ -558,7 +560,7 @@ where
 
         let start_offset = *offset;
         // let mut total_bit_len = 0;
-        let mut pdo_mappings = PdoMapping::new();
+        let mut pdo_mappings = PdoMapping::default();
 
         let (sm_type, _fmmu_type) = direction.filter_terms();
 
@@ -575,18 +577,22 @@ where
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
                 .flat_map(|pdo| pdo.entries.iter())
             {
-                pdo_mappings
-                    .insert(
+                {
+                    #[allow(unused_variables)]
+                    let err = pdo_mappings.insert(
                         (pdo_entry.index, pdo_entry.sub_index),
                         (bit_len.div_ceil(8), pdo_entry.data_length_bits.div_ceil(8)),
-                    )
-                    .map_err(|_| {
+                    );
+
+                    #[cfg(not(feature = "alloc"))]
+                    err.map_err(|_| {
                         fmt::error!(
                             "Too many PDO entries for PDO, max {}",
                             pdo_mappings.capacity()
                         );
                         Error::Capacity(Item::PdoEntry)
                     })?;
+                }
                 bit_len += u16::from(pdo_entry.data_length_bits);
             }
 
