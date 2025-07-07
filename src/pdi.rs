@@ -104,6 +104,10 @@ impl core::fmt::Display for PdiSegment {
 // }
 
 /// Type alias for a mapping of PDOs to their ranges in the PDI (relative to the start of SM FMMU)
+#[cfg(feature = "alloc")]
+pub type PdoMapping = indexmap::IndexMap<(u16, u8), (u16, u8), fnv::FnvBuildHasher>;
+
+#[cfg(not(feature = "alloc"))]
 pub type PdoMapping = heapless::LinearMap<(u16, u8), (u16, u8), 64>;
 
 #[cfg(test)]
