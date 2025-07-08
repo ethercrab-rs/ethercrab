@@ -5,24 +5,24 @@
 
 use env_logger::Env;
 use ethercrab::{
+    DcSync, EtherCrabWireRead, EtherCrabWireWrite, MainDevice, MainDeviceConfig, PduStorage,
+    RegisterAddress, Timeouts,
     ds402::{self, Ds402, OpMode, PdoMapping, StatusWord, SyncManagerAssignment},
     error::Error,
     std::ethercat_now,
     subdevice_group::{CycleInfo, DcConfiguration, MappingConfig, TxRxResponse},
-    DcSync, EtherCrabWireRead, EtherCrabWireWrite, MainDevice, MainDeviceConfig, PduStorage,
-    RegisterAddress, Timeouts,
 };
 use futures_lite::StreamExt;
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     thread,
     time::{Duration, Instant},
 };
-use ta::indicators::ExponentialMovingAverage;
 use ta::Next;
+use ta::indicators::ExponentialMovingAverage;
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
 const MAX_SUBDEVICES: usize = 16;
@@ -157,8 +157,10 @@ fn main() -> Result<(), Error> {
                         sync1_period: Duration::from_millis(1),
                     });
 
+                    // Set configuration using config struct
                     Ok(Some(el3702_mapping))
                 } else {
+                    // Autoconfigure from EEPROM or SDOs
                     Ok(None)
                 }
             })
