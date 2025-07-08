@@ -260,6 +260,9 @@ pub struct SyncManagerAssignment<'a> {
     /// If this is set to `None`, the sync manager will be chosen automatically by EtherCrab.
     pub sync_manager: Option<u8>,
 
+    /// TODO: Doc.
+    pub fmmu: Option<u8>,
+
     /// PDO mappings.
     pub mappings: &'a [PdoMapping<'a>],
 }
@@ -274,6 +277,7 @@ impl<'a> SyncManagerAssignment<'a> {
     pub const fn new(mappings: &'a [PdoMapping<'a>]) -> Self {
         Self {
             mappings,
+            fmmu: None,
             sync_manager: None,
         }
     }
@@ -282,6 +286,15 @@ impl<'a> SyncManagerAssignment<'a> {
     pub const fn with_sync_manager(self, sync_manager: u8) -> Self {
         Self {
             sync_manager: Some(sync_manager),
+            ..self
+        }
+    }
+
+    /// Set an explicit FMMU index to use.
+    // TODO: This isn't yet used in any of the configuration stuff
+    pub const fn with_fmmu(self, fmmu: u8) -> Self {
+        Self {
+            fmmu: Some(fmmu),
             ..self
         }
     }
@@ -306,6 +319,7 @@ impl<'a> SyncManagerAssignment<'a> {
         })
     }
 
+    /// Return the length of the mappings in bytes, taking into account oversampling settings.
     pub(crate) fn len_bytes(&self) -> u16 {
         self.object_sizes().sum()
     }
