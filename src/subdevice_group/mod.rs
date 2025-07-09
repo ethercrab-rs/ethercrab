@@ -771,7 +771,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         self_.into_op(maindevice).await
     }
 
-    // NOTE: This just goes PRE-OP -> PRE-OP + PDI. What about into op and into safe op?
+    // NOTE: This just goes PRE-OP -> PRE-OP + PDI. What about the other methods like into op and
+    // into safe op, etc?
     /// TODO: Docs
     pub async fn into_pre_op_pdi_with_config<'fun>(
         mut self,

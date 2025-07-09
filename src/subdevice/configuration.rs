@@ -115,6 +115,7 @@ where
     ) -> Result<PdiOffset, Error> {
         let eeprom = self.eeprom();
 
+        // TODO: Don't read the EEPROM at all if we have a manual config
         let sync_managers = eeprom.sync_managers().await?;
         let fmmu_usage = eeprom.fmmus().await?;
 
