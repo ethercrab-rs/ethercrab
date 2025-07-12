@@ -254,6 +254,15 @@ impl<'sto> MainDevice<'sto> {
             )
             .send(self, configured_address)
             .await?;
+        }
+
+        // Now perform initial configuration for each subdevice. This is done in a separate loop
+        // after all configured addresses are set to deal with the case where a powered on SD with a
+        // set address is added to the network before init. In this case, two SDs could have the
+        // same address which wouldn't have been reset yet when we're half way through a single
+        // configuration loop.
+        for subdevice_idx in 0..num_subdevices {
+            let configured_address = BASE_SUBDEVICE_ADDRESS.wrapping_add(subdevice_idx);
 
             let subdevice = SubDevice::new(self, subdevice_idx, configured_address).await?;
 
