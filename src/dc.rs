@@ -84,7 +84,7 @@ async fn write_dc_parameters(
     let system_time_offset = -(subdevice.dc_receive_time as i64) + now_nanos as i64;
 
     fmt::trace!(
-        "Setting SubDevice {:#06x} system time offset to {} ns (system time is {} ns, DC receive time is {}, now is {} ns)",
+        "Setting SubDevice {:#06x} system time offset to {} ns (DC system time is {} ns, this SubDevice DC receive time is {}, now is {} ns)",
         subdevice.configured_address(),
         system_time_offset,
         dc_system_time,

@@ -8,15 +8,11 @@ mod handle;
 mod tx_rx_response;
 
 use crate::{
-    DcSync,
-    MainDevice,
-    RegisterAddress,
-    SubDeviceState,
+    DcSync, MainDevice, RegisterAddress, SubDeviceState,
     al_control::AlControl,
     command::Command,
     error::{DistributedClockError, Error, Item},
     fmt,
-    // lending_lock::LendingLock,
     pdi::PdiOffset,
     pdu_loop::{CreatedFrame, ReceivedPdu},
     subdevice::{
@@ -388,6 +384,13 @@ where
             sync0_shift,
         } = dc_conf;
 
+        fmt::debug!(
+            "--> Group start delay {} ms, SYNC0 period {} us, shift {} us",
+            start_delay.as_millis(),
+            sync0_period.as_micros(),
+            sync0_shift.as_micros()
+        );
+
         // Coerce generics into concrete `PreOp` type as we don't need the PDI to configure the DC.
         let self_ = SubDeviceGroup {
             id: self.id,
@@ -403,6 +406,12 @@ where
         let dc_devices = self_.iter(maindevice).filter(|subdevice| {
             subdevice.dc_support().any() && !matches!(subdevice.dc_sync(), DcSync::Disabled)
         });
+
+        let reference_time: u64 = SubDeviceRef::new(maindevice, reference, ())
+            .read(RegisterAddress::DcSystemTime)
+            .ignore_wkc()
+            .receive(maindevice)
+            .await?;
 
         for subdevice in dc_devices {
             fmt::debug!(
@@ -431,7 +440,35 @@ where
                 .receive(maindevice)
                 .await?;
 
-            fmt::debug!("--> Device time {} ns", device_time);
+            fmt::debug!(
+                "--> Device time {} ns, delta from System Time {} ns",
+                device_time,
+                (device_time as i64) - (reference_time as i64)
+            );
+
+            // let offs = match subdevice
+            //     .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+            //     .await
+            // {
+            //     Ok(value) =>
+            //     // The returned value is NOT in two's compliment, rather the upper bit specifies
+            //     // whether the number in the remaining bits is odd or even, so we convert the
+            //     // value to `i32` using that logic here.
+            //     {
+            //         let flag = 0b1u32 << 31;
+
+            //         if value >= flag {
+            //             // Strip off negative flag bit and negate value as normal
+            //             -((value & !flag) as i32)
+            //         } else {
+            //             value as i32
+            //         }
+            //     }
+            //     Err(Error::WorkingCounter { .. }) => 0,
+            //     Err(e) => return Err(e),
+            // };
+
+            // println!("Device time {}, offs {}", device_time, offs);
 
             let sync0_period = sync0_period.as_nanos() as u64;
 
@@ -456,7 +493,7 @@ where
             let flags = if let DcSync::Sync01 { sync1_period } = subdevice.dc_sync() {
                 subdevice
                     .write(RegisterAddress::DcSync1CycleTime)
-                    .send(maindevice, sync1_period.as_nanos() as u64)
+                    .send(maindevice, sync1_period.as_nanos() as u32)
                     .await?;
 
                 SYNC1_ACTIVATE | SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
@@ -469,6 +506,108 @@ where
                 .send(maindevice, flags)
                 .await?;
         }
+
+        // ---
+
+        //  for subdevice in dc_devices {
+        //     fmt::debug!(
+        //         "--> Configuring SubDevice {:#06x} {} DC mode {}",
+        //         subdevice.configured_address(),
+        //         subdevice.name(),
+        //         subdevice.dc_sync()
+        //     );
+
+        //     // Disable cyclic op, ignore WKC
+        //     subdevice
+        //         .write(RegisterAddress::DcSyncActive)
+        //         .ignore_wkc()
+        //         .send(maindevice, 0u8)
+        //         .await?;
+
+        //     // Write access to EtherCAT
+        //     subdevice
+        //         .write(RegisterAddress::DcCyclicUnitControl)
+        //         .send(maindevice, 0u8)
+        //         .await?;
+
+        //     // This will be zero for SubDevices that don't properly support Distributed Clocks
+        //     let device_time: u64 = subdevice
+        //         .read(RegisterAddress::DcSystemTime)
+        //         .ignore_wkc()
+        //         .receive(maindevice)
+        //         .await?;
+
+        //     fmt::debug!("--> Device time {} ns", device_time);
+
+        //     let sync0_period = u32::try_from(sync0_period.as_nanos()).inspect_err(|e| {
+        //         log::error!(
+        //             "SYNC0 period must be less than u32::MAX nanoseconds (~4200ms): {}",
+        //             e
+        //         );
+        //     })?;
+
+        //     let sync0_shift = u32::try_from(sync0_shift.as_nanos()).inspect_err(|e| {
+        //         log::error!(
+        //             "SYNC0 shift must be less than u32::MAX nanoseconds (~4200ms): {}",
+        //             e
+        //         );
+        //     })?;
+
+        //     let first_pulse_delay = u32::try_from(start_delay.as_nanos()).inspect_err(|e| {
+        //         log::error!(
+        //             "First pulse delay must be less than u32::MAX nanoseconds (~4200ms): {}",
+        //             e
+        //         );
+        //     })?;
+
+        //     // Guaranteed to truncate <https://doc.rust-lang.org/stable/reference/expressions/operator-expr.html#r-expr.as.numeric.int-truncation>
+        //     let device_time_trunc = device_time as u32;
+
+        //     let start_time = device_time_trunc
+        //         .wrapping_add(first_pulse_delay)
+        //         .next_multiple_of(sync0_period)
+        //         .wrapping_add(sync0_shift);
+
+        //     fmt::debug!(
+        //         "--> Computed DC sync start time: {} ({} us from now)",
+        //         start_time,
+        //         device_time_trunc.wrapping_sub(start_time) / 1000
+        //     );
+
+        //     subdevice
+        //         .write(RegisterAddress::DcSyncStartTime)
+        //         .send(maindevice, start_time)
+        //         .await?;
+
+        //     // Cycle time in nanoseconds
+        //     subdevice
+        //         .write(RegisterAddress::DcSync0CycleTime)
+        //         .send(maindevice, sync0_period)
+        //         .await?;
+
+        //     let flags = if let DcSync::Sync01 { sync1_period } = subdevice.dc_sync() {
+        //         let sync1_period = u32::try_from(sync1_period.as_nanos()).inspect_err(|e| {
+        //             log::error!(
+        //                 "SYNC1 period must be less than u32::MAX nanoseconds (~4200ms): {}",
+        //                 e
+        //             );
+        //         })?;
+
+        //         subdevice
+        //             .write(RegisterAddress::DcSync1CycleTime)
+        //             .send(maindevice, sync1_period)
+        //             .await?;
+
+        //         SYNC1_ACTIVATE | SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
+        //     } else {
+        //         SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
+        //     };
+
+        //     subdevice
+        //         .write(RegisterAddress::DcSyncActive)
+        //         .send(maindevice, flags)
+        //         .await?;
+        // }
 
         Ok(SubDeviceGroup {
             id: self_.id,
