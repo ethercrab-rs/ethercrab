@@ -438,7 +438,7 @@ where
             let first_pulse_delay = start_delay.as_nanos() as u64;
 
             // Round first pulse time to a whole number of cycles
-            let start_time = (device_time + first_pulse_delay) / sync0_period * sync0_period;
+            let start_time = (device_time + first_pulse_delay).next_multiple_of(sync0_period);
 
             fmt::debug!("--> Computed DC sync start time: {}", start_time);
 
