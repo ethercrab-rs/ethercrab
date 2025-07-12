@@ -470,12 +470,36 @@ where
 
             // println!("Device time {}, offs {}", device_time, offs);
 
-            let sync0_period = sync0_period.as_nanos() as u64;
+            // ---
 
-            let first_pulse_delay = start_delay.as_nanos() as u64;
+            // let sync0_period = sync0_period.as_nanos() as u64;
+
+            // let first_pulse_delay = start_delay.as_nanos() as u64;
+
+            // // Round first pulse time to a whole number of cycles
+            // let start_time = (device_time + first_pulse_delay).next_multiple_of(sync0_period);
+
+            // ---
+
+            let sync0_period = u32::try_from(sync0_period.as_nanos()).inspect_err(|e| {
+                log::error!(
+                    "SYNC0 period must be less than u32::MAX nanoseconds (~4200ms): {}",
+                    e
+                );
+            })?;
+
+            let first_pulse_delay = u32::try_from(start_delay.as_nanos()).inspect_err(|e| {
+                log::error!(
+                    "First pulse delay must be less than u32::MAX nanoseconds (~4200ms): {}",
+                    e
+                );
+            })?;
 
             // Round first pulse time to a whole number of cycles
-            let start_time = (device_time + first_pulse_delay).next_multiple_of(sync0_period);
+            let start_time =
+                (device_time as u32 + first_pulse_delay).next_multiple_of(sync0_period);
+
+            // ---
 
             fmt::debug!("--> Computed DC sync start time: {}", start_time);
 
@@ -491,9 +515,17 @@ where
                 .await?;
 
             let flags = if let DcSync::Sync01 { sync1_period } = subdevice.dc_sync() {
+                let sync1_period = u32::try_from(sync1_period.as_nanos()).inspect_err(|e| {
+                    log::error!(
+                        "SYNC1 period must be less than u32::MAX nanoseconds (~4200ms): {}",
+                        e
+                    );
+                })?;
+
                 subdevice
                     .write(RegisterAddress::DcSync1CycleTime)
-                    .send(maindevice, sync1_period.as_nanos() as u32)
+                    // .send(maindevice, sync1_period.as_nanos() as u32)
+                    .send(maindevice, sync1_period)
                     .await?;
 
                 SYNC1_ACTIVATE | SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
