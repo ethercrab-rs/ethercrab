@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::{Error, TimeoutError};
 use core::{future::Future, pin::Pin, task::Poll, time::Duration};
 
 #[cfg(not(feature = "std"))]
@@ -9,35 +9,40 @@ pub(crate) type Timer = async_io::Timer;
 pub(crate) type Timer = core::future::Pending<()>;
 
 #[cfg(not(feature = "std"))]
-pub(crate) fn timer(duration: Duration) -> Timer {
+pub(crate) fn timer(timeout: LabeledTimeout) -> Timer {
     embassy_time::Timer::after(embassy_time::Duration::from_micros(
-        duration.as_micros() as u64
+        timeout.duration.as_micros() as u64,
     ))
 }
 
 #[cfg(all(not(miri), feature = "std"))]
-pub(crate) fn timer(duration: Duration) -> Timer {
-    async_io::Timer::after(duration)
+pub(crate) fn timer(timeout: LabeledTimeout) -> Timer {
+    async_io::Timer::after(timeout.duration)
 }
 
 #[cfg(miri)]
-pub(crate) fn timer(_duration: Duration) -> Timer {
+pub(crate) fn timer(_timeout: LabeledTimeout) -> Timer {
     core::future::pending()
 }
 
 pub(crate) trait IntoTimeout<O> {
-    fn timeout(self, timeout: Duration) -> TimeoutFuture<impl Future<Output = Result<O, Error>>>;
+    fn timeout(
+        self,
+        timeout: LabeledTimeout,
+    ) -> TimeoutFuture<impl Future<Output = Result<O, Error>>>;
 }
 
 impl<T, O> IntoTimeout<O> for T
 where
     T: Future<Output = Result<O, Error>>,
 {
-    fn timeout(self, timeout: Duration) -> TimeoutFuture<impl Future<Output = Result<O, Error>>> {
+    fn timeout(
+        self,
+        timeout: LabeledTimeout,
+    ) -> TimeoutFuture<impl Future<Output = Result<O, Error>>> {
         TimeoutFuture {
             f: self,
             timeout: timer(timeout),
-            #[cfg(miri)]
             duration: timeout,
         }
     }
@@ -46,8 +51,7 @@ where
 pub(crate) struct TimeoutFuture<F> {
     f: F,
     timeout: Timer,
-    #[cfg(miri)]
-    duration: Duration,
+    duration: LabeledTimeout,
 }
 
 impl<F, O> Future for TimeoutFuture<F>
@@ -62,12 +66,16 @@ where
         let f = unsafe { Pin::new_unchecked(&mut this.f) };
 
         #[cfg(miri)]
-        if this.duration == Duration::ZERO {
-            return Poll::Ready(Err(Error::Timeout));
+        if this.duration.duration == Duration::ZERO {
+            return Poll::Ready(Err(Error::Timeout(TimeoutError::from_timeout_kind(
+                this.duration.kind,
+            ))));
         }
 
         if timeout.poll(cx).is_ready() {
-            return Poll::Ready(Err(Error::Timeout));
+            return Poll::Ready(Err(Error::Timeout(TimeoutError::from_timeout_kind(
+                this.duration.kind,
+            ))));
         }
 
         if let Poll::Ready(x) = f.poll(cx) {
@@ -107,12 +115,74 @@ pub struct Timeouts {
     pub mailbox_response: Duration,
 }
 
+/// The kinds of timeouts that can be awaited for an EtherCAT bus.
+///
+/// See [`Timeouts`] for what each timeout is.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum TimeoutKind {
+    StateTransition,
+    Pdu,
+    Eeprom,
+    WaitLoopDelay,
+    MailboxEcho,
+    MailboxResponse,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct LabeledTimeout {
+    pub duration: Duration,
+    pub kind: TimeoutKind,
+}
+
 impl Timeouts {
     pub(crate) async fn loop_tick(&self) {
         #[cfg(not(miri))]
-        timer(self.wait_loop_delay).await;
+        timer(self.wait_loop_delay()).await;
         #[cfg(miri)]
         std::thread::yield_now();
+    }
+
+    /// Get the timeout for a state transition.
+    pub(crate) fn state_transition(self) -> LabeledTimeout {
+        LabeledTimeout {
+            duration: (self.state_transition),
+            kind: TimeoutKind::StateTransition,
+        }
+    }
+    /// Get the timeout for a PDU.
+    pub(crate) fn pdu(self) -> LabeledTimeout {
+        LabeledTimeout {
+            duration: (self.pdu),
+            kind: TimeoutKind::Pdu,
+        }
+    }
+    /// Get the timeout for the EEPROM.
+    pub(crate) fn eeprom(self) -> LabeledTimeout {
+        LabeledTimeout {
+            duration: (self.eeprom),
+            kind: TimeoutKind::Eeprom,
+        }
+    }
+    /// Get the timeout for a wait loop delay.
+    pub(crate) fn wait_loop_delay(self) -> LabeledTimeout {
+        LabeledTimeout {
+            duration: (self.wait_loop_delay),
+            kind: TimeoutKind::WaitLoopDelay,
+        }
+    }
+    /// Get the timeout for a mailbox echo.
+    pub(crate) fn mailbox_echo(self) -> LabeledTimeout {
+        LabeledTimeout {
+            duration: (self.mailbox_echo),
+            kind: TimeoutKind::MailboxEcho,
+        }
+    }
+    /// Get the timeout for a mailbox response.
+    pub(crate) fn mailbox_response(self) -> LabeledTimeout {
+        LabeledTimeout {
+            duration: (self.mailbox_response),
+            kind: TimeoutKind::MailboxResponse,
+        }
     }
 }
 
@@ -128,3 +198,18 @@ impl Default for Timeouts {
         }
     }
 }
+
+// timeouts used for testing
+
+#[cfg(test)]
+pub(crate) const MAX_TIMEOUT: crate::timer_factory::LabeledTimeout =
+    crate::timer_factory::LabeledTimeout {
+        duration: Duration::MAX,
+        kind: crate::timer_factory::TimeoutKind::Pdu,
+    };
+#[cfg(test)]
+pub(crate) const MIN_TIMEOUT: crate::timer_factory::LabeledTimeout =
+    crate::timer_factory::LabeledTimeout {
+        duration: Duration::ZERO,
+        kind: crate::timer_factory::TimeoutKind::Pdu,
+    };
