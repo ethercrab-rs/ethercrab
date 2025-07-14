@@ -604,7 +604,7 @@ where
                 self.maindevice.timeouts.loop_tick().await;
             }
         }
-        .timeout(self.maindevice.timeouts.mailbox_echo)
+        .timeout(self.maindevice.timeouts.mailbox_echo())
         .await
         .inspect_err(|&e| {
             fmt::error!(
@@ -636,7 +636,7 @@ where
                 self.maindevice.timeouts.loop_tick().await;
             }
         }
-        .timeout(self.maindevice.timeouts.mailbox_echo)
+        .timeout(self.maindevice.timeouts.mailbox_response())
         .await
         .inspect_err(|&e| {
             fmt::error!(
@@ -1278,7 +1278,7 @@ impl<'maindevice, S> SubDeviceRef<'maindevice, S> {
                 self.maindevice.timeouts.loop_tick().await;
             }
         }
-        .timeout(self.maindevice.timeouts.state_transition)
+        .timeout(self.maindevice.timeouts.state_transition())
         .await
     }
 
