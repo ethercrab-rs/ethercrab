@@ -1,6 +1,6 @@
 use crate::help::{all_valid_attrs, attr_exists, bit_width_attr, usize_attr};
 use std::ops::Range;
-use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
+use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Generics, Ident, Type, Visibility};
 
 #[derive(Clone)]
 pub struct StructMeta {
@@ -8,6 +8,7 @@ pub struct StructMeta {
     pub width_bits: usize,
 
     pub fields: Vec<FieldMeta>,
+    pub generics: Generics,
 }
 
 #[derive(Clone)]
@@ -42,7 +43,12 @@ pub struct FieldMeta {
 
 pub fn parse_struct(
     s: DataStruct,
-    DeriveInput { attrs, ident, .. }: DeriveInput,
+    DeriveInput {
+        attrs,
+        ident,
+        generics,
+        ..
+    }: DeriveInput,
 ) -> syn::Result<StructMeta> {
     // --- Struct attributes
 
@@ -184,5 +190,6 @@ pub fn parse_struct(
     Ok(StructMeta {
         width_bits: width,
         fields: field_meta,
+        generics,
     })
 }
