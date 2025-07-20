@@ -7,10 +7,11 @@ use env_logger::Env;
 use ethercrab::{
     DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts,
     error::Error,
-    std::ethercat_now,
+    std::{ethercat_now, tx_rx_task},
     subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
 };
 use futures_lite::StreamExt;
+use smol::LocalExecutor;
 use std::{
     fs::File,
     sync::{
@@ -22,6 +23,9 @@ use std::{
 };
 use ta::Next;
 use ta::indicators::ExponentialMovingAverage;
+use thread_priority::{
+    RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
+};
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
 const MAX_SUBDEVICES: usize = 16;
@@ -82,18 +86,30 @@ fn main() -> Result<(), Error> {
 
     let mut tick_interval = smol::Timer::interval(TICK_INTERVAL);
 
-    #[cfg(target_os = "windows")]
-    std::thread::spawn(move || {
-        ethercrab::std::tx_rx_task_blocking(
-            &interface,
-            tx,
-            rx,
-            ethercrab::std::TxRxTaskConfig { spinloop: false },
-        )
-        .expect("TX/RX task")
-    });
-    #[cfg(not(target_os = "windows"))]
-    smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
+    thread_priority::ThreadBuilder::default()
+        .name("tx-rx-task")
+        // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
+        // Check limits with `ulimit -Hr` or `ulimit -Sr`
+        .priority(ThreadPriority::Crossplatform(
+            ThreadPriorityValue::try_from(99u8).unwrap(),
+        ))
+        // NOTE: Requires a realtime kernel
+        .policy(ThreadSchedulePolicy::Realtime(
+            RealtimeThreadSchedulePolicy::Fifo,
+        ))
+        .spawn(move |_| {
+            core_affinity::set_for_current(core_affinity::CoreId { id: 0 })
+                .then_some(())
+                .expect("Set TX/RX thread core");
+
+            let ex = LocalExecutor::new();
+
+            futures_lite::future::block_on(
+                ex.run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")),
+            )
+            .expect("TX/RX task exited");
+        })
+        .unwrap();
 
     // Wait for TX/RX loop to start
     thread::sleep(Duration::from_millis(200));
@@ -330,7 +346,7 @@ fn main() -> Result<(), Error> {
                 &maindevice,
                 DcConfiguration {
                     // Start SYNC0 100ms in the future
-                    start_delay: Duration::from_millis(100),
+                    start_delay: Duration::from_millis(4_000),
                     // SYNC0 period should be the same as the process data loop in most cases
                     sync0_period: TICK_INTERVAL,
                     // Send process data half way through cycle
@@ -405,11 +421,24 @@ fn main() -> Result<(), Error> {
 
                 // w.write_field(format!("{:#06x} next SYNC0", sd.configured_address()))
                 //     .ok();
-                w.write_field(format!("{:#06x} system time", sd.configured_address()))
+                // w.write_field(format!("{:#06x} system time", sd.configured_address()))
+                //     .ok();
+                // w.write_field(format!("{:#06x} next SYNC0 delta", sd.configured_address()))
+                //     .ok();
+                // w.write_field(format!("{:#06x} system time diff", sd.configured_address()))
+                //     .ok();
+
+                // Valentin
+                w.write_field(format!("{:#06x} system time u32", sd.configured_address()))
                     .ok();
-                w.write_field(format!("{:#06x} next SYNC0 delta", sd.configured_address()))
+                w.write_field(format!("{:#06x} system time u64", sd.configured_address()))
                     .ok();
-                w.write_field(format!("{:#06x} system time diff", sd.configured_address()))
+                w.write_field(format!(
+                    "{:#06x} time to next sync0",
+                    sd.configured_address()
+                ))
+                .ok();
+                w.write_field(format!("{:#06x} next raw value", sd.configured_address()))
                     .ok();
             }
 
@@ -450,6 +479,7 @@ fn main() -> Result<(), Error> {
                 process_stats
                     .write_field((dc_system_time as u32).to_string())
                     .ok();
+
                 // process_stats
                 //     .write_field(next_cycle_wait.as_nanos().to_string())
                 //     .ok();
@@ -471,55 +501,81 @@ fn main() -> Result<(), Error> {
                         continue;
                     }
 
-                    let diff = match sd
-                        .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+                    // let diff = match sd
+                    //     .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+                    //     .await
+                    // {
+                    //     Ok(value) =>
+                    //     // The returned value is NOT in two's compliment, rather the upper bit specifies
+                    //     // whether the number in the remaining bits is odd or even, so we convert the
+                    //     // value to `i32` using that logic here.
+                    //     {
+                    //         let flag = 0b1u32 << 31;
+
+                    //         if value >= flag {
+                    //             // Strip off negative flag bit and negate value as normal
+                    //             -((value & !flag) as i32)
+                    //         } else {
+                    //             value as i32
+                    //         }
+                    //     }
+                    //     Err(Error::WorkingCounter { .. }) => 0,
+                    //     Err(e) => return Err(e),
+                    // };
+
+                    // let next_sync0: u32 = sd
+                    //     .register_read(RegisterAddress::DcSyncStartTime)
+                    //     .await
+                    //     .unwrap_or(0);
+
+                    // let sd_time: u64 = sd
+                    //     .register_read(RegisterAddress::DcSystemTime)
+                    //     .await
+                    //     .unwrap_or(0);
+
+                    // let sync0_delta = next_sync0.wrapping_sub(dc_system_time as u32);
+
+                    // Valentin
+                    let nxt = sd
+                        .register_read::<u32>(RegisterAddress::DcSyncStartTime)
                         .await
-                    {
-                        Ok(value) =>
-                        // The returned value is NOT in two's compliment, rather the upper bit specifies
-                        // whether the number in the remaining bits is odd or even, so we convert the
-                        // value to `i32` using that logic here.
-                        {
-                            let flag = 0b1u32 << 31;
+                        .unwrap_or_default();
 
-                            if value >= flag {
-                                // Strip off negative flag bit and negate value as normal
-                                -((value & !flag) as i32)
-                            } else {
-                                value as i32
-                            }
-                        }
-                        Err(Error::WorkingCounter { .. }) => 0,
-                        Err(e) => return Err(e),
-                    };
-
-                    let next_sync0: u32 = sd
-                        .register_read(RegisterAddress::DcSyncStartTime)
-                        .await
-                        .unwrap_or(0);
-
-                    let sd_time: u64 = sd
-                        .register_read(RegisterAddress::DcSystemTime)
-                        .await
-                        .unwrap_or(0);
-
-                    let sync0_delta = next_sync0 - dc_system_time as u32;
+                    let value = sd
+                        .register_read::<u32>(RegisterAddress::DcSystemTime)
+                        .await?;
+                    let value64 = sd
+                        .register_read::<u64>(RegisterAddress::DcSystemTime)
+                        .await?;
+                    let value = value64 as u32;
+                    let next_sync0 = (nxt - value) as f64 / 1_000_000.;
+                    process_stats.write_field(value.to_string()).ok();
+                    process_stats.write_field(value64.to_string()).ok();
+                    process_stats.write_field(next_sync0.to_string()).ok();
+                    process_stats.write_field(nxt.to_string()).ok();
 
                     if should_print {
-                        log::info!(
-                            "--> {:#06x} {:?} local time {}, next sync0 {} (in {} ms) diff {} ns",
+                        // log::info!(
+                        //     "--> {:#06x} {:?} local time {sd_time}, next sync0 {next_sync0} (in {} ms) diff {diff} ns",
+                        //     sd.configured_address(),
+                        //     sd.dc_support(),
+                        //     (sync0_delta / 1000) as f32 / 1000.0,
+                        // );
+
+                        // Valentin
+                        println!(
+                            "{:#06x}, next sync0 in: {} ms, {}, {}, {}",
                             sd.configured_address(),
-                            sd.dc_support(),
-                            sd_time,
                             next_sync0,
-                            (sync0_delta / 1000) as f32 / 1000.0,
-                            diff
+                            value,
+                            nxt,
+                            value64,
                         );
                     }
 
-                    process_stats.write_field((sd_time as u32).to_string()).ok();
-                    process_stats.write_field(sync0_delta.to_string()).ok();
-                    process_stats.write_field(diff.to_string()).ok();
+                    // process_stats.write_field((sd_time as u32).to_string()).ok();
+                    // process_stats.write_field(sync0_delta.to_string()).ok();
+                    // process_stats.write_field(diff.to_string()).ok();
                 }
 
                 // Finish row

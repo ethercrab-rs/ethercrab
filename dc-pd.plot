@@ -17,7 +17,7 @@ set size 1.0,0.33
 
 # For cycle count
 set xlabel 'Cycle'
-set xrange [700:800]
+# set xrange [700:800]
 
 set ylabel "Microseconds"
 set ytics format "%.0f"
@@ -38,10 +38,11 @@ plot for [n=6:18:3] FILE using 2:n  with lines
 set ylabel "Milliseconds"
 set ytics format "%.2f"
 
-set yrange [0:]
+# Milliseconds
+# set yrange [0:10]
 set origin 0.0,0.0
 set title "Next SYNC0"
-plot for [n=5:17:3] FILE using 2:(column(n) / 1000.0/ 1000.0) with lines
+plot for [n=5:17:3] FILE using 2:(column(n) / 1000.0 / 1000.0) with lines
 
 exit
 
