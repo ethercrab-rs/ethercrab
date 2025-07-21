@@ -109,6 +109,7 @@ capture-all-replays interface *args:
         echo ""
     done
 
+# Run the `dc` example in release mode on a remote testbench PC
 run-remote +args:
     cargo build --example dc --release
     scp target/release/examples/dc ethercrab-debian1211:~
