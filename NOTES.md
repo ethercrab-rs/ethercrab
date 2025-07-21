@@ -1,3 +1,16 @@
+# 32 bit DC
+
+ETG1000.6 Table 27 Cyclic Operation Start time (`0x0990`, DC user P4 in ETG1000.4 Table 61) says:
+
+> The interrupt generation will start when the lower 32 bits of the system time will reach this
+> value (in ns)
+
+This field is `Unsigned32` (`DWORD` in ETG1000.4) however EtherCrab currently writes a `u64` into
+this register.
+
+SOEM calls `0x0990` `ECT_REG_DCSTART0` and also writes a 64 bit value into it. See `ethercatdc.c`,
+`ecx_dcsync0`.
+
 # Configuring SDOs in a less error prone way
 
 - Stage 1: Just be able to automatically set the `0x****:00` index to the number of configured

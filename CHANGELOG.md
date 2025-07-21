@@ -12,12 +12,16 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   code from correct register when state transition fails.
 - [#313](https://github.com/ethercrab-rs/ethercrab/pull/313) (@fpdotmonkey) Read actual CoE abort
   code instead of returning `CoeAbortCode::Incompatible` on SDO transfer failures.
+- [#322](https://github.com/ethercrab-rs/ethercrab/pull/322) Set all configured addresses before
+  initialising SubDevices, fixing an error when adding an existing powered on segment to the
+  EtherCAT network.
+- [#322](https://github.com/ethercrab-rs/ethercrab/pull/322) Use the same DC reference time to set
+  SYNC0 start time, fixing offsets in SubDevices with 32 bit clocks.
 
 ### Added
 
 - [#310](https://github.com/ethercrab-rs/ethercrab/pull/310) Add support for XDP on Linux systems
   using the `xdp` feature.
-  using the `xdp` feature.z
 - [#305](https://github.com/ethercrab-rs/ethercrab/pull/305) (@fpdotmonkey) Added
   `SubDevice::sdo_info_object_description_list` and `SubDevice::sdo_info_object_quantities` to get
   information about a SubDevice's SDOs.

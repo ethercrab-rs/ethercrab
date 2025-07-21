@@ -262,55 +262,55 @@ fn main() -> Result<(), Error> {
                 .await
                 .expect("TX/RX");
 
-            if now.elapsed() >= Duration::from_millis(25) {
+            align_stats
+                .write_field(start.elapsed().as_millis().to_string())
+                .ok();
+
+            let mut max_deviation = 0;
+
+            for (s1, ema) in group.iter(&maindevice).zip(averages.iter_mut()) {
+                let diff = match s1
+                    .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+                    .await
+                {
+                    Ok(value) =>
+                    // The returned value is NOT in two's compliment, rather the upper bit specifies
+                    // whether the number in the remaining bits is odd or even, so we convert the
+                    // value to `i32` using that logic here.
+                    {
+                        let flag = 0b1u32 << 31;
+
+                        if value >= flag {
+                            // Strip off negative flag bit and negate value as normal
+                            -((value & !flag) as i32)
+                        } else {
+                            value as i32
+                        }
+                    }
+                    Err(Error::WorkingCounter { .. }) => 0,
+                    Err(e) => return Err(e),
+                };
+
+                let ema_next = ema.next(diff as f64);
+
+                max_deviation = max_deviation.max(ema_next.abs() as u32);
+
+                align_stats.write_field(diff.to_string()).ok();
+                align_stats.write_field(ema_next.to_string()).ok();
+            }
+
+            // Finish row
+            align_stats.write_record(None::<&[u8]>).ok();
+
+            if now.elapsed() >= Duration::from_millis(1000) {
                 now = Instant::now();
 
-                align_stats
-                    .write_field(start.elapsed().as_millis().to_string())
-                    .ok();
+                log::info!("--> Max deviation {} ns", max_deviation);
 
-                let mut max_deviation = 0;
-
-                for (s1, ema) in group.iter(&maindevice).zip(averages.iter_mut()) {
-                    let diff = match s1
-                        .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
-                        .await
-                    {
-                        Ok(value) =>
-                        // The returned value is NOT in two's compliment, rather the upper bit specifies
-                        // whether the number in the remaining bits is odd or even, so we convert the
-                        // value to `i32` using that logic here.
-                        {
-                            let flag = 0b1u32 << 31;
-
-                            if value >= flag {
-                                // Strip off negative flag bit and negate value as normal
-                                -((value & !flag) as i32)
-                            } else {
-                                value as i32
-                            }
-                        }
-                        Err(Error::WorkingCounter { .. }) => 0,
-                        Err(e) => return Err(e),
-                    };
-
-                    let ema_next = ema.next(diff as f64);
-
-                    max_deviation = max_deviation.max(ema_next.abs() as u32);
-
-                    align_stats.write_field(diff.to_string()).ok();
-                    align_stats.write_field(ema_next.to_string()).ok();
-                }
-
-                // Finish row
-                align_stats.write_record(None::<&[u8]>).ok();
-
-                log::debug!("--> Max deviation {} ns", max_deviation);
-
-                // Less than 100ns max deviation as an example threshold.
+                // Less than 500ns max deviation as an example threshold.
                 // <https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585>
                 // mentions less than 100us as a good enough value as well.
-                if max_deviation < 100 {
+                if max_deviation < 500 {
                     log::info!("Clocks settled after {} ms", start.elapsed().as_millis());
 
                     break;
@@ -345,18 +345,6 @@ fn main() -> Result<(), Error> {
             .expect("PRE-OP -> SAFE-OP");
 
         log::info!("SAFE-OP");
-
-        #[derive(serde::Serialize)]
-        struct ProcessStat {
-            ecat_time: u64,
-            cycle_start_offset: u64,
-            next_iter_wait: u64,
-        }
-
-        let mut process_stats =
-            csv::Writer::from_writer(File::create("dc-pd.csv").expect("Open CSV"));
-
-        let mut print_tick = Instant::now();
 
         // Request OP state without waiting for all SubDevices to reach it. Allows the immediate
         // start of the process data cycle, which is required when DC sync is used, otherwise
@@ -400,6 +388,46 @@ fn main() -> Result<(), Error> {
         signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
             .expect("Register hook");
 
+        let mut print_tick = Instant::now();
+
+        let mut process_stats = {
+            // 16MiB buffer to start with to prevent stalls
+            let pd_stats_buf = Vec::with_capacity(1024 * 1000 * 16);
+
+            let mut w = csv::Writer::from_writer(pd_stats_buf);
+
+            w.write_field("Elapsed (s)").ok();
+            w.write_field("Cycle number").ok();
+            w.write_field("DC time 32 bit (ns)").ok();
+            // w.write_field("Next cycle wait (ns)").ok();
+
+            for sd in group.iter(&maindevice) {
+                if matches!(sd.dc_support(), ethercrab::DcSupport::RefOnly) {
+                    continue;
+                }
+
+                w.write_field(format!("{:#06x} system time u32", sd.configured_address()))
+                    .ok();
+                w.write_field(format!("{:#06x} system time u64", sd.configured_address()))
+                    .ok();
+                w.write_field(format!(
+                    "{:#06x} time to next sync0",
+                    sd.configured_address()
+                ))
+                .ok();
+                w.write_field(format!("{:#06x} next raw value", sd.configured_address()))
+                    .ok();
+            }
+
+            // Finish header
+            w.write_record(None::<&[u8]>).ok();
+
+            w
+        };
+
+        // PD cycle counter used for stats graph X axes
+        let mut cycle = 0;
+
         // Main application process data cycle
         loop {
             let now = Instant::now();
@@ -419,13 +447,19 @@ fn main() -> Result<(), Error> {
             {
                 let cycle_start_offset = cycle_start_offset.as_nanos() as u64;
 
-                let stat = ProcessStat {
-                    ecat_time: dc_system_time,
-                    next_iter_wait: next_cycle_wait.as_nanos() as u64,
-                    cycle_start_offset,
-                };
+                let should_print = print_tick.elapsed() > Duration::from_secs(1);
 
-                if print_tick.elapsed() > Duration::from_secs(1) {
+                // Uncomment to log elapsed time as well as cycle count
+                // process_stats
+                //     .write_field(start.elapsed().as_secs_f32().to_string())
+                //     .ok();
+                process_stats.write_field("").ok();
+                process_stats.write_field(cycle.to_string()).ok();
+                process_stats
+                    .write_field((dc_system_time as u32).to_string())
+                    .ok();
+
+                if should_print {
                     print_tick = Instant::now();
 
                     log::info!(
@@ -437,7 +471,43 @@ fn main() -> Result<(), Error> {
                     );
                 }
 
-                process_stats.serialize(stat).ok();
+                for sd in group.iter(&maindevice) {
+                    if matches!(sd.dc_support(), ethercrab::DcSupport::RefOnly) {
+                        continue;
+                    }
+
+                    let next_dc_sync_start_time = sd
+                        .register_read::<u32>(RegisterAddress::DcSyncStartTime)
+                        .await
+                        .unwrap_or_default();
+
+                    let sd_time_64 = sd
+                        .register_read::<u64>(RegisterAddress::DcSystemTime)
+                        .await?;
+                    let sd_time_32 = sd_time_64 as u32;
+
+                    let next_sync0 = (next_dc_sync_start_time - sd_time_32) as f64 / 1_000_000.;
+                    process_stats.write_field(sd_time_32.to_string()).ok();
+                    process_stats.write_field(sd_time_64.to_string()).ok();
+                    process_stats.write_field(next_sync0.to_string()).ok();
+                    process_stats
+                        .write_field(next_dc_sync_start_time.to_string())
+                        .ok();
+
+                    if should_print {
+                        log::info!(
+                            "{:#06x}, next sync0 in: {} ms, 32b t {}, {}, 64b t {}",
+                            sd.configured_address(),
+                            next_sync0,
+                            sd_time_32,
+                            next_dc_sync_start_time,
+                            sd_time_64,
+                        );
+                    }
+                }
+
+                // Finish row
+                let _ = process_stats.write_record(None::<&[u8]>);
             }
 
             for subdevice in group.iter(&maindevice) {
@@ -450,6 +520,8 @@ fn main() -> Result<(), Error> {
 
             smol::Timer::at(now + next_cycle_wait).await;
 
+            cycle += 1;
+
             // Hook signal so we can write CSV data before exiting
             if term.load(Ordering::Relaxed) {
                 log::info!("Exiting...");
@@ -459,6 +531,8 @@ fn main() -> Result<(), Error> {
                 break;
             }
         }
+
+        let _ = std::fs::write("dc-pd.csv", process_stats.into_inner().unwrap());
 
         let group = group
             .into_safe_op(&maindevice)
