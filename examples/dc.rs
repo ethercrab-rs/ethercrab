@@ -122,6 +122,7 @@ fn main() -> Result<(), Error> {
 
     smol::block_on(async {
         let mut group = maindevice
+            // .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
             .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(|| 0)
             .await
             .expect("Init");
@@ -547,7 +548,7 @@ fn main() -> Result<(), Error> {
                     let value64 = sd
                         .register_read::<u64>(RegisterAddress::DcSystemTime)
                         .await?;
-                    let value = value64 as u32;
+                    // let value = value64 as u32;
                     let next_sync0 = (nxt - value) as f64 / 1_000_000.;
                     process_stats.write_field(value.to_string()).ok();
                     process_stats.write_field(value64.to_string()).ok();
@@ -564,7 +565,7 @@ fn main() -> Result<(), Error> {
 
                         // Valentin
                         println!(
-                            "{:#06x}, next sync0 in: {} ms, {}, {}, {}",
+                            "{:#06x}, next sync0 in: {} ms, 32b t {}, {}, 64b t {}",
                             sd.configured_address(),
                             next_sync0,
                             value,
