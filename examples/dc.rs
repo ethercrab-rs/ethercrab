@@ -7,11 +7,10 @@ use env_logger::Env;
 use ethercrab::{
     DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts,
     error::Error,
-    std::{ethercat_now, tx_rx_task},
+    std::ethercat_now,
     subdevice_group::{CycleInfo, DcConfiguration, TxRxResponse},
 };
 use futures_lite::StreamExt;
-use smol::LocalExecutor;
 use std::{
     fs::File,
     sync::{
@@ -23,15 +22,12 @@ use std::{
 };
 use ta::Next;
 use ta::indicators::ExponentialMovingAverage;
-use thread_priority::{
-    RealtimeThreadSchedulePolicy, ThreadPriority, ThreadPriorityValue, ThreadSchedulePolicy,
-};
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
 const MAX_SUBDEVICES: usize = 16;
 const MAX_PDU_DATA: usize = PduStorage::element_size(1100);
 const MAX_FRAMES: usize = 32;
-const PDI_LEN: usize = 512;
+const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
@@ -86,30 +82,18 @@ fn main() -> Result<(), Error> {
 
     let mut tick_interval = smol::Timer::interval(TICK_INTERVAL);
 
-    thread_priority::ThreadBuilder::default()
-        .name("tx-rx-task")
-        // Might need to set `<user> hard rtprio 99` and `<user> soft rtprio 99` in `/etc/security/limits.conf`
-        // Check limits with `ulimit -Hr` or `ulimit -Sr`
-        .priority(ThreadPriority::Crossplatform(
-            ThreadPriorityValue::try_from(99u8).unwrap(),
-        ))
-        // NOTE: Requires a realtime kernel
-        .policy(ThreadSchedulePolicy::Realtime(
-            RealtimeThreadSchedulePolicy::Fifo,
-        ))
-        .spawn(move |_| {
-            core_affinity::set_for_current(core_affinity::CoreId { id: 0 })
-                .then_some(())
-                .expect("Set TX/RX thread core");
-
-            let ex = LocalExecutor::new();
-
-            futures_lite::future::block_on(
-                ex.run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")),
-            )
-            .expect("TX/RX task exited");
-        })
-        .unwrap();
+    #[cfg(target_os = "windows")]
+    std::thread::spawn(move || {
+        ethercrab::std::tx_rx_task_blocking(
+            &interface,
+            tx,
+            rx,
+            ethercrab::std::TxRxTaskConfig { spinloop: false },
+        )
+        .expect("TX/RX task")
+    });
+    #[cfg(not(target_os = "windows"))]
+    smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
 
     // Wait for TX/RX loop to start
     thread::sleep(Duration::from_millis(200));
@@ -406,10 +390,8 @@ fn main() -> Result<(), Error> {
 
         let mut print_tick = Instant::now();
 
-        // 16MB buffer to start with
-
         let mut process_stats = {
-            // let mut w = csv::Writer::from_writer(File::create("dc-pd.csv").expect("Open CSV"));
+            // 16MiB buffer to start with to prevent stalls
             let pd_stats_buf = Vec::with_capacity(1024 * 1000 * 16);
 
             let mut w = csv::Writer::from_writer(pd_stats_buf);
