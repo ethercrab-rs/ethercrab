@@ -443,7 +443,7 @@ fn main() -> Result<(), Error> {
             w
         };
 
-        let start = Instant::now();
+        // PD cycle counter used for stats graph X axes
         let mut cycle = 0;
 
         // Main application process data cycle
@@ -467,6 +467,7 @@ fn main() -> Result<(), Error> {
 
                 let should_print = print_tick.elapsed() > Duration::from_secs(1);
 
+                // Uncomment to log elapsed time as well as cycle count
                 // process_stats
                 //     .write_field(start.elapsed().as_secs_f32().to_string())
                 //     .ok();
