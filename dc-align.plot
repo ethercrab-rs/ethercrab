@@ -1,5 +1,9 @@
 set datafile separator comma
 
+set term wxt size 1920,1080
+
+set key autotitle columnhead
+
 plot \
 'dc-align.csv' using 1:4 with lines, \
 'dc-align.csv' using 1:5 with lines dashtype 2, \
