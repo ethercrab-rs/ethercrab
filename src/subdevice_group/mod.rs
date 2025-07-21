@@ -404,6 +404,14 @@ where
             subdevice.dc_support().any() && !matches!(subdevice.dc_sync(), DcSync::Disabled)
         });
 
+        let system_time = SubDeviceRef::new(maindevice, reference, ())
+            .register_read::<u64>(RegisterAddress::DcSystemTime)
+            .await?;
+
+        let sync0_period = sync0_period.as_nanos() as u64;
+
+        let first_pulse_delay = start_delay.as_nanos() as u64;
+
         for subdevice in dc_devices {
             fmt::debug!(
                 "--> Configuring SubDevice {:#06x} {} DC mode {}",
@@ -425,20 +433,8 @@ where
                 .send(maindevice, 0u8)
                 .await?;
 
-            let device_time: u64 = subdevice
-                .read(RegisterAddress::DcSystemTime)
-                .ignore_wkc()
-                .receive(maindevice)
-                .await?;
-
-            fmt::debug!("--> Device time {} ns", device_time);
-
-            let sync0_period = sync0_period.as_nanos() as u64;
-
-            let first_pulse_delay = start_delay.as_nanos() as u64;
-
             // Round first pulse time to a whole number of cycles
-            let start_time = (device_time + first_pulse_delay) / sync0_period * sync0_period;
+            let start_time = (system_time + first_pulse_delay) / sync0_period * sync0_period;
 
             fmt::debug!("--> Computed DC sync start time: {}", start_time);
 
