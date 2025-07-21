@@ -32,8 +32,8 @@ set title "SubDevice system time u64"
 plot for [n=5:23:4] FILE using 2:(column(n)) with lines
 
 # set yrange [0:3]
-set ylabel "Microseconds"
-set logscale y
+set ylabel "Millis"
+# set logscale y
 set origin 0.0,0.25
 set title "Time to next SYNC0"
 plot for [n=6:23:4] FILE using 2:(column(n)) with lines
