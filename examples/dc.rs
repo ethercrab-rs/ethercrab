@@ -279,59 +279,59 @@ fn main() -> Result<(), Error> {
                 .await
                 .expect("TX/RX");
 
-            if now.elapsed() >= Duration::from_millis(10) {
+            align_stats
+                .write_field(start.elapsed().as_millis().to_string())
+                .ok();
+
+            let mut max_deviation = 0;
+
+            for (s1, ema) in group.iter(&maindevice).zip(averages.iter_mut()) {
+                let diff = match s1
+                    .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
+                    .await
+                {
+                    Ok(value) =>
+                    // The returned value is NOT in two's compliment, rather the upper bit specifies
+                    // whether the number in the remaining bits is odd or even, so we convert the
+                    // value to `i32` using that logic here.
+                    {
+                        let flag = 0b1u32 << 31;
+
+                        if value >= flag {
+                            // Strip off negative flag bit and negate value as normal
+                            -((value & !flag) as i32)
+                        } else {
+                            value as i32
+                        }
+                    }
+                    Err(Error::WorkingCounter { .. }) => 0,
+                    Err(e) => return Err(e),
+                };
+
+                let ema_next = ema.next(diff as f64);
+
+                max_deviation = max_deviation.max(ema_next.abs() as u32);
+
+                align_stats.write_field(diff.to_string()).ok();
+                align_stats.write_field(ema_next.to_string()).ok();
+            }
+
+            // Finish row
+            align_stats.write_record(None::<&[u8]>).ok();
+
+            if now.elapsed() >= Duration::from_millis(1000) {
                 now = Instant::now();
 
-                align_stats
-                    .write_field(start.elapsed().as_millis().to_string())
-                    .ok();
+                log::info!("--> Max deviation {} ns", max_deviation);
+            }
 
-                let mut max_deviation = 0;
+            // Less than 100ns max deviation as an example threshold.
+            // <https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585>
+            // mentions less than 100us as a good enough value as well.
+            if max_deviation < 10_000 {
+                log::info!("Clocks settled after {} ms", start.elapsed().as_millis());
 
-                for (s1, ema) in group.iter(&maindevice).zip(averages.iter_mut()) {
-                    let diff = match s1
-                        .register_read::<u32>(RegisterAddress::DcSystemTimeDifference)
-                        .await
-                    {
-                        Ok(value) =>
-                        // The returned value is NOT in two's compliment, rather the upper bit specifies
-                        // whether the number in the remaining bits is odd or even, so we convert the
-                        // value to `i32` using that logic here.
-                        {
-                            let flag = 0b1u32 << 31;
-
-                            if value >= flag {
-                                // Strip off negative flag bit and negate value as normal
-                                -((value & !flag) as i32)
-                            } else {
-                                value as i32
-                            }
-                        }
-                        Err(Error::WorkingCounter { .. }) => 0,
-                        Err(e) => return Err(e),
-                    };
-
-                    let ema_next = ema.next(diff as f64);
-
-                    max_deviation = max_deviation.max(ema_next.abs() as u32);
-
-                    align_stats.write_field(diff.to_string()).ok();
-                    align_stats.write_field(ema_next.to_string()).ok();
-                }
-
-                // Finish row
-                align_stats.write_record(None::<&[u8]>).ok();
-
-                log::debug!("--> Max deviation {} ns", max_deviation);
-
-                // Less than 100ns max deviation as an example threshold.
-                // <https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585>
-                // mentions less than 100us as a good enough value as well.
-                if max_deviation < 10_000 {
-                    log::info!("Clocks settled after {} ms", start.elapsed().as_millis());
-
-                    break;
-                }
+                break;
             }
 
             tick_interval.next().await;
