@@ -364,11 +364,17 @@ where
 {
     /// Configure Distributed Clock SYNC0 for all SubDevices in this group.
     ///
+    /// All configured times in the [`DcConfiguration`] struct must be under `u32::MAX` nanoseconds.
+    /// This means that e.g. the sync start delay must not be greater than rougly 4.2 seconds.
+    ///
     /// # Errors
     ///
     /// This method will return with a
     /// [`Error::DistributedClock(DistributedClockError::NoReference)`](Error::DistributedClock)
     /// error if no DC reference SubDevice is present on the network.
+    ///
+    /// This method will also return an error if any of the [`DcConfiguration`] struct's fields hold
+    /// a value greater than `u32::MAX` nanoseconds.
     pub async fn configure_dc_sync(
         self,
         maindevice: &MainDevice<'_>,
@@ -404,6 +410,15 @@ where
             subdevice.dc_support().any() && !matches!(subdevice.dc_sync(), DcSync::Disabled)
         });
 
+        let system_time = SubDeviceRef::new(maindevice, reference, ())
+            .register_read::<u64>(RegisterAddress::DcSystemTime)
+            .await?;
+
+        // Kinda weird converting to/from u32 but these values must not exceed u32::MAX
+        let sync0_period = u64::from(u32::try_from(sync0_period.as_nanos())?);
+
+        let first_pulse_delay = u64::from(u32::try_from(start_delay.as_nanos())?);
+
         for subdevice in dc_devices {
             fmt::debug!(
                 "--> Configuring SubDevice {:#06x} {} DC mode {}",
@@ -425,20 +440,8 @@ where
                 .send(maindevice, 0u8)
                 .await?;
 
-            let device_time: u64 = subdevice
-                .read(RegisterAddress::DcSystemTime)
-                .ignore_wkc()
-                .receive(maindevice)
-                .await?;
-
-            fmt::debug!("--> Device time {} ns", device_time);
-
-            let sync0_period = sync0_period.as_nanos() as u64;
-
-            let first_pulse_delay = start_delay.as_nanos() as u64;
-
             // Round first pulse time to a whole number of cycles
-            let start_time = (device_time + first_pulse_delay) / sync0_period * sync0_period;
+            let start_time = (system_time + first_pulse_delay) / sync0_period * sync0_period;
 
             fmt::debug!("--> Computed DC sync start time: {}", start_time);
 
@@ -454,9 +457,11 @@ where
                 .await?;
 
             let flags = if let DcSync::Sync01 { sync1_period } = subdevice.dc_sync() {
+                let sync1_period = u64::from(u32::try_from(sync1_period.as_nanos())?);
+
                 subdevice
                     .write(RegisterAddress::DcSync1CycleTime)
-                    .send(maindevice, sync1_period.as_nanos() as u64)
+                    .send(maindevice, sync1_period)
                     .await?;
 
                 SYNC1_ACTIVATE | SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
@@ -477,7 +482,7 @@ where
             pdi_len: self_.pdi_len,
             inner: self_.inner,
             dc_conf: HasDc {
-                sync0_period: sync0_period.as_nanos() as u64,
+                sync0_period: sync0_period,
                 sync0_shift: sync0_shift.as_nanos() as u64,
                 reference,
             },

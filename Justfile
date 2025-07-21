@@ -108,3 +108,11 @@ capture-all-replays interface *args:
 
         echo ""
     done
+
+# Run the `dc` example in release mode on a remote testbench PC
+run-remote +args:
+    cargo build --example dc --release
+    scp target/release/examples/dc ethercrab-debian1211:~
+    ssh james@ethercrab-debian1211 'sudo setcap cap_net_raw=pe ~/dc'
+    ssh -t james@ethercrab-debian1211 "RUST_LOG=info,ethercrab::subdevice_group=debug,ethercrab::dc=debug ~/dc {{args}} || true"
+    rsync -avzh james@ethercrab-debian1211:~/*.csv ./
