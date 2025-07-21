@@ -406,8 +406,13 @@ fn main() -> Result<(), Error> {
 
         let mut print_tick = Instant::now();
 
+        // 16MB buffer to start with
+
         let mut process_stats = {
-            let mut w = csv::Writer::from_writer(File::create("dc-pd.csv").expect("Open CSV"));
+            // let mut w = csv::Writer::from_writer(File::create("dc-pd.csv").expect("Open CSV"));
+            let pd_stats_buf = Vec::with_capacity(1024 * 1000 * 16);
+
+            let mut w = csv::Writer::from_writer(pd_stats_buf);
 
             w.write_field("Elapsed (s)").ok();
             w.write_field("Cycle number").ok();
@@ -462,9 +467,10 @@ fn main() -> Result<(), Error> {
 
                 let should_print = print_tick.elapsed() > Duration::from_secs(1);
 
-                process_stats
-                    .write_field(start.elapsed().as_secs_f32().to_string())
-                    .ok();
+                // process_stats
+                //     .write_field(start.elapsed().as_secs_f32().to_string())
+                //     .ok();
+                process_stats.write_field("").ok();
                 process_stats.write_field(cycle.to_string()).ok();
                 process_stats
                     .write_field((dc_system_time as u32).to_string())
@@ -520,7 +526,7 @@ fn main() -> Result<(), Error> {
                 }
 
                 // Finish row
-                process_stats.write_record(None::<&[u8]>).expect("Bad");
+                let _ = process_stats.write_record(None::<&[u8]>);
             }
 
             for subdevice in group.iter(&maindevice) {
@@ -544,6 +550,8 @@ fn main() -> Result<(), Error> {
                 break;
             }
         }
+
+        let _ = std::fs::write("dc-pd.csv", process_stats.into_inner().unwrap());
 
         let group = group
             .into_safe_op(&maindevice)
