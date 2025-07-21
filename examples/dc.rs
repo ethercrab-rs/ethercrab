@@ -499,12 +499,10 @@ fn main() -> Result<(), Error> {
                         .await
                         .unwrap_or_default();
 
-                    let sd_time_32 = sd
-                        .register_read::<u32>(RegisterAddress::DcSystemTime)
-                        .await?;
                     let sd_time_64 = sd
                         .register_read::<u64>(RegisterAddress::DcSystemTime)
                         .await?;
+                    let sd_time_32 = sd_time_64 as u32;
 
                     let next_sync0 = (next_dc_sync_start_time - sd_time_32) as f64 / 1_000_000.;
                     process_stats.write_field(sd_time_32.to_string()).ok();
