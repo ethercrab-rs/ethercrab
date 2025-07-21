@@ -323,10 +323,10 @@ fn main() -> Result<(), Error> {
 
                 log::info!("--> Max deviation {} ns", max_deviation);
 
-                // Less than 100ns max deviation as an example threshold.
+                // Less than 500ns max deviation as an example threshold.
                 // <https://github.com/OpenEtherCATsociety/SOEM/issues/487#issuecomment-786245585>
                 // mentions less than 100us as a good enough value as well.
-                if max_deviation < 100 {
+                if max_deviation < 500 {
                     log::info!("Clocks settled after {} ms", start.elapsed().as_millis());
 
                     break;
