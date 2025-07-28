@@ -109,10 +109,12 @@ capture-all-replays interface *args:
         echo ""
     done
 
-# Run the `dc` example in release mode on a remote testbench PC
-run-remote +args:
-    cargo build --example dc --release
-    scp target/release/examples/dc ethercrab-debian1211:~
-    ssh james@ethercrab-debian1211 'sudo setcap cap_net_raw=pe ~/dc'
-    ssh -t james@ethercrab-debian1211 "RUST_LOG=info,ethercrab::subdevice_group=debug,ethercrab::dc=debug ~/dc {{args}} || true"
-    rsync -avzh james@ethercrab-debian1211:~/*.csv ./
+# Run and example in release mode on a remote testbench PC, capturing traffic with `tshark`.
+#
+# E.g. `just run-remote ek1100 c6015 enp1s0`
+run-remote example remote +args:
+    cargo build --example {{example}} --release
+    scp target/release/examples/{{example}} {{remote}}:~
+    ssh james@{{remote}} 'sudo setcap cap_net_raw=pe ~/{{example}}'
+    ssh -t james@{{remote}} "RUST_LOG=info,ethercrab::subdevice_group=debug,ethercrab::{{example}}=debug ~/{{example}} {{args}} || true"
+    rsync -avzh james@{{remote}}:~/*.csv ./ || true
