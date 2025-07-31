@@ -58,7 +58,6 @@ pub struct MailboxConfig {
     pub(in crate::subdevice) read: Option<Mailbox>,
     pub(in crate::subdevice) write: Option<Mailbox>,
     pub(in crate::subdevice) supported_protocols: MailboxProtocols,
-    pub(in crate::subdevice) coe_sync_manager_types: heapless::Vec<SyncManagerType, 16>,
     pub(in crate::subdevice) has_coe: bool,
     /// True if Complete Access is supported.
     pub(in crate::subdevice) complete_access: bool,
