@@ -47,7 +47,7 @@ impl<'subdevice> DeviceEeprom<'subdevice> {
                 self.maindevice.timeouts.loop_tick().await;
             }
         }
-        .timeout(self.maindevice.timeouts.eeprom)
+        .timeout(self.maindevice.timeouts.eeprom())
         .await?;
 
         Ok(res)
