@@ -101,13 +101,15 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
     // Read configurations from SubDevice EEPROMs and configure devices.
     let groups = maindevice
-        .init::<MAX_SUBDEVICES, _>(ethercat_now, |groups: &Groups, subdevice| {
-            match subdevice.name() {
+        .init::<MAX_SUBDEVICES, _>(
+            ethercat_now,
+            Groups::default(),
+            |groups: &Groups, subdevice| match subdevice.name() {
                 "EL2889" | "EK1100" | "EK1501" => Ok(&groups.slow_outputs),
                 "EL2828" => Ok(&groups.fast_outputs),
                 _ => Err(Error::UnknownSubDevice),
-            }
-        })
+            },
+        )
         .await
         .expect("Init");
 

@@ -60,6 +60,7 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
     let groups = maindevice
         .init::<MAX_SUBDEVICES, _>(
             || 0,
+            Groups::default(),
             |groups: &Groups, subdevice| match subdevice.name() {
                 "EL2889" | "EK1100" => Ok(&groups.slow_outputs),
                 "EL2828" => Ok(&groups.fast_outputs),

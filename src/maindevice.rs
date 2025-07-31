@@ -198,7 +198,7 @@ impl<'sto> MainDevice<'sto> {
     ///
     /// # async {
     /// let groups = maindevice
-    ///     .init::<MAX_SUBDEVICES, _>(ethercat_now, |groups: &Groups, subdevice| {
+    ///     .init::<MAX_SUBDEVICES, _>(ethercat_now, Groups::default(), |groups: &Groups, subdevice| {
     ///         match subdevice.name() {
     ///             "COUPLER" | "IO69420" => Ok(&groups.group_1),
     ///             "COOLSERVO" => Ok(&groups.group_2),
