@@ -398,7 +398,8 @@ impl SubDevice {
         self.dc_support
     }
 
-    pub(crate) fn io_segments(&self) -> &IoRanges {
+    /// Get information about the PDI segments including PDO mappings
+    pub fn io_segments(&self) -> &IoRanges {
         &self.config.io
     }
 
