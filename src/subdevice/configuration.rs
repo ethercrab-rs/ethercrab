@@ -47,53 +47,6 @@ where
 
         self.request_subdevice_state(SubDeviceState::PreOp).await?;
 
-        if self.state.config.mailbox.has_coe {
-            // TODO: Abstract this no-complete-access check into a method call so we can reuse it.
-            // CA is currently only used here inside EtherCrab, but may need to be used in other
-            // places eventually.
-            let sms = if self.state.config.mailbox.complete_access {
-                // Up to 16 sync managers as per ETG1000.4 Table 59
-                self.sdo_read::<heapless::Vec<SyncManagerType, 16>>(
-                    SM_TYPE_ADDRESS,
-                    SubIndex::Complete,
-                )
-                .await?
-            } else {
-                let num_indices = self
-                    .sdo_read_expedited::<u8>(SM_TYPE_ADDRESS, SubIndex::Index(0))
-                    .await?;
-
-                let mut sms = heapless::Vec::new();
-
-                for index in 1..=num_indices {
-                    let sm = self
-                        .sdo_read_expedited::<SyncManagerType>(
-                            SM_TYPE_ADDRESS,
-                            SubIndex::Index(index),
-                        )
-                        .await?;
-
-                    fmt::trace!("Sync manager {:?} at sub-index {}", sm, index);
-
-                    sms.push(sm).map_err(|_| {
-                        fmt::error!("More than 16 sync manager types deteced");
-
-                        Error::Capacity(Item::SyncManager)
-                    })?;
-                }
-
-                sms
-            };
-
-            fmt::debug!(
-                "SubDevice {:#06x} found sync managers {:?}",
-                self.configured_address,
-                sms
-            );
-
-            self.state.config.mailbox.coe_sync_manager_types = sms;
-        }
-
         self.set_eeprom_mode(SiiOwner::Master).await?;
 
         Ok(())
@@ -296,7 +249,6 @@ where
             read: read_mailbox,
             write: write_mailbox,
             supported_protocols: mailbox_config.supported_protocols,
-            coe_sync_manager_types: heapless::Vec::new(),
             has_coe: mailbox_config
                 .supported_protocols
                 .contains(MailboxProtocols::COE)
@@ -335,20 +287,12 @@ where
         let start_offset = *global_offset;
         // let mut total_bit_len = 0;
 
-        for (sync_manager_index, (sm_type, sync_manager)) in self
-            .state
-            .config
-            .mailbox
-            .coe_sync_manager_types
-            .iter()
-            .zip(sync_managers.iter())
-            .enumerate()
-        {
+        for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
             let sync_manager_index = sync_manager_index as u8;
 
             let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
 
-            if *sm_type != desired_sm_type {
+            if sync_manager.usage_type != desired_sm_type {
                 continue;
             }
 
@@ -361,7 +305,7 @@ where
                 "SDO sync manager {}  {:#06x} {:?}, sub indices: {}",
                 sync_manager_index,
                 sm_address,
-                sm_type,
+                sync_manager.usage_type,
                 num_sm_assignments
             );
 
