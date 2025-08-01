@@ -198,7 +198,7 @@ impl<'sto> MainDevice<'sto> {
     ///
     /// # async {
     /// let groups = maindevice
-    ///     .init::<MAX_SUBDEVICES, _>(ethercat_now, |groups: &Groups, subdevice| {
+    ///     .init::<MAX_SUBDEVICES, _>(ethercat_now, Groups::default(), |groups: &Groups, subdevice| {
     ///         match subdevice.name() {
     ///             "COUPLER" | "IO69420" => Ok(&groups.group_1),
     ///             "COOLSERVO" => Ok(&groups.group_2),
@@ -212,16 +212,12 @@ impl<'sto> MainDevice<'sto> {
     pub async fn init<const MAX_SUBDEVICES: usize, G>(
         &self,
         now: impl Fn() -> u64 + Copy,
+        groups: G,
         mut group_filter: impl for<'g> FnMut(
             &'g G,
             &SubDevice,
         ) -> Result<&'g dyn SubDeviceGroupHandle, Error>,
-    ) -> Result<G, Error>
-    where
-        G: Default,
-    {
-        let groups = G::default();
-
+    ) -> Result<G, Error> {
         // Each SubDevice increments working counter, so we can use it as a total count of
         // SubDevices
         let num_subdevices = self.count_subdevices().await?;
@@ -407,7 +403,7 @@ impl<'sto> MainDevice<'sto> {
         &self,
         now: impl Fn() -> u64 + Copy,
     ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, subdevice_group::PreOp>, Error> {
-        self.init::<MAX_SUBDEVICES, _>(now, |group, _subdevice| Ok(group))
+        self.init::<MAX_SUBDEVICES, _>(now, Default::default(), |group, _subdevice| Ok(group))
             .await
     }
 
