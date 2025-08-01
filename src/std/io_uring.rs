@@ -40,6 +40,14 @@ pub fn tx_rx_task_io_uring<'sto>(
 
     let mut ring = IoUring::new(ENTRIES as u32)?;
 
+    // checks io_uring support for used opcodes
+    let mut probe = io_uring::register::Probe::new();
+    ring.submitter().register_probe(&mut probe)?;
+    if !(probe.is_supported(opcode::Read::CODE) && probe.is_supported(opcode::Write::CODE)) {
+        log::error!("io_uring does not support read and/or write opcodes");
+        return Err(io::Error::other(Error::Internal));
+    }
+
     let mut high_water_mark = 0;
 
     let signal = Arc::new(ParkSignal::new());
