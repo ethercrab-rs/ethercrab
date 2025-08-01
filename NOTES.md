@@ -1317,6 +1317,8 @@ Note
 
 TODO: Flesh this section out into either a blog post or a doc file in the EtherCrab repo.
 
+Some other notes from Codesys: <https://content.helpme-codesys.com/en/CODESYS%20Control/_rtsl_performance_optimization_linux.html>
+
 ## Linux system tuning
 
 - Install the PREEMPT_RT kernel
