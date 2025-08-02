@@ -249,8 +249,11 @@ where
         Ok(SubDeviceIdentity::unpack_from_slice(&buf)?)
     }
 
-    pub(crate) async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 8>, Error> {
-        let mut sync_managers = heapless::Vec::<_, 8>::new();
+    /// Load sync managers from EEPROM.
+    ///
+    /// If no sync manager category could be found, the returned list will be empty.
+    pub(crate) async fn sync_managers(&self) -> Result<heapless::Vec<SyncManager, 16>, Error> {
+        let mut sync_managers = heapless::Vec::<_, 16>::new();
 
         fmt::trace!("Get sync managers");
 
@@ -450,6 +453,9 @@ where
         }
     }
 
+    /// Get an iterator-like object over all items in a category.
+    ///
+    /// If the category cannot be found, this method will return success with an empty iterator.
     pub(crate) async fn items<T>(
         &self,
         category: CategoryType,
@@ -526,7 +532,6 @@ mod tests {
             file_provider::EepromFile,
             types::{
                 CoeDetails, Flags, MailboxProtocols, PortStatus, PortStatuses, SyncManagerEnable,
-                SyncManagerType,
             },
         },
         sync_manager_channel::{Control, Direction, OperationMode},
@@ -557,61 +562,57 @@ mod tests {
         let expected = [
             SyncManager {
                 start_addr: 0x1800,
-                length: 0x0400,
+                length_bytes: 0x0400,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
-                    direction: Direction::MasterWrite,
+                    direction: Direction::MainDeviceWrite,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
                 },
                 enable: SyncManagerEnable::ENABLE,
-                usage_type: SyncManagerType::MailboxWrite,
             },
             SyncManager {
                 start_addr: 0x1c00,
-                length: 0x0400,
+                length_bytes: 0x0400,
                 control: Control {
                     operation_mode: OperationMode::Mailbox,
-                    direction: Direction::MasterRead,
+                    direction: Direction::MainDeviceRead,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
                 },
                 enable: SyncManagerEnable::ENABLE,
-                usage_type: SyncManagerType::MailboxRead,
             },
             SyncManager {
                 start_addr: 0x1100,
-                length: 0x0000,
+                length_bytes: 0x0000,
                 control: Control {
-                    operation_mode: OperationMode::Normal,
-                    direction: Direction::MasterWrite,
+                    operation_mode: OperationMode::ProcessData,
+                    direction: Direction::MainDeviceWrite,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
                 },
                 enable: SyncManagerEnable::ENABLE,
-                usage_type: SyncManagerType::ProcessDataWrite,
             },
             SyncManager {
                 start_addr: 0x1140,
-                length: 0x0000,
+                length_bytes: 0x0000,
                 control: Control {
-                    operation_mode: OperationMode::Normal,
-                    direction: Direction::MasterRead,
+                    operation_mode: OperationMode::ProcessData,
+                    direction: Direction::MainDeviceRead,
                     ecat_event_enable: false,
                     dls_user_event_enable: true,
                     watchdog_enable: false,
                 },
                 enable: SyncManagerEnable::ENABLE,
-                usage_type: SyncManagerType::ProcessDataRead,
             },
         ];
 
         assert_eq!(
             e.sync_managers().await,
-            Ok(heapless::Vec::<SyncManager, 8>::from_slice(&expected).unwrap())
+            Ok(heapless::Vec::<SyncManager, 16>::from_slice(&expected).unwrap())
         );
     }
 
@@ -873,7 +874,7 @@ mod tests {
             "subdevice_receive_offset"
         );
         assert_eq!(
-            mbox.subdevice_receive_size, sms[0].length,
+            mbox.subdevice_receive_size, sms[0].length_bytes,
             "subdevice_receive_size"
         );
         assert_eq!(
@@ -881,7 +882,7 @@ mod tests {
             "subdevice_send_offset"
         );
         assert_eq!(
-            mbox.subdevice_send_size, sms[1].length,
+            mbox.subdevice_send_size, sms[1].length_bytes,
             "subdevice_send_size"
         );
     }

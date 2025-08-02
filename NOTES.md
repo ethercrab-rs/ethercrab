@@ -10,6 +10,149 @@ this register.
 
 SOEM calls `0x0990` `ECT_REG_DCSTART0` and also writes a 64 bit value into it. See `ethercatdc.c`,
 `ecx_dcsync0`.
+# 2025-04-30 PTP and synchronising DC from MainDevice
+
+Using PTP to sync a non-EtherCAT device like a Basler camera to the EtherCAT network. There needs to
+be one reference clock, and seeing as Basler cameras have PTP support, we can use that to sync ECAT
+time to the camera.
+
+Some details [here]
+(https://events.static.linuxfound.org/sites/events/files/slides/lcjp14_ichikawa_0.pdf) and [here]
+(https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/7/html/system_administrators_guide/ch-Configuring_PTP_Using_ptp4l#sec-Starting_ptp4l).
+
+Basler PTP: <https://github.com/basler/pypylon/issues/751>
+
+```bash
+sudo apt install linuxptp
+
+# Get some logs for an interface
+sudo ptp4l -i enp115s0 -m
+```
+
+My PC already has `/dev/ptp0` but I'm not sure it's doing anything by default as the RedHat docs state:
+
+> When PTP time synchronization is working correctly, new messages with offsets and frequency
+> adjustments are printed periodically to the ptp4l and phc2sys outputs if hardware time stamping
+> is used.
+
+And I don't see new messages.
+
+# 2025-04-05 SM and FMMU config
+
+If SM AND FMMU config is not given, use defaults:
+
+```
+NOTE The Sync Manager channels shall be used in the following way:
+Sync Manager channel 0: mailbox write
+Sync Manager channel 1: mailbox read
+Sync Manager channel 2: process data write
+(may be used for process data read if no process data write supported)
+Sync Manager channel 3: process data read
+
+If mailbox is not supported, it shall be used in the following way:
+Sync Manager channel 0: process data write
+(may be used for process data read if no process data write supported)
+Sync Manager channel 1: process data read
+```
+
+The `SyncManager` section is mandatory in EEPROM unless the SD doesn't have any PD, then it's
+optional but the SD might still have mailbox.
+
+Mailbox SMs don't have FMMUs! Man I wrote that code a long time ago... look at
+`configure_mailbox_sms`. SM only. The ESI FMMU type `MBoxState` is literally that, nothing to do
+with actual MBox comms. It looks like if no SMs are in the EEPROM the current code won't bother
+configuring mailboxes. Should probably fix that to default to SM 0/1 for both SMs due to it being
+optional in the spec, but that's a separate issue.
+
+Make the SM/FMMU fields from the config struct optional and compute them based on MBox yes/no and
+inputs/outputs. For config-in-Rust users I imagine they'll leave them as `None` most of the time,
+but this field allows ESI support later. The ESI file scopes the chosen SM to `TxPdo`/`RxPdo`, so
+that's where the field in Rust should be defined.
+
+This makes the current arch kinda weird. We have a bunch of `SyncManagerAssignment`s which we're
+relying on the index for, but this doesn't map to ESI files that nicely. Could always just process
+the ESI file though...
+
+ESI file `TxPdo`/`RxPdo` do not specify an FMMU, only a (default) sync manager - they can be
+reassigned by the user.
+
+ESI FMMU records can specify their associated sync manager.
+
+# Overriding SM and FMMU config
+
+A key problem is wanting to store the SD config on `SubDevice` before it's used, meaning we'd either
+have to put lifetimes or (const) generics everywhere. Seeing as the config is actually used during
+SAFE-OP -> PRE-OP, why not do everything there with a callback:
+
+```rust
+let mut servo_mapping = None;
+
+group.into_pre_op_with_config(|sd: SubDeviceRef<&SubDevice>, index_in_group: usize| {
+    if sd.name() == "EL3702" {
+        let config = /* ... */
+
+        servo_mapping = Some(config.pdi_mapping());
+
+        Ok(Some(config))
+    } else if <SD needs some CoE config> {
+        sd.sdo_write(0x1601, 0, 0x6040_0010).await?;
+
+        // Let EtherCrab configure everything for me, most likely from CoE
+        Ok(None)
+    } else {
+        // Let EtherCrab configure everything for me, most likely from EEPROM
+        Ok(None)
+    }
+});
+
+let servo = servo_mapping.map(|m| Ds402 { pdi_mapping: m }).unwrap();
+```
+
+We should also probably get rid of `into_pre_op_pdi` and just expose the PDI in whatever's returned
+from `into_pre_op` - there's no point in splitting that behaviour. Let's just deprecate
+`into_pre_op_pdi` for now and move all the behaviour into `into_pre_op`.
+
+## Old crap, unfinished thoughts, etc:
+
+Store a reference to some structure that defines SM mappings. This could be handwritten, or could
+come from a parsed ESI file. This structure holds mappings for the PDOs for each SM. EtherCrab
+figures out and computes the FMMU offsets internally, at least for now. Can always add more fields
+to config structs.
+
+This needs to work for oversampling config (i.e. turning `u16` into `[u16; N]` or whatever).
+
+```rust
+#[non_exhaustive]
+pub struct SubDeviceMappingConfig {
+    mappings: &[/* ... */],
+    // Might add other flags here in the future, like "disable CoE write", "force sumn sumn" etc.
+}
+```
+
+```rust
+const fn pdo<T>(index: u16, sub_index: u8) -> u32 {
+    let size_bits = T::packed_len * 8;
+
+    todo!()
+}
+```
+
+### Implementation
+
+> No: I don't want to put a lifetime on the `SubDevice`, so I can't store the slice of SM configs.
+
+Optionally set configuration on SD during init. This config should be used to completely configure
+the SD's SMs and FMMUs automatically within EtherCrab during the next transition. If the SD supports
+CoE, this config object can also be used to write all the CoE registers. Is this actually necessary
+though? No I don't think it is - currently, EtherCrab writes to the CoE stuff then re-reads that
+config when configuring via CoE (i.e. not EEPROM). I think we should then be able to completely
+bypass all this stuff and just write the whole config into the SMs/FMMUs.
+
+Then, once the SD has a PDI, add a method to get a single linear `FnvIndexMap` from PDO object
+(`0x6060`, etc) into the SD's PDI (`Range<usize>`) (not the global address, at least for now).
+
+All this stuff should be made in a way that helps with DS402, but should deal with raw numbers to
+make it generically useful.
 
 # Configuring SDOs in a less error prone way
 
