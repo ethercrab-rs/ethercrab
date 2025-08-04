@@ -72,7 +72,7 @@ impl<'sto> MainDevice<'sto> {
             .pdu_broadcast_zeros(
                 start,
                 LEN as u16,
-                self.timeouts.pdu,
+                self.timeouts.pdu(),
                 self.config.retry_behaviour.retry_count(),
             )
             .await
@@ -479,7 +479,7 @@ impl<'sto> MainDevice<'sto> {
                 self.timeouts.loop_tick().await;
             }
         }
-        .timeout(self.timeouts.state_transition)
+        .timeout(self.timeouts.state_transition())
         .await
     }
 
@@ -501,7 +501,7 @@ impl<'sto> MainDevice<'sto> {
 
         let frame = frame.mark_sendable(
             &self.pdu_loop,
-            self.timeouts.pdu,
+            self.timeouts.pdu(),
             self.config.retry_behaviour.retry_count(),
         );
 

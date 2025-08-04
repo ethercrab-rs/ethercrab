@@ -303,8 +303,7 @@ unsafe impl Sync for PduStorageRef<'_> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Command, pdu_loop::pdu_header::PduHeader};
-    use core::time::Duration;
+    use crate::{Command, pdu_loop::pdu_header::PduHeader, timer_factory::MAX_TIMEOUT};
 
     #[test]
     fn zeroed_data() {
@@ -321,7 +320,7 @@ mod tests {
             .unwrap();
 
         // Drop frame future to reset its state to `FrameState::None`
-        drop(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
+        drop(frame.mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX));
 
         let mut frame = pdu_loop.alloc_frame().expect("Allocate second frame");
 
@@ -333,7 +332,7 @@ mod tests {
             + EthercatFrameHeader::header_len()
             + PduHeader::PACKED_LEN;
 
-        let frame = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
+        let frame = frame.mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX);
 
         // 10 byte PDU header, 8 byte payload, 2 byte WKC
         assert_eq!(

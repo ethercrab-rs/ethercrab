@@ -26,7 +26,7 @@ impl Default for MainDeviceConfig {
 
 /// Network communication retry policy.
 ///
-/// Retries will be performed at the rate defined by [`Timeouts::pdu`](crate::Timeouts::pdu).
+/// Retries will be performed at the rate defined by [`Timeouts::pdu`](field@crate::Timeouts::pdu).
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 pub enum RetryBehaviour {
     /// Do not attempt to retry timed out packet sends (default).
