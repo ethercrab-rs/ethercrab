@@ -15,9 +15,9 @@ mod tests {
 
     #[test]
     fn group_unique_id_defaults() {
-        let g1 = SubDeviceGroup::<16, 16, PreOp>::default();
-        let g2 = SubDeviceGroup::<16, 16, PreOp>::default();
-        let g3 = SubDeviceGroup::<16, 16, PreOp>::default();
+        let g1 = SubDeviceGroup::<16, 16, crate::DefaultLock, PreOp>::default();
+        let g2 = SubDeviceGroup::<16, 16, crate::DefaultLock, PreOp>::default();
+        let g3 = SubDeviceGroup::<16, 16, crate::DefaultLock, PreOp>::default();
 
         assert_ne!(g1.id, g2.id);
         assert_ne!(g2.id, g3.id);
