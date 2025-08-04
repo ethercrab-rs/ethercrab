@@ -406,7 +406,10 @@ impl<'sto> MainDevice<'sto> {
     pub async fn init_single_group<const MAX_SUBDEVICES: usize, const MAX_PDI: usize>(
         &self,
         now: impl Fn() -> u64 + Copy,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, subdevice_group::PreOp>, Error> {
+    ) -> Result<
+        SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, crate::DefaultLock, subdevice_group::PreOp>,
+        Error,
+    > {
         self.init::<MAX_SUBDEVICES, _>(now, |group, _subdevice| Ok(group))
             .await
     }
