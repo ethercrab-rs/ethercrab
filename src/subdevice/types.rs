@@ -1,7 +1,4 @@
-use crate::{
-    eeprom::types::{MailboxProtocols, SyncManagerType},
-    pdi::PdiSegment,
-};
+use crate::{eeprom::types::MailboxProtocols, pdi::PdiSegment};
 use core::fmt::{self, Debug};
 
 /// SubDevice identity information (vendor ID, product ID, etc).
