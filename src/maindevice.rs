@@ -23,7 +23,6 @@ use core::{
 };
 use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite};
 use heapless::FnvIndexMap;
-use lock_api::RawRwLock;
 
 /// The main EtherCAT controller.
 ///
@@ -400,14 +399,13 @@ impl<'sto> MainDevice<'sto> {
     /// # Ok::<(), ethercrab::error::Error>(())
     /// # };
     /// ```
-    pub async fn init_single_group<
-        const MAX_SUBDEVICES: usize,
-        const MAX_PDI: usize,
-        R: RawRwLock + Sync,
-    >(
+    pub async fn init_single_group<const MAX_SUBDEVICES: usize, const MAX_PDI: usize>(
         &self,
         now: impl Fn() -> u64 + Copy,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, subdevice_group::PreOp>, Error> {
+    ) -> Result<
+        SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, crate::DefaultLock, subdevice_group::PreOp>,
+        Error,
+    > {
         self.init::<MAX_SUBDEVICES, _>(now, Default::default(), |group, _subdevice| Ok(group))
             .await
     }
