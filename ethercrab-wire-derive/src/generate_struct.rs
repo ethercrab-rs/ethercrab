@@ -22,23 +22,31 @@ pub fn generate_struct_write(parsed: &StructMeta, input: &DeriveInput) -> proc_m
             .ty_name
             .unwrap_or_else(|| Ident::new("UnknownTypeStopLookingAtMe", Span::call_site()));
 
+        let field_access = if parsed.repr_packed {
+            quote! {{
+                unsafe { core::ptr::read_unaligned(&raw const self.#name) }
+            }}
+        } else {
+            quote! {self.#name}
+        };
+        
         // Small optimisation
         if ty_name == "u8" || ty_name == "bool" {
             let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
             let mask = proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
 
             quote! {
-                buf[#byte_start] |= ((self.#name as u8) << #bit_start) & #mask;
+                buf[#byte_start] |= ((#field_access as u8) << #bit_start) & #mask;
             }
         }
         // Single byte fields need merging into the other data
         else if field.bytes.len() == 1 {
             let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
             let mask = proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
-
+          
             quote! {
                 let mut field_buf = [0u8; 1];
-                let res = <#field_ty as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(&self.#name, &mut field_buf)[0];
+                let res = <#field_ty as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(&#field_access, &mut field_buf)[0];
 
                 buf[#byte_start] |= (res << #bit_start) & #mask;
             }
@@ -46,9 +54,8 @@ pub fn generate_struct_write(parsed: &StructMeta, input: &DeriveInput) -> proc_m
         // Assumption: multi-byte fields are byte-aligned. This should be validated during parse.
         else {
             let byte_end = field.bytes.end;
-
             quote! {
-                <#field_ty as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(&self.#name, &mut buf[#byte_start..#byte_end]);
+                <#field_ty as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(&#field_access, &mut buf[#byte_start..#byte_end]);
             }
         }
     });

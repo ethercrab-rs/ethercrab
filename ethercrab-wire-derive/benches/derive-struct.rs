@@ -1,6 +1,56 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireWrite, EtherCrabWireWriteSized};
 
+pub fn normal_types_repr_packed(c: &mut Criterion) {
+    #[derive(ethercrab_wire::EtherCrabWireReadWrite)]
+    #[wire(bytes = 16)]
+    #[repr(C, packed)]
+    struct NormalTypes {
+        #[wire(bytes = 4)]
+        foo: u32,
+
+        #[wire(bytes = 2)]
+        bar: u16,
+
+        #[wire(bytes = 2)]
+        baz: u16,
+
+        #[wire(bytes = 8)]
+        huge: u64,
+    }
+
+    let input_data = [
+        0xbf, 0x7e, 0xc0, 0x07, 0xab, 0xa1, 0xc2, 0x22, 0x45, 0x23, 0xaa, 0x68, 0x47, 0xbf, 0xff,
+        0xea,
+    ];
+
+    c.bench_function("u* [repr(C,packed)] struct unpack", |b| {
+        b.iter(|| NormalTypes::unpack_from_slice(black_box(&input_data)))
+    });
+
+    let instance = NormalTypes::unpack_from_slice(&input_data).unwrap();
+
+    c.bench_function("u* [repr(C,packed)] struct pack array", |b| {
+        b.iter(|| black_box(instance.pack()))
+    });
+
+    c.bench_function("u* [repr(C,packed)] struct pack slice unchecked", |b| {
+        b.iter(|| {
+            let mut buf = [0u8; 16];
+
+            instance.pack_to_slice_unchecked(black_box(&mut buf));
+        })
+    });
+
+    c.bench_function("u* [repr(C,packed)] struct pack slice checked", |b| {
+        b.iter(|| {
+            let mut buf = [0u8; 16];
+
+            let _ = instance.pack_to_slice(black_box(&mut buf));
+        })
+    });
+}
+
 pub fn normal_types(c: &mut Criterion) {
     #[derive(ethercrab_wire::EtherCrabWireReadWrite)]
     #[wire(bytes = 16)]
@@ -157,5 +207,11 @@ pub fn packed(c: &mut Criterion) {
     });
 }
 
-criterion_group!(structs, normal_types, packed_and_normal, packed);
+criterion_group!(
+    structs,
+    normal_types,
+    normal_types_repr_packed,
+    packed_and_normal,
+    packed
+);
 criterion_main!(structs);
