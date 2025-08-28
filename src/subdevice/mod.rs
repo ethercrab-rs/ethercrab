@@ -3,6 +3,7 @@ mod dc;
 mod eeprom;
 pub mod pdi;
 pub mod ports;
+mod raw_mailbox;
 mod types;
 
 use crate::{

@@ -68,6 +68,8 @@ tokio = { version = "1.33.0", features = [
     "macros",
     "sync",
     "time",
+    "net",
+    "io-util",
 ] }
 thread-priority = "1.2.0"
 ta = "0.5.0"
