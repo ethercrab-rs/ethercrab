@@ -20,7 +20,11 @@ const MAX_FRAMES: usize = 32;
 const MAX_PDU_DATA: usize = PduStorage::element_size(1500);
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-/// Serialize mailbox transactions across all slaves
+/// Serialize mailbox transactions across all slaves.
+/// 
+/// This global mutex ensures that only one mailbox transaction is processed at a time,
+/// following Beckhoff's recommendation to "avoid parallel access" when using the
+/// Mailbox Gateway. This prevents SM collision issues and ensures proper sequencing.
 static MAILBOX_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::main]
@@ -60,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // a channel-based architecture.
     
     // Shared state
-    let maindevice = Arc::new(maindevice);
+    // (maindevice is already an Arc<MainDevice>)
     let addr_to_idx = Arc::new(addr_to_idx);
 
     let mut buf = [0u8; MAX_PACKET_SIZE];
@@ -216,8 +220,8 @@ async fn process_mailbox<const MAX_SD: usize, const MAX_PDI: usize>(
 
     // Borrow fresh SubDeviceRef for this index and forward
     let sub = group.subdevice(maindevice, idx)?;
-    match tokio::time::timeout(Duration::from_secs(10), sub.mailbox_raw_roundtrip(req, Duration::from_secs(10))).await {
-        Ok(Ok(rep)) => {
+    match sub.mailbox_raw_roundtrip(req, Duration::from_secs(10)).await {
+        Ok(rep) => {
             // Clamp to 11-bit header space
             let rlen = rep.len().min(0x07ff);
             if rep.len() > 0x07ff { warn!("clamped reply {} -> {}", rep.len(), rlen); }
@@ -228,7 +232,7 @@ async fn process_mailbox<const MAX_SD: usize, const MAX_PDI: usize>(
 
             Ok(Some(out))
         }
-        _ => {
+        Err(_) => {
             // spec-like behavior: no reply on error/timeout
             Ok(None)
         }

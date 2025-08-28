@@ -12,23 +12,35 @@ where
     S: Deref<Target = SubDevice>,
 {
     /// Send a complete mailbox telegram (6‑byte header + payload) to SM0 and read one reply from SM1.
-    /// PRE‑OP is sufficient; no PDI/DC required.
+    /// 
+    /// This method expects a complete mailbox telegram including the 6-byte mailbox header followed
+    /// by the payload. The telegram is forwarded unchanged (Type/Counter bits untouched) and exactly
+    /// one reply telegram is returned from SM1, or timeout if none is produced within the specified
+    /// timeout duration.
+    /// 
+    /// The device must be in PRE-OP state or higher. No PDI or DC configuration is required.
+    /// 
+    /// # Arguments
+    /// * `request` - Complete mailbox telegram (6-byte header + payload)
+    /// * `timeout` - Maximum time to wait for a response
+    /// 
+    /// # Returns
+    /// * `Ok(Vec<u8>)` - Complete mailbox reply telegram including 6-byte header
+    /// * `Err(Error::Mailbox(MailboxError::InvalidCount))` - Malformed request size
+    /// * `Err(Error::Mailbox(MailboxError::TooLong))` - Request exceeds SM0 capacity
+    /// * `Err(Error::Timeout)` - No response within timeout period
     pub async fn mailbox_raw_roundtrip(
         &self,
         request: &[u8],
         timeout: Duration,
     ) -> Result<Vec<u8>, Error> {
-        // Basic header checks (don't add public error variants here)
+        // Basic header checks
         if request.len() < 6 {
-            return Err(Error::Mailbox(MailboxError::TooLong { 
-                address: self.configured_address, 
-                sub_index: 0 
-            }));
+            return Err(Error::Mailbox(MailboxError::InvalidCount));
         }
         let mbox_len = u16::from_le_bytes([request[0], request[1]]) as usize;
         if request.len() != 6 + mbox_len {
-            // Map to generic error to avoid public API churn for now.
-            return Err(Error::Timeout);
+            return Err(Error::Mailbox(MailboxError::InvalidCount));
         }
 
         // Get mailbox configuration from SubDevice state (via Deref)
@@ -50,14 +62,15 @@ where
             }));
         }
 
-        // If SM1 has stale data, drain once
+        // Drain all stale data from SM1, not just one
         let sm1_status_addr = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
-        let sm1_status: SmStatus = self.read(sm1_status_addr).receive(self.maindevice).await?;
-        if sm1_status.mailbox_full {
+        let mut sm1_status: SmStatus = self.read(sm1_status_addr).receive(self.maindevice).await?;
+        while sm1_status.mailbox_full {
             self.read(read_mailbox.address)
                 .ignore_wkc()
                 .receive_slice(self.maindevice, read_mailbox.len)
                 .await?;
+            sm1_status = self.read(sm1_status_addr).receive(self.maindevice).await?;
         }
 
         // Check SM0 not full (ready to accept)
@@ -68,9 +81,9 @@ where
             return Err(Error::Timeout);
         }
 
-        // Write request to SM0
+        // Write request to SM0 with exact request length
         self.write(write_mailbox.address)
-            .with_len(write_mailbox.len)
+            .with_len(request.len() as u16)
             .send(self.maindevice, request)
             .await?;
 

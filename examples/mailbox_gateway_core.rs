@@ -220,17 +220,18 @@ mod tests {
         addr_map.insert(0x1001, 0);
 
         // Test various counter values - gateway shouldn't care
-        for counter in [0x00, 0x07, 0xFF] {
+        for counter in [0u8, 7u8] {
             let mut packet = Vec::new();
             packet.extend_from_slice(&10u16.to_le_bytes());
             packet.extend_from_slice(&4u16.to_le_bytes());
             packet.extend_from_slice(&0x1001u16.to_le_bytes());
-            packet.push(counter); // Counter byte
-            packet.push(0x03); // Type
+            packet.push(0x00); // channel/priority
+            let ctrl = ((counter & 0x07) << 4) | 0x03; // cnt in bits 4..6, type=CoE
+            packet.push(ctrl);
             packet.extend_from_slice(&[0x01, 0x02, 0x03, 0x04]);
 
             let result = handle_frame(&packet, &addr_map, |_idx, req| {
-                assert_eq!(req[4], counter, "Counter should be preserved");
+                assert_eq!((req[5] >> 4) & 0x07, counter, "Counter should be passed through");
                 let req = req.to_vec();
                 async move {
                     // Verify counter is passed through
