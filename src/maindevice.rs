@@ -104,8 +104,6 @@ impl<'sto> MainDevice<'sto> {
         }
 
         // Set DC control back to EtherCAT
-        self.blank_memory::<{ size_of::<u8>() }>(RegisterAddress::DcCyclicUnitControl)
-            .await?;
         self.blank_memory::<{ size_of::<u64>() }>(RegisterAddress::DcSystemTime)
             .await?;
         self.blank_memory::<{ size_of::<u64>() }>(RegisterAddress::DcSystemTimeOffset)

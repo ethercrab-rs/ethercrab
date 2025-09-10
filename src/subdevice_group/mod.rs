@@ -441,12 +441,6 @@ where
                 .send(maindevice, 0u8)
                 .await?;
 
-            // Write access to EtherCAT
-            subdevice
-                .write(RegisterAddress::DcCyclicUnitControl)
-                .send(maindevice, 0u8)
-                .await?;
-
             // Round first pulse time to a whole number of cycles
             let start_time = (system_time + first_pulse_delay) / sync0_period * sync0_period;
 
