@@ -56,7 +56,7 @@ pub fn setup_tx_rx_task(interface: &str) -> Result<TX_RX_TASK_IO_URING, io::Erro
 /// This function is only available on `linux` targets as it requires `io_uring` support. Older
 /// kernels may not support `io_uring`.
 pub fn tx_rx_task_io_uring_cycle<'sto>(
-    mut config: TX_RX_TASK_IO_URING,
+    config: &mut TX_RX_TASK_IO_URING,
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(PduTx<'sto>, PduRx<'sto>), io::Error> {
