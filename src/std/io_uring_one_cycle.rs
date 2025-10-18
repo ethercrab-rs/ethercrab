@@ -60,200 +60,77 @@ pub fn tx_rx_task_io_uring_cycle<'sto>(
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
 ) -> Result<(PduTx<'sto>, PduRx<'sto>), io::Error> {
-    loop {
-        pdu_tx.replace_waker(&config.waker);
+    pdu_tx.replace_waker(&config.waker);
 
-        let mut sent = 0;
+    let mut sent = 0;
 
-        while let Some(frame) = pdu_tx.next_sendable_frame() {
-            let idx = frame.storage_slot_index();
+    // === submit all TX frames and corresponding RX frames ===
+    while let Some(frame) = pdu_tx.next_sendable_frame() {
+        let tx_b = config.bufs.vacant_entry();
+        let tx_key = tx_b.key();
+        let (tx_entry, tx_buf) = tx_b.insert((
+            unsafe { MaybeUninit::zeroed().assume_init() },
+            smallvec![0; config.mtu],
+        ));
 
-            let tx_b = config.bufs.vacant_entry();
-            let tx_key = tx_b.key();
-            let (tx_entry, tx_buf) = tx_b.insert((
-                unsafe { MaybeUninit::zeroed().assume_init() },
-                smallvec![0; config.mtu],
-            ));
-
-            frame
-                .send_blocking(|data: &[u8]| {
-                    *tx_entry = opcode::Write::new(
-                        io_uring::types::Fd(config.socket_desc.as_raw_fd()),
-                        data.as_ptr(),
-                        data.len() as _,
-                    )
-                    .build()
-                    // Distinguish sent frames from received frames by using the upper bit of
-                    // the user data as a flag.
-                    .user_data(tx_key as u64 | WRITE_MASK);
-
-                    // TODO: Zero copy
-                    tx_buf
-                        .get_mut(0..data.len())
-                        .ok_or(Error::Internal)?
-                        .copy_from_slice(data);
-
-                    while unsafe { config.ring.submission().push(tx_entry).is_err() } {
-                        // If the submission queue is full, flush it to the kernel
-                        config
-                            .ring
-                            .submit()
-                            .expect("Internal error, failed to submit ops");
-                    }
-
-                    sent += 1;
-
-                    Ok(data.len())
-                })
-                .expect("Send blocking");
-
-            let rx_b = config.bufs.vacant_entry();
-            let rx_key = rx_b.key();
-            let (rx_entry, rx_buf) = rx_b.insert((
-                unsafe { MaybeUninit::zeroed().assume_init() },
-                smallvec![0;config. mtu],
-            ));
-
-            *rx_entry = opcode::Read::new(
+        let res = frame.send_blocking(|data: &[u8]| {
+            *tx_entry = opcode::Write::new(
                 io_uring::types::Fd(config.socket_desc.as_raw_fd()),
-                rx_buf.as_mut_ptr() as _,
-                rx_buf.len() as _,
+                data.as_ptr(),
+                data.len() as _,
             )
             .build()
-            .user_data(rx_key as u64);
+            .user_data(tx_key as u64 | WRITE_MASK);
 
-            fmt::trace!(
-                "Insert frame TX {:#04x}, key {}, RX key {}",
-                idx,
-                tx_key,
-                rx_key
-            );
+            tx_buf[..data.len()].copy_from_slice(data);
 
-            while unsafe { config.ring.submission().push(rx_entry).is_err() } {
-                // If the submission queue is full, flush it to the kernel
-                config
-                    .ring
-                    .submit()
-                    .expect("Internal error, failed to submit ops");
+            while unsafe { config.ring.submission().push(tx_entry).is_err() } {
+                config.ring.submit().expect("submit failed");
             }
 
-            //config.high_water_mark = high_water_mark.max(bufs.len());
+            sent += 1;
+            Ok(data.len())
+        });
+
+        let rx_b = config.bufs.vacant_entry();
+        let rx_key = rx_b.key();
+        let (rx_entry, rx_buf) = rx_b.insert((
+            unsafe { MaybeUninit::zeroed().assume_init() },
+            smallvec![0; config.mtu],
+        ));
+
+        *rx_entry = opcode::Read::new(
+            io_uring::types::Fd(config.socket_desc.as_raw_fd()),
+            rx_buf.as_mut_ptr() as _,
+            rx_buf.len() as _,
+        )
+        .build()
+        .user_data(rx_key as u64);
+
+        while unsafe { config.ring.submission().push(rx_entry).is_err() } {
+            config.ring.submit().expect("submit failed");
         }
+    }
 
-        // TODO: Collect these metrics for later gathering instead of just asserting
-        // assert_eq!(ring.completion().overflow(), 0);
-        // assert_eq!(ring.completion().is_full(), false);
-        // assert_eq!(ring.submission().cq_overflow(), false);
-        // assert_eq!(ring.submission().dropped(), 0);
+    config.ring.submission().sync();
 
-        config.ring.submission().sync();
+    if sent > 0 {
+        config.ring.submit_and_wait(sent * 2)?;
+    }
 
-        let now = Instant::now();
-
-        if sent > 0 {
-            config.ring.submit_and_wait(sent * 2)?;
+    // === process completions once ===
+    for recv in unsafe { config.ring.completion_shared() } {
+        let key = recv.user_data();
+        if key & WRITE_MASK == WRITE_MASK {
+            config.bufs.remove((key & !WRITE_MASK) as usize);
+            continue;
         }
-
-        fmt::info!(
-            "Submitted, waited for {} completions for {} us",
-            config.ring.completion().len(),
-            now.elapsed().as_micros(),
-        );
-
-        // SAFETY: We must never call `completion_shared` or `completion` inside this loop.
-        for recv in unsafe { config.ring.completion_shared() } {
-            if recv.result() < 0 && recv.result() != -libc::EWOULDBLOCK {
-                return Err(io::Error::last_os_error());
-            }
-
-            let key = recv.user_data();
-
-            let received = Instant::now();
-
-            fmt::info!(
-                "Got a frame by key {} -> {} {}",
-                key,
-                key & !WRITE_MASK,
-                if key & WRITE_MASK == WRITE_MASK {
-                    "---->"
-                } else {
-                    "<--"
-                }
-            );
-
-            // If upper bit is set, this was a write that is now complete. We can remove its buffer
-            // from the slab allocator.
-            if key & WRITE_MASK == WRITE_MASK {
-                let key = key & !WRITE_MASK;
-
-                // Clear send buffer grant as it's been sent over the network
-                config.bufs.remove(key as usize);
-
-                continue;
-            }
-
-            // Original read did not succeed. Requeue read so we can try again.
-            if recv.result() == -libc::EWOULDBLOCK {
-                fmt::trace!("Frame key {} would block. Queuing for retry", key);
-
-                let (rx_entry, _buf) = config
-                    .bufs
-                    .get(key as usize)
-                    .expect("Could not get retry entry");
-
-                // SAFETY: `submission_shared` must not be held at the same time this one is
-                while unsafe { config.ring.submission_shared().push(rx_entry).is_err() } {
-                    // If the submission queue is full, flush it to the kernel
-                    config
-                        .ring
-                        .submit()
-                        .expect("Internal error, failed to submit ops");
-                }
-            } else {
-                let (_entry, frame) = config.bufs.remove(key as usize);
-
-                let frame_index = frame
-                    .get(0x11)
-                    .ok_or_else(|| io::Error::other(Error::Internal))?;
-
-                fmt::trace!(
-                    "Raw frame {:#04x} result {} buffer key {}",
-                    frame_index,
-                    recv.result(),
-                    key,
-                );
-
-                pdu_rx.receive_frame(&frame).map_err(io::Error::other)?;
-
-                fmt::trace!("Received frame in {} ns", received.elapsed().as_nanos());
-            }
+        if recv.result() < 0 && recv.result() != -libc::EWOULDBLOCK {
+            return Err(io::Error::last_os_error());
         }
+        let (_entry, frame) = config.bufs.remove(key as usize);
+        pdu_rx.receive_frame(&frame).map_err(io::Error::other)?;
+    }
 
-        if config.bufs.is_empty() {
-            fmt::trace!("No frames in flight, waiting to be woken with new frames to send");
-
-            let start = Instant::now();
-
-            // This must be after the send packet code as there can be a (safe!) race condition on
-            // startup where the TX waker hasn't been registered yet, so when a future from another
-            // thread tries to send its frame, it has no waker, so we just end up waiting forever.
-            //
-            // If this wait() is down here, we get at least one loop where any queued packets can be
-            // sent.
-            config.signal.wait();
-
-            fmt::trace!("--> Waited for {} ns", start.elapsed().as_nanos());
-
-            if pdu_tx.should_exit() {
-                fmt::debug!("io_uring TX/RX was asked to exit");
-
-                return Ok((pdu_tx.release(), pdu_rx.release()));
-            }
-        } else {
-            fmt::trace!(
-                "Buf keys {:?} in flight",
-                config.bufs.iter().map(|(k, _v)| k).collect::<Vec<_>>(),
-            );
-        }
-    
+    Ok((pdu_tx, pdu_rx))
 }
