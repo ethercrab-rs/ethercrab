@@ -33,7 +33,6 @@ heapless = "0.8.0"
 log = { version = "0.4.27", optional = true, default-features = false }
 sealed = "0.6.0"
 serde = { version = "1.0.190", features = ["derive"], optional = true }
-smlang = "0.8.0"
 ethercrab-wire = { version = "0.2.0", path = "./ethercrab-wire" }
 spin = { version = "0.10.0", default-features = false, features = ["rwlock"] }
 crc = { version = "3.2.1", default-features = false }
@@ -107,38 +106,6 @@ std = [
 ]
 xdp = ["dep:xsk-rs"]
 serde = ["dep:serde", "bitflags/serde"]
-
-# [[example]]
-# name = "akd"
-# required-features = ["std"]
-
-[[example]]
-name = "xdp"
-required-features = ["std", "xdp"]
-
-[[example]]
-name = "dc"
-required-features = ["std"]
-
-# [[example]]
-# name = "ec400"
-# required-features = ["std"]
-
-[[example]]
-name = "ek1100"
-required-features = ["std"]
-
-[[example]]
-name = "multiple-groups"
-required-features = ["std"]
-
-[[bench]]
-name = "pdu_loop"
-harness = false
-
-[[bench]]
-name = "frame"
-harness = false
 
 [profile.profiling]
 inherits = "release"
