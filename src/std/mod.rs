@@ -2,6 +2,8 @@
 
 #[cfg(target_os = "linux")]
 mod io_uring;
+#[cfg(target_os = "linux")]
+mod io_uring_one_cycle;
 #[cfg(unix)]
 mod unix;
 #[cfg(target_os = "windows")]
