@@ -113,6 +113,27 @@ pub fn attr_exists(attrs: &[syn::Attribute], search: &str) -> bool {
     false
 }
 
+pub fn has_repr_packed(attrs: &[syn::Attribute]) -> bool {
+    for attr in attrs {
+        match attr.meta.clone() {
+            Meta::List(l) if l.path.is_ident("repr") => {
+                let mut has_packed = false;
+                let _ = l.parse_nested_meta(|meta| {
+                    if meta.path.is_ident("packed") {
+                        has_packed = true;
+                    }
+                    Ok(())
+                });
+                if has_packed {
+                    return true;
+                }
+            }
+            _ => (),
+        }
+    }
+    false
+}
+
 // pub fn field_is_enum_attr(attrs: &[syn::Attribute]) -> Result<bool, syn::Error> {
 //     for attr in my_attributes(attrs) {
 //         let Ok(nested) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
