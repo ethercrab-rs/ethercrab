@@ -1,6 +1,7 @@
 use crate::{
     GroupId, MainDevice, SubDevice, SubDeviceGroup, SubDeviceRef, error::Error, fmt, pdi::PdiOffset,
 };
+use lock_api::RawRwLock;
 
 /// A trait implemented only by [`SubDeviceGroup`] so multiple groups with different const params
 /// can be stored in a hashmap, `Vec`, etc.
@@ -18,8 +19,8 @@ pub trait SubDeviceGroupHandle: Sync {
 }
 
 #[sealed::sealed]
-impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> SubDeviceGroupHandle
-    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock + Sync, S> SubDeviceGroupHandle
+    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, S>
 where
     S: Sync,
 {
