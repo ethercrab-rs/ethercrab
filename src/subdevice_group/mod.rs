@@ -808,6 +808,7 @@ where
         let IoRanges {
             input: input_range,
             output: output_range,
+            ..
         } = &io_ranges;
 
         fmt::trace!(
