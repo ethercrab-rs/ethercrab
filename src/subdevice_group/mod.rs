@@ -8,24 +8,30 @@ mod handle;
 mod tx_rx_response;
 
 use crate::{
-    DcSync,
-    MainDevice,
-    RegisterAddress,
-    SubDeviceState,
+    DcSync, MainDevice, RegisterAddress, SubDeviceState,
     al_control::AlControl,
     command::Command,
+    ds402::SyncManagerAssignment,
+    eeprom::types::{SyncManager, SyncManagerEnable},
     error::{DistributedClockError, Error, Item},
     fmt,
-    // lending_lock::LendingLock,
     pdi::PdiOffset,
     pdu_loop::{CreatedFrame, ReceivedPdu},
     subdevice::{
         IoRanges, SubDevice, SubDeviceRef, configuration::PdoDirection, pdi::SubDevicePdi,
     },
+    sync_manager_channel::{Control, Direction, Enable, OperationMode},
     timer_factory::IntoTimeout,
 };
-use core::{cell::UnsafeCell, marker::PhantomData, sync::atomic::AtomicUsize, time::Duration};
-use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
+use core::{
+    cell::UnsafeCell,
+    marker::PhantomData,
+    ops::{Deref, Range},
+    sync::atomic::AtomicUsize,
+    time::Duration,
+};
+use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized, WireError};
+use heapless::FnvIndexMap;
 
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
@@ -67,6 +73,365 @@ impl<T: ?Sized> MySyncUnsafeCell<T> {
     #[inline]
     pub fn get_mut(&mut self) -> &mut T {
         self.0.get_mut()
+    }
+}
+
+// TODO: Un-pub
+/// TODO: Docs
+pub struct PdiMappingBikeshedName<const I: usize, const O: usize, S = ()> {
+    /// TODO: Docs.
+    pub(crate) configured_address: u16,
+    /// TODO: Docs.
+    pub(crate) inputs: FnvIndexMap<u32, Range<usize>, I>,
+    /// TODO: Docs.
+    pub(crate) outputs: FnvIndexMap<u32, Range<usize>, O>,
+
+    pub(crate) state: S,
+}
+
+impl<const I: usize, const O: usize, S> PdiMappingBikeshedName<I, O, S> {
+    /// TODO: Docs
+    /// TODO: Way better name
+    pub fn with_subdevice<
+        'maindevice,
+        'group,
+        const MAX_SUBDEVICES: usize,
+        const MAX_PDI: usize,
+        DC,
+    >(
+        self,
+        maindevice: &'maindevice MainDevice<'maindevice>,
+        group: &'group SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, impl HasPdi, DC>,
+    ) -> Result<
+        PdiMappingBikeshedName<I, O, SubDeviceRef<'maindevice, SubDevicePdi<'group, MAX_PDI>>>,
+        Error,
+    > {
+        let subdevice =
+            group.subdevice_by_configured_address(maindevice, self.configured_address)?;
+
+        Ok(PdiMappingBikeshedName {
+            configured_address: self.configured_address,
+            inputs: self.inputs,
+            outputs: self.outputs,
+            state: subdevice,
+        })
+    }
+}
+
+impl<const I: usize, const O: usize, S> Deref for PdiMappingBikeshedName<I, O, S> {
+    type Target = S;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+impl<'maindevice, 'group, const I: usize, const O: usize, const MAX_PDI: usize>
+    PdiMappingBikeshedName<I, O, SubDeviceRef<'maindevice, SubDevicePdi<'group, MAX_PDI>>>
+{
+    // TODO: Don't take a `u32` but an actual Object type
+    /// TODO: Doc
+    pub fn input<T>(&self, object: u32) -> Result<T, Error>
+    where
+        T: EtherCrabWireReadSized,
+    {
+        let size_bytes = (object & 0xff) as usize / 8;
+
+        if size_bytes != T::PACKED_LEN {
+            // TODO: This should probably be an Error::Mapping(IncorrectSize)
+            return Err(Error::Internal);
+        }
+
+        let range = self.inputs.get(&object).ok_or_else(|| {
+            // TODO: Return idk, Error::Mapping(NotFound)
+            Error::Internal
+        })?;
+
+        let inputs = self.state.inputs_raw();
+
+        let bytes = inputs.get(range.clone()).ok_or_else(|| {
+            // TODO: Error::Mapping(OutOfRange) or something
+            Error::Internal
+        })?;
+
+        Ok(T::unpack_from_slice(bytes)?)
+    }
+}
+
+/// Sync Manager configuration.
+#[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
+pub struct SyncManagerConfig {
+    /// Start address.
+    ///
+    /// This is mandatory in ESI files.
+    pub start_addr: u16,
+
+    /// Sync Manager default size. This MUST be set for mailbox sync managers.
+    ///
+    /// It will be computed and overwritten by EtherCrab for process data inputs/outputs based on
+    /// the mapping lengths.
+    pub size: u16,
+
+    /// Configuration for this Sync Manager.
+    ///
+    /// This will be parsed from the `ControlByte` property in the ESI file.
+    pub control: Control,
+
+    /// Whether to enable this sync manager or not.
+    pub enabled: bool,
+}
+
+impl SyncManagerConfig {
+    /// Create a mailbox sync manager config with given size, start address and direction.
+    pub fn mailbox(start_addr: u16, size: u16, direction: Direction) -> Self {
+        SyncManagerConfig {
+            start_addr,
+            size,
+            enabled: true,
+            control: Control {
+                operation_mode: OperationMode::Mailbox,
+                direction,
+                ..Control::default()
+            },
+        }
+    }
+
+    /// Create a mailbox sync manager config with given size, start address and direction.
+    pub fn process_data(start_addr: u16, direction: Direction) -> Self {
+        SyncManagerConfig {
+            start_addr,
+            // Computed later when we do all the PDO mappings.
+            size: 0,
+            enabled: true,
+            control: Control {
+                operation_mode: OperationMode::ProcessData,
+                direction,
+                ..Control::default()
+            },
+        }
+    }
+
+    // TODO: Bikeshed: The `SyncManager` should probably not be an EEPROM-related type and just made generic.
+    pub(crate) fn bikeshed_into_eeprom_type(&self) -> crate::eeprom::types::SyncManager {
+        SyncManager {
+            start_addr: self.start_addr,
+            length_bytes: self.size,
+            control: self.control,
+            enable: if self.enabled {
+                SyncManagerEnable::ENABLE
+            } else {
+                SyncManagerEnable::empty()
+            },
+        }
+    }
+}
+
+/// FMMU configuration.
+#[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
+pub struct FmmuConfig {
+    /// FMMU kind.
+    pub kind: FmmuKind,
+
+    /// Sync manager index to assign to this FMMU. Leave as `None` if unsure.
+    pub sync_manager: Option<u8>,
+}
+
+/// FMMU kind.
+#[derive(Debug, Copy, Clone)]
+pub enum FmmuKind {
+    /// Process data outputs from MainDevice.
+    Outputs,
+    /// Process data inputs into MainDevice.
+    Inputs,
+    /// Mailbox state.
+    MBoxState,
+    /// Dynamic inputs.
+    DynamicInputs,
+    /// Dynamic outputs.
+    DynamicOutputs,
+}
+
+/// TODO: Doc
+#[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
+pub struct MappingConfig<'a> {
+    /// Input mappings (SubDevice -> MainDevice).
+    pub inputs: &'a [SyncManagerAssignment<'a>],
+
+    /// Output mappings (MainDevice -> SubDevice).
+    pub outputs: &'a [SyncManagerAssignment<'a>],
+
+    /// FMMU configuration.
+    ///
+    /// When writing configuration manually, this field can be left empty (`&[]`) to let EtherCrab
+    /// compute FMMU assignments automatically.
+    pub fmmus: &'a [FmmuConfig],
+
+    /// Sync manager config.
+    ///
+    /// When writing configuration manually, this field can be left empty (`&[]`) to let EtherCrab
+    /// compute Sync Manager assignments automatically.
+    pub sync_managers: &'a [SyncManagerConfig],
+}
+
+impl<'a> MappingConfig<'a> {
+    /// Create a new PDO mapping config with both inputs and outputs.
+    pub const fn new(
+        inputs: &'a [SyncManagerAssignment<'a>],
+        outputs: &'a [SyncManagerAssignment<'a>],
+    ) -> Self {
+        Self {
+            inputs,
+            outputs,
+            fmmus: &[],
+            sync_managers: &[],
+        }
+    }
+
+    /// Create a new PDO mapping config with only inputs (SubDevice into MainDevice).
+    pub const fn inputs(inputs: &'a [SyncManagerAssignment<'a>]) -> Self {
+        Self {
+            inputs,
+            outputs: &[],
+            fmmus: &[],
+            sync_managers: &[],
+        }
+    }
+
+    /// Create a new PDO mapping config with only outputs (MainDevice out to SubDevice).
+    pub const fn outputs(outputs: &'a [SyncManagerAssignment<'a>]) -> Self {
+        Self {
+            inputs: &[],
+            outputs,
+            fmmus: &[],
+            sync_managers: &[],
+        }
+    }
+
+    /// Write configuration to SubDevice CoE SDOs.
+    pub async fn configure_sdos(
+        &self,
+        subdevice: &SubDeviceRef<'_, &mut SubDevice>,
+    ) -> Result<(), Error> {
+        fmt::debug!("Write PDO mapping config");
+
+        for assignment in self.inputs.iter() {
+            for mapping in assignment.mappings.iter() {
+                fmt::debug!(
+                    "--> Inputs {:#06x} {:#010x?}",
+                    mapping.index,
+                    mapping.objects
+                );
+
+                subdevice
+                    .sdo_write_array(mapping.index, mapping.objects)
+                    .await?;
+            }
+        }
+
+        for assignment in self.outputs.iter() {
+            for mapping in assignment.mappings.iter() {
+                fmt::debug!(
+                    "--> Outputs {:#06x} {:#010x?}",
+                    mapping.index,
+                    mapping.objects
+                );
+
+                subdevice
+                    .sdo_write_array(mapping.index, mapping.objects)
+                    .await?;
+            }
+        }
+
+        for (idx, assignment) in self.inputs.iter().chain(self.outputs.iter()).enumerate() {
+            // First two SMs will be mailbox in/out if we have CoE support, so we start from 0x1c12
+            // instead of 0x1c10.
+            let fallback = 2 + idx as u16;
+
+            let sm_index = 0x1c10 + assignment.sync_manager.map(u16::from).unwrap_or(fallback);
+
+            fmt::debug!("--> SM assignment {:#06x}", sm_index);
+
+            subdevice.sdo_write(sm_index, 0, 0u8).await?;
+
+            let mut count = 0u8;
+
+            for (sub_index, mapping) in assignment.mappings.iter().enumerate() {
+                // Sub indices start at 8
+                let sub_index = sub_index as u8 + 1;
+
+                fmt::debug!(
+                    "----> Object {:#06x} at sub-index {}",
+                    mapping.index,
+                    sub_index
+                );
+
+                subdevice
+                    .sdo_write(sm_index, sub_index, mapping.index)
+                    .await?;
+
+                count += 1;
+            }
+
+            subdevice.sdo_write(sm_index, 0, count).await?;
+        }
+
+        Ok(())
+    }
+
+    /// TODO: Doc
+    pub fn pdi_mapping<const I: usize, const O: usize>(
+        &self,
+        subdevice: &impl Deref<Target = SubDevice>,
+    ) -> PdiMappingBikeshedName<I, O> {
+        let mut inputs = FnvIndexMap::<_, _, I>::new();
+        let mut outputs = FnvIndexMap::<_, _, O>::new();
+
+        fn push_mapping<const N: usize>(
+            inputs: &mut FnvIndexMap<u32, Range<usize>, N>,
+            position_accumulator: usize,
+            object: &u32,
+        ) -> usize {
+            let object = *object;
+
+            let size_bytes = (object & 0xffff) as usize / 8;
+
+            let range = position_accumulator..(position_accumulator + size_bytes);
+
+            assert_eq!(
+                inputs.insert(object, range),
+                Ok(None),
+                "multiple mappings of object {:#06x}",
+                object
+            );
+
+            position_accumulator + size_bytes
+        }
+
+        self.inputs
+            .iter()
+            .flat_map(|sm| sm.mappings)
+            .flat_map(|mapping| mapping.objects)
+            .fold(0usize, |position_accumulator, object| {
+                push_mapping(&mut inputs, position_accumulator, object)
+            });
+
+        self.outputs
+            .iter()
+            .flat_map(|sm| sm.mappings)
+            .flat_map(|mapping| mapping.objects)
+            .fold(0usize, |position_accumulator, object| {
+                push_mapping(&mut outputs, position_accumulator, object)
+            });
+
+        PdiMappingBikeshedName {
+            configured_address: subdevice.configured_address(),
+            inputs,
+            outputs,
+            state: (),
+        }
     }
 }
 
@@ -189,6 +554,97 @@ pub struct SubDeviceGroup<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S =
 impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOp, DC>
 {
+    async fn configure_fmmus2<'fun>(
+        &mut self,
+        maindevice: &MainDevice<'_>,
+        mut configure: impl AsyncFnMut(
+            SubDeviceRef<'_, &mut SubDevice>,
+            usize,
+        ) -> Result<Option<MappingConfig<'fun>>, Error>,
+    ) -> Result<(), Error> {
+        let inner = self.inner.get_mut();
+
+        let mut pdi_position = inner.pdi_start;
+
+        let mut configs = heapless::Vec::<_, MAX_SUBDEVICES>::new();
+
+        for (i, subdevice) in inner.subdevices.iter_mut().enumerate() {
+            // SAFETY: `configs` uses `MAX_SUBDEVICES` so should be the same length as or shorter
+            // than `inner.subdevices`.
+            fmt::unwrap!(
+                configs.push(
+                    configure(
+                        SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice),
+                        i,
+                    )
+                    .await?,
+                )
+            );
+        }
+
+        fmt::debug!(
+            "Going to configure group with {} SubDevice(s), starting PDI offset {:#010x}",
+            inner.subdevices.len(),
+            inner.pdi_start.start_address
+        );
+
+        // Configure master read PDI mappings in the first section of the PDI
+        for (subdevice, config) in inner.subdevices.iter_mut().zip(configs.iter()) {
+            // We're in PRE-OP at this point
+            pdi_position = SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
+                .configure_fmmus(
+                    pdi_position,
+                    inner.pdi_start.start_address,
+                    PdoDirection::MainDeviceRead,
+                    config,
+                )
+                .await?;
+        }
+
+        self.read_pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
+
+        fmt::debug!("SubDevice mailboxes configured and init hooks called");
+
+        // We configured all read PDI mappings as a contiguous block in the previous loop. Now we'll
+        // configure the write mappings in a separate loop. This means we have IIIIOOOO instead of
+        // IOIOIO.
+        for (subdevice, config) in inner.subdevices.iter_mut().zip(configs.iter()) {
+            let addr = subdevice.configured_address();
+
+            let mut subdevice_config = SubDeviceRef::new(maindevice, addr, subdevice);
+
+            // Still in PRE-OP
+            pdi_position = subdevice_config
+                .configure_fmmus(
+                    pdi_position,
+                    inner.pdi_start.start_address,
+                    PdoDirection::MainDeviceWrite,
+                    config,
+                )
+                .await?;
+        }
+
+        fmt::debug!("SubDevice FMMUs configured for group. Able to move to SAFE-OP");
+
+        self.pdi_len = (pdi_position.start_address - inner.pdi_start.start_address) as usize;
+
+        fmt::debug!(
+            "Group PDI length: start {:#010x}, {} total bytes ({} input bytes)",
+            inner.pdi_start.start_address,
+            self.pdi_len,
+            self.read_pdi_len
+        );
+
+        if self.pdi_len > MAX_PDI {
+            return Err(Error::PdiTooLong {
+                max_length: MAX_PDI,
+                desired_length: self.pdi_len,
+            });
+        }
+
+        Ok(())
+    }
+
     /// Configure read/write FMMUs and PDI for this group.
     async fn configure_fmmus(&mut self, maindevice: &MainDevice<'_>) -> Result<(), Error> {
         let inner = self.inner.get_mut();
@@ -208,7 +664,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
-                    PdoDirection::MasterRead,
+                    PdoDirection::MainDeviceRead,
+                    &None,
                 )
                 .await?;
         }
@@ -230,7 +687,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
                 .configure_fmmus(
                     pdi_position,
                     inner.pdi_start.start_address,
-                    PdoDirection::MasterWrite,
+                    PdoDirection::MainDeviceWrite,
+                    &None,
                 )
                 .await?;
         }
@@ -276,6 +734,30 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         ))
     }
 
+    // /// Borrow an individual SubDevice, searched for by configured station address.
+    // #[deny(clippy::panic)]
+    // pub(crate) fn subdevice_by_configured_address<'maindevice, 'group>(
+    //     &'group self,
+    //     maindevice: &'maindevice MainDevice<'maindevice>,
+    //     configured_address: u16,
+    // ) -> Result<SubDeviceRef<'maindevice, &'group SubDevice>, Error> {
+    //     let subdevice = self
+    //         .inner()
+    //         .subdevices
+    //         .iter()
+    //         .find(|sd| sd.configured_address() == configured_address)
+    //         .ok_or(Error::NotFound {
+    //             item: Item::SubDevice,
+    //             index: Some(configured_address.into()),
+    //         })?;
+
+    //     Ok(SubDeviceRef::new(
+    //         maindevice,
+    //         subdevice.configured_address(),
+    //         subdevice,
+    //     ))
+    // }
+
     /// Transition the group from PRE-OP -> SAFE-OP -> OP.
     ///
     /// To transition individually from PRE-OP to SAFE-OP, then SAFE-OP to OP, see
@@ -287,6 +769,33 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
         let self_ = self.into_safe_op(maindevice).await?;
 
         self_.into_op(maindevice).await
+    }
+
+    // NOTE: This just goes PRE-OP -> PRE-OP + PDI. What about the other methods like into op and
+    // into safe op, etc?
+    /// TODO: Docs
+    pub async fn into_pre_op_pdi_with_config<'fun>(
+        mut self,
+        maindevice: &MainDevice<'_>,
+        configure: impl AsyncFnMut(
+            SubDeviceRef<'_, &mut SubDevice>,
+            usize,
+        ) -> Result<Option<MappingConfig<'fun>>, Error>,
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, DC>, Error>
+    where
+        DC: 'fun,
+    {
+        self.configure_fmmus2(maindevice, configure).await?;
+
+        Ok(SubDeviceGroup {
+            id: self.id,
+            pdi: self.pdi,
+            read_pdi_len: self.read_pdi_len,
+            pdi_len: self.pdi_len,
+            inner: self.inner,
+            dc_conf: self.dc_conf,
+            _state: PhantomData,
+        })
     }
 
     /// Configure FMMUs, but leave the group in [`PreOp`] state.
@@ -802,6 +1311,45 @@ where
             item: Item::SubDevice,
             index: Some(index),
         })?;
+
+        let io_ranges = subdevice.io_segments().clone();
+
+        let IoRanges {
+            input: input_range,
+            output: output_range,
+        } = &io_ranges;
+
+        fmt::trace!(
+            "Get SubDevice {:#06x} IO ranges I: {}, O: {} (group PDI {} byte subset of {} byte max)",
+            subdevice.configured_address(),
+            input_range,
+            output_range,
+            self.pdi_len,
+            MAX_PDI
+        );
+
+        Ok(SubDeviceRef::new(
+            maindevice,
+            subdevice.configured_address(),
+            SubDevicePdi::new(subdevice, &self.pdi),
+        ))
+    }
+
+    /// Borrow an individual SubDevice, found by configured address.
+    pub fn subdevice_by_configured_address<'maindevice, 'group>(
+        &'group self,
+        maindevice: &'maindevice MainDevice<'maindevice>,
+        configured_address: u16,
+    ) -> Result<SubDeviceRef<'maindevice, SubDevicePdi<'group, MAX_PDI>>, Error> {
+        let subdevice = self
+            .inner()
+            .subdevices
+            .iter()
+            .find(|sd| sd.configured_address() == configured_address)
+            .ok_or(Error::NotFound {
+                item: Item::SubDevice,
+                index: Some(usize::from(configured_address)),
+            })?;
 
         let io_ranges = subdevice.io_segments().clone();
 
