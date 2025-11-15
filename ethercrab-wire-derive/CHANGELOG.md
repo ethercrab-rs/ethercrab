@@ -6,6 +6,11 @@ Derives for `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+## Added
+
+- [#343](https://github.com/ethercrab-rs/ethercrab/pull/343) (@marcfir) Added support for
+  `#[repr(C, packed)]` on structs
+
 ### Changed
 
 - **(breaking)** [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) Increase MSRV from 1.77

@@ -1,4 +1,4 @@
-use crate::help::{all_valid_attrs, attr_exists, bit_width_attr, usize_attr};
+use crate::help::{all_valid_attrs, attr_exists, bit_width_attr, has_repr_packed, usize_attr};
 use std::ops::Range;
 use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility};
 
@@ -6,6 +6,7 @@ use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Type, Visibility}
 pub struct StructMeta {
     /// Width in bits on the wire.
     pub width_bits: usize,
+    pub repr_packed: bool,
 
     pub fields: Vec<FieldMeta>,
 }
@@ -47,6 +48,7 @@ pub fn parse_struct(
     // --- Struct attributes
 
     all_valid_attrs(&attrs, &["bits", "bytes"])?;
+    let repr_packed = has_repr_packed(&attrs);
 
     let width = bit_width_attr(&attrs)?;
 
@@ -182,6 +184,7 @@ pub fn parse_struct(
     }
 
     Ok(StructMeta {
+        repr_packed,
         width_bits: width,
         fields: field_meta,
     })
