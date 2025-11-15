@@ -2,7 +2,7 @@ target_steps_linux: &target_steps_linux
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
     # - image: cimg/rust:1.85
-    - image: cimg/base:24.04
+    - image: cimg/base:2025.11
   steps:
     - checkout
     - restore_cache:
