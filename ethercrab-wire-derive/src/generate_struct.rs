@@ -29,7 +29,7 @@ pub fn generate_struct_write(parsed: &StructMeta, input: &DeriveInput) -> proc_m
         } else {
             quote! {self.#name}
         };
-        
+
         // Small optimisation
         if ty_name == "u8" || ty_name == "bool" {
             let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
@@ -43,7 +43,7 @@ pub fn generate_struct_write(parsed: &StructMeta, input: &DeriveInput) -> proc_m
         else if field.bytes.len() == 1 {
             let mask = (2u16.pow(field.bits.len() as u32) - 1) << bit_start;
             let mask = proc_macro2::TokenStream::from_str(&format!("{:#010b}", mask)).unwrap();
-          
+
             quote! {
                 let mut field_buf = [0u8; 1];
                 let res = <#field_ty as ::ethercrab_wire::EtherCrabWireWrite>::pack_to_slice_unchecked(&#field_access, &mut field_buf)[0];
