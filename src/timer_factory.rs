@@ -199,8 +199,7 @@ impl Default for Timeouts {
     }
 }
 
-// timeouts used for testing
-
+// Timeouts used for testing
 #[cfg(test)]
 pub(crate) const MAX_TIMEOUT: crate::timer_factory::LabeledTimeout =
     crate::timer_factory::LabeledTimeout {
