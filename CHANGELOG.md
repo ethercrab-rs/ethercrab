@@ -39,6 +39,9 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   `Default` trait bound.
 - [#330](https://github.com/ethercrab-rs/ethercrab/pull/330) Stop re-reading potentially broken
   SyncManager types over CoE. Now the EEPROM is the source of truth for this information.
+- [#330](https://github.com/ethercrab-rs/ethercrab/pull/330) (@theol0403) Stop re-reading
+  potentially broken SyncManager types over CoE. Now the EEPROM is the source of truth for this
+  information.
 
 ## [0.6.0] - 2025-03-29
 
