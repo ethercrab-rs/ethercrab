@@ -58,6 +58,27 @@ target_steps_linux: &target_steps_linux
           - /home/circleci/.cargo/registry
           - /home/circleci/.cargo/bin
 
+target_steps_linux_musl: &target_steps_linux_musl
+  docker:
+    # NOTE: Exact version is overridden in `rust-toolchain.toml`
+    # - image: cimg/rust:1.85
+    - image: cimg/rust:1.91
+  steps:
+    - checkout
+    - restore_cache:
+        key: v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+    - run: rustup target add $TARGET || true
+    - run: cargo test --target $TARGET --workspace
+    - run: cargo bench --workspace --no-run --target $TARGET
+    - run: cargo build --target $TARGET --examples --release
+    - run: cargo build --target $TARGET --no-default-features
+    - save_cache:
+        key: v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        paths:
+          - ./target
+          - /home/circleci/.cargo/registry
+          - /home/circleci/.cargo/bin
+
 miri_steps: &miri_steps
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
@@ -155,7 +176,7 @@ jobs:
     resource_class: large
     environment:
       - TARGET: "x86_64-unknown-linux-musl"
-    <<: *target_steps_linux
+    <<: *target_steps_linux_musl
 
   miri:
     resource_class: large
