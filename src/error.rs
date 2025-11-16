@@ -19,7 +19,7 @@ pub enum Error {
         received: u16,
     },
     /// Something timed out.
-    Timeout,
+    Timeout(TimeoutError),
     /// An EEPROM error was encountered.
     Eeprom(EepromError),
     /// A fixed size array was not large enough to hold a given item type.
@@ -107,7 +107,7 @@ impl core::fmt::Display for Error {
             Error::WorkingCounter { expected, received } => {
                 write!(f, "working counter expected {}, got {}", expected, received)
             }
-            Error::Timeout => f.write_str("timeout"),
+            Error::Timeout(kind) => write!(f, "timeout: {}", kind),
             Error::Eeprom(e) => write!(f, "eeprom: {}", e),
             Error::Capacity(item) => write!(f, "not enough capacity for {:?}", item),
             Error::StringTooLong {
@@ -321,6 +321,60 @@ impl core::fmt::Display for MailboxError {
                 error_code, error_register
             ),
         }
+    }
+}
+
+/// Timeout error.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub enum TimeoutError {
+    /// The [state transition](field@crate::timer_factory::Timeouts::state_transition) timeout expired.
+    StateTransition,
+    /// The [PDU](field@crate::timer_factory::Timeouts::pdu) timeout expired.
+    Pdu,
+    /// The [EEPROM](field@crate::timer_factory::Timeouts::eeprom) timeout expired.
+    Eeprom,
+    // WaitLoopDelay is not an error
+    /// The [mailbox echo](field@crate::timer_factory::Timeouts::mailbox_echo) timeout expired.
+    MailboxEcho,
+    /// The [mailbox response](field@crate::timer_factory::Timeouts::mailbox_response) timeout expired.
+    MailboxResponse,
+}
+
+impl TimeoutError {
+    /// Creates `Self` from a [`crate::timer_factory::TimeoutKind`].
+    ///
+    /// # Panics
+    ///
+    /// This will panic if `kind == TimeoutKind::WaitLoopDelay`, as that
+    /// isn't an error.
+    pub(crate) fn from_timeout_kind(kind: crate::timer_factory::TimeoutKind) -> Self {
+        use crate::timer_factory::TimeoutKind;
+        match kind {
+            TimeoutKind::StateTransition => Self::StateTransition,
+            TimeoutKind::Pdu => Self::Pdu,
+            TimeoutKind::Eeprom => Self::Eeprom,
+            TimeoutKind::MailboxEcho => Self::MailboxEcho,
+            TimeoutKind::MailboxResponse => Self::MailboxResponse,
+            TimeoutKind::WaitLoopDelay => panic!("error-like TimeoutKind"),
+        }
+    }
+}
+
+impl core::fmt::Display for TimeoutError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::StateTransition => "state transition",
+                Self::Pdu => "PDU",
+                Self::Eeprom => "EEPROM",
+                Self::MailboxEcho => "mailbox echo",
+                Self::MailboxResponse => "mailbox response",
+            }
+        )
     }
 }
 

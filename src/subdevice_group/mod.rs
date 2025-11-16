@@ -666,7 +666,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
-                maindevice.timeouts.pdu,
+                maindevice.timeouts.pdu(),
                 maindevice.config.retry_behaviour.retry_count(),
             );
 
@@ -707,7 +707,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
                 maindevice.timeouts.loop_tick().await;
             }
         }
-        .timeout(maindevice.timeouts.state_transition)
+        .timeout(maindevice.timeouts.state_transition())
         .await
     }
 
@@ -907,7 +907,7 @@ where
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
-                maindevice.timeouts.pdu,
+                maindevice.timeouts.pdu(),
                 maindevice.config.retry_behaviour.retry_count(),
             );
 
@@ -1034,7 +1034,7 @@ where
 
                 let frame = frame.mark_sendable(
                     &maindevice.pdu_loop,
-                    maindevice.timeouts.pdu,
+                    maindevice.timeouts.pdu(),
                     maindevice.config.retry_behaviour.retry_count(),
                 );
 
@@ -1296,7 +1296,7 @@ where
 
             let frame = frame.mark_sendable(
                 &maindevice.pdu_loop,
-                maindevice.timeouts.pdu,
+                maindevice.timeouts.pdu(),
                 maindevice.config.retry_behaviour.retry_count(),
             );
 

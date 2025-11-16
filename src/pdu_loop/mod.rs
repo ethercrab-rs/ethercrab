@@ -8,7 +8,7 @@ mod pdu_tx;
 pub mod storage;
 
 use crate::{command::Command, error::Error, pdu_loop::storage::PduStorageRef};
-use core::{sync::atomic::Ordering, time::Duration};
+use core::sync::atomic::Ordering;
 pub use pdu_rx::PduRx;
 // NOTE: Allowing unused because `ReceiveAction` isn't used when `xdp` is not enabled.
 #[allow(unused)]
@@ -99,7 +99,7 @@ impl<'sto> PduLoop<'sto> {
         &self,
         register: u16,
         payload_length: u16,
-        timeout: Duration,
+        timeout: crate::timer_factory::LabeledTimeout,
         retries: usize,
     ) -> Result<(), Error> {
         let mut frame = self.storage.alloc_frame()?;
@@ -128,10 +128,10 @@ mod tests {
     use crate::pdu_loop::frame_header::EthercatFrameHeader;
     use crate::{
         Command, PduStorage, Reads,
-        error::{Error, PduError},
+        error::{Error, PduError, TimeoutError},
         fmt,
         pdu_loop::frame_element::created_frame::CreatedFrame,
-        timer_factory::IntoTimeout,
+        timer_factory::{IntoTimeout, MAX_TIMEOUT, MIN_TIMEOUT},
     };
     use cassette::Cassette;
     use core::{future::poll_fn, ops::Deref, pin::pin, task::Poll, time::Duration};
@@ -158,12 +158,15 @@ mod tests {
             )
             .expect("Push PDU");
 
-        let fut = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
+        let fut = frame.mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX);
 
-        let res = cassette::block_on(fut.timeout(Duration::from_secs(0)));
+        let res = cassette::block_on(fut.timeout(MIN_TIMEOUT));
 
         // Just make sure the read timed out
-        assert_eq!(res.unwrap_err(), Error::Timeout);
+        assert_eq!(
+            res.unwrap_err(),
+            Error::Timeout(TimeoutError::from_timeout_kind(MIN_TIMEOUT.kind))
+        );
 
         let frame = pdu_loop.storage.alloc_frame();
 
@@ -191,7 +194,7 @@ mod tests {
             .push_pdu(Command::fpwr(0x5678, 0x1234).into(), data, None)
             .expect("Push");
 
-        let frame = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
+        let frame = frame.mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX);
 
         assert_eq!(
             frame.buf(),
@@ -235,7 +238,7 @@ mod tests {
                 .push_pdu(Command::fpwr(0x5678, 0x1234).into(), data, None)
                 .expect("Push PDU");
 
-            let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
+            let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX));
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -314,7 +317,7 @@ mod tests {
             .expect("Push PDU");
 
         // Drop frame future to reset its state to `FrameState::None`
-        drop(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
+        drop(frame.mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX));
 
         // ---
 
@@ -326,7 +329,7 @@ mod tests {
             .push_pdu(Command::fpwr(0x6789, 0x1234).into(), data, None)
             .expect("Push second PDU");
 
-        let frame = frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX);
+        let frame = frame.mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX);
 
         // ---
 
@@ -383,7 +386,7 @@ mod tests {
                 .push_pdu(Command::fpwr(0x6789, 0x1234).into(), data_bytes, None)
                 .expect("Push PDU");
 
-            let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
+            let mut frame_fut = pin!(frame.mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX));
 
             // Poll future up to first await point. This gets the frame ready and marks it as
             // sendable so TX can pick it up, but we don't want to wait for the response so we won't
@@ -458,7 +461,7 @@ mod tests {
             .push_pdu(Command::fpwr(0x6789, 0x1234).into(), data_bytes, None)
             .expect("Push PDU");
 
-        let frame_fut = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
+        let frame_fut = pin!(frame.mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX));
 
         let frame = tx.next_sendable_frame().expect("need a frame");
 
@@ -545,7 +548,7 @@ mod tests {
                 .expect("Push PDU");
 
             let result = frame
-                .mark_sendable(&pdu_loop, Duration::MAX, usize::MAX)
+                .mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX)
                 .await
                 .expect("Future");
 
@@ -647,7 +650,7 @@ mod tests {
                         .push_pdu(Command::fpwr(0x1000, 0x980).into(), data, None)
                         .expect("Push PDU");
 
-                    let frame = pin!(frame.mark_sendable(&pdu_loop, Duration::MAX, usize::MAX));
+                    let frame = pin!(frame.mark_sendable(&pdu_loop, MAX_TIMEOUT, usize::MAX));
 
                     let mut x = Cassette::new(frame);
 

@@ -10,7 +10,7 @@ use crate::{
         pdu_header::PduHeader,
     },
 };
-use core::{ptr::NonNull, sync::atomic::AtomicU8, time::Duration};
+use core::{ptr::NonNull, sync::atomic::AtomicU8};
 use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireSized, EtherCrabWireWrite, EtherCrabWireWriteSized,
 };
@@ -70,7 +70,7 @@ impl<'sto> CreatedFrame<'sto> {
     pub fn mark_sendable(
         mut self,
         pdu_loop: &'sto PduLoop<'sto>,
-        timeout: Duration,
+        timeout: crate::timer_factory::LabeledTimeout,
         retries: usize,
     ) -> ReceiveFrameFut<'sto> {
         EthercatFrameHeader::pdu(self.inner.pdu_payload_len() as u16)

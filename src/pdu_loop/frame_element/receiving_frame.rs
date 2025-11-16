@@ -1,10 +1,10 @@
 use crate::{
     PduLoop,
-    error::{Error, PduError},
+    error::{Error, PduError, TimeoutError},
     fmt,
     pdu_loop::frame_element::{FrameBox, FrameElement, FrameState, received_frame::ReceivedFrame},
 };
-use core::{future::Future, ptr::NonNull, sync::atomic::AtomicU8, task::Poll, time::Duration};
+use core::{future::Future, ptr::NonNull, sync::atomic::AtomicU8, task::Poll};
 use futures_lite::FutureExt;
 
 /// A frame has been sent and is now waiting for a response from the network.
@@ -73,7 +73,7 @@ pub struct ReceiveFrameFut<'sto> {
     pub(in crate::pdu_loop::frame_element) frame: Option<FrameBox<'sto>>,
     pub(in crate::pdu_loop::frame_element) pdu_loop: &'sto PduLoop<'sto>,
     pub(in crate::pdu_loop::frame_element) timeout_timer: crate::timer_factory::Timer,
-    pub(in crate::pdu_loop::frame_element) timeout: Duration,
+    pub(in crate::pdu_loop::frame_element) timeout: crate::timer_factory::LabeledTimeout,
     pub(in crate::pdu_loop::frame_element) retries_left: usize,
 }
 
@@ -155,7 +155,9 @@ impl<'sto> Future for ReceiveFrameFut<'sto> {
                     // Release frame and PDU slots for reuse
                     Self::release(rxin);
 
-                    return Poll::Ready(Err(Error::Timeout));
+                    return Poll::Ready(Err(Error::Timeout(TimeoutError::from_timeout_kind(
+                        self.timeout.kind,
+                    ))));
                 }
 
                 // If we have retry loops left:
