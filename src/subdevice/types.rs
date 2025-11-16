@@ -1,6 +1,6 @@
 use crate::{
     eeprom::types::{MailboxProtocols, SyncManagerType},
-    pdi::PdiSegment,
+    pdi::{PdiSegment, PdoMapping},
 };
 use core::fmt::{self, Debug};
 
@@ -75,4 +75,6 @@ pub struct Mailbox {
 pub struct IoRanges {
     pub input: PdiSegment,
     pub output: PdiSegment,
+    pub tx_pdos: PdoMapping,
+    pub rx_pdos: PdoMapping,
 }

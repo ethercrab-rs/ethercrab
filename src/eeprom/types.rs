@@ -1,6 +1,7 @@
 //! SubDevice Information Interface (SII).
 
 use crate::{
+    base_data_types::PrimitiveDataType,
     coe::SdoExpedited,
     sync_manager_channel::{self, Direction, OperationMode},
 };
@@ -566,7 +567,7 @@ pub enum SyncManagerType {
 impl SdoExpedited for SyncManagerType {}
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
-#[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
+#[derive(Debug, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 8)]
 pub struct Pdo {
@@ -583,12 +584,9 @@ pub struct Pdo {
     // pub(crate) name_string_idx: u8,
     // #[wire(bytes = 2)]
     // pub(crate) flags: PdoFlags,
-
-    // NOTE: Field is only used to sum up `bit_len`, so we don't need to read or store it.
-    // Definition is left here in case we need it later.
-    // // NOTE: This field is skipped during parsing from the wire and is populated later.
-    // #[wire(skip)]
-    // pub(crate) entries: heapless::Vec<PdoEntry, 16>,
+    // NOTE: This field is skipped during parsing from the wire and is populated later.
+    #[wire(skip)]
+    pub entries: heapless::Vec<PdoEntry, 16>,
 
     // NOTE: This field is skipped during parsing from the wire and is populated from all the
     // `PdoEntry`s later.
@@ -626,19 +624,19 @@ pub struct Pdo {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 8)]
 pub struct PdoEntry {
-    // #[wire(bytes = 2)]
-    // pub(crate) index: u16,
-    // #[wire(bytes = 1)]
-    // pub(crate) sub_index: u8,
-    // #[wire(bytes = 1)]
-    // pub(crate) name_string_idx: u8,
-    // // See page 103 of ETG2000
-    // #[wire(bytes = 1)]
-    // pub(crate) data_type: PrimitiveDataType,
-    #[wire(bytes = 1, pre_skip_bytes = 5, post_skip_bytes = 2)]
+    #[wire(bytes = 2)]
+    pub(crate) index: u16,
+    #[wire(bytes = 1)]
+    pub(crate) sub_index: u8,
+    #[wire(bytes = 1)]
+    pub(crate) name_string_idx: u8,
+    // See page 103 of ETG2000
+    #[wire(bytes = 1)]
+    pub(crate) data_type: PrimitiveDataType,
+    #[wire(bytes = 1)]
     pub(crate) data_length_bits: u8,
-    // #[wire(bytes = 2)]
-    // pub(crate) flags: u16,
+    #[wire(bytes = 2)]
+    pub(crate) flags: u16,
 }
 
 // impl core::fmt::Debug for PdoEntry {
