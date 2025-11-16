@@ -292,7 +292,7 @@ where
 
             let sm_address = SM_BASE_ADDRESS + u16::from(sync_manager_index);
 
-            if sync_manager.usage_type != desired_sm_type {
+            if sync_manager.usage_type() != desired_sm_type {
                 continue;
             }
 
@@ -305,7 +305,7 @@ where
                 "SDO sync manager {}  {:#06x} {:?}, sub indices: {}",
                 sync_manager_index,
                 sm_address,
-                sync_manager.usage_type,
+                sync_manager.usage_type(),
                 num_sm_assignments
             );
 
