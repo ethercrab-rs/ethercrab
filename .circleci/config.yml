@@ -25,8 +25,8 @@ target_steps_linux: &target_steps_linux
     - run: rustup target add x86_64-unknown-linux-gnu || true
     # For XDP
     - run:
-        sudo apt update && sudo apt install -qq libxdp-dev musl-tools musl musl-dev build-essential
-        linux-libc-dev
+        sudo apt update && sudo apt install -qq clang llvm-dev libxdp-dev musl-tools musl musl-dev
+        build-essential linux-libc-dev
     - run: |
         binaries=( "cargo-deadlinks" "cargo-readme" "just" )
 
