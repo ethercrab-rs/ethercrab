@@ -71,6 +71,7 @@ fn main() -> Result<(), Error> {
         let (mut slow_group, mut fast_group) = maindevice
             .init::<MAX_SUBDEVICES, (SubDeviceGroup<1, 32>, SubDeviceGroup<1, 32>)>(
                 ethercat_now,
+                Default::default(),
                 |groups, s| {
                     if s.configured_address() == 0x1000 {
                         Ok(&groups.0)
