@@ -34,7 +34,7 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   not what was sent by the MainDevice.
 - **(breaking)** [#320](https://github.com/ethercrab-rs/ethercrab/pull/320) (@fpdotmonkey) Add
   `TimeoutError` to `Error::Timeout` to give a reason why a timeout occurred.
-- **(breaking)** [#320](https://github.com/ethercrab-rs/ethercrab/pull/320) (@theol0403) Change
+- **(breaking)** [#328](https://github.com/ethercrab-rs/ethercrab/pull/328) (@theol0403) Change
   `MainDevice::init` to require an empty groups structure to be passed in, instead of relying on a
   `Default` trait bound.
 - [#330](https://github.com/ethercrab-rs/ethercrab/pull/330) (@theol0403) Stop re-reading
