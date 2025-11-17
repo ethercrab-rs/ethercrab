@@ -37,8 +37,6 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - **(breaking)** [#320](https://github.com/ethercrab-rs/ethercrab/pull/320) (@theol0403) Change
   `MainDevice::init` to require an empty groups structure to be passed in, instead of relying on a
   `Default` trait bound.
-- [#330](https://github.com/ethercrab-rs/ethercrab/pull/330) Stop re-reading potentially broken
-  SyncManager types over CoE. Now the EEPROM is the source of truth for this information.
 - [#330](https://github.com/ethercrab-rs/ethercrab/pull/330) (@theol0403) Stop re-reading
   potentially broken SyncManager types over CoE. Now the EEPROM is the source of truth for this
   information.
