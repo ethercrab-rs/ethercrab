@@ -214,9 +214,9 @@ const MAINDEVICE_ADDR: EthernetAddress = EthernetAddress([0x10, 0x10, 0x10, 0x10
 const BASE_SUBDEVICE_ADDRESS: u16 = 0x1000;
 
 #[cfg(feature = "std")]
-type SpinStrategy = spin::Yield;
+type DefaultLock = spin::rwlock::RwLock<(), spin::Yield>;
 #[cfg(not(feature = "std"))]
-type SpinStrategy = spin::Spin;
+type DefaultLock = spin::rwlock::RwLock<(), spin::Spin>;
 
 #[allow(unused)]
 fn test_logger() {

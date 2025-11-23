@@ -26,6 +26,7 @@ use crate::{
 };
 use core::{cell::UnsafeCell, marker::PhantomData, sync::atomic::AtomicUsize, time::Duration};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
+use lock_api::{RawRwLock, RwLock, RwLockWriteGuard};
 
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
@@ -174,9 +175,15 @@ pub struct CycleInfo {
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
 /// SubDevice PDI sections.
 #[doc(alias = "SlaveGroup")]
-pub struct SubDeviceGroup<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S = PreOp, DC = NoDc> {
+pub struct SubDeviceGroup<
+    const MAX_SUBDEVICES: usize,
+    const MAX_PDI: usize,
+    R: RawRwLock = crate::DefaultLock,
+    S = PreOp,
+    DC = NoDc,
+> {
     id: GroupId,
-    pdi: spin::rwlock::RwLock<MySyncUnsafeCell<[u8; MAX_PDI]>, crate::SpinStrategy>,
+    pdi: RwLock<R, MySyncUnsafeCell<[u8; MAX_PDI]>>,
     /// The number of bytes at the beginning of the PDI reserved for SubDevice inputs.
     read_pdi_len: usize,
     /// The total length (I and O) of the PDI for this group.
@@ -186,8 +193,8 @@ pub struct SubDeviceGroup<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S =
     _state: PhantomData<S>,
 }
 
-impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
-    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOp, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, PreOp, DC>
 {
     /// Configure read/write FMMUs and PDI for this group.
     async fn configure_fmmus(&mut self, maindevice: &MainDevice<'_>) -> Result<(), Error> {
@@ -283,7 +290,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn into_op(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, Op, DC>, Error> {
         let self_ = self.into_safe_op(maindevice).await?;
 
         self_.into_op(maindevice).await
@@ -297,7 +304,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn into_pre_op_pdi(
         mut self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, PreOpPdi, DC>, Error> {
         self.configure_fmmus(maindevice).await?;
 
         Ok(SubDeviceGroup {
@@ -315,7 +322,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn into_safe_op(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, SafeOp, DC>, Error> {
         let self_ = self.into_pre_op_pdi(maindevice).await?;
 
         // We're done configuring FMMUs, etc, now we can request all SubDevices in this group go into
@@ -329,7 +336,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn into_init(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Init, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, Init, DC>, Error> {
         self.transition_to(maindevice, SubDeviceState::Init).await
     }
 
@@ -357,8 +364,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     }
 }
 
-impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
-    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, S, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, S, DC>
 where
     S: IsPreOp,
 {
@@ -379,7 +386,7 @@ where
         self,
         maindevice: &MainDevice<'_>,
         dc_conf: DcConfiguration,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, HasDc>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, PreOpPdi, HasDc>, Error> {
         fmt::debug!("Configuring distributed clocks for group");
 
         let Some(reference) = maindevice.dc_ref_address() else {
@@ -491,14 +498,14 @@ where
     }
 }
 
-impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
-    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, PreOpPdi, DC>
 {
     /// Transition the SubDevice group from PRE-OP to SAFE-OP.
     pub async fn into_safe_op(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, SafeOp, DC>, Error> {
         self.transition_to(maindevice, SubDeviceState::SafeOp).await
     }
 
@@ -509,7 +516,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn into_op(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, Op, DC>, Error> {
         let self_ = self.into_safe_op(maindevice).await?;
 
         self_.transition_to(maindevice, SubDeviceState::Op).await
@@ -526,7 +533,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn request_into_op(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, Op, DC>, Error> {
         let self_ = self.into_safe_op(maindevice).await?;
 
         self_.request_into_op(maindevice).await
@@ -536,19 +543,19 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn into_init(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Init, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, Init, DC>, Error> {
         self.transition_to(maindevice, SubDeviceState::Init).await
     }
 }
 
-impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
-    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, SafeOp, DC>
 {
     /// Transition all SubDevices in the group from SAFE-OP to OP.
     pub async fn into_op(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, Op, DC>, Error> {
         self.transition_to(maindevice, SubDeviceState::Op).await
     }
 
@@ -556,7 +563,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn into_pre_op(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOp, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, PreOp, DC>, Error> {
         self.transition_to(maindevice, SubDeviceState::PreOp).await
     }
 
@@ -571,7 +578,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     pub async fn request_into_op(
         mut self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, Op, DC>, Error> {
         for subdevice in self.inner.get_mut().subdevices.iter_mut() {
             SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
                 .request_subdevice_state_nowait(SubDeviceState::Op)
@@ -590,25 +597,25 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
     }
 }
 
-impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, DC>
-    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, Op, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, Op, DC>
 {
     /// Transition all SubDevices in the group from OP to SAFE-OP.
     pub async fn into_safe_op(
         self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, SafeOp, DC>, Error> {
         self.transition_to(maindevice, SubDeviceState::SafeOp).await
     }
 }
 
-impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Default
-    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, S> Default
+    for SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, S>
 {
     fn default() -> Self {
         Self {
             id: GroupId(GROUP_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)),
-            pdi: spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
+            pdi: RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
             read_pdi_len: Default::default(),
             pdi_len: Default::default(),
             inner: MySyncUnsafeCell::new(GroupInner::default()),
@@ -618,8 +625,8 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S> Default
     }
 }
 
-impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
-    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, S, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, S, DC>
 {
     fn inner(&self) -> &GroupInner<MAX_SUBDEVICES> {
         unsafe { &*self.inner.get() }
@@ -716,7 +723,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
         mut self,
         maindevice: &MainDevice<'_>,
         desired_state: SubDeviceState,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, TO, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, TO, DC>, Error> {
         // We're done configuring FMMUs, etc, now we can request all SubDevices in this group go into
         // SAFE-OP
         for subdevice in self.inner.get_mut().subdevices.iter_mut() {
@@ -786,8 +793,8 @@ where
 }
 
 // Methods for any state where a PDI has been configured.
-impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S, DC>
-    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, DC>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, S, DC>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, S, DC>
 where
     S: HasPdi,
 {
@@ -797,7 +804,7 @@ where
         &'group self,
         maindevice: &'maindevice MainDevice<'maindevice>,
         index: usize,
-    ) -> Result<SubDeviceRef<'maindevice, SubDevicePdi<'group, MAX_PDI>>, Error> {
+    ) -> Result<SubDeviceRef<'maindevice, SubDevicePdi<'group, MAX_PDI, R>>, Error> {
         let subdevice = self.inner().subdevices.get(index).ok_or(Error::NotFound {
             item: Item::SubDevice,
             index: Some(index),
@@ -830,7 +837,7 @@ where
     pub fn iter<'group, 'maindevice>(
         &'group self,
         maindevice: &'maindevice MainDevice<'maindevice>,
-    ) -> impl Iterator<Item = SubDeviceRef<'group, SubDevicePdi<'group, MAX_PDI>>>
+    ) -> impl Iterator<Item = SubDeviceRef<'group, SubDevicePdi<'group, MAX_PDI, R>>>
     where
         'maindevice: 'group,
     {
@@ -1099,11 +1106,7 @@ where
         total_bytes_sent: usize,
         bytes_in_this_chunk: usize,
         data: &ReceivedPdu<'_>,
-        pdi_lock: &mut spin::rwlock::RwLockWriteGuard<
-            '_,
-            MySyncUnsafeCell<[u8; MAX_PDI]>,
-            crate::SpinStrategy,
-        >,
+        pdi_lock: &mut RwLockWriteGuard<'_, R, MySyncUnsafeCell<[u8; MAX_PDI]>>,
     ) -> Result<u16, Error> {
         let wkc = data.working_counter;
 
@@ -1119,8 +1122,8 @@ where
 }
 
 // Methods for when the group has a PDI AND has Distributed Clocks configured
-impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, S>
-    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, S, HasDc>
+impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, S>
+    SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, S, HasDc>
 where
     S: HasPdi,
 {
@@ -1454,18 +1457,19 @@ mod tests {
             MainDeviceConfig::default(),
         ));
 
-        let group: SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, PreOpPdi, NoDc> = SubDeviceGroup {
-            id: GroupId(0),
-            pdi: spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
-            read_pdi_len: 32,
-            pdi_len: 96,
-            inner: MySyncUnsafeCell::new(GroupInner {
-                subdevices: heapless::Vec::new(),
-                pdi_start: PdiOffset::default(),
-            }),
-            dc_conf: NoDc,
-            _state: PhantomData,
-        };
+        let group: SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, crate::DefaultLock, PreOpPdi, NoDc> =
+            SubDeviceGroup {
+                id: GroupId(0),
+                pdi: RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
+                read_pdi_len: 32,
+                pdi_len: 96,
+                inner: MySyncUnsafeCell::new(GroupInner {
+                    subdevices: heapless::Vec::new(),
+                    pdi_start: PdiOffset::default(),
+                }),
+                dc_conf: NoDc,
+                _state: PhantomData,
+            };
 
         let out = group.tx_rx(&maindevice).await;
 
@@ -1683,9 +1687,9 @@ mod tests {
         // Test setup had 16 devices
         assert_eq!(subdevices.len(), 16);
 
-        let group = SubDeviceGroup {
+        let group = SubDeviceGroup::<MAX_SUBDEVICES, MAX_PDI, crate::DefaultLock, Op, HasDc> {
             id: GroupId(0),
-            pdi: spin::rwlock::RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
+            pdi: RwLock::new(MySyncUnsafeCell::new([0u8; MAX_PDI])),
             read_pdi_len: 406,
             pdi_len: 474,
             inner: MySyncUnsafeCell::new(GroupInner {

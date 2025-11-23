@@ -9,10 +9,7 @@
 mod util;
 
 use env_logger::Env;
-use ethercrab::{
-    MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts, error::Error,
-    subdevice_group,
-};
+use ethercrab::{MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts, error::Error};
 use std::{path::PathBuf, time::Duration};
 use tokio::time::MissedTickBehavior;
 
@@ -25,9 +22,9 @@ struct Groups {
     /// EL2889 and EK1100. 2 items, 2 bytes of PDI for 16 output bits.
     ///
     /// We'll keep the EK1100 in here as it has no PDI but still needs to live somewhere.
-    slow_outputs: SubDeviceGroup<2, 2, subdevice_group::PreOp>,
+    slow_outputs: SubDeviceGroup<2, 2>,
     /// EL2828. 1 item, 1 byte of PDI for 8 output bits.
-    fast_outputs: SubDeviceGroup<1, 1, subdevice_group::PreOp>,
+    fast_outputs: SubDeviceGroup<1, 1>,
 }
 
 #[tokio::test]
