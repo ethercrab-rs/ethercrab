@@ -60,8 +60,10 @@ pub fn generate_struct_write(parsed: &StructMeta, input: &DeriveInput) -> proc_m
         }
     });
 
+    let (impl_generics, type_generics, where_clause) = parsed.generics.split_for_impl();
     quote! {
-        impl ::ethercrab_wire::EtherCrabWireWrite for #name {
+        impl #impl_generics ::ethercrab_wire::EtherCrabWireWrite for #name #type_generics
+        #where_clause {
             fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
                 let buf = match buf.get_mut(0..#size_bytes) {
                     Some(buf) => buf,
@@ -82,7 +84,8 @@ pub fn generate_struct_write(parsed: &StructMeta, input: &DeriveInput) -> proc_m
             }
         }
 
-        impl ::ethercrab_wire::EtherCrabWireWriteSized for #name {
+        impl #impl_generics ::ethercrab_wire::EtherCrabWireWriteSized for #name #type_generics
+        #where_clause {
             fn pack(&self) -> Self::Buffer {
                 let mut buf = [0u8; #size_bytes];
 
@@ -151,8 +154,10 @@ pub fn generate_struct_read(parsed: &StructMeta, input: &DeriveInput) -> proc_ma
         }
     });
 
+    let (impl_generics, type_generics, where_clause) = parsed.generics.split_for_impl();
     quote! {
-        impl ::ethercrab_wire::EtherCrabWireRead for #name {
+        impl #impl_generics ::ethercrab_wire::EtherCrabWireRead for #name #type_generics
+        #where_clause {
             fn unpack_from_slice(buf: &[u8]) -> Result<Self, ::ethercrab_wire::WireError> {
                 let buf = buf.get(0..#size_bytes).ok_or(::ethercrab_wire::WireError::ReadBufferTooShort)?;
 
@@ -168,8 +173,10 @@ pub fn generate_sized_impl(parsed: &StructMeta, input: &DeriveInput) -> proc_mac
     let name = input.ident.clone();
     let size_bytes = parsed.width_bits.div_ceil(8);
 
+    let (impl_generics, type_generics, where_clause) = parsed.generics.split_for_impl();
     quote! {
-        impl ::ethercrab_wire::EtherCrabWireSized for #name {
+        impl #impl_generics ::ethercrab_wire::EtherCrabWireSized for #name #type_generics
+        #where_clause {
             const PACKED_LEN: usize = #size_bytes;
 
             type Buffer = [u8; #size_bytes];
@@ -178,5 +185,56 @@ pub fn generate_sized_impl(parsed: &StructMeta, input: &DeriveInput) -> proc_mac
                 [0u8; #size_bytes]
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireWrite};
+
+    #[test]
+    fn generic_struct() {
+        #[derive(EtherCrabWireReadWrite, PartialEq, Debug)]
+        #[wire(bytes = 8)]
+        struct TestTypeGeneric<T: EtherCrabWireReadWrite> {
+            #[wire(bits = 32)]
+            a: i32,
+            #[wire(bits = 32)]
+            b: T,
+        }
+        let test_type_generic = TestTypeGeneric::<u32> {
+            a: -16,
+            b: u32::MAX,
+        };
+        let mut slice = [0u8; 8];
+        test_type_generic.pack_to_slice(&mut slice).unwrap();
+        assert_eq!(
+            Ok(test_type_generic),
+            TestTypeGeneric::<u32>::unpack_from_slice(&slice)
+        );
+
+        #[derive(EtherCrabWireReadWrite, PartialEq, Debug)]
+        #[wire(bytes = 8)]
+        struct TestWhereClause<T>
+        where
+            T: EtherCrabWireReadWrite,
+        {
+            #[wire(bits = 32)]
+            a: i32,
+            #[wire(bits = 32)]
+            b: T,
+        }
+        let test_where_clause = TestWhereClause::<u32> {
+            a: -16,
+            b: u32::MAX,
+        };
+        let mut slice = [0u8; 8];
+        test_where_clause.pack_to_slice(&mut slice).unwrap();
+        assert_eq!(
+            Ok(test_where_clause),
+            TestWhereClause::<u32>::unpack_from_slice(&slice)
+        );
     }
 }

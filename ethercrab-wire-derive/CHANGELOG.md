@@ -15,6 +15,7 @@ Derives for `ethercrab`.
 
 - **(breaking)** [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) Increase MSRV from 1.77
   to 1.79.
+- Support generic parameters for structs.
 
 ## [0.2.0] - 2024-07-28
 
