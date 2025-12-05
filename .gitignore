@@ -19,3 +19,7 @@ Cargo.lock
 .vscode/
 # Debug output from examples
 *.csv
+
+# OS generated files
+.DS_Store
+Thumbs.db
