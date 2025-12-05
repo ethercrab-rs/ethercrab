@@ -352,12 +352,13 @@ where
     }
 
     /// Transmit PDOs (from device's perspective) - inputs
-    pub(crate) async fn maindevice_read_pdos(&self) -> Result<heapless::Vec<Pdo, 64>, Error> {
+    /// Transmit PDOs (from device's perspective) - inputs
+    pub async fn maindevice_read_pdos(&self) -> Result<heapless::Vec<Pdo, 64>, Error> {
         self.pdos(PdoType::Tx).await
     }
 
     /// Receive PDOs (from device's perspective) - outputs
-    pub(crate) async fn maindevice_write_pdos(&self) -> Result<heapless::Vec<Pdo, 64>, Error> {
+    pub async fn maindevice_write_pdos(&self) -> Result<heapless::Vec<Pdo, 64>, Error> {
         self.pdos(PdoType::Rx).await
     }
 

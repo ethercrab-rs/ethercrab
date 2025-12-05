@@ -297,9 +297,22 @@ where
             }
 
             // Total number of PDO assignments for this sync manager
-            let num_sm_assignments = self
+            // Some slaves have fixed PDO mappings and don't expose 0x1C12/0x1C13, so handle gracefully
+            let num_sm_assignments = match self
                 .sdo_read_expedited::<u8>(sm_address, SubIndex::Index(0))
-                .await?;
+                .await {
+                    Ok(count) => count,
+                    Err(e) => {
+                        fmt::trace!(
+                            "SDO sync manager {} {:#06x} {:?} not accessible: {:?}, using EEPROM defaults",
+                            sync_manager_index,
+                            sm_address,
+                            sync_manager.usage_type(),
+                            e
+                        );
+                        0  // Return 0 to skip CoE config and use EEPROM defaults
+                    }
+                };
 
             fmt::trace!(
                 "SDO sync manager {}  {:#06x} {:?}, sub indices: {}",
@@ -312,9 +325,21 @@ where
             let mut sm_bit_len = 0u16;
 
             for i in 1..=num_sm_assignments {
-                let pdo = self
+                let pdo = match self
                     .sdo_read_expedited::<u16>(sm_address, SubIndex::Index(i))
-                    .await?;
+                    .await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            fmt::trace!(
+                                "SDO sync manager {} {:#06x} sub-index {} not found: {:?}, skipping",
+                                sync_manager_index,
+                                sm_address,
+                                i,
+                                e
+                            );
+                            continue;
+                        }
+                    };
                 let num_mappings = self
                     .sdo_read_expedited::<u8>(pdo, SubIndex::Index(0))
                     .await?;

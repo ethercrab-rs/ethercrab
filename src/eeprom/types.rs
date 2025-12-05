@@ -573,9 +573,9 @@ pub struct Pdo {
     // #[wire(bytes = 2)]
     // pub(crate) index: u16,
     #[wire(bytes = 1, pre_skip_bytes = 2)]
-    pub(crate) num_entries: u8,
+    pub num_entries: u8,
     #[wire(bytes = 1, post_skip_bytes = 4)]
-    pub(crate) sync_manager: u8,
+    pub sync_manager: u8,
     // #[wire(bytes = 1)]
     // pub(crate) dc_sync: u8,
     // /// Index into EEPROM Strings section for PDO name.
@@ -593,7 +593,7 @@ pub struct Pdo {
     // NOTE: This field is skipped during parsing from the wire and is populated from all the
     // `PdoEntry`s later.
     #[wire(skip)]
-    pub(crate) bit_len: u16,
+    pub bit_len: u16,
 }
 
 // impl core::fmt::Debug for Pdo {
@@ -636,7 +636,7 @@ pub struct PdoEntry {
     // #[wire(bytes = 1)]
     // pub(crate) data_type: PrimitiveDataType,
     #[wire(bytes = 1, pre_skip_bytes = 5, post_skip_bytes = 2)]
-    pub(crate) data_length_bits: u8,
+    pub data_length_bits: u8,
     // #[wire(bytes = 2)]
     // pub(crate) flags: u16,
 }

@@ -1234,7 +1234,8 @@ impl<'maindevice, S> SubDeviceRef<'maindevice, S> {
         futures_lite::future::try_zip(self.state(), code).await
     }
 
-    fn eeprom(&self) -> SubDeviceEeprom<DeviceEeprom> {
+    /// Get access to the SubDevice's EEPROM for reading configuration data.
+    pub fn eeprom(&self) -> SubDeviceEeprom<DeviceEeprom> {
         SubDeviceEeprom::new(DeviceEeprom::new(self.maindevice, self.configured_address))
     }
 
