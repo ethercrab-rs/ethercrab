@@ -6,7 +6,6 @@ use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadWrite, EtherCrabWireSized, EtherCrabWireWrite,
 };
 use heapless::FnvIndexMap;
-use io_uring::opcode::Read;
 use libc::sync;
 
 use crate::{
