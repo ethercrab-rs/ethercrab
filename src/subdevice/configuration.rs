@@ -1,6 +1,6 @@
 use super::{SubDevice, SubDeviceRef};
 use crate::{
-    coe::{SdoExpeditedPayload, SubIndex},
+    SubIndex,
     eeprom::types::{
         CoeDetails, DefaultMailbox, FmmuUsage, MailboxProtocols, SiiGeneral, SiiOwner, SyncManager,
         SyncManagerEnable, SyncManagerType,
@@ -8,6 +8,7 @@ use crate::{
     error::{Error, IgnoreNoCategory, Item},
     fmmu::Fmmu,
     fmt,
+    mailbox::coe::SdoExpeditedPayload,
     pdi::{PdiOffset, PdiSegment},
     register::RegisterAddress,
     subdevice::types::{Mailbox, MailboxConfig},

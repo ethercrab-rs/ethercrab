@@ -161,7 +161,6 @@ pub(crate) mod fmt;
 mod al_control;
 mod al_status_code;
 mod base_data_types;
-mod coe;
 mod command;
 mod dc;
 mod dl_status;
@@ -187,13 +186,13 @@ mod vendors;
 pub mod std;
 
 pub use al_status_code::AlStatusCode;
-pub use coe::SubIndex;
 pub use command::{Command, Reads, WrappedRead, WrappedWrite, Writes};
 pub use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireSized,
     EtherCrabWireWrite, EtherCrabWireWriteSized,
 };
 use ethernet::EthernetAddress;
+pub use mailbox::coe::SubIndex;
 pub use maindevice::MainDevice;
 pub use maindevice_config::{MainDeviceConfig, RetryBehaviour};
 pub use pdu_loop::{PduLoop, PduRx, PduStorage, PduTx, ReceiveAction, SendableFrame};

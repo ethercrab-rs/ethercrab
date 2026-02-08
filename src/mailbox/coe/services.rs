@@ -1,8 +1,5 @@
 use super::{CoeService, SdoHeader, SdoHeaderSegmented, SdoInfoHeader, SdoInfoOpCode, SubIndex};
-use crate::{
-    coe::CoeHeader,
-    mailbox::{MailboxHeader, MailboxType, Priority},
-};
+use crate::mailbox::{MailboxHeader, MailboxType, Priority, coe::CoeHeader};
 use core::fmt::Display;
 
 /// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download
@@ -401,7 +398,7 @@ mod tests {
                 expedited_transfer: true,
                 size: 3,
                 complete_access: false,
-                command: crate::coe::CoeCommand::Upload,
+                command: crate::mailbox::coe::CoeCommand::Upload,
                 index: 0x1c00,
                 sub_index: 4,
             },
@@ -434,7 +431,7 @@ mod tests {
                     expedited_transfer: true,
                     size: 0,
                     complete_access: false,
-                    command: crate::coe::CoeCommand::Download,
+                    command: crate::mailbox::coe::CoeCommand::Download,
                     index: 0x1234,
                     sub_index: 3,
                 },
@@ -468,7 +465,7 @@ mod tests {
                     expedited_transfer: true,
                     size: 0,
                     complete_access: true,
-                    command: crate::coe::CoeCommand::Download,
+                    command: crate::mailbox::coe::CoeCommand::Download,
                     index: 0x1234,
                     // MUST be 1 if complete access is used
                     sub_index: 1,
@@ -500,7 +497,7 @@ mod tests {
                     expedited_transfer: false,
                     size: 0,
                     complete_access: false,
-                    command: crate::coe::CoeCommand::Upload,
+                    command: crate::mailbox::coe::CoeCommand::Upload,
                     index: 0x4567,
                     sub_index: 2,
                 },
@@ -533,7 +530,7 @@ mod tests {
                 expedited_transfer: false,
                 size: 0,
                 complete_access: false,
-                command: crate::coe::CoeCommand::Upload,
+                command: crate::mailbox::coe::CoeCommand::Upload,
                 index: 0x1008,
                 sub_index: 0,
             },
@@ -658,7 +655,7 @@ mod tests {
                 expedited_transfer: false,
                 size: 0,
                 complete_access: false,
-                command: crate::coe::CoeCommand::Abort,
+                command: crate::mailbox::coe::CoeCommand::Abort,
                 index: 0x1001,
                 sub_index: 0,
             },
