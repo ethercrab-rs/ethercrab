@@ -570,9 +570,9 @@ impl SdoExpedited for SyncManagerType {}
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[wire(bytes = 8)]
 pub struct Pdo {
-    // #[wire(bytes = 2)]
-    // pub(crate) index: u16,
-    #[wire(bytes = 1, pre_skip_bytes = 2)]
+    #[wire(bytes = 2)]
+    pub(crate) index: u16,
+    #[wire(bytes = 1)]
     pub(crate) num_entries: u8,
     #[wire(bytes = 1, post_skip_bytes = 4)]
     pub(crate) sync_manager: u8,

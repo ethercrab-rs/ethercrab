@@ -91,6 +91,8 @@ pub struct SubDevice {
 
     /// DC config.
     pub(crate) dc_sync: DcSync,
+
+    pub(crate) oversampling_config: &'static [(u16, u8)],
 }
 
 // Only required for tests, also doesn't make much sense - consumers of EtherCrab should be
@@ -134,6 +136,7 @@ impl Clone for SubDevice {
             propagation_delay: self.propagation_delay,
             dc_sync: self.dc_sync,
             mailbox_counter: AtomicU8::new(self.mailbox_counter.load(Ordering::Acquire)),
+            oversampling_config: &[],
         }
     }
 }
@@ -232,7 +235,16 @@ impl SubDevice {
             dc_sync: DcSync::Disabled,
             // 0 is a reserved value, so we initialise the cycle at 1. The cycle repeats 1 - 7.
             mailbox_counter: AtomicU8::new(1),
+            oversampling_config: &[],
         })
+    }
+
+    /// Set oversampling values for various PDOs.
+    ///
+    /// This is a temporary(ish) solution to configure oversampling until a better one is found to
+    /// configure this from ESI files, etc.
+    pub fn set_oversampling(&mut self, oversampling_config: &'static [(u16, u8)]) {
+        self.oversampling_config = oversampling_config
     }
 
     /// Get the SubDevice's human readable short name.

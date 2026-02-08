@@ -791,7 +791,7 @@ mod tests {
             // };
 
             let pdo_defaults = Pdo {
-                // index: 0x1600,
+                index: 0x1600,
                 // name_string_idx: 5,
                 num_entries: 1,
                 sync_manager: 0,

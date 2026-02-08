@@ -326,6 +326,8 @@ where
                     num_mappings
                 );
 
+                let mut pdo_bit_len = 0u16;
+
                 for i in 1..=num_mappings {
                     /// Defined in ETG1000.6 Table 74/Table 75 Receive PDO Mapping.
                     ///
@@ -359,8 +361,25 @@ where
                         mapping_bit_len,
                     );
 
-                    sm_bit_len += u16::from(mapping_bit_len);
+                    pdo_bit_len += u16::from(mapping_bit_len);
                 }
+
+                let oversampling = self
+                    .oversampling_config
+                    .iter()
+                    .find_map(|(pdo_id, mul)| if *pdo_id == pdo { Some(*mul) } else { None })
+                    .unwrap_or(1);
+
+                let pdo_bit_len = pdo_bit_len * u16::from(oversampling);
+
+                fmt::trace!(
+                    "----> CoE: {:#06x} oversampling: {}, this PDO bit len {}",
+                    pdo,
+                    oversampling,
+                    pdo_bit_len
+                );
+
+                sm_bit_len += u16::from(pdo_bit_len);
             }
 
             fmt::trace!(
@@ -496,7 +515,30 @@ where
             let bit_len = pdos
                 .iter()
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
-                .map(|pdo| pdo.bit_len)
+                .map(|pdo| {
+                    let oversampling = self
+                        .oversampling_config
+                        .iter()
+                        .find_map(|(pdo_id, mul)| {
+                            if *pdo_id == pdo.index {
+                                Some(*mul)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(1);
+
+                    let len = pdo.bit_len * u16::from(oversampling);
+
+                    fmt::trace!(
+                        "EEPROM: {:#06x} oversampling: {}, this PDO bit len {}",
+                        pdo.index,
+                        oversampling,
+                        len
+                    );
+
+                    len
+                })
                 .sum();
 
             // total_bit_len += bit_len;
