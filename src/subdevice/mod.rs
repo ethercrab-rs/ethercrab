@@ -535,8 +535,8 @@ where
         ))
     }
 
-    /// Get CoE read/write mailboxes.
-    async fn coe_mailboxes(&self) -> Result<(Mailbox, Mailbox), Error> {
+    /// Get CoE read/write mailboxes, waiting for them to be ready to read/write.
+    async fn wait_for_mailboxes(&self) -> Result<(Mailbox, Mailbox), Error> {
         let write_mailbox = self
             .state
             .config
@@ -618,7 +618,10 @@ where
     }
 
     /// Wait for a mailbox response
-    async fn coe_response(&self, read_mailbox: &Mailbox) -> Result<ReceivedPdu, Error> {
+    async fn wait_for_mailbox_response(
+        &self,
+        read_mailbox: &Mailbox,
+    ) -> Result<ReceivedPdu, Error> {
         let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
 
         // Wait for SubDevice OUT mailbox to be ready
@@ -659,14 +662,14 @@ where
 
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
     /// and return as a slice.
-    async fn send_coe_service<R>(
+    async fn mailbox_write_read<R>(
         &'maindevice self,
         request: R,
     ) -> Result<(R, ReceivedPdu<'maindevice>), Error>
     where
         R: CoeServiceRequest + Debug,
     {
-        let (read_mailbox, write_mailbox) = self.coe_mailboxes().await.inspect_err(|err| {
+        let (read_mailbox, write_mailbox) = self.wait_for_mailboxes().await.inspect_err(|err| {
             fmt::error!("{} {} {}", self.configured_address(), self.name(), err)
         })?;
 
@@ -676,7 +679,7 @@ where
             .send(self.maindevice, &request.pack().as_ref())
             .await?;
 
-        let mut response = self.coe_response(&read_mailbox).await?;
+        let mut response = self.wait_for_mailbox_response(&read_mailbox).await?;
 
         /// A super generalised version of the various header shapes for responses, extracting only
         /// what we need in this method.
@@ -792,7 +795,7 @@ where
         &self,
         request: coe::services::ObjectDescriptionListRequest,
     ) -> Result<Option<heapless::Vec<u8, { u16::MAX as usize * 2 }>>, Error> {
-        let (read_mailbox, write_mailbox) = match self.coe_mailboxes().await {
+        let (read_mailbox, write_mailbox) = match self.wait_for_mailboxes().await {
             Ok((read, write)) => Ok((read, write)),
             Err(Error::Mailbox(MailboxError::NoReadMailbox | MailboxError::NoWriteMailbox)) => {
                 return Ok(None);
@@ -814,7 +817,7 @@ where
         // CiA 301 §7.4.1).
         let mut buf = heapless::Vec::<u8, 0x1fffe>::new();
         loop {
-            let mut response = self.coe_response(&read_mailbox).await?;
+            let mut response = self.wait_for_mailbox_response(&read_mailbox).await?;
             let headers =
                 <coe::services::ObjectDescriptionListResponse>::unpack_from_slice(&response)?;
             if headers.sdo_info_header.op_code
@@ -872,7 +875,7 @@ where
 
         fmt::trace!("CoE download");
 
-        let (_response, _data) = self.send_coe_service(request).await?;
+        let (_response, _data) = self.mailbox_write_read(request).await?;
 
         // TODO: Validate reply?
 
@@ -1016,7 +1019,7 @@ where
 
         fmt::trace!("CoE upload {:#06x} {:?}", index, sub_index);
 
-        let (headers, response) = self.send_coe_service(request).await?;
+        let (headers, response) = self.mailbox_write_read(request).await?;
         let data: &[u8] = &response;
 
         // Expedited transfers where the data is 4 bytes or less long, denoted in the SDO header
@@ -1046,7 +1049,7 @@ where
 
         fmt::trace!("CoE upload {:#06x} {:?}", index, sub_index);
 
-        let (headers, response) = self.send_coe_service(request).await?;
+        let (headers, response) = self.mailbox_write_read(request).await?;
         let data: &[u8] = &response;
 
         // Expedited transfers where the data is 4 bytes or less long, denoted in the SDO header
@@ -1087,7 +1090,7 @@ where
 
                     fmt::trace!("CoE upload segmented");
 
-                    let (headers, data) = self.send_coe_service(request).await?;
+                    let (headers, data) = self.mailbox_write_read(request).await?;
 
                     // The spec defines the data length as n-3, so we'll just go with that magic
                     // number...
