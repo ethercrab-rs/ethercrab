@@ -1171,7 +1171,7 @@ where
             .map(Some)
     }
 
-    /// Count how many objects match each [`coe::ObjectDescriptionListQuery`].
+    /// Count how many objects match each [`ObjectDescriptionListQuery`].
     pub async fn sdo_info_object_quantities(
         &self,
     ) -> Result<Option<ObjectDescriptionListQueryCounts>, Error> {
