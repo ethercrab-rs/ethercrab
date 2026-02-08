@@ -35,7 +35,10 @@ sealed = "0.6.0"
 serde = { version = "1.0.190", features = ["derive"], optional = true }
 smlang = "0.8.0"
 ethercrab-wire = { version = "0.2.0", path = "./ethercrab-wire" }
-spin = { version = "0.10.0", default-features = false, features = ["lock_api", "rwlock"] }
+spin = { version = "0.10.0", default-features = false, features = [
+    "lock_api",
+    "rwlock",
+] }
 crc = { version = "3.2.1", default-features = false }
 lock_api = "0.4.13"
 
@@ -44,8 +47,8 @@ pnet_datalink = { version = "0.35.0", features = ["std"], optional = true }
 pcap = "2.2.0"
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2.149"
-nix = { version = "0.29.0", features = ["net"] }
+libc = "0.2.180"
+nix = { version = "0.31.1", features = ["net"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = "0.7.4"
