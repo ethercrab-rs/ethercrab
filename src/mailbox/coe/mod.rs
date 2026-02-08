@@ -21,12 +21,12 @@ use crate::{
     subdevice::Mailbox,
     timer_factory::IntoTimeout,
 };
+use core::ops::Deref;
 use core::{any::type_name, fmt::Debug};
 use ethercrab_wire::{
     EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireSized, EtherCrabWireWrite,
     EtherCrabWireWriteSized,
 };
-use std::ops::Deref;
 
 pub(crate) use headers::{CoeCommand, CoeHeader, CoeService, SdoExpeditedPayload, SdoInfoOpCode};
 
