@@ -14,14 +14,17 @@ use crate::{
     eeprom::{device_provider::DeviceEeprom, types::SiiOwner},
     error::{Error, IgnoreNoCategory, Item, MailboxError, PduError},
     fmt,
-    mailbox::coe::{
-        self, CoeCommand, CoeHeader, CoeService, SdoExpeditedPayload, SubIndex,
-        abort_code::CoeAbortCode,
-        services::{
-            CoeServiceRequest, ObjectDescriptionListRequest, SdoExpedited, SdoNormal, SdoSegmented,
+    mailbox::{
+        MailboxHeader, MailboxType,
+        coe::{
+            self, CoeAbortCode, CoeCommand, CoeHeader, CoeService, SdoExpeditedPayload,
+            SdoInfoOpCode, SubIndex,
+            services::{
+                CoeServiceRequest, ObjectDescriptionListRequest, ObjectDescriptionListResponse,
+                SdoExpedited, SdoNormal, SdoSegmented,
+            },
         },
     },
-    mailbox::{MailboxHeader, MailboxType},
     maindevice::MainDevice,
     pdu_loop::ReceivedPdu,
     register::{DcSupport, RegisterAddress, SupportFlags},
@@ -45,7 +48,7 @@ pub use self::pdi::SubDevicePdi;
 pub use self::types::IoRanges;
 pub use self::types::SubDeviceIdentity;
 use self::{eeprom::SubDeviceEeprom, types::Mailbox};
-pub use coe::{ObjectDescriptionListQuery, ObjectDescriptionListQueryCounts};
+pub use coe::services::{ObjectDescriptionListQuery, ObjectDescriptionListQueryCounts};
 pub use dc::DcSync;
 
 /// SubDevice device metadata. See [`SubDeviceRef`] for richer behaviour.
@@ -824,17 +827,14 @@ where
         let mut buf = heapless::Vec::<u8, 0x1fffe>::new();
         loop {
             let mut response = self.wait_for_mailbox_response(&read_mailbox).await?;
-            let headers =
-                <coe::services::ObjectDescriptionListResponse>::unpack_from_slice(&response)?;
-            if headers.sdo_info_header.op_code
-                == coe::SdoInfoOpCode::GetObjectDescriptionListResponse
-            {
+            let headers = ObjectDescriptionListResponse::unpack_from_slice(&response)?;
+            if headers.sdo_info_header.op_code == SdoInfoOpCode::GetObjectDescriptionListResponse {
                 let length = headers.mailbox.length as usize - COE_HEADER_AND_LIST_TYPE_SIZE;
                 fmt::trace!(
                     "CoE Info, {} fragments left",
                     headers.sdo_info_header.fragments_left
                 );
-                response.trim_front(coe::services::ObjectDescriptionListResponse::PACKED_LEN);
+                response.trim_front(ObjectDescriptionListResponse::PACKED_LEN);
                 if !consumed_list_type {
                     response.trim_front(2); // skip over the list type
                     consumed_list_type = true;
@@ -1180,7 +1180,7 @@ where
             return Ok(None);
         };
 
-        coe::ObjectDescriptionListQueryCounts::unpack_from_slice(&response_payload)
+        ObjectDescriptionListQueryCounts::unpack_from_slice(&response_payload)
             .map_err(|_| {
                 fmt::error!(
                     "SDO Info Get OD List (type Object Quantities) data {:?} (len {})",

@@ -1,5 +1,11 @@
-use super::{CoeService, SdoHeader, SdoHeaderSegmented, SdoInfoHeader, SdoInfoOpCode, SubIndex};
-use crate::mailbox::{MailboxHeader, MailboxType, Priority, coe::CoeHeader};
+use super::{CoeService, SdoInfoOpCode, SubIndex};
+use crate::mailbox::{
+    MailboxHeader, MailboxType, Priority,
+    coe::{
+        CoeCommand, CoeHeader,
+        headers::{SdoHeader, SdoHeaderSegmented, SdoInfoHeader},
+    },
+};
 use core::fmt::Display;
 
 /// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download
@@ -41,7 +47,7 @@ impl SdoExpedited {
                 expedited_transfer: true,
                 size: 4u8.saturating_sub(len),
                 complete_access: access.complete_access(),
-                command: super::CoeCommand::Download,
+                command: CoeCommand::Download,
                 index,
                 sub_index: access.sub_index(),
             },
@@ -102,7 +108,7 @@ impl SdoNormal {
                 expedited_transfer: false,
                 size: 0,
                 complete_access: access.complete_access(),
-                command: super::CoeCommand::Upload,
+                command: CoeCommand::Upload,
                 index,
                 sub_index: access.sub_index(),
             },
@@ -158,7 +164,7 @@ impl SdoSegmented {
                 is_last_segment: false,
                 segment_data_size: 0,
                 toggle,
-                command: super::CoeCommand::UploadSegment,
+                command: CoeCommand::UploadSegment,
             },
         }
     }
