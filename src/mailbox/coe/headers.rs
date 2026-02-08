@@ -1,10 +1,5 @@
 use ethercrab_wire::EtherCrabWireReadSized;
 
-pub mod abort_code;
-pub mod services;
-
-pub use services::{ObjectDescriptionListQuery, ObjectDescriptionListQueryCounts};
-
 /// Defined in ETG1000.6 Table 29 – CoE elements
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
@@ -29,6 +24,17 @@ pub enum CoeService {
     SdoInformation = 0x08,
 }
 
+/// Defined in ETG1000.6 Section 5.6.2.1.1
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[wire(bytes = 2)]
+pub struct CoeHeader {
+    // _number: u9,
+    // _reserved3: u3,
+    /// Defined in ETG1000.6 5.6.1 Table 29 – CoE elements.
+    #[wire(pre_skip = 12, bits = 4)]
+    pub service: CoeService,
+}
+
 /// The field near the bottom of SDO definition tables called "Command specifier".
 ///
 /// See e.g. ETG1000.6 Section 5.6.2.6.2 Table 39 – Upload SDO Segment Response.
@@ -45,7 +51,7 @@ pub enum CoeCommand {
 /// Defined in ETG1000.6 Section 5.6.2.1.1
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 4)]
-pub struct InitSdoHeader {
+pub struct SdoHeader {
     #[wire(bits = 1)]
     pub size_indicator: bool,
     #[wire(bits = 1)]
@@ -65,7 +71,7 @@ pub struct InitSdoHeader {
 /// Defined in ETG1000.6 5.6.2.3.1
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 1)]
-pub struct SegmentSdoHeader {
+pub struct SdoHeaderSegmented {
     #[wire(bits = 1)]
     pub is_last_segment: bool,
 
@@ -77,7 +83,7 @@ pub struct SegmentSdoHeader {
     pub toggle: bool,
 
     #[wire(bits = 3)]
-    command: CoeCommand,
+    pub(in crate::mailbox::coe) command: CoeCommand,
 }
 
 /// Defined in ETG.1000.6 5.6.3.2
@@ -139,11 +145,11 @@ impl From<u8> for SubIndex {
 }
 
 /// A trait for types that can be transferred with a single expedited SDO upload.
-pub(crate) trait SdoExpedited: EtherCrabWireReadSized {}
+pub(crate) trait SdoExpeditedPayload: EtherCrabWireReadSized {}
 
-impl SdoExpedited for u8 {}
-impl SdoExpedited for u16 {}
-impl SdoExpedited for u32 {}
+impl SdoExpeditedPayload for u8 {}
+impl SdoExpeditedPayload for u16 {}
+impl SdoExpeditedPayload for u32 {}
 
 #[cfg(test)]
 mod tests {

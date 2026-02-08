@@ -52,19 +52,19 @@ pub struct SubDeviceConfig {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct MailboxConfig {
-    pub(in crate::subdevice) read: Option<Mailbox>,
-    pub(in crate::subdevice) write: Option<Mailbox>,
-    pub(in crate::subdevice) supported_protocols: MailboxProtocols,
-    pub(in crate::subdevice) has_coe: bool,
+    pub read: Option<Mailbox>,
+    pub write: Option<Mailbox>,
+    pub supported_protocols: MailboxProtocols,
+    pub has_coe: bool,
     /// True if Complete Access is supported.
-    pub(in crate::subdevice) complete_access: bool,
+    pub complete_access: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Mailbox {
-    pub(in crate::subdevice) address: u16,
-    pub(in crate::subdevice) len: u16,
-    pub(in crate::subdevice) sync_manager: u8,
+    pub address: u16,
+    pub len: u16,
+    pub sync_manager: u8,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]

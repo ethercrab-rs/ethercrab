@@ -1,9 +1,6 @@
 //! SubDevice Information Interface (SII).
 
-use crate::{
-    coe::SdoExpedited,
-    sync_manager_channel::{self, Direction, OperationMode},
-};
+use crate::sync_manager_channel::{self, Direction, OperationMode};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, ethercrab_wire::EtherCrabWireReadWrite)]
@@ -562,8 +559,6 @@ pub enum SyncManagerType {
     /// Used for process data inputs to MainDevice.
     ProcessDataRead = 0x04,
 }
-
-impl SdoExpedited for SyncManagerType {}
 
 /// Defined in ETG2010 Table 14 – Structure Category TXPDO and RXPDO for each PDO
 #[derive(Debug, Copy, Clone, PartialEq, ethercrab_wire::EtherCrabWireRead)]

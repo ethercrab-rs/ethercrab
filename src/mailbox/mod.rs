@@ -1,4 +1,4 @@
-use crate::coe::CoeService;
+pub mod coe;
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
@@ -39,7 +39,7 @@ pub enum MailboxType {
 /// Defined in ETG1000.6 under either `TMBXHEADER` or `MbxHeader` e.g. Table 29 - CoE Elements.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[wire(bytes = 8)]
+#[wire(bytes = 6)]
 pub struct MailboxHeader {
     /// Mailbox data payload length.
     #[wire(bytes = 2, post_skip_bytes = 2)]
@@ -57,14 +57,9 @@ pub struct MailboxHeader {
     pub mailbox_type: MailboxType,
     /// Mailbox counter from 1 to 7 inclusive. Wraps around to 1 when count exceeds 7. 0 is
     /// reserved.
-    #[wire(bits = 3)]
+    #[wire(bits = 3, post_skip = 1)]
     pub counter: u8,
-    // _reserved1: u8,
-    // _reserved9: u16,
-    // _reserved3: u8,
-    /// Defined in ETG1000.6 5.6.1 Table 29 – CoE elements.
-    #[wire(pre_skip = 13, bits = 4)]
-    pub service: CoeService,
+    // _reserved1: u1,
 }
 
 #[cfg(test)]
@@ -83,7 +78,6 @@ mod tests {
                 mailbox_type: Arbitrary::arbitrary(u)?,
                 // 0..=6 shifted up by 1 so we get the valid range 1..=7
                 counter: u.choose_index(7)? as u8 + 1,
-                service: Arbitrary::arbitrary(u)?,
             })
         }
     }
@@ -154,7 +148,7 @@ mod tests {
     #[test]
     fn encode_header() {
         // From wireshark capture
-        let expected = [0x0a, 0x00, 0x00, 0x00, 0x00, 0x33, 0x00, 0x20];
+        let expected = [0x0a, 0x00, 0x00, 0x00, 0x00, 0x33];
 
         let packed = MailboxHeader {
             length: 10,
@@ -162,7 +156,6 @@ mod tests {
             // address: 0x0000,
             counter: 3,
             mailbox_type: MailboxType::Coe,
-            service: CoeService::SdoRequest,
         }
         .pack();
 
@@ -180,7 +173,6 @@ mod tests {
             priority: Priority::Lowest,
             mailbox_type: MailboxType::Coe,
             counter: 2,
-            service: CoeService::SdoRequest,
         };
 
         let parsed = MailboxHeader::unpack_from_slice(&raw).unwrap();
