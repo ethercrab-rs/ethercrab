@@ -780,7 +780,7 @@ mod tests {
             "../../dumps/eeprom/el2828.hex"
         )));
 
-        fn pdo(_index: u16, _name_string_idx: u8, _entry_idx: u16) -> Pdo {
+        fn pdo(index: u16, _name_string_idx: u8, _entry_idx: u16) -> Pdo {
             // let entry_defaults = PdoEntry {
             //     index: 0x7000,
             //     sub_index: 1,
@@ -791,7 +791,7 @@ mod tests {
             // };
 
             let pdo_defaults = Pdo {
-                index: 0x1600,
+                index,
                 // name_string_idx: 5,
                 num_entries: 1,
                 sync_manager: 0,
