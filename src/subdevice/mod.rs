@@ -10,8 +10,11 @@ use crate::{
     al_control::AlControl,
     al_status_code::AlStatusCode,
     coe::{
-        self, CoeCommand, CoeService, SdoExpedited, SubIndex, abort_code::CoeAbortCode,
-        services::CoeServiceRequest,
+        self, CoeCommand, CoeHeader, CoeService, SdoExpeditedPayload, SubIndex,
+        abort_code::CoeAbortCode,
+        services::{
+            CoeServiceRequest, ObjectDescriptionListRequest, SdoExpedited, SdoNormal, SdoSegmented,
+        },
     },
     command::Command,
     dl_status::DlStatus,
@@ -686,8 +689,11 @@ where
         #[derive(Clone, Copy, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireRead)]
         #[wire(bytes = 12)]
         struct HeadersRaw {
-            #[wire(bytes = 8)]
+            #[wire(bytes = 6)]
             header: MailboxHeader,
+
+            #[wire(bytes = 2)]
+            coe_header: CoeHeader,
 
             #[wire(pre_skip = 5, bits = 3)]
             command: CoeCommand,
@@ -704,9 +710,9 @@ where
 
         let headers = HeadersRaw::unpack_from_slice(&response)?;
 
-        assert_ne!(headers.header.service, CoeService::Emergency);
+        assert_ne!(headers.coe_header.service, CoeService::Emergency);
 
-        if headers.header.service == CoeService::Emergency {
+        if headers.coe_header.service == CoeService::Emergency {
             #[derive(Debug, Copy, Clone, ethercrab_wire::EtherCrabWireRead)]
             #[wire(bytes = 8)]
             struct EmergencyData {
@@ -871,7 +877,7 @@ where
         value.pack_to_slice(&mut buf)?;
 
         let request =
-            coe::services::download(counter, index, sub_index, buf, value.packed_len() as u8);
+            SdoExpedited::download(counter, index, sub_index, buf, value.packed_len() as u8);
 
         fmt::trace!("CoE download");
 
@@ -1005,7 +1011,7 @@ where
         sub_index: impl Into<SubIndex>,
     ) -> Result<T, Error>
     where
-        T: SdoExpedited,
+        T: SdoExpeditedPayload,
     {
         debug_assert!(
             T::PACKED_LEN <= 4,
@@ -1015,7 +1021,7 @@ where
 
         let sub_index = sub_index.into();
 
-        let request = coe::services::upload(self.mailbox_counter(), index, sub_index);
+        let request = SdoNormal::upload(self.mailbox_counter(), index, sub_index);
 
         fmt::trace!("CoE upload {:#06x} {:?}", index, sub_index);
 
@@ -1045,7 +1051,7 @@ where
         let mut storage = T::buffer();
         let buf = storage.as_mut();
 
-        let request = coe::services::upload(self.mailbox_counter(), index, sub_index);
+        let request = SdoNormal::upload(self.mailbox_counter(), index, sub_index);
 
         fmt::trace!("CoE upload {:#06x} {:?}", index, sub_index);
 
@@ -1086,7 +1092,7 @@ where
                 let mut total_len = 0usize;
 
                 loop {
-                    let request = coe::services::upload_segmented(self.mailbox_counter(), toggle);
+                    let request = SdoSegmented::upload(self.mailbox_counter(), toggle);
 
                     fmt::trace!("CoE upload segmented");
 
@@ -1142,7 +1148,10 @@ where
         &self,
         list_type: ObjectDescriptionListQuery,
     ) -> Result<Option<heapless::Vec<u16, /* # of u16s */ { u16::MAX as usize + 1 }>>, Error> {
-        let request = coe::services::get_object_description_list(self.mailbox_counter(), list_type);
+        let request = ObjectDescriptionListRequest::get_object_description_list(
+            self.mailbox_counter(),
+            list_type,
+        );
         let Some(response_payload) = self.send_sdo_info_service(request).await? else {
             return Ok(None);
         };
@@ -1166,7 +1175,7 @@ where
     pub async fn sdo_info_object_quantities(
         &self,
     ) -> Result<Option<ObjectDescriptionListQueryCounts>, Error> {
-        let request = coe::services::get_object_quantities(self.mailbox_counter());
+        let request = ObjectDescriptionListRequest::get_object_quantities(self.mailbox_counter());
         let Some(response_payload) = self.send_sdo_info_service(request).await? else {
             return Ok(None);
         };

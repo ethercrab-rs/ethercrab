@@ -1,6 +1,6 @@
 use super::{SubDevice, SubDeviceRef};
 use crate::{
-    coe::{SdoExpedited, SubIndex},
+    coe::{SdoExpeditedPayload, SubIndex},
     eeprom::types::{
         CoeDetails, DefaultMailbox, FmmuUsage, MailboxProtocols, SiiGeneral, SiiOwner, SyncManager,
         SyncManagerEnable, SyncManagerType,
@@ -342,7 +342,7 @@ where
                         index: u16,
                     }
 
-                    impl SdoExpedited for Mapping {}
+                    impl SdoExpeditedPayload for Mapping {}
 
                     let Mapping {
                         index,
