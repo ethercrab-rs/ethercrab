@@ -126,7 +126,6 @@ where
 
         Ok(global_offset)
     }
-
     async fn write_sm_config(
         &self,
         sync_manager_index: u8,
@@ -140,7 +139,9 @@ where
             control: sync_manager.control,
             status: Status::default(),
             enable: Enable {
-                enable: sync_manager.enable.contains(SyncManagerEnable::ENABLE),
+                // Only enable if EEPROM says so and we actually have data to map.
+                // If length is 0, the device rejects the config (InvalidInput/OutputConfiguration).
+                enable: sync_manager.enable.contains(SyncManagerEnable::ENABLE) && length_bytes > 0,
                 ..Enable::default()
             },
         };
