@@ -34,81 +34,83 @@ const PDI_LEN: usize = 64;
 
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+fn main() -> Result<(), Error> {
+    smol::block_on(async {
+        env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    let interface = std::env::args()
-        .nth(1)
-        .expect("Provide network interface as first argument.");
+        let interface = std::env::args()
+            .nth(1)
+            .expect("Provide network interface as first argument.");
 
-    let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+        let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    let maindevice = Arc::new(MainDevice::new(
-        pdu_loop,
-        Timeouts {
-            wait_loop_delay: Duration::from_millis(2),
-            mailbox_response: Duration::from_millis(1000),
-            ..Default::default()
-        },
-        MainDeviceConfig::default(),
-    ));
-
-    #[cfg(target_os = "windows")]
-    std::thread::spawn(move || {
-        ethercrab::std::tx_rx_task_blocking(
-            &interface,
-            tx,
-            rx,
-            ethercrab::std::TxRxTaskConfig { spinloop: false },
-        )
-        .expect("TX/RX task")
-    });
-    #[cfg(not(target_os = "windows"))]
-    tokio::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
-
-    let group = maindevice
-        .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
-        .await
-        .expect("Init");
-
-    for subdevice in group.iter(&maindevice) {
-        println!("{}:", subdevice.name());
-        let object_quantities = subdevice.sdo_info_object_quantities().await?.unwrap_or(
-            ObjectDescriptionListQueryCounts {
-                all: 0,
-                rx_pdo_mappable: 0,
-                tx_pdo_mappable: 0,
-                stored_for_device_replacement: 0,
-                startup_parameters: 0,
+        let maindevice = Arc::new(MainDevice::new(
+            pdu_loop,
+            Timeouts {
+                wait_loop_delay: Duration::from_millis(2),
+                mailbox_response: Duration::from_millis(1000),
+                ..Default::default()
             },
-        );
-        println!(
-            r#"  object-quantities:
+            MainDeviceConfig::default(),
+        ));
+
+        #[cfg(target_os = "windows")]
+        std::thread::spawn(move || {
+            ethercrab::std::tx_rx_task_blocking(
+                &interface,
+                tx,
+                rx,
+                ethercrab::std::TxRxTaskConfig { spinloop: false },
+            )
+            .expect("TX/RX task")
+        });
+        #[cfg(not(target_os = "windows"))]
+        smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
+            .detach();
+
+        let group = maindevice
+            .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)
+            .await
+            .expect("Init");
+
+        for subdevice in group.iter(&maindevice) {
+            println!("{}:", subdevice.name());
+            let object_quantities = subdevice.sdo_info_object_quantities().await?.unwrap_or(
+                ObjectDescriptionListQueryCounts {
+                    all: 0,
+                    rx_pdo_mappable: 0,
+                    tx_pdo_mappable: 0,
+                    stored_for_device_replacement: 0,
+                    startup_parameters: 0,
+                },
+            );
+            println!(
+                r#"  object-quantities:
     all: {}
     rx-pdo-mappable: {}
     tx-pdo-mappable: {}
     stored-for-device-replacement: {}
     startup-parameters: {}"#,
-            object_quantities.all,
-            object_quantities.rx_pdo_mappable,
-            object_quantities.tx_pdo_mappable,
-            object_quantities.stored_for_device_replacement,
-            object_quantities.startup_parameters,
-        );
+                object_quantities.all,
+                object_quantities.rx_pdo_mappable,
+                object_quantities.tx_pdo_mappable,
+                object_quantities.stored_for_device_replacement,
+                object_quantities.startup_parameters,
+            );
 
-        let addresses = subdevice
-            .sdo_info_object_description_list(ObjectDescriptionListQuery::All)
-            .await?
-            .unwrap_or_default();
-        println!("  addresses: {}", address_list(addresses));
-    }
+            let addresses = subdevice
+                .sdo_info_object_description_list(ObjectDescriptionListQuery::All)
+                .await?
+                .unwrap_or_default();
+            println!("  addresses: {}", address_list(addresses));
+        }
 
-    let _group = group.into_init(&maindevice).await.expect("PRE-OP -> INIT");
+        let _group = group.into_init(&maindevice).await.expect("PRE-OP -> INIT");
 
-    log::info!("PRE-OP -> INIT, shutdown complete");
+        log::info!("PRE-OP -> INIT, shutdown complete");
 
-    Ok(())
+        Ok(())
+    })
 }
 
 // the string can be as big as 0x1_0000 addresses * 8 char/address.

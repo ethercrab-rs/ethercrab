@@ -10,8 +10,8 @@ use env_logger::Env;
 use ethercrab::{
     MainDevice, MainDeviceConfig, PduStorage, Timeouts, error::Error, std::ethercat_now,
 };
+use futures_lite::StreamExt;
 use std::time::Duration;
-use tokio::time::MissedTickBehavior;
 
 /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
 const MAX_SUBDEVICES: usize = 16;
@@ -25,102 +25,46 @@ const PDI_LEN: usize = 64;
 static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
 #[cfg(not(windows))]
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+fn main() -> Result<(), Error> {
+    smol::block_on(async {
+        env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    let interface = std::env::args()
-        .nth(1)
-        .expect("Provide network interface as first argument.");
+        let interface = std::env::args()
+            .nth(1)
+            .expect("Provide network interface as first argument.");
 
-    log::info!("Starting release demo...");
-    log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
+        log::info!("Starting release demo...");
+        log::info!("Run with RUST_LOG=ethercrab=debug or =trace for debug information");
 
-    let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
+        let (tx, rx, pdu_loop) = PDU_STORAGE.try_split().expect("can only split once");
 
-    // ---
-    // ---
-    // First cycle: normal TX/RX
-    // ---
-    // ---
+        // ---
+        // ---
+        // First cycle: normal TX/RX
+        // ---
+        // ---
 
-    let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
+        let maindevice =
+            MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 
-    let tx_rx_handle =
-        tokio::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
+        let tx_rx_handle =
+            smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
 
-    process_loop(&maindevice).await;
+        process_loop(&maindevice).await;
 
-    // SAFETY: Any groups created with the current `maindevice` MUST be dropped before this line.
-    // They cannot be reused with a new `MainDevice` instance and must be initialised again.
-    let pdu_loop = unsafe { maindevice.release() };
+        // SAFETY: Any groups created with the current `maindevice` MUST be dropped before this line.
+        // They cannot be reused with a new `MainDevice` instance and must be initialised again.
+        let pdu_loop = unsafe { maindevice.release() };
 
-    // ---
-    // ---
-    // Second cycle: reuse TX/RX task and PDU loop, but create a new `MainDevice`.
-    // ---
-    // ---
+        // ---
+        // ---
+        // Second cycle: reuse TX/RX task and PDU loop, but create a new `MainDevice`.
+        // ---
+        // ---
 
-    log::info!("PduLoop was released, starting new MainDevice...");
+        log::info!("PduLoop was released, starting new MainDevice...");
 
-    // Now make a new MainDevice with the same PDU loop
-    let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
-
-    process_loop(&maindevice).await;
-
-    // SAFETY: Any groups created with the current `maindevice` MUST be dropped before this line.
-    // They cannot be reused with a new `MainDevice` instance and must be initialised again.
-    let pdu_loop = unsafe { maindevice.release_all() };
-
-    // ---
-    // ---
-    // Third cycle: stop the previous TX/RX task and create a new one with the now-released TX/RX
-    // handles.
-    // ---
-    // ---
-
-    let (tx, rx) = tx_rx_handle
-        .await
-        .expect("Failed to stop TX/RX task")
-        .expect("TX/RX task error");
-
-    log::info!(
-        "PduLoop, PduTx and PduRx were released, starting new TX/RX task and making new MainDevice..."
-    );
-
-    // Now spawn a new TX/RX task. You could use a different network interface here, for example.
-    let tx_rx_handle =
-        tokio::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
-
-    let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
-
-    process_loop(&maindevice).await;
-
-    log::info!("Third PDU loop with second TX/RX task shutdown complete");
-
-    // SAFETY: Any groups created with the current `maindevice` MUST be dropped before this line.
-    // They cannot be reused with a new `MainDevice` instance and must be initialised again.
-    let pdu_loop = unsafe { maindevice.release_all() };
-
-    let (tx, rx) = tx_rx_handle
-        .await
-        .expect("Failed to stop TX/RX task")
-        .expect("TX/RX task error");
-
-    // ---
-    // ---
-    // Fourth cycle: do the same with `io_uring` (Linux only)
-    // ---
-    // ---
-    #[cfg(target_os = "linux")]
-    {
-        use ethercrab::std::tx_rx_task_io_uring;
-
-        log::info!("Linux only: reuse TX/RX with io_uring");
-
-        // NOTE: This is a suboptimal TX/RX thread spawn. See the `io-uring` example for how to do it properly.
-        let tx_rx_handle = std::thread::spawn(move || tx_rx_task_io_uring(&interface, tx, rx));
-
+        // Now make a new MainDevice with the same PDU loop
         let maindevice =
             MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 
@@ -128,19 +72,73 @@ async fn main() -> Result<(), Error> {
 
         // SAFETY: Any groups created with the current `maindevice` MUST be dropped before this line.
         // They cannot be reused with a new `MainDevice` instance and must be initialised again.
-        let _pdu_loop = unsafe { maindevice.release_all() };
+        let pdu_loop = unsafe { maindevice.release_all() };
 
-        let (tx, rx) = tx_rx_handle
-            .join()
-            .expect("io_uring TX/RX thread")
-            .expect("Could not recover TX/RX hadnles");
+        // ---
+        // ---
+        // Third cycle: stop the previous TX/RX task and create a new one with the now-released TX/RX
+        // handles.
+        // ---
+        // ---
 
-        // Handles are ready for reuse
-        assert!(!tx.should_exit());
-        assert!(!rx.should_exit());
-    }
+        let (tx, rx) = tx_rx_handle.await.expect("Failed to stop TX/RX task");
 
-    Ok(())
+        log::info!(
+            "PduLoop, PduTx and PduRx were released, starting new TX/RX task and making new MainDevice..."
+        );
+
+        // Now spawn a new TX/RX task. You could use a different network interface here, for example.
+        let tx_rx_handle =
+            smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
+
+        let maindevice =
+            MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
+
+        process_loop(&maindevice).await;
+
+        log::info!("Third PDU loop with second TX/RX task shutdown complete");
+
+        // SAFETY: Any groups created with the current `maindevice` MUST be dropped before this line.
+        // They cannot be reused with a new `MainDevice` instance and must be initialised again.
+        let pdu_loop = unsafe { maindevice.release_all() };
+
+        let (tx, rx) = tx_rx_handle.await.expect("TX/RX task error");
+
+        // ---
+        // ---
+        // Fourth cycle: do the same with `io_uring` (Linux only)
+        // ---
+        // ---
+        #[cfg(target_os = "linux")]
+        {
+            use ethercrab::std::tx_rx_task_io_uring;
+
+            log::info!("Linux only: reuse TX/RX with io_uring");
+
+            // NOTE: This is a suboptimal TX/RX thread spawn. See the `io-uring` example for how to do it properly.
+            let tx_rx_handle = std::thread::spawn(move || tx_rx_task_io_uring(&interface, tx, rx));
+
+            let maindevice =
+                MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
+
+            process_loop(&maindevice).await;
+
+            // SAFETY: Any groups created with the current `maindevice` MUST be dropped before this line.
+            // They cannot be reused with a new `MainDevice` instance and must be initialised again.
+            let _pdu_loop = unsafe { maindevice.release_all() };
+
+            let (tx, rx) = tx_rx_handle
+                .join()
+                .expect("io_uring TX/RX thread")
+                .expect("Could not recover TX/RX hadnles");
+
+            // Handles are ready for reuse
+            assert!(!tx.should_exit());
+            assert!(!rx.should_exit());
+        }
+
+        Ok(())
+    })
 }
 
 async fn process_loop(maindevice: &MainDevice<'_>) {
@@ -166,8 +164,7 @@ async fn process_loop(maindevice: &MainDevice<'_>) {
         );
     }
 
-    let mut tick_interval = tokio::time::interval(Duration::from_millis(5));
-    tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut tick_interval = smol::Timer::interval(Duration::from_millis(5));
 
     for _ in 0..u8::MAX {
         group.tx_rx(maindevice).await.expect("TX/RX");
@@ -181,7 +178,7 @@ async fn process_loop(maindevice: &MainDevice<'_>) {
             }
         }
 
-        tick_interval.tick().await;
+        tick_interval.next().await;
     }
 
     let _ = group
