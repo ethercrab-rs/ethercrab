@@ -43,7 +43,9 @@ async fn main() -> Result<(), Error> {
     let maindevice = Arc::new(MainDevice::new(
         pdu_loop,
         Timeouts {
-            wait_loop_delay: Duration::from_millis(2),
+            // Reduce wait loop delay to zero so SDO reads are as fast as possible. This isn't
+            // necessary, but helps reduce SDO read transaction times.
+            wait_loop_delay: Duration::from_millis(0),
             mailbox_response: Duration::from_millis(1000),
             ..Default::default()
         },
