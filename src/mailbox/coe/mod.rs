@@ -75,7 +75,7 @@ where
                 .receive::<crate::sync_manager_channel::Status>(self.subdevice.maindevice)
                 .await?;
 
-            // If flag is set, read entire mailbox to clear it
+            // If flag is set, read last byte of mailbox to clear it
             if sm_status.mailbox_full {
                 fmt::debug!(
                     "SubDevice {:#06x} OUT mailbox not empty (status {:?}). Clearing.",
@@ -84,9 +84,9 @@ where
                 );
 
                 self.subdevice
-                    .read(read_mailbox.address)
+                    .read(read_mailbox.last_byte())
                     .ignore_wkc()
-                    .receive_slice(self.subdevice.maindevice, read_mailbox.len)
+                    .receive::<u8>(self.subdevice.maindevice)
                     .await?;
             } else {
                 break;
