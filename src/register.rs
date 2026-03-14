@@ -270,7 +270,8 @@ impl RegisterAddress {
 
     /// Sync manager status register by SM index.
     ///
-    /// The status register is the 5th byte after the start of the SM.
+    /// The status register is the 5th byte after the start of the SM, for example SM0 status is
+    /// `0x0805`.
     pub fn sync_manager_status(index: u8) -> u16 {
         u16::from(Self::sync_manager(index)) + 5
     }
