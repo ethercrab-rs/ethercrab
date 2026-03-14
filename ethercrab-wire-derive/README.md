@@ -156,19 +156,29 @@ struct Middle {
 }
 ```
 
-## Generic structs
+### Generic structs
 
-Structs can take generic parameters so long as those parameters are `EtherCrabWireRead/Write` as relevant.
-It's up to the user to ensure that the generic type can be constructed with the number of bits given.
+Structs can hold generic fields as long as the generic parameters implement one or more
+`EtherCrabWire*` traits as appropriate.
+
+<section class="warning">
+
+It is the end user's responsibility to ensure the generic is of the correct size compared to
+the `#[wire(bits|bytes)]` attribute on the containing struct.
+
+</section>
 
 ```rust
-/// Status word for Beckhoff EL31xx devices and others.
+// Example value abstraction. NOTE: This byte size MUST be the same as the `T` definition in
+// `AnalogInput`
+#[derive(ethercrab_wire::EtherCrabWireRead)]
+#[wire(bytes = 2)]
+struct Value(u16);
+
+/// Example: Status word for Beckhoff EL31xx devices and others.
 #[derive(ethercrab_wire::EtherCrabWireRead)]
 #[wire(bytes = 4)]
-pub struct AnalogInput<Value>
-where
-    Value: ethercrab_wire::EtherCrabWireRead,
-{
+pub struct AnalogInput<T> {
     #[wire(bits = 1)]
     underrange: bool,
     #[wire(bits = 1)]
@@ -186,8 +196,10 @@ where
     #[wire(bits = 1)]
     tx_pdo_toggle: bool,
     #[wire(bits = 16)]
-    value: Value,  // <-- generic field
+    value: T,  // <-- generic field
 }
+
+type IntegerAnalog = AnalogInput<Value>;
 ```
 
 [`ethercrab`]: https://docs.rs/ethercrab
