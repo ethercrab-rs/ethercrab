@@ -67,6 +67,12 @@ pub struct Mailbox {
     pub sync_manager: u8,
 }
 
+impl Mailbox {
+    pub fn last_byte(&self) -> u16 {
+        self.address + self.len - 1
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct IoRanges {
     pub input: PdiSegment,

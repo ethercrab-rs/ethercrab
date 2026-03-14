@@ -190,7 +190,7 @@ where
                 Some(frame.push_pdu(
                     Command::Read(Reads::Fprd {
                         address: self.subdevice.configured_address(),
-                        register: read_mailbox.address + read_mailbox.len - 1,
+                        register: read_mailbox.last_byte(),
                     }),
                     0u8,
                     None,
@@ -272,7 +272,7 @@ where
                 Some(frame.push_pdu(
                     Command::Write(Writes::Fpwr {
                         address: self.subdevice.configured_address(),
-                        register: write_mailbox.address + write_mailbox.len - 1,
+                        register: write_mailbox.last_byte(),
                     }),
                     0u8,
                     None,
