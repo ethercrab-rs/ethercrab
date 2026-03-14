@@ -82,12 +82,7 @@ impl<'sto> ReceivedFrame<'sto> {
         })
     }
 
-    // Might want this in the future
-    #[allow(unused)]
-    pub fn pdu<'pdu>(&'sto self, handle: PduResponseHandle) -> Result<ReceivedPdu<'pdu>, Error>
-    where
-        'sto: 'pdu,
-    {
+    pub fn pdu(&self, handle: PduResponseHandle) -> Result<ReceivedPdu<'sto>, Error> {
         let mut buf = self.inner.pdu_buf();
 
         // Skip over any preceding PDUs

@@ -3,7 +3,8 @@ mod headers;
 pub mod services;
 
 use crate::{
-    Command, ObjectDescriptionListQuery, ObjectDescriptionListQueryCounts, SubDevice, SubDeviceRef,
+    Command, ObjectDescriptionListQuery, ObjectDescriptionListQueryCounts, Reads, SubDevice,
+    SubDeviceRef, Writes,
     error::{Error, Item, MailboxError, PduError},
     fmt,
     mailbox::{
@@ -132,9 +133,10 @@ where
 
     /// Wait for a mailbox response
     async fn wait_for_mailbox_response(
-        &self,
+        &'maindevice self,
         read_mailbox: &Mailbox,
-    ) -> Result<ReceivedPdu, Error> {
+        len: usize,
+    ) -> Result<ReceivedPdu<'maindevice>, Error> {
         let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
 
         // Wait for SubDevice OUT mailbox to be ready
@@ -163,12 +165,61 @@ where
             );
         })?;
 
-        // Read acknowledgement from SubDevice OUT mailbox
-        let response = self
-            .subdevice
-            .read(read_mailbox.address)
-            .receive_slice(self.subdevice.maindevice, read_mailbox.len)
-            .await?;
+        // Read response data from SubDevice OUT mailbox, then read the last byte of the mailbox
+        // to signal that the read is complete and the mailbox can be reused.
+        let response = {
+            let md = self.subdevice.maindevice;
+
+            // `subdevice.maindevice` lol silly name
+            let mut frame = md.pdu_loop.alloc_frame()?;
+
+            // Write mailbox header and payload
+            let read_handle = frame.push_pdu(
+                Command::Read(Reads::Fprd {
+                    address: self.subdevice.configured_address(),
+                    register: read_mailbox.address,
+                }),
+                // We're reading with a set length, so this can be whatever
+                (),
+                Some(len as u16),
+            )?;
+
+            // Write a single byte to end of mailbox to trigger completion event in SubDevice if the
+            // payload length isn't long enough to fill the mailbox.
+            let end_handle = if len < usize::from(read_mailbox.len) {
+                Some(frame.push_pdu(
+                    Command::Read(Reads::Fprd {
+                        address: self.subdevice.configured_address(),
+                        register: read_mailbox.address + read_mailbox.len - 1,
+                    }),
+                    0u8,
+                    None,
+                )?)
+            } else {
+                None
+            };
+
+            let frame = frame.mark_sendable(
+                &md.pdu_loop,
+                md.timeouts.pdu(),
+                md.config.retry_behaviour.retry_count(),
+            );
+
+            md.pdu_loop.wake_sender();
+
+            let received = frame.await?;
+
+            let response = received.pdu(read_handle)?.wkc(1)?;
+
+            // Make sure the last byte write was valid too if we added a separate PDU
+            if let Some(end_handle) = end_handle {
+                let end = received.pdu(end_handle)?;
+
+                end.wkc(1)?;
+            }
+
+            response
+        };
 
         // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
 
@@ -193,20 +244,21 @@ where
             )
         })?;
 
+        let packed = request.pack();
+        let data = packed.as_ref();
+
         // Write mailbox data, then write to the end of the mailbox to signal to the SubDevice that
         // the write is finished. This is a wire optimisation over padding the write with zeroes up
         // to the length of the mailbox.
         {
             let md = self.subdevice.maindevice;
-            let packed = request.pack();
-            let data = packed.as_ref();
 
             // `subdevice.maindevice` lol silly name
             let mut frame = md.pdu_loop.alloc_frame()?;
 
             // Write mailbox header and payload
             let write_handle = frame.push_pdu(
-                Command::Write(crate::Writes::Fpwr {
+                Command::Write(Writes::Fpwr {
                     address: self.subdevice.configured_address(),
                     register: write_mailbox.address,
                 }),
@@ -218,7 +270,7 @@ where
             // payload length isn't long enough to fill the mailbox.
             let end_handle = if data.len() < usize::from(write_mailbox.len) {
                 Some(frame.push_pdu(
-                    Command::Write(crate::Writes::Fpwr {
+                    Command::Write(Writes::Fpwr {
                         address: self.subdevice.configured_address(),
                         register: write_mailbox.address + write_mailbox.len - 1,
                     }),
@@ -251,7 +303,9 @@ where
             }
         }
 
-        let mut response = self.wait_for_mailbox_response(&read_mailbox).await?;
+        let mut response = self
+            .wait_for_mailbox_response(&read_mailbox, data.len())
+            .await?;
 
         /// A super generalised version of the various header shapes for responses, extracting only
         /// what we need in this method.
@@ -393,7 +447,9 @@ where
         // CiA 301 §7.4.1).
         let mut buf = heapless::Vec::<u8, 0x1fffe>::new();
         loop {
-            let mut response = self.wait_for_mailbox_response(&read_mailbox).await?;
+            let mut response = self
+                .wait_for_mailbox_response(&read_mailbox, usize::from(read_mailbox.len))
+                .await?;
             let headers = ObjectDescriptionListResponse::unpack_from_slice(&response)?;
             if headers.sdo_info_header.op_code == SdoInfoOpCode::GetObjectDescriptionListResponse {
                 let length = headers.mailbox.length as usize - COE_HEADER_AND_LIST_TYPE_SIZE;
