@@ -3,7 +3,7 @@ mod headers;
 pub mod services;
 
 use crate::{
-    ObjectDescriptionListQuery, ObjectDescriptionListQueryCounts, SubDevice, SubDeviceRef,
+    Command, ObjectDescriptionListQuery, ObjectDescriptionListQueryCounts, SubDevice, SubDeviceRef,
     error::{Error, Item, MailboxError, PduError},
     fmt,
     mailbox::{
@@ -193,12 +193,63 @@ where
             )
         })?;
 
-        // Send data to SubDevice IN mailbox
-        self.subdevice
-            .write(write_mailbox.address)
-            .with_len(write_mailbox.len)
-            .send(self.subdevice.maindevice, &request.pack().as_ref())
-            .await?;
+        // Write mailbox data, then write to the end of the mailbox to signal to the SubDevice that
+        // the write is finished. This is a wire optimisation over padding the write with zeroes up
+        // to the length of the mailbox.
+        {
+            let md = self.subdevice.maindevice;
+            let packed = request.pack();
+            let data = packed.as_ref();
+
+            // `subdevice.maindevice` lol silly name
+            let mut frame = md.pdu_loop.alloc_frame()?;
+
+            // Write mailbox header and payload
+            let write_handle = frame.push_pdu(
+                Command::Write(crate::Writes::Fpwr {
+                    address: self.subdevice.configured_address(),
+                    register: write_mailbox.address,
+                }),
+                data,
+                None,
+            )?;
+
+            // Write a single byte to end of mailbox to trigger completion event in SubDevice if the
+            // payload length isn't long enough to fill the mailbox.
+            let end_handle = if data.len() < usize::from(write_mailbox.len) {
+                Some(frame.push_pdu(
+                    Command::Write(crate::Writes::Fpwr {
+                        address: self.subdevice.configured_address(),
+                        register: write_mailbox.address + write_mailbox.len - 1,
+                    }),
+                    0u8,
+                    None,
+                )?)
+            } else {
+                None
+            };
+
+            let frame = frame.mark_sendable(
+                &md.pdu_loop,
+                md.timeouts.pdu(),
+                md.config.retry_behaviour.retry_count(),
+            );
+
+            md.pdu_loop.wake_sender();
+
+            let received = frame.await?;
+
+            let response = received.pdu(write_handle)?;
+
+            response.wkc(1)?;
+
+            // Make sure the last byte write was valid too if we added a separate PDU
+            if let Some(end_handle) = end_handle {
+                let end = received.pdu(end_handle)?;
+
+                end.wkc(1)?;
+            }
+        }
 
         let mut response = self.wait_for_mailbox_response(&read_mailbox).await?;
 
