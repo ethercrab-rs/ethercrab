@@ -83,6 +83,55 @@
 //! }
 //! ```
 //!
+//! ## Generic structs
+//!
+//! Structs can hold generic fields as long as the generic parameters implement one or more
+//! `EtherCrabWire*` traits as appropriate.
+//!
+//! <section class="warning">
+//!
+//! It is the end user's responsibility to ensure the generic is of the correct size compared to
+//! the `#[wire(bits|bytes)]` attribute on the containing struct.
+//!
+//! </section>
+//!
+//! ```rust
+//! // Example value abstraction. NOTE: This byte size MUST be the same as the `T` definition in
+//! // `AnalogInput`
+//! #[derive(ethercrab_wire::EtherCrabWireRead)]
+//! #[wire(bytes = 2)]
+//! struct Value {
+//!     #[wire(bytes = 2)]
+//!     raw: u16
+//! };
+//!
+//! /// Example: Status word for Beckhoff EL31xx devices and others.
+//! #[derive(ethercrab_wire::EtherCrabWireRead)]
+//! #[wire(bytes = 4)]
+//! pub struct AnalogInput<T: ethercrab_wire::EtherCrabWireRead> {
+//!     #[wire(bits = 1)]
+//!     underrange: bool,
+//!     #[wire(bits = 1)]
+//!     overrange: bool,
+//!     #[wire(bits = 2)]
+//!     limit1: u8,
+//!     #[wire(bits = 2)]
+//!     limit2: u8,
+//!     #[wire(bits = 1)]
+//!     error: bool,
+//!     #[wire(pre_skip = 6, bits = 1)]
+//!     sync_error: bool,
+//!     #[wire(bits = 1)]
+//!     tx_pdo_bad: bool,
+//!     #[wire(bits = 1)]
+//!     tx_pdo_toggle: bool,
+//!     #[wire(bits = 16)]
+//!     value: T,  // <-- generic field
+//! }
+//!
+//! type IntegerAnalog = AnalogInput<Value>;
+//! ```
+//!
 //! ## Enum with catch all discriminant and alternatives
 //!
 //! ```rust
