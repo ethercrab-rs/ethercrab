@@ -51,7 +51,10 @@ fn main() -> Result<(), Error> {
                 mailbox_response: Duration::from_millis(1000),
                 ..Default::default()
             },
-            MainDeviceConfig::default(),
+            MainDeviceConfig {
+                dc_static_sync_iterations: 1,
+                ..MainDeviceConfig::default()
+            },
         ));
 
         #[cfg(target_os = "windows")]

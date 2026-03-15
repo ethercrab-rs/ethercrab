@@ -11,6 +11,7 @@ use crate::{
         MailboxHeader, MailboxType,
         coe::{
             self,
+            headers::SdoInfoHeader,
             services::{
                 CoeServiceRequest, ObjectDescriptionListRequest, ObjectDescriptionListResponse,
                 SdoExpedited, SdoNormal, SdoSegmented,
@@ -436,6 +437,7 @@ where
         // Send data to SubDevice IN mailbox
         self.subdevice
             .write(write_mailbox.address)
+            // TODO
             .with_len(write_mailbox.len)
             .send(self.subdevice.maindevice, &request.pack().as_ref())
             .await?;
@@ -449,8 +451,18 @@ where
         let mut buf = heapless::Vec::<u8, 0x1fffe>::new();
         loop {
             let mut response = self
-                .wait_for_mailbox_response(&read_mailbox, usize::from(read_mailbox.len))
+                .wait_for_mailbox_response(&read_mailbox, usize::from(read_mailbox.len - 16))
                 .await?;
+            // dbg!(&response[0..ObjectDescriptionListResponse::PACKED_LEN]);
+
+            // dbg!(ObjectDescriptionListResponse::unpack_from_slice(&[
+            //     4, 0, 0, 0, 0, 16, 1, 0, 4, 0, 147, 199,
+            // ]));
+
+            dbg!(MailboxHeader::unpack_from_slice(&[4, 0, 0, 0, 0, 16,]));
+            dbg!(CoeHeader::unpack_from_slice(&[1, 0,]));
+            dbg!(SdoInfoHeader::unpack_from_slice(&[4, 0, 147, 199,]));
+            // FIXME: Panics here
             let headers = ObjectDescriptionListResponse::unpack_from_slice(&response)?;
             if headers.sdo_info_header.op_code == SdoInfoOpCode::GetObjectDescriptionListResponse {
                 let length = headers.mailbox.length as usize - COE_HEADER_AND_LIST_TYPE_SIZE;
