@@ -25,6 +25,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - [#305](https://github.com/ethercrab-rs/ethercrab/pull/305) (@fpdotmonkey) Added
   `SubDevice::sdo_info_object_description_list` and `SubDevice::sdo_info_object_quantities` to get
   information about a SubDevice's SDOs.
+- [#351](https://github.com/ethercrab-rs/ethercrab/pull/351) Added basic oversampling support with
+  `SubDevice::set_oversampling`.
 
 ### Changed
 
