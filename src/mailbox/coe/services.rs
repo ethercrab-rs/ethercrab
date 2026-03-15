@@ -7,6 +7,7 @@ use crate::mailbox::{
     },
 };
 use core::fmt::Display;
+use ethercrab_wire::EtherCrabWireSized;
 
 /// An expedited (data contained within SDO as opposed to sent in subsequent packets) SDO download
 /// request.
@@ -357,11 +358,22 @@ pub trait CoeServiceRequest:
     ethercrab_wire::EtherCrabWireReadWrite + ethercrab_wire::EtherCrabWireWriteSized
 {
     fn validate_response(&self, received_index: u16, received_subindex: u8) -> bool;
+
+    /// The total length of this set of headers plus any data (or space to receive data) after the
+    /// headers.
+    fn total_len(&self, payload_len: usize) -> usize {
+        Self::PACKED_LEN + payload_len
+    }
 }
 
 impl CoeServiceRequest for SdoExpedited {
     fn validate_response(&self, received_index: u16, received_subindex: u8) -> bool {
         received_index == self.sdo_header.index && received_subindex == self.sdo_header.sub_index
+    }
+
+    /// Payload length is ignored as the payload is already stored inside [`SdoExpedited::data`].
+    fn total_len(&self, _payload_len: usize) -> usize {
+        Self::PACKED_LEN - usize::from(self.sdo_header.size)
     }
 }
 

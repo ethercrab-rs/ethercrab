@@ -135,7 +135,7 @@ where
     async fn wait_for_mailbox_response(
         &'maindevice self,
         read_mailbox: &Mailbox,
-        len: usize,
+        total_len: usize,
     ) -> Result<ReceivedPdu<'maindevice>, Error> {
         let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
 
@@ -181,12 +181,12 @@ where
                 }),
                 // We're reading with a set length, so this can be whatever
                 (),
-                Some(len as u16),
+                Some(total_len as u16),
             )?;
 
             // Write a single byte to end of mailbox to trigger completion event in SubDevice if the
             // payload length isn't long enough to fill the mailbox.
-            let end_handle = if len < usize::from(read_mailbox.len) {
+            let end_handle = if total_len < usize::from(read_mailbox.len) {
                 Some(frame.push_pdu(
                     Command::Read(Reads::Fprd {
                         address: self.subdevice.configured_address(),
@@ -231,6 +231,7 @@ where
     async fn mailbox_write_read<R>(
         &'maindevice self,
         request: R,
+        total_len: usize,
     ) -> Result<(R, ReceivedPdu<'maindevice>), Error>
     where
         R: CoeServiceRequest + Debug,
@@ -253,7 +254,6 @@ where
         {
             let md = self.subdevice.maindevice;
 
-            // `subdevice.maindevice` lol silly name
             let mut frame = md.pdu_loop.alloc_frame()?;
 
             // Write mailbox header and payload
@@ -263,7 +263,8 @@ where
                     register: write_mailbox.address,
                 }),
                 data,
-                None,
+                // None,
+                Some(total_len as u16),
             )?;
 
             // Write a single byte to end of mailbox to trigger completion event in SubDevice if the
@@ -304,7 +305,7 @@ where
         }
 
         let mut response = self
-            .wait_for_mailbox_response(&read_mailbox, data.len())
+            .wait_for_mailbox_response(&read_mailbox, total_len)
             .await?;
 
         /// A super generalised version of the various header shapes for responses, extracting only
@@ -504,7 +505,10 @@ where
 
         fmt::trace!("CoE download");
 
-        let (_response, _data) = self.mailbox_write_read(request).await?;
+        let (_response, _data) = self
+            // Expedited struct includes data in its length so we don't need to add anything here
+            .mailbox_write_read(request, request.packed_len())
+            .await?;
 
         // TODO: Validate reply?
 
@@ -648,7 +652,9 @@ where
 
         fmt::trace!("CoE upload {:#06x} {:?}", index, sub_index);
 
-        let (headers, response) = self.mailbox_write_read(request).await?;
+        let (headers, response) = self
+            .mailbox_write_read(request, request.packed_len() + T::PACKED_LEN)
+            .await?;
         let data: &[u8] = &response;
 
         // Expedited transfers where the data is 4 bytes or less long, denoted in the SDO header
@@ -678,7 +684,9 @@ where
 
         fmt::trace!("CoE upload {:#06x} {:?}", index, sub_index);
 
-        let (headers, response) = self.mailbox_write_read(request).await?;
+        let (headers, response) = self
+            .mailbox_write_read(request, request.packed_len() + T::PACKED_LEN)
+            .await?;
         let data: &[u8] = &response;
 
         // Expedited transfers where the data is 4 bytes or less long, denoted in the SDO header
@@ -713,17 +721,20 @@ where
             else {
                 let mut toggle = false;
                 let mut total_len = 0usize;
+                let mut chunk_len = 10;
 
                 loop {
                     let request = SdoSegmented::upload(self.subdevice.mailbox_counter(), toggle);
 
                     fmt::trace!("CoE upload segmented");
 
-                    let (headers, data) = self.mailbox_write_read(request).await?;
+                    let (headers, data) = self
+                        .mailbox_write_read(request, request.packed_len() + chunk_len)
+                        .await?;
 
                     // The spec defines the data length as n-3, so we'll just go with that magic
                     // number...
-                    let mut chunk_len = usize::from(headers.header.length - 3);
+                    chunk_len = usize::from(headers.header.length - 3);
 
                     // Special case as per spec: Minimum response size is 7 bytes. For smaller
                     // responses, we must remove the number of unused bytes at the end of the
