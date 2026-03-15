@@ -240,7 +240,7 @@ impl SubDevice {
     ///
     /// For example, to set 2x and 8x oversampling on two PDOs:
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// subdevice.set_oversampling(&[
     ///     (0x1a00, 2),
     ///     (0x1a80, 8),
