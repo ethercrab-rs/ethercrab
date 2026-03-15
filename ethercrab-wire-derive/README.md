@@ -104,12 +104,15 @@ the `#[wire(bits|bytes)]` attribute on the containing struct.
 // `AnalogInput`
 #[derive(ethercrab_wire::EtherCrabWireRead)]
 #[wire(bytes = 2)]
-struct Value(u16);
+struct Value {
+    #[wire(bytes = 2)]
+    raw: u16
+};
 
 /// Example: Status word for Beckhoff EL31xx devices and others.
 #[derive(ethercrab_wire::EtherCrabWireRead)]
 #[wire(bytes = 4)]
-pub struct AnalogInput<T> {
+pub struct AnalogInput<T: ethercrab_wire::EtherCrabWireRead> {
     #[wire(bits = 1)]
     underrange: bool,
     #[wire(bits = 1)]
