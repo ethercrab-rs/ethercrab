@@ -28,15 +28,15 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ### Changed
 
-- **(breaking)** [#298](https://github.com/ethercrab-rs/ethercrab/pull/298) Change MSRV from 1.81 to
+- [#298](https://github.com/ethercrab-rs/ethercrab/pull/298) **(breaking)** Change MSRV from 1.81 to
   1.85, migrate to edition 2024.
-- **(breaking)** [#331](https://github.com/ethercrab-rs/ethercrab/pull/331) (@theol0403) Use
+- [#331](https://github.com/ethercrab-rs/ethercrab/pull/331) **(breaking)** (@theol0403) Use
   `lock_api` traits to allow for different locking behaviour.
 - [#301](https://github.com/ethercrab-rs/ethercrab/pull/301) No longer warn when mailbox counter is
   not what was sent by the MainDevice.
-- **(breaking)** [#320](https://github.com/ethercrab-rs/ethercrab/pull/320) (@fpdotmonkey) Add
+- [#320](https://github.com/ethercrab-rs/ethercrab/pull/320) **(breaking)** (@fpdotmonkey) Add
   `TimeoutError` to `Error::Timeout` to give a reason why a timeout occurred.
-- **(breaking)** [#328](https://github.com/ethercrab-rs/ethercrab/pull/328) (@theol0403) Change
+- [#328](https://github.com/ethercrab-rs/ethercrab/pull/328) **(breaking)** (@theol0403) Change
   `MainDevice::init` to require an empty groups structure to be passed in, instead of relying on a
   `Default` trait bound.
 - [#330](https://github.com/ethercrab-rs/ethercrab/pull/330) (@theol0403) Stop re-reading
@@ -63,7 +63,7 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   to use in a separate thread to send/receive EitherCAT frames.
 - [#242](https://github.com/ethercrab-rs/ethercrab/pull/242) Add support for PDIs longer than a
   single PDU
-- **(breaking)** [#269](https://github.com/ethercrab-rs/ethercrab/pull/269)
+- [#269](https://github.com/ethercrab-rs/ethercrab/pull/269) **(breaking)**
   `SubDeviceGroup::tx_rx_*` methods now read the state (PRE-OP, OP, etc) of each SubDevice in the
   group, along with methods on `TxRxResponse` to test for various state conditions.
 - [#273](https://github.com/ethercrab-rs/ethercrab/pull/273) Added `SubDevice::set_alias_address`
@@ -74,12 +74,12 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ### Removed
 
-- **(breaking)** [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) The `PduError::NoWaker`
+- [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) **(breaking)** The `PduError::NoWaker`
   variant has been removed as it is no longer used or returned by any EtherCrab method.
-- **(breaking)** [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) `SubDeviceIterator` is
+- [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) **(breaking)** `SubDeviceIterator` is
   removed. The returned iterator's type signature is now
   `impl Iterator<Item = SubDeviceRef<'group, ...>>`
-- **(breaking)** [#270](https://github.com/ethercrab-rs/ethercrab/pull/270) **Windows:**
+- [#270](https://github.com/ethercrab-rs/ethercrab/pull/270) **(breaking)** **Windows:**
   `tx_rx_task` is removed and replaced with `tx_rx_task_blocking` which is no longer `async`. It
   must be spawned into its own thread instead of an async task.
 
@@ -90,7 +90,7 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   introducing deadlocks.
 - [#263](https://github.com/ethercrab-rs/ethercrab/pull/263) Remove `Error::Borrow` as it's no
   longer returned from any EtherCrab method.
-- **(breaking)** [#287](https://github.com/ethercrab-rs/ethercrab/pull/287) Increase MSRV from 1.77
+- [#287](https://github.com/ethercrab-rs/ethercrab/pull/287) **(breaking)** Increase MSRV from 1.77
   to 1.81.
 - [#231](https://github.com/ethercrab-rs/ethercrab/pull/231) Enable reading of up to 64 PDO entries
   per PDO from EEPROM.
@@ -106,9 +106,9 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   chunked into however many fit into a frame, instead of being sent separately.
 - [#241](https://github.com/ethercrab-rs/ethercrab/pull/241) (@david-boles) During init, SMs and
   FMMUs are reset one-by-one instead of the entire block being written to.
-- **(breaking)** [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) `PduRx::receive_frame`
+- [#246](https://github.com/ethercrab-rs/ethercrab/pull/246) **(breaking)** `PduRx::receive_frame`
   now returns `Result<ReceiveAction, Error>` instead of `Result<(), Error>`.
-- **(breaking)** [#269](https://github.com/ethercrab-rs/ethercrab/pull/269)
+- [#269](https://github.com/ethercrab-rs/ethercrab/pull/269) **(breaking)**
   `SubDeviceGroup::tx_rx_*` methods now return a `TxRxResponse` struct instead of a tuple.
 - [#278](https://github.com/ethercrab-rs/ethercrab/pull/278) Add `Deref` and `DerefMut` impls for
   `SubDeviceRef` instead of copy/pasting methods from `SubDevice`.
@@ -155,7 +155,7 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ### Removed
 
-- **(breaking)** [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) The `PduError::NoWaker`
+- [#260](https://github.com/ethercrab-rs/ethercrab/pull/260) **(breaking)** The `PduError::NoWaker`
   variant has been removed as it is no longer used or returned by any EtherCrab method.
 
 ### Fixed
@@ -178,7 +178,7 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ### Changed
 
-- **(breaking)** [#248](https://github.com/ethercrab-rs/ethercrab/pull/248) `PduRx::receive_frame`
+- [#248](https://github.com/ethercrab-rs/ethercrab/pull/248) **(breaking)** `PduRx::receive_frame`
   now returns `Result<ReceiveAction, Error>` instead of `Result<(), Error>`.
 
 ## [0.5.0] - 2024-07-28
@@ -189,11 +189,11 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   instead of allocating a new frame for every resend.
 - [#217](https://github.com/ethercrab-rs/ethercrab/pull/217) EEPROM strings must now be valid ASCII
   as per the EtherCAT specification. UTF-8 strings will return an error when read.
-- **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Removed `expected` and
+- [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) **(breaking)** Removed `expected` and
   `got` fields from `Error::Wire(WireError::{Read,Write}BufferTooShort)`.
-- **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Increase MSRV from 1.75
+- [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) **(breaking)** Increase MSRV from 1.75
   to 1.77.
-- **(breaking)** [#227](https://github.com/ethercrab-rs/ethercrab/pull/227) Renamed many public
+- [#227](https://github.com/ethercrab-rs/ethercrab/pull/227) **(breaking)** Renamed many public
   items to use the newer EtherCAT terminology `MainDevice` and `SubDevice` for master/slave
   respectively.
 
@@ -255,10 +255,10 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ### Changed
 
-- **(breaking)** [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Bump MSRV to 1.75.0
+- [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) **(breaking)** Bump MSRV to 1.75.0
 - [#134](https://github.com/ethercrab-rs/ethercrab/pull/134) Refactor sub device EEPROM reader to be
   more efficient when skipping sections of the device EEPROM map.
-- **(breaking)** [#142](https://github.com/ethercrab-rs/ethercrab/pull/142) Remove `PduRead` and
+- [#142](https://github.com/ethercrab-rs/ethercrab/pull/142) **(breaking)** Remove `PduRead` and
   `PduData` traits. These are replaced with `EtherCrabWireRead` and `EtherCrabWireReadWrite` traits
   respectively, along with `EtherCrabWireReadWrite` for write-only items.
 
@@ -268,7 +268,7 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   - `SlaveRef::register_read` from `PduData` to `EtherCrabWireWrite`
   - `SlaveRef::register_write` from `PduData` to `EtherCrabWireReadWrite`
 
-- **(breaking)** [#144](https://github.com/ethercrab-rs/ethercrab/pull/144)
+- [#144](https://github.com/ethercrab-rs/ethercrab/pull/144) **(breaking)**
   `PduError::InvalidIndex(usize)` is now a `PduError::InvalidIndex(u8)` as the EtherCAT index field
   is itself onl a `u8`.
 - [#151](https://github.com/ethercrab-rs/ethercrab/pull/151) Reduced overhead for EEPROM reads. Each
@@ -333,7 +333,7 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ### Fixed
 
-- **(breaking)** (technically) [#143](https://github.com/ethercrab-rs/ethercrab/pull/143) Fix typo
+- [#143](https://github.com/ethercrab-rs/ethercrab/pull/143) **(breaking)** (technically) Fix typo
   in name `AlStatusCode::ApplicationControllerAvailableI` ->
   `AlStatusCode::ApplicationControllerAvailable`
 - [#152](https://github.com/ethercrab-rs/ethercrab/pull/152) CoE errors are not reported correctly
@@ -343,10 +343,10 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ### Removed
 
-- **(breaking)** [#145](https://github.com/ethercrab-rs/ethercrab/pull/145) Remove the `context`
+- [#145](https://github.com/ethercrab-rs/ethercrab/pull/145) **(breaking)** Remove the `context`
   field from `Error::WorkingCounter`. The output from EtherCrab's error logging should be used
   instead.
-- **(breaking)** [#181](https://github.com/ethercrab-rs/ethercrab/pull/181) Remove async
+- [#181](https://github.com/ethercrab-rs/ethercrab/pull/181) **(breaking)** Remove async
   `SendableFrame::send`. Use `SendableFrame::send_blocking` instead.
 - [#197](https://github.com/ethercrab-rs/ethercrab/pull/197) Remove `SlaveGroupState` trait. It is
   no longer required, but the same methods are available so migration should be as simple as just
@@ -373,10 +373,10 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 - [#135](https://github.com/ethercrab-rs/ethercrab/pull/135) macOS only: `tx_rx_task` now uses
   native networking (BPF) instead of `libpcapng` to improve reliability.
-- **(breaking)** [#136](https://github.com/ethercrab-rs/ethercrab/pull/136) Fix unsoundness issue
+- [#136](https://github.com/ethercrab-rs/ethercrab/pull/136) **(breaking)** Fix unsoundness issue
   where `SlaveRef::io_raw` could be called multiple times, allowing multiple mutable references into
   the device's output data.
-- **(breaking)** [#136](https://github.com/ethercrab-rs/ethercrab/pull/136) Rename
+- [#136](https://github.com/ethercrab-rs/ethercrab/pull/136) **(breaking)** Rename
   `SlaveRef::io_raw` to `SlaveRef::io_raw_mut`. `SlaveRef::io_raw` remains, but now only returns
   non-mutable references to both the device inputs and outputs.
 
@@ -395,7 +395,7 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - [#132](https://github.com/ethercrab-rs/ethercrab/pull/132) Revert
   [#130](https://github.com/ethercrab-rs/ethercrab/pull/130) "Counter in mailbox response is no
   longer checked." as this was masking the root cause, which is now fixed.
-- **(breaking)** [#132](https://github.com/ethercrab-rs/ethercrab/pull/132) `Slave` no longer
+- [#132](https://github.com/ethercrab-rs/ethercrab/pull/132) **(breaking)** `Slave` no longer
   implements `Clone` or `PartialEq`. Devices should instead be compared using `name()`,
   `identity()`, `configured_address()`, etc.
 
@@ -423,7 +423,7 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ### Changed
 
-- **(breaking)** [#124] Changed `PduTx::waker()` to `PduTx::replace_waker()`. Instead of calling
+- [#124] **(breaking)** Changed `PduTx::waker()` to `PduTx::replace_waker()`. Instead of calling
   e.g. `pdu_tx.waker().replace(ctx.waker().clone())`, now it should be
   `pdu_tx.replace_waker(ctx.waker())`.
 - (potentially breaking) [#125] Package upgrades, notably `async_io` and `futures_lite` from 1.x to
@@ -456,20 +456,20 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 ### Changed
 
 - [#92] If no slave devices are detected, `Client::init` will no longer exit with an error.
-- **(breaking)** [#101] `SendableFrame::send_blocking` and `SendableFrame::send` must now return the
+- [#101] **(breaking)** `SendableFrame::send_blocking` and `SendableFrame::send` must now return the
   number of bytes sent over the network.
-- **(breaking)** [#101] `SendableFrame::write_ethernet_packet` is no longer `pub`. Instead, use
+- [#101] **(breaking)** `SendableFrame::write_ethernet_packet` is no longer `pub`. Instead, use
   `SendableFrame::send_blocking` or `SendableFrame::send`.
 - [#103] Removed inner `smoltcp::error::Error` from `PduError::Ethernet` and `PduError::CreateFrame`
   as these don't add much meaning to the variant.
-- **(breaking)** [#109] Make all methods on `PduLoop` private.
-- **(breaking)** [#113] `Command::{code,address,parse}` are no longer `pub`.
-- **(breaking)** [#119] Changed `SlaveState::Unknown` to `SlaveState::Other(u8)` to better represent
+- [#109] **(breaking)** Make all methods on `PduLoop` private.
+- [#113] **(breaking)** `Command::{code,address,parse}` are no longer `pub`.
+- [#119] **(breaking)** Changed `SlaveState::Unknown` to `SlaveState::Other(u8)` to better represent
   unknown or different states of multiple slaves (e.g. when sending a `BRD`).
 
 ### Removed
 
-- **(breaking)** [#99] All PDU methods on `Client` (`Client::bwr`, `Client::fprd`) have been
+- [#99] **(breaking)** All PDU methods on `Client` (`Client::bwr`, `Client::fprd`) have been
   removed. Instead, use the same methods on `Command` like `Command::bwr`, `Command::fprd` etc.
 
 ## [0.2.1] - 2023-07-31
@@ -503,7 +503,7 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - [#1] Added `SlaveGroup::len` and `SlaveGroup::is_empty` methods.
 - [#29] Implement `Display` for `Error`, `PduError`, `MailboxError`, `EepromError`,
   `VisibleStringError` and `PduValidationError`
-- **(breaking)** [#31] Added a `ClientConfig` argument to `Client::new` to allow configuration of
+- [#31] **(breaking)** Added a `ClientConfig` argument to `Client::new` to allow configuration of
   various EtherCrab behaviours.
 - [#55] Added `Client::init_single_group` to reduce boilerplate when only using a single group of
   devices.
@@ -512,42 +512,42 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ### Removed
 
-- **(breaking)** [#75] `Client::request_slave_state` is removed. Groups should be transitioned into
+- [#75] **(breaking)** `Client::request_slave_state` is removed. Groups should be transitioned into
   the various states individually using `into_op` or `into_safe_op`.
-- **(breaking)** [#75] `SlaveGroup::new` is removed. Slave groups can be created with
+- [#75] **(breaking)** `SlaveGroup::new` is removed. Slave groups can be created with
   `SlaveGroup::default()` instead
-- **(breaking)** [#45] The `SlaveGroupContainer` trait is no longer needed and has been removed.
+- [#45] **(breaking)** The `SlaveGroupContainer` trait is no longer needed and has been removed.
 
 ### Changed
 
-- **(breaking)** [#75] `Client::init` no longer takes a `groups` argument and now requires
+- [#75] **(breaking)** `Client::init` no longer takes a `groups` argument and now requires
   `G: Default`.
-- **(breaking)** [#75] `SlaveGroup`s no longer configure using a closure - instead use
+- [#75] **(breaking)** `SlaveGroup`s no longer configure using a closure - instead use
   `SlaveGroup::iter` or `SlaveGroup::slave` to configure slave devices inline.
-- **(breaking)** [#75] `SlaveGroup`s now have a type state. Use `into_safe_op` and `into_op` to
+- [#75] **(breaking)** `SlaveGroup`s now have a type state. Use `into_safe_op` and `into_op` to
   transition from PRE-OP as provided by `Client::init` into run mode.
 - [#47] Slave `sdo_read` and `sdo_write` methods no longer require the use of `SubIndex`. For single
   accesses, a raw `u8` can be passed instead for cleaner configuration code.
-- **(breaking)** [#47] `SlaveGroup::slave` and `SlaveGroup::iter` (was `slaves`) now requires the
+- [#47] **(breaking)** `SlaveGroup::slave` and `SlaveGroup::iter` (was `slaves`) now requires the
   passing of a `Client` reference when called.
-- **(breaking)** [#47] `SlaveGroup::slaves` is renamed to `SlaveGroup::iter`
-- **(breaking)** [#47] Grouped slaves that were previously represented as `GroupSlave`s are now
+- [#47] **(breaking)** `SlaveGroup::slaves` is renamed to `SlaveGroup::iter`
+- [#47] **(breaking)** Grouped slaves that were previously represented as `GroupSlave`s are now
   represented as `SlaveRef<'_, SlavePdi<'_>>` instead. `GroupSlave` is removed.
-- **(breaking)** [#47] The `io()`, `inputs()` and `outputs()` methods on grouped slaves have been
+- [#47] **(breaking)** The `io()`, `inputs()` and `outputs()` methods on grouped slaves have been
   renamed to `io_raw()`, `inputs_raw()` and `outputs_raw()` respecitively.
-- **(breaking)** [#47] The `Slave.name` and `Slave.identity` fields have been replaced with methods
+- [#47] **(breaking)** The `Slave.name` and `Slave.identity` fields have been replaced with methods
   of the same name.
-- **(breaking)** [#45] The grouping closure passed to `Client::init` now requires a
+- [#45] **(breaking)** The grouping closure passed to `Client::init` now requires a
   `&dyn SlaveGroupHandle` to be returned. This is a sealed trait only implemented for `SlaveGroup`s
   and allows some internal refactors by erasing the const generics from `SlaveGroup`.
-- **(breaking)** [#32] To mitigate some internal issues, `PduStorage` now requires `N` (the number
+- [#32] **(breaking)** To mitigate some internal issues, `PduStorage` now requires `N` (the number
   of storage elements) to be a power of two.
-- **(breaking)** [#33] `send_frames_blocking` is removed. It is replaced with
+- [#33] **(breaking)** `send_frames_blocking` is removed. It is replaced with
   `PduTx::next_sendable_frame` which can be used to send any available frames in a loop until it
   returns `None`.
-- **(breaking)** [#30] Removed `PduError::Encode` variant.
-- **(breaking)** [#25] Renamed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
-- **(breaking)** [#20] Changed the way the client, tx and rx instances are initialised to only allow
+- [#30] **(breaking)** Removed `PduError::Encode` variant.
+- [#25] **(breaking)** Renamed `pdu_rx` to `receive_frame` to mirror `send_frames_blocking`.
+- [#20] **(breaking)** Changed the way the client, tx and rx instances are initialised to only allow
   one TX and RX to exist.
 
   Before
@@ -577,12 +577,12 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   }
   ```
 
-- **(breaking)** [#16] Remove `TIMER`/`TIMEOUT` generic parameter. `std` environments will now use
+- [#16] **(breaking)** Remove `TIMER`/`TIMEOUT` generic parameter. `std` environments will now use
   the timer provided by `smol` (`async-io`). `no_std` environments will use `embassy-time`.
-- **(breaking)** [#9] Rename the fields of some variants in `ethercrab::error::Error` to make them
+- [#9] **(breaking)** Rename the fields of some variants in `ethercrab::error::Error` to make them
   less confusing.
-- **(breaking)** [#2] Rename `slave_group::Configurator` to `SlaveGroupRef`.
-- **(breaking)** [#1] `SlaveGroup::slaves` now returns an iterator over each slave with IO in the
+- [#2] **(breaking)** Rename `slave_group::Configurator` to `SlaveGroupRef`.
+- [#1] **(breaking)** `SlaveGroup::slaves` now returns an iterator over each slave with IO in the
   group, instead of a plain slave.
 
 ### Fixed
