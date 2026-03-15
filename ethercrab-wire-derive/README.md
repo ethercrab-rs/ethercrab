@@ -29,6 +29,10 @@ as enums with optional catch-all variant.
   How many bytes this field consumes on the wire. These attributes may not be present at the
   same time.
 
+  All builtin `u*` and `i*` types do not need this attribute by default; their size is computed
+  automatically if it's omitted. If a different bit width is desired, the `#[wire]` attribute is
+  required.
+
 - `#[wire(pre_skip = N)]` OR `#[wire(pre_skip_bytes = N)]`
 
   Skip one or more whole bytes before or after this field in the packed representation.
@@ -78,11 +82,11 @@ struct Mixed {
     three_bits: u8,
 
     /// Whole `u8`
-    #[wire(bytes = 1)]
+    // #[wire(bytes = 1)] Attribute not required as it is the default width of a `u8`
     one_byte: u8,
 
     /// Whole `u16`
-    #[wire(bytes = 2)]
+    // #[wire(bytes = 2)] Attribute not required as it is the default width of a `u16`
     one_word: u16,
 }
 ```
@@ -94,8 +98,8 @@ Structs can hold generic fields as long as the generic parameters implement one 
 
 <section class="warning">
 
-It is the end user's responsibility to ensure the generic is of the correct size compared to
-the `#[wire(bits|bytes)]` attribute on the containing struct.
+It is the end user's responsibility to ensure the generic is of the correct size compared to the
+`#[wire(bits|bytes)]` attribute on the containing struct.
 
 </section>
 

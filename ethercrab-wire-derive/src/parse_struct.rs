@@ -1,4 +1,6 @@
 use crate::help::{all_valid_attrs, attr_exists, bit_width_attr, has_repr_packed, usize_attr};
+use proc_macro2::TokenTree;
+use quote::ToTokens;
 use std::ops::Range;
 use syn::{DataStruct, DeriveInput, Fields, FieldsNamed, Generics, Ident, Type, Visibility};
 
@@ -94,7 +96,22 @@ pub fn parse_struct(
 
         // Unwrap: this is a named-field struct so the field will always have a name.
         let field_name = field.ident.unwrap();
-        let field_width = bit_width_attr(&field.attrs)?;
+        let field_width = bit_width_attr(&field.attrs)?.or_else(|| {
+            let TokenTree::Ident(ident) = field.ty.to_token_stream().into_iter().next()? else {
+                return None;
+            };
+
+            let bytes = match ident.to_string().as_str() {
+                "u8" | "i8" => Some(1),
+                "u16" | "i16" => Some(2),
+                "u32" | "i32" => Some(4),
+                "u64" | "i64" | "f32" | "f64" => Some(8),
+                "u128" | "i128" => Some(16),
+                _ => None,
+            };
+
+            bytes.map(|bytes| bytes * 8)
+        });
 
         // Whether to ignore this field when sending AND receiving
         let skip = attr_exists(&field.attrs, "skip");

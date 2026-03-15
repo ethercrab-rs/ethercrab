@@ -17,6 +17,8 @@ Derives for `ethercrab`.
   to 1.79.
 - [#321](https://github.com/ethercrab-rs/ethercrab/pull/321) (@fpdotmonkey) Support limited generic
   parameters for structs.
+- [#361](https://github.com/ethercrab-rs/ethercrab/pull/361) Allow omission of `#[wire]` attribute
+  for struct fields that are `i*`, `u*` or `f*`.
 
 ## [0.2.0] - 2024-07-28
 
