@@ -44,6 +44,9 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   information.
 - [#354](https://github.com/ethercrab-rs/ethercrab/pull/354) (@prrn) Don't enable Sync Managers with
   a length of zero.
+- [#347](https://github.com/ethercrab-rs/ethercrab/pull/347) (@fpdotmonkey) Stop writing to register
+  `0x0980`. The prior behaviour was copied from SOEM. The register has very little documentation
+  about it and causes issues with some ABB drives, so any writes to it within EtherCrab are removed.
 
 ## [0.6.0] - 2025-03-29
 
@@ -260,7 +263,6 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   respectively, along with `EtherCrabWireReadWrite` for write-only items.
 
   Some pertinent trait bounds changes in the public API:
-
   - `SlaveRef::sdo_read` from `PduData` to `EtherCrabWireWrite`
   - `SlaveRef::sdo_write` from `PduData` to `EtherCrabWireReadSized`
   - `SlaveRef::register_read` from `PduData` to `EtherCrabWireWrite`
@@ -291,7 +293,6 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 - [#141](https://github.com/ethercrab-rs/ethercrab/pull/141) Re-export the following traits from
   `ethercrab-wire` for dealing with packing/unpacking data:
-
   - `EtherCrabWireRead`
   - `EtherCrabWireReadSized`
   - `EtherCrabWireReadWrite`
@@ -312,7 +313,6 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   function to get the current time in nanoseconds from the EtherCAT epoch of 2000-01-01.
 - [#194](https://github.com/ethercrab-rs/ethercrab/pull/#194) Added `SlaveGroup` methods to
   facilitate graceful shutdown:
-
   - `SlaveGroup<Op>::into_safe_op`
   - `SlaveGroup<SafeOp>::into_pre_op`
   - `SlaveGroup<PreOp>::into_init`
