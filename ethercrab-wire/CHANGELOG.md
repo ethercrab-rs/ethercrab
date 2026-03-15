@@ -11,16 +11,16 @@ Primarily used by `ethercrab`.
 
 ### Changed
 
-- **(breaking)** [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) Increase MSRV from 1.77
+- [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) **(breaking)** Increase MSRV from 1.77
   to 1.79.
 
 ## [0.2.0] - 2024-07-28
 
 ### Changed
 
-- **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Removed `expected` and
+- [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) **(breaking)** Removed `expected` and
   `got` fields from `WireError::{Read,Write}BufferTooShort`.
-- **(breaking)** [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) Increase MSRV from 1.75
+- [#218](https://github.com/ethercrab-rs/ethercrab/pull/218) **(breaking)** Increase MSRV from 1.75
   to 1.77.
 
 ## [0.1.4] - 2024-03-31

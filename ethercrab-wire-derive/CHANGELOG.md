@@ -13,7 +13,7 @@ Derives for `ethercrab`.
 
 ### Changed
 
-- **(breaking)** [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) Increase MSRV from 1.77
+- [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) **(breaking)** Increase MSRV from 1.77
   to 1.79.
 - [#321](https://github.com/ethercrab-rs/ethercrab/pull/321) (@fpdotmonkey) Support limited generic
   parameters for structs.
