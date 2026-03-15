@@ -180,19 +180,18 @@ pub enum RegisterAddress {
     /// DC system time difference, `u32`.
     DcSystemTimeDifference = 0x092C,
 
-    /// DC Cyclic Unit Control, `u8`, AKA DCCUC.
+    /// DC Cyclic Unit Control (DCCUC), `u8`.
     ///
     /// ETG1000.4 Table 61 - Distributed clock DLS-user parameter.
     ///
-    /// Only write to this if the datasheet for your subdevice says to explicitly.
-    /// For some subdevices, e.g. an ABB FECA-01 + ACS880, you will encounter problems with UB
-    /// if you write to this register.
+    /// This register should only be written to if a SubDevice datasheet requires it. For some
+    /// subdevices, e.g. an ABB FECA-01 + ACS880, writing to this register will cause errors and/or
+    /// other strange behaviour.
     ///
-    /// Documentation is very light, with ETG1000.4 only mentioning this as a "reserved"
-    /// field. Wireshark describes this register as "DC Cyclic Unit Control".
-    /// There is no clear provenance where Wireshark got this from,
-    /// aside from the commit author, but their email isn't from Beckhoff
-    /// or another industrial control vendor.
+    /// Documentation is very light, with ETG1000.4 only mentioning this as a "reserved" field.
+    /// Wireshark describes this register as "DC Cyclic Unit Control". There is no clear provenance
+    /// where Wireshark got this from, aside from the commit author, but their email isn't from
+    /// Beckhoff or another industrial control vendor.
     DcCyclicUnitControl = 0x0980,
 
     /// ETG1000.6 Table 27 - Distributed Clock sync parameter, `u8`.
