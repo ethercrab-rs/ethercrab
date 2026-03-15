@@ -235,8 +235,20 @@ impl SubDevice {
 
     /// Set oversampling values for various PDOs.
     ///
+    /// Pass in a slice of `(PDO, oversampling ratio)` which EtherCrab will use internally to
+    /// configure the correctly sized PDI.
+    ///
+    /// For example, to set 2x and 8x oversampling on two PDOs:
+    ///
+    /// ```rust,no_run
+    /// subdevice.set_oversampling(&[
+    ///     (0x1a00, 2),
+    ///     (0x1a80, 8),
+    /// ]);
+    /// ```
+    ///
     /// This is a temporary(ish) solution to configure oversampling until a better one is found to
-    /// configure this from ESI files, etc.
+    /// configure SubDevices from ESI files, etc.
     pub fn set_oversampling(&mut self, oversampling_config: &'static [(u16, u8)]) {
         self.oversampling_config = oversampling_config
     }
