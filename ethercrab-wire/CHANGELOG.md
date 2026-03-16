@@ -9,6 +9,8 @@ Primarily used by `ethercrab`.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.3.0] - 2026-03-16
+
 ### Changed
 
 - [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) **(breaking)** Increase MSRV from 1.77
@@ -48,8 +50,9 @@ Primarily used by `ethercrab`.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.3.0...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.2.0...HEAD
+[0.3.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.2.0...ethercrab-wire-v0.3.0
 [0.2.0]:
   https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-wire-v0.1.4...ethercrab-wire-v0.2.0
 [0.1.4]:

@@ -6,6 +6,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.7.0] - 2026-03-16
+
 ### Fixed
 
 - [#315](https://github.com/ethercrab-rs/ethercrab/pull/315) (@ClarkZaitun) Read SubDevice status
@@ -607,8 +609,9 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.0...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.6.0...HEAD
+[0.7.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.6.0...ethercrab-v0.7.0
 [0.6.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.6...ethercrab-v0.6.0
 [0.5.6]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.5...ethercrab-v0.5.6
 [0.5.5]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.4...ethercrab-v0.5.5
