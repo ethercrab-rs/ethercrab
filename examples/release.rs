@@ -109,7 +109,7 @@ fn main() -> Result<(), Error> {
         // Fourth cycle: do the same with `io_uring` (Linux only)
         // ---
         // ---
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", feature = "io-uring"))]
         {
             use ethercrab::std::tx_rx_task_io_uring;
 

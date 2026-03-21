@@ -51,7 +51,7 @@ libc = "0.2.180"
 nix = { version = "0.31.1", features = ["net"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-io-uring = "0.7.4"
+io-uring = { version = "0.7.4", optional = true }
 smallvec = { version = "1.13.1", features = ["const_generics"] }
 slab = "0.4.12"
 timerfd = "1.5.0"
@@ -92,7 +92,7 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
 ] }
 
 [features]
-default = ["std"]
+default = ["std", "io-uring"]
 defmt = [
     "dep:defmt",
     "embedded-io-async/defmt-03",
@@ -111,7 +111,7 @@ std = [
 ]
 xdp = ["dep:xsk-rs"]
 serde = ["dep:serde", "bitflags/serde"]
-
+io-uring = ["dep:io-uring"]
 # [[example]]
 # name = "akd"
 # required-features = ["std"]
@@ -135,6 +135,14 @@ required-features = ["std"]
 [[example]]
 name = "multiple-groups"
 required-features = ["std"]
+
+[[example]]
+name = "io-uring"
+required-features = ["std", "io-uring"]
+
+[[example]]
+name = "smol-io-uring"
+required-features = ["std", "io-uring"]
 
 [[bench]]
 name = "pdu_loop"

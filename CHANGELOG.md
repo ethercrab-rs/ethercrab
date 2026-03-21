@@ -6,6 +6,15 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- [#315](https://github.com/ethercrab-rs/ethercrab/pull/315) (@Dirreke) Add `io-uring` feature so
+  `io_uring` can be disabled for Linux platforms that don't support it. Example `Cargo.toml`:
+
+  ```toml
+  ethercrab = { version = "0.8.0", default-features = false, features = [ "std" ] }
+  ```
+
 ## [0.7.0] - 2026-03-16
 
 ### Fixed
@@ -609,8 +618,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.0...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.0...HEAD
 [0.7.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.6.0...ethercrab-v0.7.0
 [0.6.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.6...ethercrab-v0.6.0
 [0.5.6]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.5...ethercrab-v0.5.6
