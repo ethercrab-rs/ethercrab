@@ -92,7 +92,7 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
 ] }
 
 [features]
-default = ["std", "io_uring"]
+default = ["std", "io-uring"]
 defmt = [
     "dep:defmt",
     "embedded-io-async/defmt-03",
@@ -111,7 +111,7 @@ std = [
 ]
 xdp = ["dep:xsk-rs"]
 serde = ["dep:serde", "bitflags/serde"]
-io_uring = ["dep:io-uring"]
+io-uring = ["dep:io-uring"]
 # [[example]]
 # name = "akd"
 # required-features = ["std"]
@@ -138,11 +138,11 @@ required-features = ["std"]
 
 [[example]]
 name = "io-uring"
-required-features = ["std", "io_uring"]
+required-features = ["std", "io-uring"]
 
 [[example]]
 name = "smol-io-uring"
-required-features = ["std", "io_uring"]
+required-features = ["std", "io-uring"]
 
 [[bench]]
 name = "pdu_loop"
