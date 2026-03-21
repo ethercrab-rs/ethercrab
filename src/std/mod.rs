@@ -1,6 +1,6 @@
 //! Items required for running in `std` environments.
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "io_uring"))]
 mod io_uring;
 #[cfg(unix)]
 mod unix;
@@ -20,7 +20,7 @@ pub use self::windows::{TxRxTaskConfig, ethercat_now, tx_rx_task_blocking};
 #[cfg(unix)]
 pub use unix::{ethercat_now, tx_rx_task};
 // io_uring is Linux-only
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "io_uring"))]
 pub use io_uring::tx_rx_task_io_uring;
 #[cfg(all(target_os = "linux", feature = "xdp"))]
 pub use xdp::tx_rx_task_xdp;
