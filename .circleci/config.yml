@@ -125,6 +125,24 @@ target_steps_no_std: &target_steps_no_std
         paths:
           - ./target
 
+target_steps_linux_no_io_uring: &target_steps_linux_no_io_uring
+  docker:
+    # NOTE: Exact version is overridden in `rust-toolchain.toml`
+    - image: cimg/rust:1.85
+  steps:
+    - checkout
+    - restore_cache:
+        key: v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+
+    - run: rustup target add armv7-unknown-linux-gnueabi
+    - run: |
+        cargo build --target armv7-unknown-linux-gnueabi --no-default-features --release --features std
+
+    - save_cache:
+        key: v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        paths:
+          - ./target
+
 target_steps_embassy: &target_steps_embassy
   docker:
     # NOTE: Exact version is overridden in `rust-toolchain.toml`
@@ -237,10 +255,15 @@ jobs:
     resource_class: large
     <<: *target_steps_embassy
 
+  target-linux-32bit:
+    resource_class: large
+    <<: *target_steps_linux_no_io_uring
+
 build_jobs: &build_jobs
   jobs:
     - target-x86_64-unknown-linux-gnu
     - target-x86_64-unknown-linux-musl
+    - target-linux-32bit
     - miri
     - windows-cross
     - macos-cross
