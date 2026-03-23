@@ -6,9 +6,14 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- [#366](https://github.com/ethercrab-rs/ethercrab/pull/366) Publicly expose `DefaultLock` so crate
+  consumers can use it.
+
 ### Changed
 
-- [#315](https://github.com/ethercrab-rs/ethercrab/pull/315) (@Dirreke) Add `io-uring` feature so
+- [#365](https://github.com/ethercrab-rs/ethercrab/pull/365) (@Dirreke) Add `io-uring` feature so
   `io_uring` can be disabled for Linux platforms that don't support it. Example `Cargo.toml`:
 
   ```toml
