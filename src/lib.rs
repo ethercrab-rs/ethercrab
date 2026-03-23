@@ -214,15 +214,15 @@ const BASE_SUBDEVICE_ADDRESS: u16 = 0x1000;
 
 /// The default lock provided by EtherCrab.
 ///
-/// This is [`spin::Yield`] when the `std` feature is enabled. For non-`std` environments, it is
-/// [`spin::Spin`].
+/// This is a [`spin::RwLock`] containing [`spin::Yield`] when the `std` feature is enabled. For
+/// non-`std` environments, it is [`spin::Spin`].
 #[cfg(feature = "std")]
 pub type DefaultLock = spin::rwlock::RwLock<(), spin::Yield>;
 
 /// The default lock provided by EtherCrab.
 ///
-/// This is [`spin::Yield`] when the `std` feature is enabled. For non-`std` environments, it is
-/// [`spin::Spin`].
+/// This is a [`spin::RwLock`] containing [`spin::Yield`] when the `std` feature is enabled. For
+/// non-`std` environments, it is [`spin::Spin`].
 #[cfg(not(feature = "std"))]
 pub type DefaultLock = spin::rwlock::RwLock<(), spin::Spin>;
 
