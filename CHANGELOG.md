@@ -6,6 +6,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.7.1] - 2026-03-23
+
 ### Fixed
 
 - [#366](https://github.com/ethercrab-rs/ethercrab/pull/366) Publicly expose `DefaultLock` so crate
@@ -623,8 +625,9 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - Initial release
 
 <!-- next-url -->
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.1...HEAD
 
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.0...HEAD
+[0.7.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.0...ethercrab-v0.7.1
 [0.7.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.6.0...ethercrab-v0.7.0
 [0.6.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.6...ethercrab-v0.6.0
 [0.5.6]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.5...ethercrab-v0.5.6
