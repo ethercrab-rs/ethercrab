@@ -372,7 +372,7 @@ where
                     .find_map(|(pdo_id, mul)| if *pdo_id == pdo { Some(*mul) } else { None })
                     .unwrap_or(1);
 
-                let pdo_bit_len = pdo_bit_len * u16::from(oversampling);
+                let pdo_bit_len = pdo_bit_len * oversampling;
 
                 fmt::trace!(
                     "----> CoE: {:#06x} oversampling: {}, this PDO bit len {}",
@@ -530,7 +530,7 @@ where
                         })
                         .unwrap_or(1);
 
-                    let len = pdo.bit_len * u16::from(oversampling);
+                    let len = pdo.bit_len * oversampling;
 
                     fmt::trace!(
                         "EEPROM: {:#06x} oversampling: {}, this PDO bit len {}",
