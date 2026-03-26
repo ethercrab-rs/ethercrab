@@ -458,7 +458,7 @@ where
                 .await?;
 
             let flags = if let DcSync::Sync01 { sync1_period } = subdevice.dc_sync() {
-                let sync1_period = u64::from(u32::try_from(sync1_period.as_nanos())?);
+                let sync1_period = u64::try_from(sync1_period.as_nanos())?;
 
                 subdevice
                     .write(RegisterAddress::DcSync1CycleTime)
