@@ -116,3 +116,63 @@ fn nested_structs() {
 
     assert_eq!(out, &expected);
 }
+
+#[test]
+fn array_of_structs() {
+    #[derive(Default, Debug, EtherCrabWireReadWrite)]
+    #[wire(bits = 104)]
+    struct Check {
+        #[wire(bits = 32)]
+        foo: u32,
+        #[wire(bits = 24)]
+        control: Inner,
+        #[wire(bits = 48)]
+        status: [Inner; 2],
+    }
+
+    #[derive(Default, Debug, Copy, Clone, EtherCrabWireReadWrite)]
+    #[wire(bits = 24)]
+    struct Inner {
+        #[wire(bits = 1)]
+        yes: bool,
+        #[wire(bits = 1)]
+        no: bool,
+        #[wire(pre_skip = 6, bits = 16)]
+        stuff: u16,
+    }
+
+    let mut buf = [0u8; 13];
+
+    let packed = Check::default().pack_to_slice(&mut buf);
+
+    assert!(packed.is_ok());
+}
+
+#[test]
+fn struct_array() {
+    #[derive(Debug, Default, ethercrab_wire_derive::EtherCrabWireWrite)]
+    #[wire(bytes = 3)]
+    struct Foo {
+        #[wire(bytes = 2)]
+        a: u16,
+        #[wire(bytes = 1)]
+        b: u8,
+    }
+
+    let mut buf = [0u8; 32];
+
+    let data = [
+        Foo { a: 0x1100, b: 0x22 },
+        Foo { a: 0x4433, b: 0x55 },
+        Foo { a: 0x7766, b: 0x88 },
+    ];
+
+    assert_eq!(data.packed_len(), 9);
+
+    let written = data.pack_to_slice_unchecked(&mut buf);
+
+    assert_eq!(
+        written,
+        &[0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]
+    );
+}
