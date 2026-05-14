@@ -47,7 +47,7 @@ struct EL3702 {
 
 impl EL3702 {
     // Make sure this is the same value as the array lengths in the struct definition
-    const OVERSAMPLE_MUL: u8 = 25;
+    const OVERSAMPLE_MUL: u16 = 25;
 }
 
 fn main() -> Result<(), Error> {

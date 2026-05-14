@@ -86,7 +86,8 @@ pub struct SubDevice {
     /// DC config.
     pub(crate) dc_sync: DcSync,
 
-    pub(crate) oversampling_config: &'static [(u16, u8)],
+    /// Oversampling config, a list of tuples of `(PDO, oversampling multipler)`.
+    pub(crate) oversampling_config: &'static [(u16, u16)],
 }
 
 // Only required for tests, also doesn't make much sense - consumers of EtherCrab should be
@@ -249,7 +250,7 @@ impl SubDevice {
     ///
     /// This is a temporary(ish) solution to configure oversampling until a better one is found to
     /// configure SubDevices from ESI files, etc.
-    pub fn set_oversampling(&mut self, oversampling_config: &'static [(u16, u8)]) {
+    pub fn set_oversampling(&mut self, oversampling_config: &'static [(u16, u16)]) {
         self.oversampling_config = oversampling_config
     }
 
