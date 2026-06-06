@@ -258,6 +258,7 @@ pub enum CategoryType {
 }
 
 /// The type of PDO to search for.
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone)]
 pub enum PdoType {
     /// SubDevice send, MainDevice receive.
