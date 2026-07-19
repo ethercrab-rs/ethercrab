@@ -182,7 +182,7 @@ basic_steps: &basic_steps
           - ./target
           - /home/circleci/.cargo/registry
 
-version: 2
+version: 2.1
 jobs:
   target-x86_64-unknown-linux-gnu:
     resource_class: large
