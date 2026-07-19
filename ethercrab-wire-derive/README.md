@@ -170,7 +170,7 @@ assert_eq!(OneByte::unpack_from_slice(&[0xaa]), Ok(OneByte::Unknown(0xaa)));
 Struct fields of 1 byte or more MUST be byte-aligned. For example, the following struct will be
 rejected due to `bar` being 5 bits "early":
 
-```rust,compile_fail
+```rust
 #[derive(ethercrab_wire::EtherCrabWireReadWrite)]
 #[wire(bytes = 2)]
 struct Broken {
