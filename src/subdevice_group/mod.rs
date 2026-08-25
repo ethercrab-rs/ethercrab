@@ -463,14 +463,9 @@ where
             subdevice.dc_support().any() && !matches!(subdevice.dc_sync(), DcSync::Disabled)
         });
 
-        let system_time = SubDeviceRef::new(maindevice, reference, ())
-            .register_read::<u64>(RegisterAddress::DcSystemTime)
-            .await?;
-
         // Kinda weird converting to/from u32 but these values must not exceed u32::MAX
-        let sync0_period = u64::from(u32::try_from(sync0_period.as_nanos())?);
-
-        let first_pulse_delay = u64::from(u32::try_from(start_delay.as_nanos())?);
+        let sync0_period = u64::from(u32::try_from(sync0_period)?);
+        u32::try_from(first_pulse_delay)?;
 
         for subdevice in dc_devices {
             fmt::debug!(
@@ -591,7 +586,7 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, DC>
     pub async fn request_into_safe_op(
         mut self,
         maindevice: &MainDevice<'_>,
-    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, SafeOp, DC>, Error> {
+    ) -> Result<SubDeviceGroup<MAX_SUBDEVICES, MAX_PDI, R, SafeOp, DC>, Error> {
         for subdevice in self.inner.get_mut().subdevices.iter_mut() {
             SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
                 .request_subdevice_state_nowait(SubDeviceState::SafeOp)
