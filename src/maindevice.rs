@@ -89,6 +89,14 @@ impl<'sto> MainDevice<'sto> {
             .send(self, AlControl::reset())
             .await?;
 
+        // Clear configured station addresses. SubDevices that stayed powered across a
+        // topology change keep their address from the previous run, which can collide with
+        // freshly assigned addresses and cause WKC mismatches during init.
+        Command::bwr(RegisterAddress::ConfiguredStationAddress.into())
+            .ignore_wkc()
+            .send(self, 0u16)
+            .await?;
+
         // Clear FMMUs - see ETG1000.4 Table 57
         // Some devices aren't able to blank the entire region so we loop through all offsets.
         for fmmu_idx in 0..16 {
