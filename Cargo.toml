@@ -132,6 +132,10 @@ name = "ek1100"
 required-features = ["std"]
 
 [[example]]
+name = "ek1100-windows"
+required-features = ["std"]
+
+[[example]]
 name = "multiple-groups"
 required-features = ["std"]
 

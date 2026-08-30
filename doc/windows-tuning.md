@@ -1,5 +1,9 @@
 # Performance tricks for Windows
 
+> To just get an example running on Windows first (Npcap setup, finding the network interface
+> name), see [`ek1100-windows.md`](./ek1100-windows.md). This document is about tuning it
+> afterwards.
+
 These are very rough notes made by me (@jamwaffles), so apologies if the details are sparse.
 
 TL;DR please try to use Linux. Windows is terrible for realtime even after making the tweaks below.
