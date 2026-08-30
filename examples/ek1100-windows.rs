@@ -4,7 +4,8 @@
 //! [`tx_rx_task_blocking`](ethercrab::std::tx_rx_task_blocking) runs on its own OS thread (there
 //! is no async TX/RX backend on Windows), `spin_sleep` + `quanta` drive the cycle timing (the
 //! default Windows timer resolution of ~15 ms is too coarse), and `wait_loop_delay` is set to
-//! `Duration::ZERO` to avoid spurious timeouts.
+//! `Duration::ZERO` to avoid spurious timeouts. The TX/RX thread runs at `TimeCritical` priority
+//! and is pinned to its own core, which is what keeps packet round trip times from spiking.
 //!
 //! Build/runtime setup (Npcap SDK + runtime, finding the `\Device\NPF_{...}` interface name):
 //! see `doc/ek1100-windows.md`. Performance tuning: see `doc/windows-tuning.md`.
@@ -34,6 +35,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         },
         time::Duration,
     };
+    use thread_priority::{ThreadPriority, ThreadPriorityOsValue, WinAPIThreadPriority};
 
     /// Maximum number of SubDevices that can be stored. This must be a power of 2 greater than 1.
     const MAX_SUBDEVICES: usize = 16;
@@ -70,13 +72,47 @@ async fn main() -> Result<(), ethercrab::error::Error> {
             mailbox_response: Duration::from_millis(1000),
             ..Default::default()
         },
-        MainDeviceConfig::default(),
+        MainDeviceConfig {
+            // Quicker startup, mainly just for testing.
+            dc_static_sync_iterations: 1000,
+            ..MainDeviceConfig::default()
+        },
     ));
 
+    let core_ids = core_affinity::get_core_ids().expect("Get core IDs");
+
+    // Pick the non-HT cores on an Intel i5-8500T test system. YMMV!
+    let main_thread_core = core_ids[0];
+    let tx_rx_core = core_ids[2];
+
+    // Pinning this and the TX/RX thread reduce packet RTT spikes significantly.
+    core_affinity::set_for_current(main_thread_core);
+
+    // Both `smol` and `tokio` use Windows' coarse timer, which has a resolution of at least 15ms.
+    // That is not useful for decent cycle times, so use a more accurate clock from `quanta` and a
+    // spin sleeper instead.
+    let sleeper = SpinSleeper::default().with_spin_strategy(SpinStrategy::SpinLoopHint);
+
+    // NOTE: This takes ~200ms to return, so it must be called before any proper EtherCAT stuff
+    // happens.
+    let clock = quanta::Clock::new();
+
     // The Windows TX/RX backend is blocking, so run it on a dedicated OS thread.
-    std::thread::Builder::new()
-        .name("tx-rx-task".to_string())
-        .spawn(move || {
+    //
+    // For best performance, use e.g.
+    // https://www.techpowerup.com/download/microsoft-interrupt-affinity-tool/ to pin NIC IRQs to
+    // the same core as the TX/RX thread.
+    thread_priority::ThreadBuilder::default()
+        .name("tx-rx-thread")
+        // For best performance, this MUST be set if pinning NIC IRQs to the same core.
+        .priority(ThreadPriority::Os(ThreadPriorityOsValue::from(
+            WinAPIThreadPriority::TimeCritical,
+        )))
+        .spawn(move |_| {
+            core_affinity::set_for_current(tx_rx_core)
+                .then_some(())
+                .expect("Set TX/RX thread core");
+
             tx_rx_task_blocking(&interface, tx, rx, TxRxTaskConfig { spinloop: false })
                 .expect("TX/RX task");
         })
@@ -119,10 +155,6 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
     let cycle_time = Duration::from_millis(5);
 
-    // A more accurate clock + spin sleeper for decent cycle timing on Windows.
-    let clock = quanta::Clock::new();
-    let sleeper = SpinSleeper::default().with_spin_strategy(SpinStrategy::SpinLoopHint);
-
     let shutdown = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown))
         .expect("Register hook");
@@ -154,7 +186,10 @@ async fn main() -> Result<(), ethercrab::error::Error> {
         sleeper.sleep(wait);
     }
 
-    let group = group.into_safe_op(&maindevice).await.expect("OP -> SAFE-OP");
+    let group = group
+        .into_safe_op(&maindevice)
+        .await
+        .expect("OP -> SAFE-OP");
     log::info!("OP -> SAFE-OP");
 
     let group = group

@@ -19,9 +19,8 @@ Windows limitations:
 - **`Timeouts { wait_loop_delay: Duration::ZERO, .. }`.** Any non-zero wait-loop delay is rounded
   up to the coarse timer granularity and produces spurious mailbox / state-transition timeouts.
 
-For performance tuning beyond just getting it to run (core pinning, NIC settings, thread
-priority, MMCSS), see [`windows-tuning.md`](./windows-tuning.md) and the
-[`windows`](../examples/windows.rs) example.
+The example already pins its threads and raises the TX/RX thread priority. For tuning beyond
+that (NIC settings, IRQ affinity, MMCSS), see [`windows-tuning.md`](./windows-tuning.md).
 
 ## Prerequisites
 

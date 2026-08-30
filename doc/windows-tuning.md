@@ -78,7 +78,7 @@ is a good reference.
 On Windows, `tx_rx_task` is deprecated since 0.5.1 as it has terrible performance.
 
 Instead, use `tx_rx_task_blocking` in a separate thread, e.g.
-[like this](https://github.com/ethercrab-rs/ethercrab/blob/main/examples/windows.rs#L98-L99).
+[like this](https://github.com/ethercrab-rs/ethercrab/blob/main/examples/ek1100-windows.rs).
 Performance is much improved over `tx_rx_task`.
 
 > You can set `spinloop: true` for... maybe some performance improvement? However this will peg one
