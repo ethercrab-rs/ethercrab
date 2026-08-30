@@ -81,9 +81,18 @@ async fn main() -> Result<(), ethercrab::error::Error> {
 
     let core_ids = core_affinity::get_core_ids().expect("Get core IDs");
 
-    // Pick the non-HT cores on an Intel i5-8500T test system. YMMV!
+    // Core 2 skips the hyperthread sibling of core 0 on an Intel i5-8500T test system. YMMV!
+    // Falling back to core 0 keeps small machines working, at the cost of the two threads
+    // contending for one core.
     let main_thread_core = core_ids[0];
-    let tx_rx_core = core_ids[2];
+    let tx_rx_core = *core_ids.get(2).unwrap_or_else(|| {
+        log::warn!(
+            "Only {} core(s) available, sharing one with the TX/RX thread. Expect worse cycle timing.",
+            core_ids.len()
+        );
+
+        &core_ids[0]
+    });
 
     // Pinning this and the TX/RX thread reduce packet RTT spikes significantly.
     core_affinity::set_for_current(main_thread_core);
