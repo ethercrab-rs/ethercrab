@@ -89,12 +89,12 @@ Plug the EtherCAT cable in first, then pick the row whose `Status` is `Up` and t
 to the port wired to the EK1100 (an EK1100 link comes up at **100 Mbps**). You can cross-check
 against `getmac /fo csv /v` or Wireshark's capture-interface list.
 
-> **If you also run TwinCAT on this machine:** an adapter with the *TwinCAT RT-Ethernet Filter
-> Driver* bound and active will hand EtherCAT frames to TwinCAT instead of Npcap, and EtherCrab
-> will discover 0 SubDevices. Check with `Get-NetAdapterBinding -Name '<adapter>'` (look for
-> `tcrtefilter` / `beckhoff_tcether` with `Enabled = True`). Use a different NIC, untick
-> *TwinCAT RT-Ethernet Filter Driver* in that adapter's *Properties -> Networking*, or stop the
-> TwinCAT System Service while testing.
+> **If you also run TwinCAT on this machine:** having the *TwinCAT RT-Ethernet Filter Driver*
+> bound to the adapter is fine on its own — `tcrtefilter` and `beckhoff_tcether` can both show
+> `Enabled = True` in `Get-NetAdapterBinding` and EtherCrab still works, even with the TwinCAT
+> system service running. What can take the frames is TwinCAT actively running a configuration
+> that claims that NIC. If you get 0 SubDevices and TwinCAT is in Run mode, stop it, or use a
+> different NIC for EtherCrab.
 
 ## Run the MainDevice
 
@@ -134,6 +134,6 @@ Set `RUST_LOG=ethercrab=debug` or `ethercrab=trace` for protocol-level detail.
 | --- | --- |
 | `LNK2019: unresolved external symbol pcap_*` | Npcap SDK not on the linker search path (`LIBPCAP_LIBDIR` unset or wrong), or an old WinPcap SDK is being picked up. See *Npcap SDK*. |
 | Build succeeds, panic on start opening the device / "No such device exists" | Npcap **runtime** not installed, or the wrong `\Device\NPF_{...}` name. If Npcap was installed in admin-only mode, run from an elevated shell. |
-| `Discovered 0 SubDevices` / `Timeout(Pdu)` at init | Cable on the wrong port, EK1100 not powered, or the TwinCAT RT-Ethernet filter driver is intercepting frames on that NIC (see *Find your network interface name*). |
+| `Discovered 0 SubDevices` / `Timeout(Pdu)` at init | Cable on the wrong port, EK1100 not powered, or TwinCAT is running a configuration that claims that NIC (see *Find your network interface name*). |
 | Lots of `mailbox` / status-transition timeouts | Largely expected on Windows; the example already sets `wait_loop_delay: Duration::ZERO`. See [`windows-tuning.md`](./windows-tuning.md). |
 | High jitter / missed cycles | Windows is not a realtime OS. See [`windows-tuning.md`](./windows-tuning.md) for core isolation, NIC tweaks and thread priority. |
