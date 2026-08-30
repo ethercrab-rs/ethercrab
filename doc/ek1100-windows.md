@@ -96,7 +96,7 @@ against `getmac /fo csv /v` or Wireshark's capture-interface list.
 > *TwinCAT RT-Ethernet Filter Driver* in that adapter's *Properties -> Networking*, or stop the
 > TwinCAT System Service while testing.
 
-## Run the master
+## Run the MainDevice
 
 Connect an **EK1100 or EK1501 as the first SubDevice**, with any number of modules after it,
 then, from PowerShell:
