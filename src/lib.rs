@@ -177,6 +177,8 @@ mod pdu_loop;
 mod register;
 mod subdevice;
 pub mod subdevice_group;
+#[cfg(feature = "sim")]
+pub mod sim;
 mod subdevice_state;
 mod sync_manager_channel;
 mod timer_factory;

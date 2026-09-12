@@ -44,7 +44,7 @@ pub use dc::DcSync;
 #[derive(Debug)]
 // Gated by test feature so we can easily create test cases, but not expose a `Default`-ed
 // `SubDevice` to the user as this is an invalid state.
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(any(test, feature = "sim"), derive(Default))]
 pub struct SubDevice {
     /// Configured station address.
     pub(crate) configured_address: u16,

@@ -92,6 +92,8 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
 
 [features]
 default = ["std", "io-uring"]
+# in-memory process image for tests, see `sim`
+sim = []
 defmt = [
     "dep:defmt",
     "embedded-io-async/defmt-03",
