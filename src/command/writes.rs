@@ -95,6 +95,17 @@ impl WrappedWrite {
         maindevice: &'maindevice MainDevice<'maindevice>,
         data: impl EtherCrabWireWrite,
     ) -> Result<(), Error> {
+        if let Some(len) = self.len_override
+            && data.packed_len() > len.into()
+        {
+            return Err(Error::Mailbox(
+                crate::error::MailboxError::ExceedsMailboxLength {
+                    desired_size: data.packed_len(),
+                    mailbox_size: len.into(),
+                },
+            ));
+        }
+
         self.common(maindevice, data, self.len_override).await?;
 
         Ok(())

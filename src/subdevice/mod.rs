@@ -12,10 +12,12 @@ use crate::{
     command::Command,
     dl_status::DlStatus,
     eeprom::{device_provider::DeviceEeprom, types::SiiOwner},
-    error::{Error, IgnoreNoCategory},
+    error::{Error, IgnoreNoCategory, MailboxError},
     fmt,
     mailbox::coe::{self, Coe, SdoExpeditedPayload, SubIndex},
+    mailbox::soe::{Soe, headers::SoeAttributes},
     maindevice::MainDevice,
+    pdu_loop::ReceivedPdu,
     register::{DcSupport, RegisterAddress, SupportFlags},
     subdevice::{ports::Ports, types::SubDeviceConfig},
     subdevice_state::SubDeviceState,
@@ -28,7 +30,8 @@ use core::{
 };
 use embedded_io_async::{Read, Write as EioWrite};
 use ethercrab_wire::{
-    EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireWrite, EtherCrabWireWriteSized,
+    EtherCrabWireRead, EtherCrabWireReadSized, EtherCrabWireReadWrite, EtherCrabWireWrite,
+    EtherCrabWireWriteSized,
 };
 
 use self::eeprom::SubDeviceEeprom;
@@ -527,6 +530,129 @@ impl<'maindevice, S> SubDeviceRef<'maindevice, S>
 where
     S: Deref<Target = SubDevice>,
 {
+    /// Get CoE read/write mailboxes, waiting for them to be ready to read/write.
+    pub async fn wait_for_mailboxes(&self) -> Result<(Mailbox, Mailbox), Error> {
+        let write_mailbox = self
+            .config
+            .mailbox
+            .write
+            .ok_or(Error::Mailbox(MailboxError::NoReadMailbox))?;
+        let read_mailbox = self
+            .config
+            .mailbox
+            .read
+            .ok_or(Error::Mailbox(MailboxError::NoWriteMailbox))?;
+
+        let mailbox_read_sm_status =
+            RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
+        let mailbox_write_sm_status =
+            RegisterAddress::sync_manager_status(write_mailbox.sync_manager);
+
+        // Ensure SubDevice OUT (master IN) mailbox is empty. We'll retry this multiple times in
+        // case the SubDevice is still busy or bugged or something.
+        for i in 0..10 {
+            let sm_status = self
+                .read(mailbox_read_sm_status)
+                .receive::<crate::sync_manager_channel::Status>(self.maindevice)
+                .await?;
+
+            // If flag is set, read entire mailbox to clear it
+            if sm_status.mailbox_full {
+                fmt::debug!(
+                    "SubDevice {:#06x} OUT mailbox not empty (status {:?}). Clearing.",
+                    self.configured_address(),
+                    sm_status
+                );
+
+                self.read(read_mailbox.address)
+                    .ignore_wkc()
+                    .receive_slice(self.maindevice, read_mailbox.len)
+                    .await?;
+            } else {
+                break;
+            }
+
+            // Don't delay on first iteration
+            if i > 0 {
+                self.maindevice.timeouts.loop_tick().await;
+            }
+
+            if i > 1 {
+                fmt::debug!("--> Retrying clear");
+            }
+        }
+
+        // Wait for SubDevice IN mailbox to be available to receive data from master
+        async {
+            loop {
+                let sm_status = self
+                    .read(mailbox_write_sm_status)
+                    .receive::<crate::sync_manager_channel::Status>(self.maindevice)
+                    .await?;
+
+                if !sm_status.mailbox_full {
+                    break Ok(());
+                }
+
+                self.maindevice.timeouts.loop_tick().await;
+            }
+        }
+        .timeout(self.maindevice.timeouts.mailbox_echo())
+        .await
+        .inspect_err(|&e| {
+            fmt::error!(
+                "Mailbox IN ready error for SubDevice {:#06x}: {}",
+                self.configured_address(),
+                e
+            );
+        })?;
+
+        Ok((read_mailbox, write_mailbox))
+    }
+
+    /// Wait for a mailbox response
+    pub async fn wait_for_mailbox_response(
+        &self,
+        read_mailbox: &Mailbox,
+    ) -> Result<ReceivedPdu, Error> {
+        let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
+
+        // Wait for SubDevice OUT mailbox to be ready
+        async {
+            loop {
+                let sm_status = self
+                    .read(mailbox_read_sm)
+                    .receive::<crate::sync_manager_channel::Status>(self.maindevice)
+                    .await?;
+
+                if sm_status.mailbox_full {
+                    break Ok(());
+                }
+
+                self.maindevice.timeouts.loop_tick().await;
+            }
+        }
+        .timeout(self.maindevice.timeouts.mailbox_response())
+        .await
+        .inspect_err(|&e| {
+            fmt::error!(
+                "Response mailbox IN error for SubDevice {:#06x}: {}",
+                self.configured_address(),
+                e
+            );
+        })?;
+
+        // Read acknowledgement from SubDevice OUT mailbox
+        let response = self
+            .read(read_mailbox.address)
+            .receive_slice(self.maindevice, read_mailbox.len)
+            .await?;
+
+        // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
+
+        Ok(response)
+    }
+
     /// Get the long name of the SubDevice.
     ///
     /// Using the EK1100 as an example, the [`name`](crate::SubDevice::name) method will return
@@ -697,6 +823,88 @@ where
         &self,
     ) -> Result<Option<ObjectDescriptionListQueryCounts>, Error> {
         Coe::new(self).sdo_info_object_quantities().await
+    }
+
+    /// Read the data status word (u16) for the SoE IDN
+    pub async fn idn_read_status(&self, drive_num: u8, idn_address: u16) -> Result<u16, Error> {
+        Soe::new(self).idn_read_status(drive_num, idn_address).await
+    }
+
+    /// Read the ASCII name for the SoE IDN
+    pub async fn idn_read_name(&self, drive_num: u8, idn_address: u16) -> Result<String, Error> {
+        Soe::new(self).idn_read_name(drive_num, idn_address).await
+    }
+
+    /// Read the attribute word (SoeAttributes) for the SoE IDN
+    pub async fn idn_read_attribute(
+        &self,
+        drive_num: u8,
+        idn_address: u16,
+    ) -> Result<SoeAttributes, Error> {
+        Soe::new(self)
+            .idn_read_attribute(drive_num, idn_address)
+            .await
+    }
+
+    /// Read the ASCII unit name for the SoE IDN
+    pub async fn idn_read_units(&self, drive_num: u8, idn_address: u16) -> Result<String, Error> {
+        Soe::new(self).idn_read_units(drive_num, idn_address).await
+    }
+
+    /// Read the minimum allowable value for the SoE IDN
+    pub async fn idn_read_min<T>(&self, drive_num: u8, idn_address: u16) -> Result<T, Error>
+    where
+        T: EtherCrabWireRead,
+    {
+        Soe::new(self)
+            .idn_read_min::<T>(drive_num, idn_address)
+            .await
+    }
+
+    /// Read the maximum allowable value for the SoE IDN
+    pub async fn idn_read_max<T>(&self, drive_num: u8, idn_address: u16) -> Result<T, Error>
+    where
+        T: EtherCrabWireRead,
+    {
+        Soe::new(self)
+            .idn_read_max::<T>(drive_num, idn_address)
+            .await
+    }
+
+    /// Read the current data value for the SoE IDN
+    pub async fn idn_read_data<T>(&self, drive_num: u8, idn_address: u16) -> Result<T, Error>
+    where
+        T: EtherCrabWireRead,
+    {
+        Soe::new(self)
+            .idn_read_data::<T>(drive_num, idn_address)
+            .await
+    }
+
+    /// Read the data list located at IDN as a vec of u16s
+    pub async fn idn_read_data_list(
+        &self,
+        drive_num: u8,
+        idn_address: u16,
+    ) -> Result<(u16, Vec<u16>), Error> {
+        Soe::new(self)
+            .idn_read_data_list(drive_num, idn_address)
+            .await
+    }
+
+    /// Write data to the SoE IDN
+    pub async fn idn_write_data<T>(
+        &self,
+        drive_num: u8,
+        idn_address: u16,
+        value: T,
+    ) -> Result<(), Error>
+    where
+        T: EtherCrabWireWrite + Debug,
+    {
+        Soe::new(self)
+            .idn_write_data::<T>(drive_num, idn_address, value)
+            .await
     }
 }
 
