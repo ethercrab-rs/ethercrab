@@ -219,22 +219,6 @@ impl EtherCrabWireWriteSized for () {
     }
 }
 
-impl<const N: usize> EtherCrabWireWrite for [u8; N] {
-    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        let Some(chunk) = buf.first_chunk_mut::<N>() else {
-            unreachable!()
-        };
-
-        *chunk = *self;
-
-        chunk
-    }
-
-    fn packed_len(&self) -> usize {
-        N
-    }
-}
-
 impl EtherCrabWireWrite for &[u8] {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
         let buf = &mut buf[0..self.len()];
@@ -276,6 +260,33 @@ where
             .map(T::unpack_from_slice)
             .collect::<Result<heapless::Vec<_, N>, WireError>>()
             .and_then(|res| res.into_array().map_err(|_e| WireError::ArrayLength))
+    }
+}
+
+impl<const N: usize, T> EtherCrabWireWrite for [T; N]
+where
+    T: EtherCrabWireWrite,
+{
+    fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
+        let Some(chunk_size) = self.get(0).map(|v| v.packed_len()) else {
+            return &mut buf[0..0];
+        };
+
+        let buf = &mut buf[0..self.packed_len()];
+
+        let mut chunk = &mut buf[..];
+
+        for i in self.iter() {
+            let _item_bytes = i.pack_to_slice_unchecked(chunk);
+
+            chunk = &mut chunk[chunk_size..];
+        }
+
+        buf
+    }
+
+    fn packed_len(&self) -> usize {
+        self.get(0).map(|v| v.packed_len()).unwrap_or(0) * N
     }
 }
 
@@ -381,5 +392,40 @@ mod tests {
         let written = (0xaabbccddu32, 0x99u8, 0x1234u16).pack_to_slice_unchecked(&mut buf);
 
         assert_eq!(written, &[0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x34, 0x12]);
+    }
+
+    #[test]
+    fn pack_byte_array() {
+        let mut buf = [0u8; 32];
+
+        let data = [0xaau8; 4];
+
+        assert_eq!(data.packed_len(), 4);
+
+        let written = data.pack_to_slice_unchecked(&mut buf);
+
+        assert_eq!(written, &[0xaa, 0xaa, 0xaa, 0xaa]);
+    }
+
+    #[test]
+    fn unpack_byte_array() {
+        let data = &[0xaau8, 0xaa, 0xaa, 0xaa];
+
+        let unpacked = <[u8; 4]>::unpack_from_slice(data).unwrap();
+
+        assert_eq!(unpacked, [0xaau8, 0xaa, 0xaa, 0xaa]);
+    }
+
+    #[test]
+    fn pack_empty_byte_array() {
+        let mut buf = [0u8; 32];
+
+        let data = [0xaau8; 0];
+
+        assert_eq!(data.packed_len(), 0);
+
+        let written = data.pack_to_slice_unchecked(&mut buf);
+
+        assert_eq!(written, &[]);
     }
 }

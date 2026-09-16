@@ -15,6 +15,8 @@ Primarily used by `ethercrab`.
 
 - [#230](https://github.com/ethercrab-rs/ethercrab/pull/230) **(breaking)** Increase MSRV from 1.77
   to 1.79.
+- [#360](https://github.com/ethercrab-rs/ethercrab/pull/360) Support types other than `u8` in
+  `[T; N]`.
 
 ## [0.2.0] - 2024-07-28
 

@@ -316,7 +316,11 @@ mod tests {
         let mut frame = pdu_loop.alloc_frame().expect("Allocate first frame");
 
         frame
-            .push_pdu(Command::bwr(0x1000).into(), [0xaa, 0xbb, 0xcc, 0xdd], None)
+            .push_pdu(
+                Command::bwr(0x1000).into(),
+                [0xaau8, 0xbb, 0xcc, 0xdd],
+                None,
+            )
             .unwrap();
 
         // Drop frame future to reset its state to `FrameState::None`
