@@ -509,6 +509,11 @@ mod tests {
         make_ports(true, true, true, false)
     }
 
+    // AX58101 with all 4 ports open (Cross/Junction)
+    fn ports_cross() -> Ports {
+        make_ports(true, true, true, true)
+    }
+
     // Last SubDevice in the network
     fn ports_eol() -> Ports {
         make_ports(true, false, false, false)
@@ -1013,5 +1018,103 @@ mod tests {
         ];
 
         assert_eq!(assign_parent_relationships(&mut subdevices), Ok(()));
+    }
+
+    /// Test cascaded Junction (Cross) topology where the nearest upstream Junction
+    /// has all its non-entry ports consumed by other branches.
+    ///
+    /// Topology:
+    /// ```text
+    /// Master
+    ///  │
+    ///  └─ 0x1000  Cross (Junction Main)
+    ///        ├─ port3 → 0x1001 Cross (Junction Sub)
+    ///        │            ├─ port3 → 0x1002 LineEnd (Branch A)
+    ///        │            ├─ port1 → 0x1003 LineEnd (Branch B)
+    ///        │            └─ port2 → 0x1004 LineEnd (Branch C)
+    ///        ├─ port1 → 0x1005 LineEnd (Branch D)
+    ///        └─ port2 → 0x1006 LineEnd (Branch E)
+    /// ```
+    ///
+    /// When processing Branch D (0x1005), `find_subdevice_parent` sees 0x1004 is a
+    /// LineEnd and traverses backwards to find the nearest Junction (0x1001). However,
+    /// 0x1001 has all 3 non-entry ports already assigned to Branches A/B/C, so
+    /// `assign_next_downstream_port` returns `None`, causing an `Error::Topology`.
+    ///
+    /// This test should PASS before the fix (expected panic) and FAIL after the fix
+    /// (because `assign_next_downstream_port` no longer returns `None`).
+    #[test]
+    #[should_panic(expected = "no free ports on parent")]
+    fn cascaded_junction_topology() {
+        crate::test_logger();
+
+        let defaults = SubDevice {
+            configured_address: 0x999,
+            name: "CHANGEME".try_into().unwrap(),
+            ports: Ports::default(),
+            dc_receive_time: 0,
+            index: 0,
+            dc_support: DcSupport::None,
+            ..SubDevice::default()
+        };
+
+        let mut subdevices = [
+            SubDevice {
+                index: 0,
+                configured_address: 0x1000,
+                name: "Junction_Main".try_into().unwrap(),
+                ports: ports_cross(),
+                ..defaults.clone()
+            },
+            SubDevice {
+                index: 1,
+                configured_address: 0x1001,
+                name: "Junction_Sub".try_into().unwrap(),
+                ports: ports_cross(),
+                ..defaults.clone()
+            },
+            // Branch A (attached to 0x1001 port3)
+            SubDevice {
+                index: 2,
+                configured_address: 0x1002,
+                name: "Branch_A_EOL".try_into().unwrap(),
+                ports: ports_eol(),
+                ..defaults.clone()
+            },
+            // Branch B (attached to 0x1001 port1)
+            SubDevice {
+                index: 3,
+                configured_address: 0x1003,
+                name: "Branch_B_EOL".try_into().unwrap(),
+                ports: ports_eol(),
+                ..defaults.clone()
+            },
+            // Branch C (attached to 0x1001 port2) — 0x1001 now has no free ports
+            SubDevice {
+                index: 4,
+                configured_address: 0x1004,
+                name: "Branch_C_EOL".try_into().unwrap(),
+                ports: ports_eol(),
+                ..defaults.clone()
+            },
+            // Branch D — should be attached to 0x1000, not 0x1001 (which is full)
+            SubDevice {
+                index: 5,
+                configured_address: 0x1005,
+                name: "Branch_D_EOL".try_into().unwrap(),
+                ports: ports_eol(),
+                ..defaults.clone()
+            },
+            // Branch E — should be attached to 0x1000
+            SubDevice {
+                index: 6,
+                configured_address: 0x1006,
+                name: "Branch_E_EOL".try_into().unwrap(),
+                ports: ports_eol(),
+                ..defaults.clone()
+            },
+        ];
+
+        let _result = assign_parent_relationships(&mut subdevices);
     }
 }
