@@ -147,6 +147,15 @@ impl Ports {
         self.active_ports().last()
     }
 
+    /// Check whether this device has at least one downstream port available
+    /// (i.e. an active port that is not the entry port and not already assigned
+    /// to a downstream SubDevice).
+    pub(crate) fn has_available_downstream_port(&self) -> bool {
+        let entry_port = self.entry_port();
+        self.active_ports()
+            .any(|port| port.number != entry_port.number && port.downstream_to.is_none())
+    }
+
     /// Find the next port that hasn't already been assigned as the upstream port of another
     /// SubDevice.
     fn next_assignable_port(&mut self, this_port: &Port) -> Option<&mut Port> {

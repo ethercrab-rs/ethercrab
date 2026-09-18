@@ -162,8 +162,16 @@ fn find_subdevice_parent(
         // `LineEnd`. This means we traverse backwards until we find a `Fork` (the EK1100) and use
         // that as the parent.
         if parent.ports.topology() == Topology::LineEnd {
+            // When traversing backwards through LineEnd devices, the split point should be the
+            // nearest upstream junction that still has at least one available downstream port.
+            // In cascaded junction scenarios (e.g. Fork → Fork → LineEnd → ...), the nearest
+            // junction may have all its non-entry ports already assigned to other branches.
+            // In that case we must continue upstream until we find a junction with free capacity.
             let split_point = parents_it
-                .find(|subdevice| subdevice.ports.topology().is_junction())
+                .find(|subdevice| {
+                    subdevice.ports.topology().is_junction()
+                        && subdevice.ports.has_available_downstream_port()
+                })
                 .ok_or_else(|| {
                     fmt::error!(
                         "Did not find fork parent for SubDevice {:#06x}",
@@ -1036,15 +1044,7 @@ mod tests {
     ///        └─ port2 → 0x1006 LineEnd (Branch E)
     /// ```
     ///
-    /// When processing Branch D (0x1005), `find_subdevice_parent` sees 0x1004 is a
-    /// LineEnd and traverses backwards to find the nearest Junction (0x1001). However,
-    /// 0x1001 has all 3 non-entry ports already assigned to Branches A/B/C, so
-    /// `assign_next_downstream_port` returns `None`, causing an `Error::Topology`.
-    ///
-    /// This test should PASS before the fix (expected panic) and FAIL after the fix
-    /// (because `assign_next_downstream_port` no longer returns `None`).
     #[test]
-    #[should_panic(expected = "no free ports on parent")]
     fn cascaded_junction_topology() {
         crate::test_logger();
 
@@ -1115,6 +1115,26 @@ mod tests {
             },
         ];
 
-        let _result = assign_parent_relationships(&mut subdevices);
+        let result = assign_parent_relationships(&mut subdevices);
+
+        assert_eq!(
+            result,
+            Ok(()),
+            "cascaded junction topology should resolve successfully"
+        );
+
+        // Verify parent assignments
+        // 0x1000 (Junction Main) has no parent
+        assert_eq!(subdevices[0].parent_index, None);
+        // 0x1001 (Junction Sub) parent is 0x1000
+        assert_eq!(subdevices[1].parent_index, Some(0));
+        // 0x1002-0x1004 (Branches A/B/C) parent is 0x1001
+        assert_eq!(subdevices[2].parent_index, Some(1));
+        assert_eq!(subdevices[3].parent_index, Some(1));
+        assert_eq!(subdevices[4].parent_index, Some(1));
+        // 0x1005 (Branch D EOL) parent should be 0x1000 (NOT 0x1001 which is full)
+        assert_eq!(subdevices[5].parent_index, Some(0));
+        // 0x1006 (Branch E EOL) parent should be 0x1000
+        assert_eq!(subdevices[6].parent_index, Some(0));
     }
 }
