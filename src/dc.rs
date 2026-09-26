@@ -190,10 +190,10 @@ fn find_subdevice_parent(
 }
 
 fn debug_print_ports(subdevice: &SubDevice) {
-    let time_p0 = subdevice.ports.0[0].dc_receive_time;
-    let time_p3 = subdevice.ports.0[1].dc_receive_time;
-    let time_p1 = subdevice.ports.0[2].dc_receive_time;
-    let time_p2 = subdevice.ports.0[3].dc_receive_time;
+    let time_p0 = subdevice.ports.ports[0].dc_receive_time;
+    let time_p3 = subdevice.ports.ports[1].dc_receive_time;
+    let time_p1 = subdevice.ports.ports[2].dc_receive_time;
+    let time_p2 = subdevice.ports.ports[3].dc_receive_time;
     // Deltas between port receive times
     let d03 = time_p3.saturating_sub(time_p0);
     let d31 = time_p1.saturating_sub(time_p3);
@@ -208,13 +208,25 @@ fn debug_print_ports(subdevice: &SubDevice) {
     fmt::debug!(
         "--> Receive times {} ns ({} ns) {} ({} ns) {} ({} ns) {} (total {})",
         time_p0,
-        if subdevice.ports.0[1].active { d03 } else { 0 },
+        if subdevice.ports.ports[1].active {
+            d03
+        } else {
+            0
+        },
         // d03,
         time_p3,
-        if subdevice.ports.0[2].active { d31 } else { 0 },
+        if subdevice.ports.ports[2].active {
+            d31
+        } else {
+            0
+        },
         // d31,
         time_p1,
-        if subdevice.ports.0[3].active { d12 } else { 0 },
+        if subdevice.ports.ports[3].active {
+            d12
+        } else {
+            0
+        },
         // d12,
         time_p2,
         subdevice.ports.total_propagation_time().unwrap_or(0)
@@ -354,7 +366,7 @@ fn assign_parent_relationships(subdevices: &mut [SubDevice]) -> Result<(), Error
     #[cfg(feature = "std")]
     if option_env!("PRINT_TEST_CASE").is_some() {
         for subdevice in subdevices.iter() {
-            let p = subdevice.ports.0;
+            let p = subdevice.ports.ports;
 
             let ports = format!(
                 "{}, {}, {}, {}, {}, {}, {}, {}",
@@ -398,7 +410,7 @@ fn assign_parent_relationships(subdevices: &mut [SubDevice]) -> Result<(), Error
             print!("(");
 
             print!("[");
-            for p in subdevice.ports.0 {
+            for p in subdevice.ports.ports {
                 print!("{:?}, ", p.downstream_to);
             }
             print!("],");
@@ -666,32 +678,34 @@ mod tests {
     #[test]
     fn p0_p1_times_only() {
         // From EC400 in test rig
-        let ports = Ports([
-            Port {
-                active: true,
-                dc_receive_time: 641524306,
-                number: 0,
-                downstream_to: None,
-            },
-            Port {
-                active: false,
-                dc_receive_time: 1413563250,
-                number: 1,
-                downstream_to: None,
-            },
-            Port {
-                active: false,
-                dc_receive_time: 0,
-                number: 2,
-                downstream_to: None,
-            },
-            Port {
-                active: false,
-                dc_receive_time: 0,
-                number: 3,
-                downstream_to: None,
-            },
-        ]);
+        let ports = Ports {
+            ports: [
+                Port {
+                    active: true,
+                    dc_receive_time: 641524306,
+                    number: 0,
+                    downstream_to: None,
+                },
+                Port {
+                    active: false,
+                    dc_receive_time: 1413563250,
+                    number: 1,
+                    downstream_to: None,
+                },
+                Port {
+                    active: false,
+                    dc_receive_time: 0,
+                    number: 2,
+                    downstream_to: None,
+                },
+                Port {
+                    active: false,
+                    dc_receive_time: 0,
+                    number: 3,
+                    downstream_to: None,
+                },
+            ],
+        };
 
         assert_eq!(ports.topology(), Topology::LineEnd);
 

@@ -47,13 +47,16 @@ impl Topology {
 
 #[derive(Default, Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct Ports(pub [Port; 4]);
+#[non_exhaustive]
+pub struct Ports {
+    pub ports: [Port; 4],
+}
 
 impl core::fmt::Display for Ports {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str("ports [ ")?;
 
-        for p in self.0 {
+        for p in self.ports {
             if p.active {
                 f.write_str("open ")?;
             } else {
@@ -69,28 +72,30 @@ impl core::fmt::Display for Ports {
 
 impl Ports {
     pub(crate) fn new(active0: bool, active3: bool, active1: bool, active2: bool) -> Self {
-        Self([
-            Port {
-                active: active0,
-                number: 0,
-                ..Port::default()
-            },
-            Port {
-                active: active3,
-                number: 3,
-                ..Port::default()
-            },
-            Port {
-                active: active1,
-                number: 1,
-                ..Port::default()
-            },
-            Port {
-                active: active2,
-                number: 2,
-                ..Port::default()
-            },
-        ])
+        Self {
+            ports: [
+                Port {
+                    active: active0,
+                    number: 0,
+                    ..Port::default()
+                },
+                Port {
+                    active: active3,
+                    number: 3,
+                    ..Port::default()
+                },
+                Port {
+                    active: active1,
+                    number: 1,
+                    ..Port::default()
+                },
+                Port {
+                    active: active2,
+                    number: 2,
+                    ..Port::default()
+                },
+            ],
+        }
     }
 
     /// Set port DC receive times, given in EtherCAT port order 0 -> 3 -> 1 -> 2
@@ -102,10 +107,10 @@ impl Ports {
         time_p2: u32,
     ) {
         // NOTE: indexes vs EtherCAT port order
-        self.0[0].dc_receive_time = time_p0;
-        self.0[1].dc_receive_time = time_p3;
-        self.0[2].dc_receive_time = time_p1;
-        self.0[3].dc_receive_time = time_p2;
+        self.ports[0].dc_receive_time = time_p0;
+        self.ports[1].dc_receive_time = time_p3;
+        self.ports[2].dc_receive_time = time_p1;
+        self.ports[3].dc_receive_time = time_p2;
     }
 
     /// TEST ONLY: Set downstream ports.
@@ -117,10 +122,10 @@ impl Ports {
         d1: Option<u16>,
         d2: Option<u16>,
     ) -> Self {
-        self.0[0].downstream_to = d0.map(|idx| NonZeroU16::new(idx).unwrap());
-        self.0[1].downstream_to = d3.map(|idx| NonZeroU16::new(idx).unwrap());
-        self.0[2].downstream_to = d1.map(|idx| NonZeroU16::new(idx).unwrap());
-        self.0[3].downstream_to = d2.map(|idx| NonZeroU16::new(idx).unwrap());
+        self.ports[0].downstream_to = d0.map(|idx| NonZeroU16::new(idx).unwrap());
+        self.ports[1].downstream_to = d3.map(|idx| NonZeroU16::new(idx).unwrap());
+        self.ports[2].downstream_to = d1.map(|idx| NonZeroU16::new(idx).unwrap());
+        self.ports[3].downstream_to = d2.map(|idx| NonZeroU16::new(idx).unwrap());
 
         *self
     }
@@ -130,7 +135,7 @@ impl Ports {
     }
 
     fn active_ports(&self) -> impl Iterator<Item = &Port> + Clone {
-        self.0.iter().filter(|port| port.active)
+        self.ports.iter().filter(|port| port.active)
     }
 
     /// The port of the SubDevice that first sees EtherCAT traffic.
@@ -161,7 +166,7 @@ impl Ports {
             .find(|next_port| next_port.downstream_to.is_none())?
             .index();
 
-        self.0.get_mut(next_port_index)
+        self.ports.get_mut(next_port_index)
     }
 
     /// Link a downstream device to the current device using the next open port from the entry port.
@@ -202,7 +207,7 @@ impl Ports {
     #[deny(clippy::arithmetic_side_effects)]
     pub fn total_propagation_time(&self) -> Option<u32> {
         let times = self
-            .0
+            .ports
             .iter()
             .filter_map(|port| port.active.then_some(port.dc_receive_time));
 
@@ -218,7 +223,7 @@ impl Ports {
     pub fn intermediate_propagation_time_to(&self, port: &Port) -> u32 {
         // If a pair of ports is open, they have a propagation delta between them, and we can sum
         // these deltas up to get the child delays of this SubDevice (fork or cross have children)
-        self.0
+        self.ports
             .windows(2)
             .map(|window| {
                 // Silly Rust
@@ -267,10 +272,10 @@ pub mod tests {
     pub(crate) fn make_ports(active0: bool, active3: bool, active1: bool, active2: bool) -> Ports {
         let mut ports = Ports::new(active0, active3, active1, active2);
 
-        ports.0[0].dc_receive_time = ENTRY_RECEIVE;
-        ports.0[1].dc_receive_time = ENTRY_RECEIVE + 100;
-        ports.0[2].dc_receive_time = ENTRY_RECEIVE + 200;
-        ports.0[3].dc_receive_time = ENTRY_RECEIVE + 300;
+        ports.ports[0].dc_receive_time = ENTRY_RECEIVE;
+        ports.ports[1].dc_receive_time = ENTRY_RECEIVE + 100;
+        ports.ports[2].dc_receive_time = ENTRY_RECEIVE + 200;
+        ports.ports[3].dc_receive_time = ENTRY_RECEIVE + 300;
 
         ports
     }
@@ -366,33 +371,35 @@ pub mod tests {
 
         pretty_assertions::assert_eq!(
             ports,
-            Ports([
-                // Entry port
-                Port {
-                    active: true,
-                    dc_receive_time: ENTRY_RECEIVE,
-                    number: 0,
-                    downstream_to: None,
-                },
-                Port {
-                    active: true,
-                    dc_receive_time: ENTRY_RECEIVE + 100,
-                    number: 3,
-                    downstream_to: Some(NonZeroU16::new(1).unwrap()),
-                },
-                Port {
-                    active: true,
-                    dc_receive_time: ENTRY_RECEIVE + 200,
-                    number: 1,
-                    downstream_to: Some(NonZeroU16::new(2).unwrap()),
-                },
-                Port {
-                    active: false,
-                    dc_receive_time: ENTRY_RECEIVE + 300,
-                    number: 2,
-                    downstream_to: None,
-                }
-            ])
+            Ports {
+                ports: [
+                    // Entry port
+                    Port {
+                        active: true,
+                        dc_receive_time: ENTRY_RECEIVE,
+                        number: 0,
+                        downstream_to: None,
+                    },
+                    Port {
+                        active: true,
+                        dc_receive_time: ENTRY_RECEIVE + 100,
+                        number: 3,
+                        downstream_to: Some(NonZeroU16::new(1).unwrap()),
+                    },
+                    Port {
+                        active: true,
+                        dc_receive_time: ENTRY_RECEIVE + 200,
+                        number: 1,
+                        downstream_to: Some(NonZeroU16::new(2).unwrap()),
+                    },
+                    Port {
+                        active: false,
+                        dc_receive_time: ENTRY_RECEIVE + 300,
+                        number: 2,
+                        downstream_to: None,
+                    }
+                ]
+            }
         )
     }
 
@@ -413,7 +420,7 @@ pub mod tests {
         // Cross topology
         let ports = make_ports(true, true, true, true);
 
-        let up_to = &ports.0[2];
+        let up_to = &ports.ports[2];
 
         assert_eq!(ports.propagation_time_to(up_to), Some(200));
     }
@@ -427,7 +434,7 @@ pub mod tests {
         ports.set_receive_times(3699944655, 3699945995, 3699947075, 3699947365);
 
         // Device connected to EtherCAT port number 3 (second index)
-        let up_to = &ports.0[1];
+        let up_to = &ports.ports[1];
 
         assert_eq!(ports.propagation_time_to(up_to), Some(1340));
     }
@@ -441,7 +448,7 @@ pub mod tests {
         ports.set_receive_times(3699944655, 3699945995, 3699947075, 3699947365);
 
         // Device connected to EtherCAT port number 3 (second index)
-        let up_to = &ports.0[2];
+        let up_to = &ports.ports[2];
 
         assert_eq!(ports.propagation_time_to(up_to), Some(1340 + 1080));
     }
