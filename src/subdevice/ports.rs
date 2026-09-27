@@ -206,16 +206,7 @@ impl Ports {
     /// The time in nanoseconds for a packet to completely traverse all active ports of a SubDevice.
     #[deny(clippy::arithmetic_side_effects)]
     pub fn total_propagation_time(&self) -> Option<u32> {
-        let times = self
-            .ports
-            .iter()
-            .filter_map(|port| port.active.then_some(port.dc_receive_time));
-
-        times
-            .clone()
-            .max()
-            .and_then(|max| times.min().map(|min| max.saturating_sub(min)))
-            .filter(|t| *t > 0)
+        sum_deltas(self.active_ports())
     }
 
     /// Propagation time between active ports in this SubDevice.
@@ -236,7 +227,9 @@ impl Ports {
 
                 // Both ports must be active to have a delta
                 if a.active && b.active {
-                    b.dc_receive_time.saturating_sub(a.dc_receive_time)
+                    // b.dc_receive_time.saturating_sub(a.dc_receive_time)
+
+                    delta(a.dc_receive_time, b.dc_receive_time)
                 } else {
                     0
                 }
@@ -252,14 +245,37 @@ impl Ports {
         // Find active ports between entry and this one
         let times = self
             .active_ports()
-            .filter(|port| port.index() >= entry_port.index() && port.index() <= this_port.index())
-            .map(|port| port.dc_receive_time);
+            .filter(|port| port.index() >= entry_port.index() && port.index() <= this_port.index());
 
-        times
-            .clone()
-            .max()
-            .and_then(|max| times.min().map(|min| max.saturating_sub(min)))
-            .filter(|t| *t > 0)
+        sum_deltas(times)
+    }
+}
+
+fn sum_deltas<'it>(mut times: impl Iterator<Item = &'it Port> + Clone) -> Option<u32> {
+    let mut prev = times.next()?;
+
+    let sum = times.fold(0, |acc, current| {
+        let out = delta(prev.dc_receive_time, current.dc_receive_time);
+
+        prev = current;
+
+        acc + out
+    });
+
+    Some(sum)
+
+    // times
+    //     .clone()
+    //     .max()
+    //     .and_then(|max| times.min().map(|min| max.saturating_sub(min)))
+    //     .filter(|t| *t > 0)
+}
+
+fn delta(a: u32, b: u32) -> u32 {
+    if a > b {
+        (u32::MAX - a).wrapping_add(b)
+    } else {
+        b - a
     }
 }
 
@@ -451,5 +467,23 @@ pub mod tests {
         let up_to = &ports.ports[2];
 
         assert_eq!(ports.propagation_time_to(up_to), Some(1340 + 1080));
+    }
+
+    #[test]
+    fn gh_374_propagation_time_overflow() {
+        let mut ports = make_ports(true, true, true, false);
+
+        // DC counter overflows while frame is round-tripping subsequent SubDevices
+        ports.set_receive_times(u32::MAX - 1000, 134, 250, 0);
+
+        let expected_total_propagation_time = 1000u32 + 134 + 250;
+
+        dbg!(
+            &ports,
+            expected_total_propagation_time,
+            ports.intermediate_propagation_time_to(&ports.last_port().unwrap()),
+            ports.propagation_time_to(&ports.last_port().unwrap()),
+            ports.total_propagation_time()
+        );
     }
 }
