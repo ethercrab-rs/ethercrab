@@ -14,6 +14,7 @@ use crate::{
     error::Error,
     fmt,
     pdu_loop::{PduRx, PduTx},
+    std::TxRxTaskConfig,
 };
 use async_io::Async;
 use core::{future::Future, pin::Pin, task::Poll};
@@ -119,6 +120,7 @@ pub fn tx_rx_task<'sto>(
     interface: &str,
     pdu_tx: PduTx<'sto>,
     #[allow(unused_mut)] mut pdu_rx: PduRx<'sto>,
+    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] config: TxRxTaskConfig,
 ) -> Result<impl Future<Output = Result<(PduTx<'sto>, PduRx<'sto>), Error>> + 'sto, std::io::Error>
 {
     let mut socket = RawSocketDesc::new(interface)?;
@@ -131,6 +133,9 @@ pub fn tx_rx_task<'sto>(
 
         pdu_rx.set_source_mac(mac);
     }
+
+    #[cfg(target_os = "linux")]
+    pdu_rx.set_accept_own_source_mac(config.accept_own_source_mac);
 
     let mtu = socket.interface_mtu()?;
 

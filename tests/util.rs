@@ -1,6 +1,10 @@
 //! Utilities to replay Wireshark captures as part of regression/integration tests.
 
-use ethercrab::{PduRx, PduTx, ReceiveAction, error::Error, std::tx_rx_task};
+use ethercrab::{
+    PduRx, PduTx, ReceiveAction,
+    error::Error,
+    std::{TxRxTaskConfig, tx_rx_task},
+};
 use pcap_file::pcapng::{Block, PcapNgReader};
 use smoltcp::wire::EthernetFrame;
 use std::{
@@ -23,7 +27,9 @@ pub fn spawn_tx_rx(capture_file_path: &str, tx: PduTx<'static>, rx: PduRx<'stati
     if let Ok(interface) = interface {
         log::info!("Running using real hardware on interface {}", interface);
 
-        tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
+        tokio::spawn(
+            tx_rx_task(&interface, tx, rx, TxRxTaskConfig::default()).expect("spawn TX/RX task"),
+        );
     }
     // Otherwise, use mocked TX/RX task
     else {

@@ -90,8 +90,14 @@ fn main() -> Result<(), Error> {
                 .then_some(())
                 .expect("Set TX/RX thread core");
 
-            tx_rx_task_xdp(&interface, tx, rx).expect("TX/RX task");
-            // ethercrab::std::tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
+            tx_rx_task_xdp(
+                &interface,
+                tx,
+                rx,
+                ethercrab::std::TxRxTaskConfig::default(),
+            )
+            .expect("TX/RX task");
+            // ethercrab::std::tx_rx_task_io_uring(&interface, tx, rx, Default::default()).expect("TX/RX task");
         })
         .unwrap();
 
