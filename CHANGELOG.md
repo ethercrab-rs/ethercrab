@@ -6,6 +6,16 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add `TxRxTaskConfig::accept_own_source_mac` (Linux only) to accept frames with an unchanged
+  source MAC address.
+
+### Changed
+
+- **(breaking)** `tx_rx_task`, `tx_rx_task_io_uring` and `tx_rx_task_xdp` now take a
+  `TxRxTaskConfig`.
+
 ## [0.7.1] - 2026-03-23
 
 ### Fixed

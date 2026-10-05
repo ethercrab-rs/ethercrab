@@ -122,8 +122,16 @@ async fn main() -> Result<(), ethercrab::error::Error> {
                 .then_some(())
                 .expect("Set TX/RX thread core");
 
-            tx_rx_task_blocking(&interface, tx, rx, TxRxTaskConfig { spinloop: false })
-                .expect("TX/RX task");
+            tx_rx_task_blocking(
+                &interface,
+                tx,
+                rx,
+                TxRxTaskConfig {
+                    spinloop: false,
+                    ..Default::default()
+                },
+            )
+            .expect("TX/RX task");
         })
         .expect("spawn TX/RX thread");
 

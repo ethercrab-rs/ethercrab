@@ -70,7 +70,10 @@ fn main() -> Result<(), Error> {
                 &interface,
                 tx,
                 rx,
-                ethercrab::std::TxRxTaskConfig { spinloop: false },
+                ethercrab::std::TxRxTaskConfig {
+                    spinloop: false,
+                    ..Default::default()
+                },
             )
             .expect("TX/RX task")
         });
@@ -78,8 +81,16 @@ fn main() -> Result<(), Error> {
         // separate thread is used but this is good enough for an example. If using `tokio`, make sure
         // the `rt-multi-thread` feature is enabled.
         #[cfg(not(target_os = "windows"))]
-        smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
-            .detach();
+        smol::spawn(
+            ethercrab::std::tx_rx_task(
+                &interface,
+                tx,
+                rx,
+                ethercrab::std::TxRxTaskConfig::default(),
+            )
+            .expect("spawn TX/RX task"),
+        )
+        .detach();
 
         let maindevice = Arc::new(maindevice);
 

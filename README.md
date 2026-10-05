@@ -45,7 +45,7 @@ $env:RUST_LOG="debug" ; cargo run --example ek1100 --release -- '\Device\NPF_{FF
 ```rust
 use env_logger::Env;
 use ethercrab::{
-    error::Error, std::{ethercat_now, tx_rx_task}, MainDevice, MainDeviceConfig, PduStorage, Timeouts
+    error::Error, std::{TxRxTaskConfig, ethercat_now, tx_rx_task}, MainDevice, MainDeviceConfig, PduStorage, Timeouts
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::MissedTickBehavior;
@@ -85,7 +85,7 @@ async fn main() -> Result<(), Error> {
         MainDeviceConfig::default(),
     ));
 
-    tokio::spawn(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
+    tokio::spawn(tx_rx_task(&interface, tx, rx, TxRxTaskConfig::default()).expect("spawn TX/RX task"));
 
     let mut group = maindevice
         .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)

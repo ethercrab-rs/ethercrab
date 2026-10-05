@@ -47,8 +47,15 @@ fn main() -> Result<(), Error> {
         let maindevice =
             MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 
-        let tx_rx_handle =
-            smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
+        let tx_rx_handle = smol::spawn(
+            ethercrab::std::tx_rx_task(
+                &interface,
+                tx,
+                rx,
+                ethercrab::std::TxRxTaskConfig::default(),
+            )
+            .expect("spawn TX/RX task"),
+        );
 
         process_loop(&maindevice).await;
 
@@ -88,8 +95,15 @@ fn main() -> Result<(), Error> {
         );
 
         // Now spawn a new TX/RX task. You could use a different network interface here, for example.
-        let tx_rx_handle =
-            smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"));
+        let tx_rx_handle = smol::spawn(
+            ethercrab::std::tx_rx_task(
+                &interface,
+                tx,
+                rx,
+                ethercrab::std::TxRxTaskConfig::default(),
+            )
+            .expect("spawn TX/RX task"),
+        );
 
         let maindevice =
             MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
@@ -116,7 +130,14 @@ fn main() -> Result<(), Error> {
             log::info!("Linux only: reuse TX/RX with io_uring");
 
             // NOTE: This is a suboptimal TX/RX thread spawn. See the `io-uring` example for how to do it properly.
-            let tx_rx_handle = std::thread::spawn(move || tx_rx_task_io_uring(&interface, tx, rx));
+            let tx_rx_handle = std::thread::spawn(move || {
+                tx_rx_task_io_uring(
+                    &interface,
+                    tx,
+                    rx,
+                    ethercrab::std::TxRxTaskConfig::default(),
+                )
+            });
 
             let maindevice =
                 MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
