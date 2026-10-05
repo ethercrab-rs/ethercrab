@@ -1,6 +1,6 @@
 use crate::{
-    PduRx, PduTx, error::Error, fmt, pdu_loop::ReceiveAction, std::park_signal::ParkSignal,
-    std::unix::RawSocketDesc,
+    PduRx, PduTx, error::Error, fmt, pdu_loop::ReceiveAction, std::TxRxTaskConfig,
+    std::park_signal::ParkSignal, std::unix::RawSocketDesc,
 };
 use core::{num::NonZeroU32, str::FromStr, task::Waker};
 use std::{
@@ -41,7 +41,10 @@ pub fn tx_rx_task_xdp<'sto>(
     interface: &str,
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
+    config: TxRxTaskConfig,
 ) -> Result<(), io::Error> {
+    pdu_rx.set_accept_own_source_mac(config.accept_own_source_mac);
+
     let mut socket = RawSocketDesc::new(interface)?;
 
     let mtu = socket.interface_mtu()?;
@@ -61,13 +64,13 @@ pub fn tx_rx_task_xdp<'sto>(
     let signal = Arc::new(ParkSignal::new());
     let waker = Waker::from(Arc::clone(&signal));
 
-    let config = SocketConfig::builder()
+    let socket_config = SocketConfig::builder()
         .bind_flags(BindFlags::XDP_USE_NEED_WAKEUP)
         .build();
 
     let mut xsk = build_socket_and_umem(
         UmemConfig::default(),
-        config,
+        socket_config,
         frame_count,
         &Interface::from_str(interface)?,
         0,

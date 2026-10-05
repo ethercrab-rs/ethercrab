@@ -15,7 +15,7 @@ async fn main() -> Result<(), ethercrab::error::Error> {
     use ethercrab::{
         MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts,
         error::Error,
-        std::{ethercat_now, tx_rx_task},
+        std::{TxRxTaskConfig, ethercat_now, tx_rx_task},
     };
     use smol::LocalExecutor;
     use std::{
@@ -91,7 +91,10 @@ async fn main() -> Result<(), ethercrab::error::Error> {
             let ex = LocalExecutor::new();
 
             futures_lite::future::block_on(
-                ex.run(tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")),
+                ex.run(
+                    tx_rx_task(&interface, tx, rx, TxRxTaskConfig::default())
+                        .expect("spawn TX/RX task"),
+                ),
             )
             .expect("TX/RX task exited");
         })

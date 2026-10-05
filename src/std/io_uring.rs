@@ -1,5 +1,6 @@
 use crate::{
-    PduRx, PduTx, error::Error, fmt, std::park_signal::ParkSignal, std::unix::RawSocketDesc,
+    PduRx, PduTx, error::Error, fmt, std::TxRxTaskConfig, std::park_signal::ParkSignal,
+    std::unix::RawSocketDesc,
 };
 use core::{mem::MaybeUninit, task::Waker};
 use io_uring::{IoUring, opcode};
@@ -18,7 +19,10 @@ pub fn tx_rx_task_io_uring<'sto>(
     interface: &str,
     mut pdu_tx: PduTx<'sto>,
     mut pdu_rx: PduRx<'sto>,
+    config: TxRxTaskConfig,
 ) -> Result<(PduTx<'sto>, PduRx<'sto>), io::Error> {
+    pdu_rx.set_accept_own_source_mac(config.accept_own_source_mac);
+
     let mut socket = RawSocketDesc::new(interface)?;
 
     let mtu = socket.interface_mtu()?;
