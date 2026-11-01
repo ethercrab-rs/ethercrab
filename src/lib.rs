@@ -226,6 +226,39 @@ pub type DefaultLock = spin::rwlock::RwLock<(), spin::Yield>;
 #[cfg(not(feature = "std"))]
 pub type DefaultLock = spin::rwlock::RwLock<(), spin::Spin>;
 
+/// Convert an SoE IDN address to standard string representation
+pub fn idn_to_str(idn: u16) -> String {
+    let is_standard = 0x8000 & idn == 0;
+    let param_set = (0b0111000000000000 & idn) >> 12;
+    let num = 0x0FFF & idn;
+
+    let letter = if is_standard { "S" } else { "P" };
+
+    format!("{letter}-{param_set}-{num:04}")
+}
+
+/// Macro that takes a SoE IDN, e.g. S-0-0051 and turns it into a 16-bit unsigned int
+#[macro_export]
+macro_rules! idn {
+    (S, $group:expr, $number:expr) => {
+        #[allow(clippy::zero_prefixed_literal)]
+        {
+            const G: u16 = ($group & 0x07) << 12;
+            const N: u16 = $number & 0x0FFF;
+            G | N
+        }
+    };
+    (P, $group:expr, $number:expr) => {
+        #[allow(clippy::zero_prefixed_literal)]
+        {
+            const SET: u16 = 1 << 15;
+            const G: u16 = ($group & 0x07) << 12;
+            const N: u16 = $number & 0x0FFF;
+            SET | G | N
+        }
+    };
+}
+
 #[allow(unused)]
 fn test_logger() {
     #[cfg(all(not(miri), test))]

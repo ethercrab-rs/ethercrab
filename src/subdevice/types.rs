@@ -50,12 +50,33 @@ pub struct SubDeviceConfig {
     pub mailbox: MailboxConfig,
 }
 
+/// What protocol is used to configure PDO FFMUs
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub enum PdoProtocol {
+    #[default]
+    Eeprom,
+    CoE,
+    SoE,
+}
+
+impl From<MailboxProtocols> for PdoProtocol {
+    fn from(value: MailboxProtocols) -> Self {
+        if value.contains(MailboxProtocols::COE) {
+            PdoProtocol::CoE
+        } else if value.contains(MailboxProtocols::SOE) {
+            PdoProtocol::SoE
+        } else {
+            PdoProtocol::Eeprom
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct MailboxConfig {
     pub read: Option<Mailbox>,
     pub write: Option<Mailbox>,
     pub supported_protocols: MailboxProtocols,
-    pub has_coe: bool,
+    pub pdo_protocol: PdoProtocol,
     /// True if Complete Access is supported.
     pub complete_access: bool,
 }

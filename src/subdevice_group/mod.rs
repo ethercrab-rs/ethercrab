@@ -454,7 +454,7 @@ where
             // Cycle time in nanoseconds
             subdevice
                 .write(RegisterAddress::DcSync0CycleTime)
-                .send(maindevice, sync0_period)
+                .send(maindevice, sync0_period as u32)
                 .await?;
 
             let flags = if let DcSync::Sync01 { sync1_period } = subdevice.dc_sync() {
@@ -462,7 +462,7 @@ where
 
                 subdevice
                     .write(RegisterAddress::DcSync1CycleTime)
-                    .send(maindevice, sync1_period)
+                    .send(maindevice, sync1_period as u32)
                     .await?;
 
                 SYNC1_ACTIVATE | SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
@@ -483,7 +483,7 @@ where
             pdi_len: self_.pdi_len,
             inner: self_.inner,
             dc_conf: HasDc {
-                sync0_period: sync0_period,
+                sync0_period,
                 sync0_shift: sync0_shift.as_nanos() as u64,
                 reference,
             },
@@ -710,6 +710,23 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, S, DC>
         }
         .timeout(maindevice.timeouts.state_transition())
         .await
+    }
+
+    /// Transition to a new state without destroying the group.
+    /// Found to be necessary for debugging where one needs to read SDOs or IDNs
+    /// after a state transition fails
+    pub async fn attempt_transition_to(
+        &mut self,
+        maindevice: &MainDevice<'_>,
+        desired_state: SubDeviceState,
+    ) -> Result<(), Error> {
+        for subdevice in self.inner.get_mut().subdevices.iter_mut() {
+            SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
+                .request_subdevice_state_nowait(desired_state)
+                .await?;
+        }
+
+        Ok(())
     }
 
     /// Transition to a new state.

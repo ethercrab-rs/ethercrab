@@ -15,7 +15,7 @@ pub struct PdiOffset {
 impl PdiOffset {
     /// Increment the address accumulator by a given number of bits, aligned to the next byte.
     pub fn increment_byte_aligned(self, bits: u16) -> Self {
-        let inc_bytes = (bits + 7) / 8;
+        let inc_bytes = bits.div_ceil(8);
 
         self.increment_inner(0, inc_bytes)
     }

@@ -17,9 +17,6 @@ use crate::{
         },
     },
     pdu_loop::ReceivedPdu,
-    register::RegisterAddress,
-    subdevice::Mailbox,
-    timer_factory::IntoTimeout,
 };
 use core::ops::Deref;
 use core::{any::type_name, fmt::Debug};
@@ -45,136 +42,6 @@ where
         Self { subdevice }
     }
 
-    /// Get CoE read/write mailboxes, waiting for them to be ready to read/write.
-    async fn wait_for_mailboxes(&self) -> Result<(Mailbox, Mailbox), Error> {
-        let write_mailbox = self
-            .subdevice
-            .config
-            .mailbox
-            .write
-            .ok_or(Error::Mailbox(MailboxError::NoReadMailbox))?;
-        let read_mailbox = self
-            .subdevice
-            .config
-            .mailbox
-            .read
-            .ok_or(Error::Mailbox(MailboxError::NoWriteMailbox))?;
-
-        let mailbox_read_sm_status =
-            RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
-        let mailbox_write_sm_status =
-            RegisterAddress::sync_manager_status(write_mailbox.sync_manager);
-
-        // Ensure SubDevice OUT (master IN) mailbox is empty. We'll retry this multiple times in
-        // case the SubDevice is still busy or bugged or something.
-        for i in 0..10 {
-            let sm_status = self
-                .subdevice
-                .read(mailbox_read_sm_status)
-                .receive::<crate::sync_manager_channel::Status>(self.subdevice.maindevice)
-                .await?;
-
-            // If flag is set, read entire mailbox to clear it
-            if sm_status.mailbox_full {
-                fmt::debug!(
-                    "SubDevice {:#06x} OUT mailbox not empty (status {:?}). Clearing.",
-                    self.subdevice.configured_address(),
-                    sm_status
-                );
-
-                self.subdevice
-                    .read(read_mailbox.address)
-                    .ignore_wkc()
-                    .receive_slice(self.subdevice.maindevice, read_mailbox.len)
-                    .await?;
-            } else {
-                break;
-            }
-
-            // Don't delay on first iteration
-            if i > 0 {
-                self.subdevice.maindevice.timeouts.loop_tick().await;
-            }
-
-            if i > 1 {
-                fmt::debug!("--> Retrying clear");
-            }
-        }
-
-        // Wait for SubDevice IN mailbox to be available to receive data from master
-        async {
-            loop {
-                let sm_status = self
-                    .subdevice
-                    .read(mailbox_write_sm_status)
-                    .receive::<crate::sync_manager_channel::Status>(self.subdevice.maindevice)
-                    .await?;
-
-                if !sm_status.mailbox_full {
-                    break Ok(());
-                }
-
-                self.subdevice.maindevice.timeouts.loop_tick().await;
-            }
-        }
-        .timeout(self.subdevice.maindevice.timeouts.mailbox_echo())
-        .await
-        .inspect_err(|&e| {
-            fmt::error!(
-                "Mailbox IN ready error for SubDevice {:#06x}: {}",
-                self.subdevice.configured_address(),
-                e
-            );
-        })?;
-
-        Ok((read_mailbox, write_mailbox))
-    }
-
-    /// Wait for a mailbox response
-    async fn wait_for_mailbox_response(
-        &self,
-        read_mailbox: &Mailbox,
-    ) -> Result<ReceivedPdu, Error> {
-        let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
-
-        // Wait for SubDevice OUT mailbox to be ready
-        async {
-            loop {
-                let sm_status = self
-                    .subdevice
-                    .read(mailbox_read_sm)
-                    .receive::<crate::sync_manager_channel::Status>(self.subdevice.maindevice)
-                    .await?;
-
-                if sm_status.mailbox_full {
-                    break Ok(());
-                }
-
-                self.subdevice.maindevice.timeouts.loop_tick().await;
-            }
-        }
-        .timeout(self.subdevice.maindevice.timeouts.mailbox_response())
-        .await
-        .inspect_err(|&e| {
-            fmt::error!(
-                "Response mailbox IN error for SubDevice {:#06x}: {}",
-                self.subdevice.configured_address(),
-                e
-            );
-        })?;
-
-        // Read acknowledgement from SubDevice OUT mailbox
-        let response = self
-            .subdevice
-            .read(read_mailbox.address)
-            .receive_slice(self.subdevice.maindevice, read_mailbox.len)
-            .await?;
-
-        // TODO: Retries. Refer to SOEM's `ecx_mbxreceive` for inspiration
-
-        Ok(response)
-    }
-
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
     /// and return as a slice.
     async fn mailbox_write_read<R>(
@@ -184,14 +51,18 @@ where
     where
         R: CoeServiceRequest + Debug,
     {
-        let (read_mailbox, write_mailbox) = self.wait_for_mailboxes().await.inspect_err(|err| {
-            fmt::error!(
-                "{} {} {}",
-                self.subdevice.configured_address(),
-                self.subdevice.name(),
-                err
-            )
-        })?;
+        let (read_mailbox, write_mailbox) =
+            self.subdevice
+                .wait_for_mailboxes()
+                .await
+                .inspect_err(|err| {
+                    fmt::error!(
+                        "{} {} {}",
+                        self.subdevice.configured_address(),
+                        self.subdevice.name(),
+                        err
+                    )
+                })?;
 
         // Send data to SubDevice IN mailbox
         self.subdevice
@@ -200,7 +71,10 @@ where
             .send(self.subdevice.maindevice, &request.pack().as_ref())
             .await?;
 
-        let mut response = self.wait_for_mailbox_response(&read_mailbox).await?;
+        let mut response = self
+            .subdevice
+            .wait_for_mailbox_response(&read_mailbox)
+            .await?;
 
         /// A super generalised version of the various header shapes for responses, extracting only
         /// what we need in this method.
@@ -319,7 +193,7 @@ where
         &self,
         request: coe::services::ObjectDescriptionListRequest,
     ) -> Result<Option<heapless::Vec<u8, { u16::MAX as usize * 2 }>>, Error> {
-        let (read_mailbox, write_mailbox) = match self.wait_for_mailboxes().await {
+        let (read_mailbox, write_mailbox) = match self.subdevice.wait_for_mailboxes().await {
             Ok((read, write)) => Ok((read, write)),
             Err(Error::Mailbox(MailboxError::NoReadMailbox | MailboxError::NoWriteMailbox)) => {
                 return Ok(None);
@@ -342,7 +216,10 @@ where
         // CiA 301 §7.4.1).
         let mut buf = heapless::Vec::<u8, 0x1fffe>::new();
         loop {
-            let mut response = self.wait_for_mailbox_response(&read_mailbox).await?;
+            let mut response = self
+                .subdevice
+                .wait_for_mailbox_response(&read_mailbox)
+                .await?;
             let headers = ObjectDescriptionListResponse::unpack_from_slice(&response)?;
             if headers.sdo_info_header.op_code == SdoInfoOpCode::GetObjectDescriptionListResponse {
                 let length = headers.mailbox.length as usize - COE_HEADER_AND_LIST_TYPE_SIZE;

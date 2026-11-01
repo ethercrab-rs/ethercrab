@@ -1,8 +1,9 @@
 use super::{SubDevice, SubDeviceRef};
+use crate::idn_to_str;
 use crate::{
     SubIndex,
     eeprom::types::{
-        CoeDetails, DefaultMailbox, FmmuUsage, MailboxProtocols, SiiGeneral, SiiOwner, SyncManager,
+        CoeDetails, DefaultMailbox, FmmuUsage, SiiGeneral, SiiOwner, SyncManager,
         SyncManagerEnable, SyncManagerType,
     },
     error::{Error, IgnoreNoCategory, Item},
@@ -11,7 +12,7 @@ use crate::{
     mailbox::coe::SdoExpeditedPayload,
     pdi::{PdiOffset, PdiSegment},
     register::RegisterAddress,
-    subdevice::types::{Mailbox, MailboxConfig},
+    subdevice::types::{Mailbox, MailboxConfig, PdoProtocol},
     subdevice_state::SubDeviceState,
     sync_manager_channel::{Enable, SM_BASE_ADDRESS, Status, SyncManagerChannel},
 };
@@ -84,20 +85,27 @@ where
             });
         }
 
-        let has_coe = self.state.config.mailbox.has_coe;
+        let pdo_protocol = self.state.config.mailbox.pdo_protocol;
 
         fmt::debug!(
-            "SubDevice {:#06x} has CoE: {:?}",
+            "SubDevice {:#06x} has PDO protocol: {:?}",
             self.configured_address,
-            has_coe
+            pdo_protocol
         );
 
-        let range = if has_coe {
-            self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
-                .await?
-        } else {
-            self.configure_pdos_eeprom(&sync_managers, direction, &mut global_offset)
-                .await?
+        let range = match pdo_protocol {
+            PdoProtocol::CoE => {
+                self.configure_pdos_coe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
+                    .await?
+            }
+            PdoProtocol::SoE => {
+                self.configure_pdos_soe(&sync_managers, &fmmu_usage, direction, &mut global_offset)
+                    .await?
+            }
+            PdoProtocol::Eeprom => {
+                self.configure_pdos_eeprom(&sync_managers, direction, &mut global_offset)
+                    .await?
+            }
         };
 
         match direction {
@@ -251,10 +259,11 @@ where
             read: read_mailbox,
             write: write_mailbox,
             supported_protocols: mailbox_config.supported_protocols,
-            has_coe: mailbox_config
-                .supported_protocols
-                .contains(MailboxProtocols::COE)
-                && read_mailbox.is_some_and(|mbox| mbox.len > 0),
+            pdo_protocol: mailbox_config.supported_protocols.into(),
+            // mailbox_config
+            //     .supported_protocols
+            //     .contains(MailboxProtocols::COE)
+            //     && read_mailbox.is_some_and(|mbox| mbox.len > 0),
             complete_access: general
                 .coe_details
                 .contains(CoeDetails::ENABLE_COMPLETE_ACCESS),
@@ -271,7 +280,7 @@ where
         direction: PdoDirection,
         global_offset: &mut PdiOffset,
     ) -> Result<PdiSegment, Error> {
-        if !self.state.config.mailbox.has_coe {
+        if !matches!(self.state.config.mailbox.pdo_protocol, PdoProtocol::CoE) {
             fmt::warn!("Invariant: attempting to configure PDOs from COE with no SOE support");
         }
 
@@ -381,17 +390,17 @@ where
                     pdo_bit_len
                 );
 
-                sm_bit_len += u16::from(pdo_bit_len);
+                sm_bit_len += pdo_bit_len;
             }
 
             fmt::trace!(
                 "----= total SM bit length {} ({} bytes)",
                 sm_bit_len,
-                (sm_bit_len + 7) / 8
+                sm_bit_len.div_ceil(8)
             );
 
             let sm_config = self
-                .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
+                .write_sm_config(sync_manager_index, sync_manager, sm_bit_len.div_ceil(8))
                 .await?;
 
             if sm_bit_len > 0 {
@@ -418,6 +427,147 @@ where
 
         Ok(PdiSegment {
             // bit_len: total_bit_len.into(),
+            bytes: start_offset.up_to(*global_offset),
+        })
+    }
+
+    /// Configure PDOs from SoE IDNs.
+    async fn configure_pdos_soe(
+        &self,
+        sync_managers: &[SyncManager],
+        fmmu_usage: &[FmmuUsage],
+        direction: PdoDirection,
+        global_offset: &mut PdiOffset,
+    ) -> Result<PdiSegment, Error> {
+        if !matches!(self.state.config.mailbox.pdo_protocol, PdoProtocol::SoE) {
+            fmt::warn!("Invariant: attempting to configure PDOs from SoE with no SoE support");
+        }
+
+        let (desired_sm_type, desired_fmmu_type) = direction.filter_terms();
+
+        let start_offset = *global_offset;
+
+        // Figure out how many drives this device has by polling status word until we get an error
+        let mut drive_count = 0;
+
+        fmt::debug!("Counting drives");
+        while drive_count <= 7 {
+            // Try to read status word
+            let result = self.idn_read_data::<u16>(drive_count, 135).await;
+
+            if result.is_err() {
+                fmt::debug!("{} drives", drive_count);
+                break;
+            }
+            drive_count += 1;
+        }
+
+        for (sync_manager_index, sync_manager) in sync_managers.iter().enumerate() {
+            let sync_manager_index = sync_manager_index as u8;
+
+            if sync_manager.usage_type != desired_sm_type {
+                continue;
+            }
+            // if sync_manager.usage_type() != desired_sm_type {
+            //     continue;
+            // }
+
+            let idn_address = match sync_manager.usage_type {
+                SyncManagerType::Unknown => {
+                    log::error!("Trying to configure a non-PDO SM for PDO!");
+                    return Err(Error::Internal);
+                }
+                SyncManagerType::MailboxWrite => {
+                    log::error!("Trying to configure a non-PDO SM for PDO!");
+                    return Err(Error::Internal);
+                }
+                SyncManagerType::MailboxRead => {
+                    log::error!("Trying to configure a non-PDO SM for PDO!");
+                    return Err(Error::Internal);
+                }
+                SyncManagerType::ProcessDataWrite => 24,
+                SyncManagerType::ProcessDataRead => 16,
+            };
+
+            let mut sm_bit_len = 0u16;
+
+            for drive_num in 0..drive_count {
+                let (_, mappings) = self.idn_read_data_list(drive_num, idn_address).await?;
+
+                fmt::debug!(
+                    "--> Drive {}, IDN {} ({} mappings):",
+                    drive_num,
+                    idn_to_str(idn_address),
+                    mappings.len()
+                );
+
+                // Status and control word (both 16 bits) always included by default
+                let mut pdo_bit_len = 16u16;
+
+                for mapping in mappings {
+                    let attributes = self.idn_read_attribute(drive_num, mapping).await?;
+                    let mapping_bit_len = attributes.data_length.bit_len();
+
+                    fmt::debug!(
+                        "----> IDN {}, data length {:?}, bit length {}",
+                        idn_to_str(mapping),
+                        attributes.data_length,
+                        mapping_bit_len,
+                    );
+
+                    pdo_bit_len += mapping_bit_len;
+                }
+
+                // TODO oversampling?
+                // let oversampling = self
+                //     .oversampling_config
+                //     .iter()
+                //     .find_map(|(pdo_id, mul)| if *pdo_id == pdo { Some(*mul) } else { None })
+                //     .unwrap_or(1);
+
+                // let pdo_bit_len = pdo_bit_len * oversampling;
+
+                // fmt::debug!(
+                //     "----> CoE: {:#06x} oversampling: {}, this PDO bit len {}",
+                //     pdo,
+                //     oversampling,
+                //     pdo_bit_len
+                // );
+
+                sm_bit_len += pdo_bit_len;
+            }
+
+            fmt::debug!(
+                "----= total SM bit length {} ({} bytes)",
+                sm_bit_len,
+                sm_bit_len.div_ceil(8)
+            );
+
+            let sm_config = self
+                .write_sm_config(sync_manager_index, sync_manager, sm_bit_len.div_ceil(8))
+                .await?;
+
+            if sm_bit_len > 0 {
+                let fmmu_index = fmmu_usage
+                    .iter()
+                    .position(|usage| *usage == desired_fmmu_type)
+                    .ok_or(Error::NotFound {
+                        item: Item::Fmmu,
+                        index: None,
+                    })?;
+
+                self.write_fmmu_config(
+                    sm_bit_len,
+                    fmmu_index,
+                    global_offset,
+                    desired_sm_type,
+                    &sm_config,
+                )
+                .await?;
+            }
+        }
+
+        Ok(PdiSegment {
             bytes: start_offset.up_to(*global_offset),
         })
     }
@@ -514,7 +664,7 @@ where
         {
             let sync_manager_index = sync_manager_index as u8;
 
-            let bit_len = pdos
+            let bit_len: u16 = pdos
                 .iter()
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
                 .map(|pdo| {
@@ -562,7 +712,7 @@ where
                 });
 
             let sm_config = self
-                .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
+                .write_sm_config(sync_manager_index, sync_manager, bit_len.div_ceil(8))
                 .await?;
 
             self.write_fmmu_config(
