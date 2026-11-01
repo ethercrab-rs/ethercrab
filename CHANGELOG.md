@@ -12,6 +12,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 - [#366](https://github.com/ethercrab-rs/ethercrab/pull/366) Publicly expose `DefaultLock` so crate
   consumers can use it.
+- [#380](https://github.com/ethercrab-rs/ethercrab/pull/380) (@linyihai) Fix topology when nested
+  junctions are present.
 
 ### Changed
 
@@ -625,8 +627,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.1...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.1...HEAD
 [0.7.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.0...ethercrab-v0.7.1
 [0.7.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.6.0...ethercrab-v0.7.0
 [0.6.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.6...ethercrab-v0.6.0
