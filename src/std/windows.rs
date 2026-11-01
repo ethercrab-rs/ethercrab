@@ -5,7 +5,7 @@ use crate::{
     error::Error,
     fmt,
     pdu_loop::{PduRx, PduTx},
-    std::ParkSignal,
+    std::{ParkSignal, TxRxTaskConfig},
 };
 use pnet_datalink::{self, Channel, DataLinkReceiver, DataLinkSender, channel};
 use std::io;
@@ -45,19 +45,6 @@ fn get_tx_rx(
     };
 
     Ok((tx, rx))
-}
-
-/// Windows-specific configuration for [`tx_rx_task_blocking`].
-#[derive(Copy, Clone, Debug, Default)]
-pub struct TxRxTaskConfig {
-    /// If set to `true`, use a spinloop to wait for packet TX or RX instead of putting the thread
-    /// to sleep.
-    ///
-    /// If enabled, this option will peg a CPU core to 100% usage but may improve latency and
-    /// jitter. It is recommended to pin it to a core using
-    /// [`thread_priority`](https://docs.rs/thread-priority/latest/x86_64-pc-windows-msvc/thread_priority/index.html)
-    /// or similar.
-    pub spinloop: bool,
 }
 
 /// Create a blocking task that waits for PDUs to send, and receives PDU responses.

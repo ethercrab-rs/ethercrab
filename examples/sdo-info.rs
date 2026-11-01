@@ -60,13 +60,24 @@ fn main() -> Result<(), Error> {
                 &interface,
                 tx,
                 rx,
-                ethercrab::std::TxRxTaskConfig { spinloop: false },
+                ethercrab::std::TxRxTaskConfig {
+                    spinloop: false,
+                    ..Default::default()
+                },
             )
             .expect("TX/RX task")
         });
         #[cfg(not(target_os = "windows"))]
-        smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task"))
-            .detach();
+        smol::spawn(
+            ethercrab::std::tx_rx_task(
+                &interface,
+                tx,
+                rx,
+                ethercrab::std::TxRxTaskConfig::default(),
+            )
+            .expect("spawn TX/RX task"),
+        )
+        .detach();
 
         let group = maindevice
             .init_single_group::<MAX_SUBDEVICES, PDI_LEN>(ethercat_now)

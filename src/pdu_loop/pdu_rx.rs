@@ -26,6 +26,7 @@ pub enum ReceiveAction {
 pub struct PduRx<'sto> {
     storage: PduStorageRef<'sto>,
     source_mac: EthernetAddress,
+    accept_own_source_mac: bool,
 }
 
 impl<'sto> PduRx<'sto> {
@@ -33,7 +34,14 @@ impl<'sto> PduRx<'sto> {
         Self {
             storage,
             source_mac: MAINDEVICE_ADDR,
+            accept_own_source_mac: false,
         }
+    }
+
+    /// Accept received frames with an unchanged source MAC address.
+    #[cfg(all(target_os = "linux", feature = "std"))]
+    pub(crate) fn set_accept_own_source_mac(&mut self, accept: bool) {
+        self.accept_own_source_mac = accept;
     }
 
     /// Set the source MAC address to the given value.
@@ -60,7 +68,8 @@ impl<'sto> PduRx<'sto> {
         // first SubDevice will set the second bit of the MSB of the MAC address (U/L bit). This means
         // if we send e.g. 10:10:10:10:10:10, we receive 12:10:10:10:10:10 which passes through this
         // filter.
-        if raw_packet.ethertype() != ETHERCAT_ETHERTYPE || raw_packet.src_addr() == self.source_mac
+        if raw_packet.ethertype() != ETHERCAT_ETHERTYPE
+            || (!self.accept_own_source_mac && raw_packet.src_addr() == self.source_mac)
         {
             fmt::trace!("Ignore frame");
 
