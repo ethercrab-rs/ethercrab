@@ -317,6 +317,15 @@ where
                 let pdo = self
                     .sdo_read_expedited::<u16>(sm_address, SubIndex::Index(i))
                     .await?;
+                // When an explicit oversampling/assignment list is set, map ONLY listed PDOs.
+                if !self.oversampling_config.is_empty()
+                    && !self
+                        .oversampling_config
+                        .iter()
+                        .any(|(pdo_id, _)| *pdo_id == pdo)
+                {
+                    continue;
+                }
                 let num_mappings = self
                     .sdo_read_expedited::<u8>(pdo, SubIndex::Index(0))
                     .await?;
@@ -517,6 +526,14 @@ where
             let bit_len = pdos
                 .iter()
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
+                // When an explicit oversampling/assignment list is set, map ONLY listed PDOs.
+                .filter(|pdo| {
+                    self.oversampling_config.is_empty()
+                        || self
+                            .oversampling_config
+                            .iter()
+                            .any(|(pdo_id, _)| *pdo_id == pdo.index)
+                })
                 .map(|pdo| {
                     let oversampling = self
                         .oversampling_config
