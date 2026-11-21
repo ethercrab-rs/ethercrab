@@ -171,6 +171,7 @@ mod ethernet;
 mod fmmu;
 mod generate;
 mod mailbox;
+pub use mailbox::{foe, voe};
 mod maindevice;
 mod maindevice_config;
 mod pdi;

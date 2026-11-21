@@ -1,4 +1,6 @@
 pub mod coe;
+pub mod foe;
+pub mod voe;
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]

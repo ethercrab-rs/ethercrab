@@ -33,6 +33,8 @@ pub enum Error {
     },
     /// A mailbox error was encountered.
     Mailbox(MailboxError),
+    /// A FoE transfer failed with the given FoE error code.
+    Foe(u32),
     /// Failed to send a frame over the network interace.
     SendFrame,
     /// Failed to receive a frame properly.
@@ -122,6 +124,7 @@ impl core::fmt::Display for Error {
                 string_length, max_length
             ),
             Error::Mailbox(e) => write!(f, "mailbox: {e}"),
+            Error::Foe(code) => write!(f, "FoE error {code:#06x}"),
             Error::SendFrame => f.write_str("failed to send EtherCAT frame"),
             Error::ReceiveFrame => f.write_str("failed to receive an EtherCAT frame"),
             Error::PartialSend { len, sent } => {

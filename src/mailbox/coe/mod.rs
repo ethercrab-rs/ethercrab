@@ -31,7 +31,7 @@ pub use abort_code::CoeAbortCode;
 pub use headers::SubIndex;
 
 pub struct Coe<'maindevice, S> {
-    subdevice: &'maindevice SubDeviceRef<'maindevice, S>,
+    pub(crate) subdevice: &'maindevice SubDeviceRef<'maindevice, S>,
 }
 
 impl<'maindevice, S> Coe<'maindevice, S>
@@ -40,6 +40,38 @@ where
 {
     pub fn new(subdevice: &'maindevice SubDeviceRef<'maindevice, S>) -> Self {
         Self { subdevice }
+    }
+
+    /// Send one raw mailbox request without reading a response.
+    pub(crate) async fn mailbox_send_raw(&'maindevice self, request: &[u8]) -> Result<(), Error> {
+        let (_read_mailbox, write_mailbox) = self.subdevice.wait_for_mailboxes().await?;
+        self.subdevice
+            .write(write_mailbox.address)
+            .with_len(write_mailbox.len)
+            .send(self.subdevice.maindevice, request)
+            .await?;
+        Ok(())
+    }
+
+    /// Receive one raw mailbox response.
+    ///
+    /// The returned data starts at the mailbox service header.
+    pub(crate) async fn mailbox_receive_raw(
+        &'maindevice self,
+    ) -> Result<ReceivedPdu<'maindevice>, Error> {
+        let (read_mailbox, _write_mailbox) = self.subdevice.wait_for_mailboxes().await?;
+        self.subdevice.wait_for_mailbox_response(&read_mailbox).await
+    }
+
+    /// Send a raw mailbox request and return the response payload.
+    ///
+    /// The returned data starts at the mailbox service header.
+    pub(crate) async fn mailbox_exchange_raw(
+        &'maindevice self,
+        request: &[u8],
+    ) -> Result<ReceivedPdu<'maindevice>, Error> {
+        self.mailbox_send_raw(request).await?;
+        self.mailbox_receive_raw().await
     }
 
     /// Send a mailbox request, wait for response mailbox to be ready, read response from mailbox
