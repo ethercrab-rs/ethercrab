@@ -59,7 +59,13 @@ where
     pub(crate) async fn mailbox_receive_raw(
         &'maindevice self,
     ) -> Result<ReceivedPdu<'maindevice>, Error> {
-        let (read_mailbox, _write_mailbox) = self.subdevice.wait_for_mailboxes().await?;
+        // Send preflight clears a full outbox, which now holds our response.
+        let read_mailbox = self
+            .subdevice
+            .config
+            .mailbox
+            .read
+            .ok_or(Error::Mailbox(MailboxError::NoReadMailbox))?;
         self.subdevice.wait_for_mailbox_response(&read_mailbox).await
     }
 
