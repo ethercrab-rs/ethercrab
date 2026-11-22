@@ -114,14 +114,14 @@ where
                 .config
                 .mailbox
                 .write
-                .ok_or(Error::Mailbox(MailboxError::NoReadMailbox))?
+                .ok_or(Error::Mailbox(MailboxError::NoWriteMailbox))?
         } else {
             self.coe
                 .subdevice
                 .config
                 .mailbox
                 .read
-                .ok_or(Error::Mailbox(MailboxError::NoWriteMailbox))?
+                .ok_or(Error::Mailbox(MailboxError::NoReadMailbox))?
         };
         let len = usize::from(mailbox.len);
         if len <= FOE_MAILBOX_OVERHEAD {
@@ -137,7 +137,7 @@ where
         value: u32,
         data: &[u8],
         mailbox_len: usize,
-    ) -> Result<&'a [u8], Error> {
+    ) -> Result<&'a mut [u8], Error> {
         let service_len = 6usize
             .checked_add(data.len())
             .ok_or(Error::Capacity(Item::SyncManager))?;
@@ -161,7 +161,7 @@ where
         }
         .encode(&mut frame[6..frame_len])
         .ok_or(Error::Capacity(Item::SyncManager))?;
-        Ok(&frame[..frame_len])
+        Ok(&mut frame[..frame_len])
     }
 
     fn store_reply(bytes: &[u8], reply: &mut [u8]) -> Result<usize, Error> {
@@ -184,6 +184,37 @@ where
         Ok(packet)
     }
 
+    async fn wait_for_ack(
+        &'maindevice self,
+        request: &mut [u8],
+        expected: u32,
+    ) -> Result<(), Error> {
+        const MAX_BUSY_RESPONSES: usize = 10;
+        let mut reply = [0; 2048];
+        self.coe.mailbox_send_raw(request).await?;
+        for busy_count in 0..=MAX_BUSY_RESPONSES {
+            let response = self.coe.mailbox_receive_raw().await?;
+            let len = Self::store_reply(&response, &mut reply)?;
+            let packet = Self::decode(&reply[..len])?;
+            match packet.opcode {
+                Opcode::Ack if packet.value == expected => return Ok(()),
+                Opcode::Busy if busy_count < MAX_BUSY_RESPONSES => {}
+                _ => return Err(Error::Foe(0)),
+            }
+            drop(response);
+            self.coe.subdevice.maindevice.timeouts.loop_tick().await;
+            // WRQ BUSY is followed by an unsolicited ACK(0). DATA BUSY
+            // asks us to resend the same block without advancing the transfer.
+            if expected != 0 {
+                // A new mailbox exchange carries the same FoE packet, but
+                // needs a fresh mailbox counter to avoid duplicate filtering.
+                request[5] = (request[5] & 0x8f) | (self.coe.subdevice.mailbox_counter() << 4);
+                self.coe.mailbox_send_raw(request).await?;
+            }
+        }
+        Err(Error::Foe(0))
+    }
+
     /// Download a FoE file using acknowledged packets.
     pub async fn write_file(
         &'maindevice self,
@@ -197,7 +228,6 @@ where
         let mailbox_len = self.mailbox_len(true)?.min(2048);
         let packet_capacity = mailbox_len - FOE_MAILBOX_OVERHEAD;
         let mut frame = [0; 2048];
-        let mut reply = [0; 2048];
 
         let request = self.build_frame(
             &mut frame,
@@ -206,14 +236,7 @@ where
             filename.as_bytes(),
             mailbox_len,
         )?;
-        let response = self.coe.mailbox_exchange_raw(request).await?;
-        let len = Self::store_reply(&response, &mut reply)?;
-        {
-            let ack = Self::decode(&reply[..len])?;
-            if ack.opcode != Opcode::Ack || ack.value != 0 {
-                return Err(Error::Foe(0));
-            }
-        }
+        self.wait_for_ack(request, 0).await?;
 
         let mut offset = 0;
         let mut packet_number = 1u32;
@@ -227,14 +250,7 @@ where
                 &data[offset..end],
                 mailbox_len,
             )?;
-            let response = self.coe.mailbox_exchange_raw(request).await?;
-            let len = Self::store_reply(&response, &mut reply)?;
-            {
-                let ack = Self::decode(&reply[..len])?;
-                if ack.opcode != Opcode::Ack || ack.value != packet_number {
-                    return Err(Error::Foe(0));
-                }
-            }
+            self.wait_for_ack(request, packet_number).await?;
             offset = end;
             if chunk_len < packet_capacity {
                 return Ok(());
@@ -254,7 +270,7 @@ where
             return Err(Error::Foe(0));
         }
         let mailbox_len = self.mailbox_len(true)?.min(2048);
-        let packet_capacity = mailbox_len - FOE_MAILBOX_OVERHEAD;
+        let packet_capacity = self.mailbox_len(false)? - FOE_MAILBOX_OVERHEAD;
         let mut frame = [0; 2048];
         let mut reply = [0; 2048];
 
@@ -276,10 +292,19 @@ where
                 if packet.opcode != Opcode::Data || packet.value != expected {
                     return Err(Error::Foe(0));
                 }
-                let end = written
+                let Some(end) = written
                     .checked_add(packet.data.len())
                     .filter(|end| *end <= output.len())
-                    .ok_or(Error::Capacity(Item::SyncManager))?;
+                else {
+                    // Release the peer's transfer state; keep the local error
+                    // even if the abort cannot be delivered.
+                    if let Ok(abort) =
+                        self.build_frame(&mut frame, Opcode::Error, 0x8003, &[], mailbox_len)
+                    {
+                        let _ = self.coe.mailbox_send_raw(abort).await;
+                    }
+                    return Err(Error::Capacity(Item::SyncManager));
+                };
                 output[written..end].copy_from_slice(packet.data);
                 written = end;
                 packet.data.len()
