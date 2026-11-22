@@ -2,7 +2,7 @@
 
 use crate::{
     error::{Error, Item, MailboxError},
-    mailbox::{coe::Coe, MailboxHeader, MailboxType, Priority},
+    mailbox::{MailboxHeader, MailboxType, Priority, coe::Coe},
     subdevice::{SubDevice, SubDeviceRef},
 };
 use core::ops::Deref;
@@ -10,7 +10,6 @@ use ethercrab_wire::EtherCrabWireWriteSized;
 
 const VOE_HEADER_LEN: usize = 6;
 const MAILBOX_HEADER_LEN: usize = 6;
-
 
 /// The VoE header followed by an opaque vendor-defined payload.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,7 +52,11 @@ mod tests {
 
     #[test]
     fn vendor_header_and_payload_roundtrip() {
-        let packet = Packet { vendor_id: 0x1337, vendor_type: 1, payload: &[0xaa, 0xbb] };
+        let packet = Packet {
+            vendor_id: 0x1337,
+            vendor_type: 1,
+            payload: &[0xaa, 0xbb],
+        };
         let mut bytes = [0; 8];
         assert_eq!(packet.encode(&mut bytes), Some(8));
         assert_eq!(Packet::decode(&bytes), Some(packet));
@@ -62,7 +65,11 @@ mod tests {
 
     #[test]
     fn vendor_echo_vector_matches_standard_header() {
-        let packet = Packet { vendor_id: 0x1337, vendor_type: 1, payload: &[0xaa] };
+        let packet = Packet {
+            vendor_id: 0x1337,
+            vendor_type: 1,
+            payload: &[0xaa],
+        };
         let mut bytes = [0; 7];
         assert_eq!(packet.encode(&mut bytes), Some(7));
         assert_eq!(bytes, [0x37, 0x13, 0, 0, 1, 0, 0xaa]);
@@ -80,7 +87,9 @@ where
 {
     /// Create a VoE client for a discovered SubDevice.
     pub fn new(subdevice: &'maindevice SubDeviceRef<'maindevice, S>) -> Self {
-        Self { coe: Coe::new(subdevice) }
+        Self {
+            coe: Coe::new(subdevice),
+        }
     }
 
     fn mailbox_len(&self, write: bool) -> Result<usize, Error> {
@@ -95,10 +104,18 @@ where
             return Err(Error::Mailbox(MailboxError::NoWriteMailbox));
         }
         let mailbox = if write {
-            self.coe.subdevice.config.mailbox.write
+            self.coe
+                .subdevice
+                .config
+                .mailbox
+                .write
                 .ok_or(Error::Mailbox(MailboxError::NoReadMailbox))?
         } else {
-            self.coe.subdevice.config.mailbox.read
+            self.coe
+                .subdevice
+                .config
+                .mailbox
+                .read
                 .ok_or(Error::Mailbox(MailboxError::NoWriteMailbox))?
         };
         let len = usize::from(mailbox.len);
@@ -138,9 +155,13 @@ where
             counter: self.coe.subdevice.mailbox_counter(),
         };
         frame[..MAILBOX_HEADER_LEN].copy_from_slice(header.pack().as_ref());
-        Packet { vendor_id, vendor_type, payload }
-            .encode(&mut frame[MAILBOX_HEADER_LEN..frame_len])
-            .ok_or(Error::Capacity(Item::SyncManager))?;
+        Packet {
+            vendor_id,
+            vendor_type,
+            payload,
+        }
+        .encode(&mut frame[MAILBOX_HEADER_LEN..frame_len])
+        .ok_or(Error::Capacity(Item::SyncManager))?;
 
         let response = self.coe.mailbox_exchange_raw(&frame[..frame_len]).await?;
         let bytes: &[u8] = &response;

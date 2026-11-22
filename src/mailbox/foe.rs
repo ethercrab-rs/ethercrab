@@ -73,7 +73,7 @@ impl<'a> Packet<'a> {
 
 use crate::{
     error::{Error, Item, MailboxError},
-    mailbox::{coe::Coe, MailboxHeader, MailboxType, Priority},
+    mailbox::{MailboxHeader, MailboxType, Priority, coe::Coe},
     subdevice::{SubDevice, SubDeviceRef},
 };
 use core::ops::Deref;
@@ -92,7 +92,9 @@ where
 {
     /// Create a FoE client for a discovered SubDevice.
     pub fn new(subdevice: &'maindevice SubDeviceRef<'maindevice, S>) -> Self {
-        Self { coe: Coe::new(subdevice) }
+        Self {
+            coe: Coe::new(subdevice),
+        }
     }
 
     fn mailbox_len(&self, write: bool) -> Result<usize, Error> {
@@ -107,10 +109,18 @@ where
             return Err(Error::Mailbox(MailboxError::NoWriteMailbox));
         }
         let mailbox = if write {
-            self.coe.subdevice.config.mailbox.write
+            self.coe
+                .subdevice
+                .config
+                .mailbox
+                .write
                 .ok_or(Error::Mailbox(MailboxError::NoReadMailbox))?
         } else {
-            self.coe.subdevice.config.mailbox.read
+            self.coe
+                .subdevice
+                .config
+                .mailbox
+                .read
                 .ok_or(Error::Mailbox(MailboxError::NoWriteMailbox))?
         };
         let len = usize::from(mailbox.len);
@@ -144,9 +154,13 @@ where
             counter: self.coe.subdevice.mailbox_counter(),
         };
         frame[..6].copy_from_slice(header.pack().as_ref());
-        Packet { opcode, value, data }
-            .encode(&mut frame[6..frame_len])
-            .ok_or(Error::Capacity(Item::SyncManager))?;
+        Packet {
+            opcode,
+            value,
+            data,
+        }
+        .encode(&mut frame[6..frame_len])
+        .ok_or(Error::Capacity(Item::SyncManager))?;
         Ok(&frame[..frame_len])
     }
 
@@ -185,7 +199,13 @@ where
         let mut frame = [0; 2048];
         let mut reply = [0; 2048];
 
-        let request = self.build_frame(&mut frame, Opcode::Write, password, filename.as_bytes(), mailbox_len)?;
+        let request = self.build_frame(
+            &mut frame,
+            Opcode::Write,
+            password,
+            filename.as_bytes(),
+            mailbox_len,
+        )?;
         let response = self.coe.mailbox_exchange_raw(request).await?;
         let len = Self::store_reply(&response, &mut reply)?;
         {
@@ -238,7 +258,13 @@ where
         let mut frame = [0; 2048];
         let mut reply = [0; 2048];
 
-        let request = self.build_frame(&mut frame, Opcode::Read, password, filename.as_bytes(), mailbox_len)?;
+        let request = self.build_frame(
+            &mut frame,
+            Opcode::Read,
+            password,
+            filename.as_bytes(),
+            mailbox_len,
+        )?;
         let response = self.coe.mailbox_exchange_raw(request).await?;
         let mut reply_len = Self::store_reply(&response, &mut reply)?;
 
@@ -278,7 +304,11 @@ mod tests {
 
     #[test]
     fn packet_roundtrip_and_truncation() {
-        let packet = Packet { opcode: Opcode::Data, value: 0x1020_3040, data: &[1, 2] };
+        let packet = Packet {
+            opcode: Opcode::Data,
+            value: 0x1020_3040,
+            data: &[1, 2],
+        };
         let mut bytes = [0; 8];
         assert_eq!(packet.encode(&mut bytes), Some(8));
         assert_eq!(Packet::decode(&bytes), Ok(packet));
@@ -289,21 +319,48 @@ mod tests {
 
     #[test]
     fn rrq_and_wrq_match_soem_and_preserve_foe_error_codes() {
-        let expected_rrq = [1, 0, 0, 0, 0, 0, b'd', b'e', b'm', b'o', b'.', b'b', b'i', b'n'];
-        let expected_wrq = [2, 0, 0, 0, 0, 0, b'd', b'e', b'm', b'o', b'.', b'b', b'i', b'n'];
+        let expected_rrq = [
+            1, 0, 0, 0, 0, 0, b'd', b'e', b'm', b'o', b'.', b'b', b'i', b'n',
+        ];
+        let expected_wrq = [
+            2, 0, 0, 0, 0, 0, b'd', b'e', b'm', b'o', b'.', b'b', b'i', b'n',
+        ];
         for (opcode, expected) in [(Opcode::Read, expected_rrq), (Opcode::Write, expected_wrq)] {
             let mut bytes = [0; 14];
-            assert_eq!(Packet { opcode, value: 0, data: b"demo.bin" }.encode(&mut bytes), Some(14));
+            assert_eq!(
+                Packet {
+                    opcode,
+                    value: 0,
+                    data: b"demo.bin"
+                }
+                .encode(&mut bytes),
+                Some(14)
+            );
             assert_eq!(bytes, expected);
         }
         let mut data = [0; 8];
-        Packet { opcode: Opcode::Data, value: 1, data: &[0xaa, 0xbb] }.encode(&mut data);
+        Packet {
+            opcode: Opcode::Data,
+            value: 1,
+            data: &[0xaa, 0xbb],
+        }
+        .encode(&mut data);
         assert_eq!(data, [3, 0, 1, 0, 0, 0, 0xaa, 0xbb]);
         let mut ack = [0; 6];
-        Packet { opcode: Opcode::Ack, value: 1, data: &[] }.encode(&mut ack);
+        Packet {
+            opcode: Opcode::Ack,
+            value: 1,
+            data: &[],
+        }
+        .encode(&mut ack);
         assert_eq!(ack, [4, 0, 1, 0, 0, 0]);
         let mut error = [0; 6];
-        Packet { opcode: Opcode::Error, value: 0x8000, data: &[] }.encode(&mut error);
+        Packet {
+            opcode: Opcode::Error,
+            value: 0x8000,
+            data: &[],
+        }
+        .encode(&mut error);
         assert_eq!(Packet::decode(&error).unwrap().value, 0x8000);
     }
 }
