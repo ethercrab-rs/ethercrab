@@ -6,6 +6,11 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- [#390](https://github.com/ethercrab-rs/ethercrab/pull/390) PDI addresse calculations larger than
+  4GiB no longer panic on arithmetic overflow, and instead return `Error::PdiTooLong`.
+
 ### Changed
 
 - [#387](https://github.com/ethercrab-rs/ethercrab/pull/387) Bump MSRV to 1.100.
