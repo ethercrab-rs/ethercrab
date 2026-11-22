@@ -5,6 +5,8 @@
 [![Docs.rs](https://docs.rs/ethercrab/badge.svg)](https://docs.rs/ethercrab)
 [![Matrix chat](https://img.shields.io/matrix/ethercrab:matrix.org)](https://matrix.to/#/#ethercrab:matrix.org)
 
+No LLMs were or are used in the creation and maintenance of this project.
+
 A performant, `async`-first EtherCAT MainDevice written in pure Rust.
 
 ## Crate features
