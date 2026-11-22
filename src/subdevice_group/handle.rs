@@ -92,6 +92,6 @@ impl SubDeviceGroupRef<'_> {
             subdevice_config.configure_mailboxes().await?;
         }
 
-        Ok(pdi_position.increment(self.max_pdi_len as u16))
+        pdi_position.increment(self.max_pdi_len as u16)
     }
 }
