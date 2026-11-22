@@ -134,7 +134,7 @@ where
     async fn wait_for_mailbox_response(
         &self,
         read_mailbox: &Mailbox,
-    ) -> Result<ReceivedPdu, Error> {
+    ) -> Result<ReceivedPdu<'_>, Error> {
         let mailbox_read_sm = RegisterAddress::sync_manager_status(read_mailbox.sync_manager);
 
         // Wait for SubDevice OUT mailbox to be ready

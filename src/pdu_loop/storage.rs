@@ -154,7 +154,7 @@ impl<const N: usize, const DATA: usize> PduStorage<N, DATA> {
         ))
     }
 
-    fn as_ref(&self) -> PduStorageRef {
+    fn as_ref(&self) -> PduStorageRef<'_> {
         PduStorageRef {
             frames: unsafe { NonNull::new_unchecked(self.frames.get().cast()) },
             frame_element_stride: Layout::array::<FrameElement<DATA>>(N).unwrap().size() / N,
