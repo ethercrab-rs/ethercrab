@@ -6,6 +6,10 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- [#387](https://github.com/ethercrab-rs/ethercrab/pull/387) Bump MSRV to 1.100.
+
 ## [0.7.1] - 2026-03-23
 
 ### Fixed
