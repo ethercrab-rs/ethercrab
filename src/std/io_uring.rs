@@ -1,4 +1,6 @@
-use crate::{PduRx, PduTx, error::Error, fmt, std::ParkSignal, std::unix::RawSocketDesc};
+use crate::{
+    PduRx, PduTx, error::Error, fmt, std::park_signal::ParkSignal, std::unix::RawSocketDesc,
+};
 use core::{mem::MaybeUninit, task::Waker};
 use io_uring::{IoUring, opcode};
 use smallvec::{SmallVec, smallvec};

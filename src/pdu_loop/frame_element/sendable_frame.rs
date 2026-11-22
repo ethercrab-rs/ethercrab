@@ -74,6 +74,9 @@ impl<'sto> SendableFrame<'sto> {
         self.inner.set_state(FrameState::Sent);
     }
 
+    // Allow unused because this method is used in a bunch of features/targets and I don't want to
+    // list them all out here.
+    #[allow(unused)]
     pub(crate) fn storage_slot_index(&self) -> u8 {
         self.inner.storage_slot_index()
     }

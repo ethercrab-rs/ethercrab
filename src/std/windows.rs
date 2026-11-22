@@ -5,7 +5,7 @@ use crate::{
     error::Error,
     fmt,
     pdu_loop::{PduRx, PduTx},
-    std::ParkSignal,
+    std::park_signal::ParkSignal,
 };
 use pnet_datalink::{self, Channel, DataLinkReceiver, DataLinkSender, channel};
 use std::io;
