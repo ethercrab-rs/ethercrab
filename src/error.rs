@@ -53,6 +53,9 @@ pub enum Error {
     /// SubDevices in the group.
     PdiTooLong {
         /// Maximum PDI length.
+        ///
+        /// If this field is [`u32::MAX`], the `desired_length` field will show the number of bytes
+        /// that don't fit into the 4GB PDI address space.
         max_length: usize,
 
         /// Actual PDI length.
