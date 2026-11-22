@@ -11,7 +11,7 @@ description = "A pure Rust EtherCAT MainDevice supporting std and no_std environ
 keywords = ["ethercat", "beckhoff", "automation", "fieldbus", "robotics"]
 exclude = ["dumps", "doc", "NOTES.md", "SPECNOTES.md"]
 resolver = "2"
-rust-version = "1.85"
+rust-version = "1.100"
 
 [workspace]
 members = ["ethercrab-wire", "ethercrab-wire-derive"]
@@ -26,7 +26,6 @@ atomic-waker = "1.1.2"
 atomic_enum = "0.3.0"
 bitflags = "2.9.0"
 defmt = { version = "0.3.5", optional = true }
-embassy-time = "0.4.0"
 embedded-io-async = { version = "0.6.0", default-features = false }
 futures-lite = { version = "2.0.0", default-features = false }
 heapless = "0.8.0"
@@ -40,6 +39,7 @@ spin = { version = "0.10.0", default-features = false, features = [
 ] }
 crc = { version = "3.2.1", default-features = false }
 lock_api = "0.4.13"
+embassy-time = "0.4.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 pnet_datalink = { version = "0.35.0", features = ["std"], optional = true }

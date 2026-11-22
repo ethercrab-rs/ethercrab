@@ -1,4 +1,7 @@
-use crate::{PduRx, PduTx, error::Error, fmt, pdu_loop::ReceiveAction, std::unix::RawSocketDesc};
+use crate::{
+    PduRx, PduTx, error::Error, fmt, pdu_loop::ReceiveAction, std::park_signal::ParkSignal,
+    std::unix::RawSocketDesc,
+};
 use core::{num::NonZeroU32, str::FromStr, task::Waker};
 use std::{
     io::{self, Write},
@@ -11,32 +14,6 @@ use xsk_rs::{
     CompQueue, FillQueue, FrameDesc, RxQueue, TxQueue, Umem,
     config::{BindFlags, Interface, SocketConfig, UmemConfig},
 };
-
-struct ParkSignal {
-    current_thread: Thread,
-}
-
-impl ParkSignal {
-    fn new() -> Self {
-        Self {
-            current_thread: thread::current(),
-        }
-    }
-
-    fn wait(&self) {
-        thread::park();
-    }
-
-    // fn wait_timeout(&self, timeout: Duration) {
-    //     thread::park_timeout(timeout)
-    // }
-}
-
-impl Wake for ParkSignal {
-    fn wake(self: Arc<Self>) {
-        self.current_thread.unpark();
-    }
-}
 
 /// Start a TX/RX task using XDP (Linux only).
 ///

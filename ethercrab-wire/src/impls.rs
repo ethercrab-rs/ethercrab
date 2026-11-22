@@ -268,7 +268,7 @@ where
     T: EtherCrabWireWrite,
 {
     fn pack_to_slice_unchecked<'buf>(&self, buf: &'buf mut [u8]) -> &'buf [u8] {
-        let Some(chunk_size) = self.get(0).map(|v| v.packed_len()) else {
+        let Some(chunk_size) = self.first().map(|v| v.packed_len()) else {
             return &mut buf[0..0];
         };
 
@@ -286,7 +286,7 @@ where
     }
 
     fn packed_len(&self) -> usize {
-        self.get(0).map(|v| v.packed_len()).unwrap_or(0) * N
+        self.first().map(|v| v.packed_len()).unwrap_or(0) * N
     }
 }
 

@@ -381,17 +381,17 @@ where
                     pdo_bit_len
                 );
 
-                sm_bit_len += u16::from(pdo_bit_len);
+                sm_bit_len += pdo_bit_len;
             }
 
             fmt::trace!(
                 "----= total SM bit length {} ({} bytes)",
                 sm_bit_len,
-                (sm_bit_len + 7) / 8
+                sm_bit_len.div_ceil(8)
             );
 
             let sm_config = self
-                .write_sm_config(sync_manager_index, sync_manager, (sm_bit_len + 7) / 8)
+                .write_sm_config(sync_manager_index, sync_manager, sm_bit_len.div_ceil(8))
                 .await?;
 
             if sm_bit_len > 0 {
@@ -514,7 +514,7 @@ where
         {
             let sync_manager_index = sync_manager_index as u8;
 
-            let bit_len = pdos
+            let bit_len: u16 = pdos
                 .iter()
                 .filter(|pdo| pdo.sync_manager == sync_manager_index)
                 .map(|pdo| {
@@ -562,7 +562,7 @@ where
                 });
 
             let sm_config = self
-                .write_sm_config(sync_manager_index, sync_manager, (bit_len + 7) / 8)
+                .write_sm_config(sync_manager_index, sync_manager, bit_len.div_ceil(8))
                 .await?;
 
             self.write_fmmu_config(

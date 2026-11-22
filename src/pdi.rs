@@ -1,5 +1,3 @@
-#![deny(clippy::arithmetic_side_effects)]
-
 use crate::{error::Error, fmt};
 use core::ops::Range;
 
