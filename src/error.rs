@@ -259,11 +259,11 @@ pub enum MailboxError {
         /// The subindex used in the operation.
         sub_index: u8,
     },
-    /// Tried to send a message longer than the device mailbox length
+    /// Tried to send a message longer than the device mailbox length.
     ExceedsMailboxLength {
-        /// The size you tried to send
+        /// The size of the attempted payload.
         desired_size: usize,
-        /// The size of the mailbox
+        /// The maximum size the mailbox can accept.
         mailbox_size: usize,
     },
     /// Mailbox data is too long to fit in the given type.
