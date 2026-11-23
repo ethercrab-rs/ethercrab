@@ -712,6 +712,23 @@ impl<const MAX_SUBDEVICES: usize, const MAX_PDI: usize, R: RawRwLock, S, DC>
         .await
     }
 
+    /// Transition to a new state without destroying the group.
+    /// Found to be necessary for debugging where one needs to read SDOs or IDNs
+    /// after a state transition fails
+    pub async fn attempt_transition_to(
+        &mut self,
+        maindevice: &MainDevice<'_>,
+        desired_state: SubDeviceState,
+    ) -> Result<(), Error> {
+        for subdevice in self.inner.get_mut().subdevices.iter_mut() {
+            SubDeviceRef::new(maindevice, subdevice.configured_address(), subdevice)
+                .request_subdevice_state_nowait(desired_state)
+                .await?;
+        }
+
+        Ok(())
+    }
+
     /// Transition to a new state.
     async fn transition_to<TO>(
         mut self,

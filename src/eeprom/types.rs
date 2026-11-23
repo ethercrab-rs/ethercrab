@@ -287,6 +287,8 @@ pub enum FmmuUsage {
     Outputs = 0x01,
     Inputs = 0x02,
     SyncManagerStatus = 0x03,
+    DynamicOutputs = 0x05,
+    DynamicInputs = 0x06,
 }
 
 /// ETG1020 Table 10 "FMMU_EX"
