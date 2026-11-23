@@ -340,11 +340,10 @@ where
         let data: &[u8] = &response[..l];
 
         let data_words: Vec<u16> = data
-            .chunks_exact(2)
-            .map(|chunk| {
-                let array: [u8; 2] = chunk.try_into().unwrap();
-                u16::from_le_bytes(array)
-            })
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|chunk| u16::from_le_bytes(*chunk))
             .collect();
 
         let _actual_length = data_words[0];
