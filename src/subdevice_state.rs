@@ -3,13 +3,14 @@
 /// Read from register `0x0130` ([`RegisterAddress::AlStatus`](crate::register::RegisterAddress::AlStatus)).
 ///
 /// Defined in ETG1000.6 6.4.1, ETG1000.6 Table 9.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, ethercrab_wire::EtherCrabWireReadWrite)]
 #[doc(alias = "SlaveState")]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[repr(u8)]
 pub enum SubDeviceState {
     /// No state recorded/read/known.
+    #[default]
     None = 0x00,
     /// EtherCAT `INIT` state.
     Init = 0x01,
@@ -24,12 +25,6 @@ pub enum SubDeviceState {
     /// State is a combination of above variants or is an unknown value.
     #[wire(catch_all)]
     Other(u8),
-}
-
-impl Default for SubDeviceState {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl core::fmt::Display for SubDeviceState {

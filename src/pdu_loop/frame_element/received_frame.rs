@@ -3,6 +3,7 @@ use crate::{
     fmt,
     pdu_loop::{
         frame_element::{FrameBox, FrameState, created_frame::PduResponseHandle},
+        pdu_flags::PduFlags,
         pdu_header::PduHeader,
     },
 };
@@ -180,12 +181,15 @@ impl<'sto> Iterator for ReceivedPduIter<'sto> {
 
         let buf = self.frame.inner.pdu_buf().get(self.buf_pos..)?;
 
-        let pdu_header = match PduHeader::unpack_from_slice(buf) {
-            Ok(h) => h,
+        let Some(header) = buf.get(..PduHeader::PACKED_LEN) else {
+            return Some(Err(ethercrab_wire::WireError::ReadBufferTooShort.into()));
+        };
+        let flags = match PduFlags::unpack_from_slice(&header[6..8]) {
+            Ok(flags) => flags,
             Err(e) => return Some(Err(e.into())),
         };
 
-        let payload_len = usize::from(pdu_header.flags.len());
+        let payload_len = usize::from(flags.len());
         let this_pdu_len = PduHeader::PACKED_LEN + payload_len + 2;
 
         // If buffer isn't long enough to hold payload and WKC, this is probably a corrupt PDU or
@@ -215,7 +219,7 @@ impl<'sto> Iterator for ReceivedPduIter<'sto> {
         });
 
         // Update buffer pos for next iteration if there are more PDUs to come
-        if pdu_header.flags.more_follows {
+        if flags.more_follows {
             self.buf_pos += this_pdu_len;
         }
         // No more frames, so quit the next time round by trying to read way off the end of the

@@ -873,6 +873,9 @@ where
     ///
     /// This method will return with an error if the PDU could not be sent over the network, or the
     /// response times out.
+    // Allow lint: `self.pdi.write()` and the frame await are linked so this is fine IMO. Hasn't
+    // caused problems yet...
+    #[allow(clippy::await_holding_lock)]
     pub async fn tx_rx<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
@@ -980,6 +983,9 @@ where
     ///
     /// This method will return with an error if the PDU could not be sent over the network, or the
     /// response times out.
+    // Allow lint: `self.pdi.write()` and the frame await are linked so this is fine IMO. Hasn't
+    // caused problems yet...
+    #[allow(clippy::await_holding_lock)]
     pub async fn tx_rx_sync_system_time<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
@@ -1246,6 +1252,9 @@ where
     /// }
     /// # }) }
     /// ```
+    // Allow lint: `self.pdi.write()` and the frame await are linked so this is fine IMO. Hasn't
+    // caused problems yet...
+    #[allow(clippy::await_holding_lock)]
     pub async fn tx_rx_dc<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,

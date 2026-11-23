@@ -619,7 +619,7 @@ where
             fmmu_config
         );
 
-        *global_offset = global_offset.increment_byte_aligned(sm_bit_len);
+        *global_offset = global_offset.increment_byte_aligned(sm_bit_len)?;
 
         Ok(())
     }

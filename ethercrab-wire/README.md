@@ -2,6 +2,8 @@
 [![Crates.io](https://img.shields.io/crates/v/ethercrab-wire.svg)](https://crates.io/crates/ethercrab-wire)
 [![Docs.rs](https://docs.rs/ethercrab-wire/badge.svg)](https://docs.rs/ethercrab-wire)
 
+No LLMs were or are used in the creation and maintenance of this project.
+
 Traits used to pack/unpack structs and enums from EtherCAT packets on the wire.
 
 This crate is designed for use with [`ethercrab`](https://docs.rs/ethercrab) but can be

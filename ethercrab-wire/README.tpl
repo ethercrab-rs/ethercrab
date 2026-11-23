@@ -2,6 +2,8 @@
 [![Crates.io](https://img.shields.io/crates/v/ethercrab-wire.svg)](https://crates.io/crates/ethercrab-wire)
 [![Docs.rs](https://docs.rs/ethercrab-wire/badge.svg)](https://docs.rs/ethercrab-wire)
 
+No LLMs were or are used in the creation and maintenance of this project.
+
 {{readme}}
 
 ## License

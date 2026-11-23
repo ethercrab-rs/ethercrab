@@ -455,7 +455,7 @@ impl SubDevice {
     pub(crate) fn mailbox_counter(&self) -> u8 {
         fmt::unwrap!(
             self.mailbox_counter
-                .fetch_update(Ordering::Release, Ordering::Acquire, |n| {
+                .try_update(Ordering::Release, Ordering::Acquire, |n| {
                     if n >= 7 { Some(1) } else { Some(n + 1) }
                 })
         )
@@ -960,7 +960,7 @@ impl<'maindevice, S> SubDeviceRef<'maindevice, S> {
         futures_lite::future::try_zip(self.state(), code).await
     }
 
-    fn eeprom(&self) -> SubDeviceEeprom<DeviceEeprom> {
+    fn eeprom(&self) -> SubDeviceEeprom<DeviceEeprom<'_>> {
         SubDeviceEeprom::new(DeviceEeprom::new(self.maindevice, self.configured_address))
     }
 

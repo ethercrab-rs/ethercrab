@@ -6,12 +6,23 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- [#390](https://github.com/ethercrab-rs/ethercrab/pull/390) PDI addresse calculations larger than
+  4GiB no longer panic on arithmetic overflow, and instead return `Error::PdiTooLong`.
+
+### Changed
+
+- [#387](https://github.com/ethercrab-rs/ethercrab/pull/387) Bump MSRV to 1.100.
+
 ## [0.7.1] - 2026-03-23
 
 ### Fixed
 
 - [#366](https://github.com/ethercrab-rs/ethercrab/pull/366) Publicly expose `DefaultLock` so crate
   consumers can use it.
+- [#380](https://github.com/ethercrab-rs/ethercrab/pull/380) (@linyihai) Fix topology when nested
+  junctions are present.
 
 ### Changed
 
@@ -625,8 +636,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - Initial release
 
 <!-- next-url -->
-[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.1...HEAD
 
+[unreleased]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.1...HEAD
 [0.7.1]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.7.0...ethercrab-v0.7.1
 [0.7.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.6.0...ethercrab-v0.7.0
 [0.6.0]: https://github.com/ethercrab-rs/ethercrab/compare/ethercrab-v0.5.6...ethercrab-v0.6.0
