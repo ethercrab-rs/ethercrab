@@ -454,7 +454,7 @@ where
             // Cycle time in nanoseconds
             subdevice
                 .write(RegisterAddress::DcSync0CycleTime)
-                .send(maindevice, sync0_period)
+                .send(maindevice, sync0_period as u32)
                 .await?;
 
             let flags = if let DcSync::Sync01 { sync1_period } = subdevice.dc_sync() {
@@ -462,7 +462,7 @@ where
 
                 subdevice
                     .write(RegisterAddress::DcSync1CycleTime)
-                    .send(maindevice, sync1_period)
+                    .send(maindevice, sync1_period as u32)
                     .await?;
 
                 SYNC1_ACTIVATE | SYNC0_ACTIVATE | CYCLIC_OP_ENABLE
