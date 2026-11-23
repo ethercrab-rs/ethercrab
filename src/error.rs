@@ -259,6 +259,13 @@ pub enum MailboxError {
         /// The subindex used in the operation.
         sub_index: u8,
     },
+    /// Tried to send a message longer than the device mailbox length.
+    ExceedsMailboxLength {
+        /// The size of the attempted payload.
+        desired_size: usize,
+        /// The maximum size the mailbox can accept.
+        mailbox_size: usize,
+    },
     /// Mailbox data is too long to fit in the given type.
     TooLong {
         /// The address used in the operation.
@@ -322,6 +329,14 @@ impl core::fmt::Display for MailboxError {
                 f,
                 "emergency: code {:#06x}, register {:#04x}",
                 error_code, error_register
+            ),
+            MailboxError::ExceedsMailboxLength {
+                desired_size,
+                mailbox_size,
+            } => write!(
+                f,
+                "mailbox message of length {} is longer than mailbox size {}",
+                desired_size, mailbox_size
             ),
         }
     }
