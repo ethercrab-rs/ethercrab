@@ -2,7 +2,7 @@
 
 /// Wire encode/decode errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum WireError {
     /// The buffer to extract a type from is too short to do so.
     ReadBufferTooShort,

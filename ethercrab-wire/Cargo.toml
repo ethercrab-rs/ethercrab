@@ -13,10 +13,10 @@ resolver = "2"
 rust-version = "1.79"
 
 [dependencies]
-defmt = { version = "0.3.5", optional = true, default-features = false }
+defmt = { version = "1.2.0", optional = true, default-features = false }
 ethercrab-wire-derive = { version = "0.3.0", path = "../ethercrab-wire-derive", default-features = false }
-heapless = { version = "0.8.0", default-features = false }
+heapless = { version = "0.9.4", default-features = false }
 
 [features]
 std = []
-defmt-03 = ["dep:defmt", "heapless/defmt-03"]
+defmt = ["dep:defmt", "heapless/defmt"]
