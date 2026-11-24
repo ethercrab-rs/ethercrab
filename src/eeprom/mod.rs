@@ -252,6 +252,12 @@ where
 
         Ok(written)
     }
+
+    // Required by trait, but all writes are immediate so a flush is not required, therefore is
+    // implemented as a noop.
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 impl<P> ErrorType for EepromRange<P> {

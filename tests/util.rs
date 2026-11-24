@@ -191,7 +191,7 @@ pub fn dummy_tx_rx_task(
     let mut packet_number = 0;
     let mut blocks = Vec::new();
 
-    while let Some(block) = pcapng_reader.next_block().and_then(|res| res.ok()) {
+    while let Some((block, _state)) = pcapng_reader.next_block().and_then(|res| res.ok()) {
         // Indexed from 1 in the Wireshark UI
         packet_number += 1;
 

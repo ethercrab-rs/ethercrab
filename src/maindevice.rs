@@ -22,7 +22,7 @@ use core::{
     sync::atomic::{AtomicU16, Ordering},
 };
 use ethercrab_wire::{EtherCrabWireSized, EtherCrabWireWrite};
-use heapless::FnvIndexMap;
+use heapless::index_map::FnvIndexMap;
 
 /// The main EtherCAT controller.
 ///
