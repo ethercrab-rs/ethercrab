@@ -23,7 +23,6 @@ pub use xdp::tx_rx_task_xdp;
 
 /// Configuration for the TX/RX tasks.
 #[derive(Copy, Clone, Debug, Default)]
-#[non_exhaustive]
 pub struct TxRxTaskConfig {
     /// If set to `true`, use a spinloop to wait for packet TX or RX instead of putting the thread
     /// to sleep.
