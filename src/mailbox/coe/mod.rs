@@ -66,7 +66,9 @@ where
             .mailbox
             .read
             .ok_or(Error::Mailbox(MailboxError::NoReadMailbox))?;
-        self.subdevice.wait_for_mailbox_response(&read_mailbox).await
+        self.subdevice
+            .wait_for_mailbox_response(&read_mailbox)
+            .await
     }
 
     /// Send a raw mailbox request and return the response payload.
