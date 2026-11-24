@@ -84,12 +84,21 @@ fn main() -> Result<(), Error> {
             &interface,
             tx,
             rx,
-            ethercrab::std::TxRxTaskConfig { spinloop: false },
+            ethercrab::std::TxRxTaskConfig::default(),
         )
         .expect("TX/RX task")
     });
     #[cfg(not(target_os = "windows"))]
-    smol::spawn(ethercrab::std::tx_rx_task(&interface, tx, rx).expect("spawn TX/RX task")).detach();
+    smol::spawn(
+        ethercrab::std::tx_rx_task(
+            &interface,
+            tx,
+            rx,
+            ethercrab::std::TxRxTaskConfig::default(),
+        )
+        .expect("spawn TX/RX task"),
+    )
+    .detach();
 
     // Wait for TX/RX loop to start
     thread::sleep(Duration::from_millis(200));

@@ -11,9 +11,17 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - [#390](https://github.com/ethercrab-rs/ethercrab/pull/390) PDI addresse calculations larger than
   4GiB no longer panic on arithmetic overflow, and instead return `Error::PdiTooLong`.
 
+### Added
+
+- [#381](https://github.com/ethercrab-rs/ethercrab/pull/381) (@antoine-prrn) Add
+  `TxRxTaskConfig::accept_own_source_mac` (Linux only) to accept frames with an unchanged source MAC
+  address.
+
 ### Changed
 
 - [#387](https://github.com/ethercrab-rs/ethercrab/pull/387) Bump MSRV to 1.100.
+- [#381](https://github.com/ethercrab-rs/ethercrab/pull/381) **(breaking)** (@antoine-prrn)
+  `tx_rx_task`, `tx_rx_task_io_uring` and `tx_rx_task_xdp` now take a `TxRxTaskConfig`.
 
 ## [0.7.1] - 2026-03-23
 

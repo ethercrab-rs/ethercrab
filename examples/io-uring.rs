@@ -101,7 +101,13 @@ fn main() -> Result<(), ethercrab::error::Error> {
                 .expect("Set TX/RX thread core");
 
             // Blocking io_uring
-            tx_rx_task_io_uring(&interface, tx, rx).expect("TX/RX task");
+            tx_rx_task_io_uring(
+                &interface,
+                tx,
+                rx,
+                ethercrab::std::TxRxTaskConfig::default(),
+            )
+            .expect("TX/RX task");
         })
         .unwrap();
 
