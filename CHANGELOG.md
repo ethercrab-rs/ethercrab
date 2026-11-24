@@ -22,6 +22,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
 - [#387](https://github.com/ethercrab-rs/ethercrab/pull/387) Bump MSRV to 1.100.
 - [#381](https://github.com/ethercrab-rs/ethercrab/pull/381) **(breaking)** (@antoine-prrn)
   `tx_rx_task`, `tx_rx_task_io_uring` and `tx_rx_task_xdp` now take a `TxRxTaskConfig`.
+- [#398](https://github.com/ethercrab-rs/ethercrab/pull/398) **(breaking)** Rename `defmt-03`
+  feature to `defmt`.
 
 ## [0.7.1] - 2026-03-23
 
