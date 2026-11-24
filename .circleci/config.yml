@@ -150,14 +150,18 @@ target_steps_embassy: &target_steps_embassy
   steps:
     - checkout
     - restore_cache:
-        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key:
+          v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "examples/embassy-stm32/Cargo.toml"
+          }}
     - run: |
         cd examples/embassy-stm32
 
         cargo build --release
 
     - save_cache:
-        key: v8-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "Cargo.toml" }}
+        key:
+          v1-ethercrab-{{ .Environment.CIRCLE_JOB }}-{{ checksum "examples/embassy-stm32/Cargo.toml"
+          }}
         paths:
           - ./target
           - /home/circleci/.cargo/registry
