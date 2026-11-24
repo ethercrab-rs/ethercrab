@@ -6,12 +6,11 @@ use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_net::driver::{Driver, LinkState, RxToken, TxToken};
 use embassy_stm32::{
-    bind_interrupts,
-    eth::{self, generic_smi::GenericSMI, Ethernet, PacketQueue},
+    Config, bind_interrupts,
+    eth::{self, Ethernet, GenericPhy, PacketQueue, Sma},
     gpio::{Level, Output, Speed},
-    peripherals::ETH,
+    peripherals::{ETH, ETH_SMA},
     time::Hertz,
-    Config,
 };
 use embassy_time::{Duration, Instant, Timer};
 use ethercrab::{MainDevice, MainDeviceConfig, PduRx, PduStorage, PduTx, SendableFrame, Timeouts};
@@ -35,7 +34,7 @@ static PDU_STORAGE: PduStorage<MAX_FRAMES, MAX_PDU_DATA> = PduStorage::new();
 
 #[embassy_executor::task]
 async fn tx_rx_task(
-    mut device: Ethernet<'static, ETH, GenericSMI>,
+    mut device: Ethernet<'static, ETH, GenericPhy<Sma<'static, ETH_SMA>>>,
     mut pdu_tx: PduTx<'static>,
     mut pdu_rx: PduRx<'static>,
 ) -> ! {
@@ -44,13 +43,15 @@ async fn tx_rx_task(
     #[inline(always)]
     fn send_ecat(tx: embassy_stm32::eth::TxToken<'_, '_>, frame: SendableFrame<'_>) {
         tx.consume(frame.len(), |tx_buf| {
-            defmt::unwrap!(frame
-                .send_blocking(|ethernet_frame| {
-                    tx_buf[0..ethernet_frame.len()].copy_from_slice(ethernet_frame);
+            defmt::unwrap!(
+                frame
+                    .send_blocking(|ethernet_frame| {
+                        tx_buf[0..ethernet_frame.len()].copy_from_slice(ethernet_frame);
 
-                    Ok(ethernet_frame.len())
-                })
-                .map_err(|e| defmt::error!("Send blocking: {}", e)));
+                        Ok(ethernet_frame.len())
+                    })
+                    .map_err(|e| defmt::error!("Send blocking: {}", e))
+            );
         });
     }
 
@@ -123,7 +124,7 @@ async fn main(spawner: Spawner) {
     defmt::info!("Hello World!");
 
     let led = Output::new(p.PB7, Level::High, Speed::Low);
-    defmt::unwrap!(spawner.spawn(blinky(led)));
+    spawner.spawn(defmt::unwrap!(blinky(led)));
 
     let mac_addr = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
@@ -136,16 +137,16 @@ async fn main(spawner: Spawner) {
             p.ETH,
             Irqs,
             p.PA1,
-            p.PA2,
-            p.PC1,
             p.PA7,
             p.PC4,
             p.PC5,
             p.PG13,
             p.PB13,
             p.PG11,
-            GenericSMI::new(0),
             mac_addr,
+            p.ETH_SMA,
+            p.PA2,
+            p.PC1,
         );
 
         defmt::info!("Waiting for Ethernet link up...");
@@ -163,7 +164,7 @@ async fn main(spawner: Spawner) {
         device
     };
 
-    defmt::unwrap!(spawner.spawn(tx_rx_task(device, tx, rx)));
+    spawner.spawn(defmt::unwrap!(tx_rx_task(device, tx, rx)));
 
     let maindevice = MainDevice::new(pdu_loop, Timeouts::default(), MainDeviceConfig::default());
 
