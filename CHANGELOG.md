@@ -24,6 +24,8 @@ A pure Rust EtherCAT MainDevice supporting std and no_std environments.
   `tx_rx_task`, `tx_rx_task_io_uring` and `tx_rx_task_xdp` now take a `TxRxTaskConfig`.
 - [#398](https://github.com/ethercrab-rs/ethercrab/pull/398) **(breaking)** Rename `defmt-03`
   feature to `defmt`.
+- [#400](https://github.com/ethercrab-rs/ethercrab/pull/400) **(breaking)** Disable `io-uring` cargo
+  feature by default. Add `features = [ "io-uring" ]` to `Cargo.toml` to reenable.
 
 ## [0.7.1] - 2026-03-23
 
