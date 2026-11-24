@@ -8,7 +8,9 @@
 mod util;
 
 use env_logger::Env;
-use ethercrab::{MainDevice, MainDeviceConfig, PduStorage, Timeouts, error::Error};
+use ethercrab::{
+    MainDevice, MainDeviceConfig, PduStorage, Timeouts, error::Error, subdevice_group::CycleConfig,
+};
 use std::{hint::black_box, path::PathBuf, time::Duration};
 use tokio::time::MissedTickBehavior;
 
@@ -56,7 +58,10 @@ async fn replay_issue_255() -> Result<(), Error> {
 
     // Animate slow pattern for 8 ticks
     for _ in 0..64 {
-        group.tx_rx(&maindevice).await.expect("TX/RX");
+        group
+            .tx_rx(&maindevice, CycleConfig::default())
+            .await
+            .expect("TX/RX");
 
         let el2889 = group.subdevice(&maindevice, 1).unwrap();
 

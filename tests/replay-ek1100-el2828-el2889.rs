@@ -9,7 +9,10 @@
 mod util;
 
 use env_logger::Env;
-use ethercrab::{MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts, error::Error};
+use ethercrab::{
+    MainDevice, MainDeviceConfig, PduStorage, SubDeviceGroup, Timeouts, error::Error,
+    subdevice_group::CycleConfig,
+};
 use std::{path::PathBuf, time::Duration};
 use tokio::time::MissedTickBehavior;
 
@@ -109,7 +112,10 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
 
     // Animate slow pattern for 8 ticks
     for _ in 0..8 {
-        slow_outputs.tx_rx(&maindevice).await.expect("TX/RX");
+        slow_outputs
+            .tx_rx(&maindevice, CycleConfig::default())
+            .await
+            .expect("TX/RX");
 
         let el2889 = slow_outputs
             .subdevice(&maindevice, 1)
@@ -129,7 +135,10 @@ async fn replay_ek1100_el2828_el2889() -> Result<(), Error> {
 
     // Count up to 255 in binary
     for _ in 0..255 {
-        fast_outputs.tx_rx(&maindevice).await.expect("TX/RX");
+        fast_outputs
+            .tx_rx(&maindevice, CycleConfig::default())
+            .await
+            .expect("TX/RX");
 
         // Increment every output byte for every SubDevice by one
         for subdevice in fast_outputs.iter(&maindevice) {

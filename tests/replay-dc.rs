@@ -12,7 +12,7 @@ use env_logger::Env;
 use ethercrab::{
     DcSync, MainDevice, MainDeviceConfig, PduStorage, RegisterAddress, Timeouts, TxRxResponse,
     error::Error,
-    subdevice_group::{CycleInfo, DcConfiguration},
+    subdevice_group::{CycleConfig, CycleInfo, DcConfiguration},
 };
 use std::{path::PathBuf, time::Duration};
 
@@ -68,7 +68,7 @@ async fn replay_dc() -> Result<(), Error> {
     // Repeatedly send group PDI and sync frame to align all SubDevice clocks
     loop {
         group
-            .tx_rx_sync_system_time(&maindevice)
+            .tx_rx_sync_system_time(&maindevice, CycleConfig::default())
             .await
             .expect("TX/RX");
 
@@ -145,7 +145,7 @@ async fn replay_dc() -> Result<(), Error> {
                 next_cycle_wait, ..
             },
             ..
-        } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+        } = group.tx_rx_dc(&maindevice, CycleConfig::default()).await.expect("TX/RX");
 
         if response.all_op() {
             break;
@@ -164,7 +164,7 @@ async fn replay_dc() -> Result<(), Error> {
                 next_cycle_wait, ..
             },
             ..
-        } = group.tx_rx_dc(&maindevice).await.expect("TX/RX");
+        } = group.tx_rx_dc(&maindevice, CycleConfig::default()).await.expect("TX/RX");
 
         for subdevice in group.iter(&maindevice) {
             let mut o = subdevice.outputs_raw_mut();

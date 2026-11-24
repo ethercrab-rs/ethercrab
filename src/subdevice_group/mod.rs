@@ -170,6 +170,47 @@ pub struct CycleInfo {
     pub cycle_start_offset: Duration,
 }
 
+/// How group SubDevice statuses should be read on every call to `tx_rx_*`.
+#[derive(Debug, Copy, Clone, Default)]
+pub enum GroupStatusMethod {
+    /// Read SubDevice statuses using multiple FPRD PDUs.
+    ///
+    /// This is the recommended (and default) method to read group statuses as it will give an
+    /// accurate status of each SubDevice. If there is only one group and transfer time needs to be
+    /// optimised, consider using [`GroupStatusMethod::Global`] with caveats.
+    #[default]
+    Group,
+
+    /// Read all SubDevice statuses on the network using a broadcast read (BRD).
+    ///
+    /// **Because this method is scoped globally and not to the group, it will only give an accurate
+    /// status if a single group is used.**
+    ///
+    /// Use this method if optimising cycle time is important to the application. It will remove the
+    /// overhead of sending one FPRD EtherCAT PDU per group SubDevice and instead send a single BRD
+    /// PDU.
+    ///
+    /// All SubDevice statuses in [`TxRxResponse::subdevice_states`] will be set to the same returned value.
+    Global,
+
+    /// Completely disable group status reads.
+    ///
+    /// This method should only be used if the application doesn't care about SubDevice status at
+    /// all. All SubDevice statuses in [`TxRxResponse::subdevice_states`] will be set to
+    /// [`SubDeviceState::None`].
+    None,
+}
+
+/// Configure the behaviour of the `tx_rx_*` methods.
+#[derive(Debug, Copy, Clone, Default)]
+pub struct CycleConfig {
+    /// How to read the SubDevice statuses of the group.
+    ///
+    /// There are various caveats to using different [`GroupStatusMethod`] variants. See their
+    /// documentation for more details.
+    pub status_method: GroupStatusMethod,
+}
+
 /// A group of one or more EtherCAT SubDevices.
 ///
 /// Groups are created during EtherCrab initialisation, and are the only way to access individual
@@ -862,6 +903,7 @@ where
     pub async fn tx_rx<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
+        config: CycleConfig,
     ) -> Result<TxRxResponse<MAX_SUBDEVICES>, Error> {
         fmt::trace!(
             "Group TX/RX, start address {:#010x}, data len {}, of which read bytes: {}",
@@ -972,6 +1014,7 @@ where
     pub async fn tx_rx_sync_system_time<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
+        config: CycleConfig,
     ) -> Result<TxRxResponse<MAX_SUBDEVICES, Option<u64>>, Error> {
         let mut pdi_lock = self.pdi.write();
 
@@ -1093,11 +1136,13 @@ where
                 }
             }
         } else {
-            self.tx_rx(maindevice).await.map(|response| TxRxResponse {
-                working_counter: response.working_counter,
-                subdevice_states: response.subdevice_states,
-                extra: None,
-            })
+            self.tx_rx(maindevice, config)
+                .await
+                .map(|response| TxRxResponse {
+                    working_counter: response.working_counter,
+                    subdevice_states: response.subdevice_states,
+                    extra: None,
+                })
         }
     }
 
@@ -1241,6 +1286,7 @@ where
     pub async fn tx_rx_dc<'sto>(
         &self,
         maindevice: &'sto MainDevice<'sto>,
+        config: CycleConfig,
     ) -> Result<TxRxResponse<MAX_SUBDEVICES, CycleInfo>, Error> {
         fmt::trace!(
             "Group TX/RX with DC sync, start address {:#010x}, data len {}, of which read bytes: {}",
@@ -1474,7 +1520,7 @@ mod tests {
                 _state: PhantomData,
             };
 
-        let out = group.tx_rx(&maindevice).await;
+        let out = group.tx_rx(&maindevice, CycleConfig::default()).await;
 
         // No subdevices so no WKC, but success
         assert_eq!(
@@ -1707,7 +1753,7 @@ mod tests {
             _state: PhantomData::<Op>,
         };
 
-        cassette::block_on(group.tx_rx_dc(&maindevice)).unwrap();
+        cassette::block_on(group.tx_rx_dc(&maindevice, CycleConfig::default())).unwrap();
 
         stop.store(true, Ordering::Relaxed);
 
