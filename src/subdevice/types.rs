@@ -50,12 +50,38 @@ pub struct SubDeviceConfig {
     pub mailbox: MailboxConfig,
 }
 
+/// What protocol is used to configure PDO FMMUs.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub enum PdoProtocol {
+    #[default]
+    /// PDOs are configured from data in the SubDevice's EEPROM.
+    Eeprom,
+    
+    /// PDOs are configured using CoE (CanOpen over EtherCAT) objects.
+    CoE,
+    
+    /// PDOs are configured using SoE (SERCOS over EtherCAT) objects.
+    SoE,
+}
+
+impl From<MailboxProtocols> for PdoProtocol {
+    fn from(value: MailboxProtocols) -> Self {
+        if value.contains(MailboxProtocols::COE) {
+            PdoProtocol::CoE
+        } else if value.contains(MailboxProtocols::SOE) {
+            PdoProtocol::SoE
+        } else {
+            PdoProtocol::Eeprom
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct MailboxConfig {
     pub read: Option<Mailbox>,
     pub write: Option<Mailbox>,
     pub supported_protocols: MailboxProtocols,
-    pub has_coe: bool,
+    pub pdo_protocol: PdoProtocol,
     /// True if Complete Access is supported.
     pub complete_access: bool,
 }
