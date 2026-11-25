@@ -3,6 +3,7 @@ use crate::{
     MainDeviceConfig, PduStorage, Timeouts,
     ethernet::{EthernetAddress, EthernetFrame},
     pdu_loop::ReceivedFrame,
+    subdevice_group::sync_unsafe_cell::MySyncUnsafeCell,
 };
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::{sync::Arc, thread};

@@ -5,21 +5,18 @@
 
 mod group_id;
 mod handle;
+mod sync_unsafe_cell;
 #[cfg(test)]
 mod tests;
 mod tx_rx_impl;
 mod tx_rx_response;
 
 use crate::{
-    DcSync,
-    MainDevice,
-    RegisterAddress,
-    SubDeviceState,
+    DcSync, MainDevice, RegisterAddress, SubDeviceState,
     al_control::AlControl,
     command::Command,
     error::{DistributedClockError, Error, Item},
     fmt,
-    // lending_lock::LendingLock,
     pdi::PdiOffset,
     pdu_loop::CreatedFrame,
     subdevice::{
@@ -27,52 +24,19 @@ use crate::{
     },
     timer_factory::IntoTimeout,
 };
-use core::{cell::UnsafeCell, marker::PhantomData, sync::atomic::AtomicUsize, time::Duration};
+use core::{marker::PhantomData, sync::atomic::AtomicUsize, time::Duration};
 use ethercrab_wire::{EtherCrabWireRead, EtherCrabWireSized};
 use lock_api::{RawRwLock, RwLock};
 
 pub use self::group_id::GroupId;
 pub use self::handle::SubDeviceGroupHandle;
 pub use self::tx_rx_response::TxRxResponse;
+pub(crate) use sync_unsafe_cell::MySyncUnsafeCell;
 
 static GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 
 /// The size of a DC sync PDU.
 const DC_PDU_SIZE: usize = CreatedFrame::PDU_OVERHEAD_BYTES + u64::PACKED_LEN;
-
-// MSRV: Remove when core SyncUnsafeCell is stabilised
-#[derive(Debug)]
-pub(crate) struct MySyncUnsafeCell<T: ?Sized>(pub UnsafeCell<T>);
-
-impl<T> MySyncUnsafeCell<T> {
-    pub fn new(inner: T) -> Self {
-        Self(UnsafeCell::new(inner))
-    }
-}
-
-unsafe impl<T: ?Sized + Sync> Sync for MySyncUnsafeCell<T> {}
-
-impl<T: ?Sized> MySyncUnsafeCell<T> {
-    /// Gets a mutable pointer to the wrapped value.
-    ///
-    /// This can be cast to a pointer of any kind.
-    /// Ensure that the access is unique (no active references, mutable or not)
-    /// when casting to `&mut T`, and ensure that there are no mutations
-    /// or mutable aliases going on when casting to `&T`
-    #[inline]
-    pub const fn get(&self) -> *mut T {
-        self.0.get()
-    }
-
-    /// Returns a mutable reference to the underlying data.
-    ///
-    /// This call borrows the `SyncUnsafeCell` mutably (at compile-time) which
-    /// guarantees that we possess the only reference.
-    #[inline]
-    pub fn get_mut(&mut self) -> &mut T {
-        self.0.get_mut()
-    }
-}
 
 /// A typestate for [`SubDeviceGroup`] representing a group that is shut down.
 ///
