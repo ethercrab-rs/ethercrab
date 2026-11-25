@@ -54,8 +54,13 @@ pub struct SubDeviceConfig {
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum PdoProtocol {
     #[default]
+    /// PDOs are configured from data in the SubDevice's EEPROM.
     Eeprom,
+    
+    /// PDOs are configured using CoE (CanOpen over EtherCAT) objects.
     CoE,
+    
+    /// PDOs are configured using SoE (SERCOS over EtherCAT) objects.
     SoE,
 }
 
