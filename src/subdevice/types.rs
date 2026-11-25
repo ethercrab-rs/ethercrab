@@ -50,7 +50,7 @@ pub struct SubDeviceConfig {
     pub mailbox: MailboxConfig,
 }
 
-/// What protocol is used to configure PDO FFMUs
+/// What protocol is used to configure PDO FMMUs.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum PdoProtocol {
     #[default]
