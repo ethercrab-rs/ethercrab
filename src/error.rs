@@ -163,7 +163,7 @@ impl core::fmt::Display for Error {
             Error::Wire(e) => write!(f, "wire encode/decode error: {}", e),
             Error::SubDevice(e) => write!(f, "subdevice error: {}", e),
             Error::DistributedClock(e) => write!(f, "distributed clock: {}", e),
-            Error::SoeError(e) => write!(f, "{e:?}"),
+            Error::SoeError(e) => write!(f, "SoE: {:?}", e),
         }
     }
 }
