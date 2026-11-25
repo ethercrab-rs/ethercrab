@@ -1,4 +1,4 @@
-//! Discover devices connected to the network.
+//! Discover devices connected to the network using SoE.
 
 use env_logger::Env;
 use ethercrab::{
