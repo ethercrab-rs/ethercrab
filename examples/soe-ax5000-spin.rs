@@ -1,7 +1,7 @@
 //! Demonstrate slowly spinning an AM8051-0EH1-0000 motor with an AX5203 drive.
 //!
-//! Uses newly implemented SoE functionality, namely writing to IDNs (SoE equivalent of CoE SDOs),
-//! and SoE derived PDO setup.
+//! This example communicates with the drive over SoE (SERCOS over EtherCAT), namely writing to IDNs
+//! (SoE equivalent of CoE SDOs), and SoE derived PDO setup.
 //!
 //! IMPORTANT: This examples uses a hard-coded function to initialize the IDNs for the motor, brake,
 //! and encoder type for this particular combination of hardware. If you intend to use this, you MUST
